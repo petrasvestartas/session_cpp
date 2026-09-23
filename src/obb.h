@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 
+namespace session_proto {
+class BoundingBox;
+}
+
 namespace session_cpp {
 
 class Mesh;
@@ -23,6 +27,11 @@ class Polyline;
 
 /// Oriented bounding box as center, three axes and half-size.
 class OBB {
+private:
+    static constexpr int NUM_SAMPLES = 20; // Samples per span when searching curve extrema.
+    static constexpr int MAX_ITER = 20; // Newton iterations per extremum.
+    mutable std::string _guid; // Lazy guid.
+
 public:
     Point center; // Box center.
     Vector x_axis; // Unit x axis.
@@ -31,6 +40,9 @@ public:
     Vector half_size; // Half extent along each axis.
     std::string name = "my_obb"; // Box name.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct the unit box at the origin.
     OBB();
 
@@ -52,31 +64,29 @@ public:
     /// Move-assign while preserving the guid.
     OBB& operator=(OBB&& other) noexcept = default;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
     bool has_guid() const { return !_guid.empty(); }
 
     /// Return the guid, creating it on first access.
-    const std::string& guid() const {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
+    const std::string& guid() const;
 
     /// Return the mutable guid, creating it on first access.
-    std::string& guid() {
-        if (_guid.empty())
-            _guid = ::guid();
-
-        return _guid;
-    }
+    std::string& guid();
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Static constructors
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct on the plane frame with full sizes dx, dy, dz.
+    static OBB from_plane(const Plane& plane, double dx, double dy, double dz);
+
+    /// Construct the world-aligned box with the center and half-size of aabb.
+    static OBB from_aabb(const AABB& aabb);
 
     /// Construct the world-aligned box of half-size inflate around point.
     static OBB from_point(const Point& point, double inflate = 0.0);
@@ -126,7 +136,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Compare name, center, axes and half-size to 1e-6; guid ignored.
     bool operator==(const OBB& other) const;
 
@@ -136,7 +145,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Transform center and axes in place.
     void transform(const Xform& xform);
 
@@ -146,7 +154,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometry
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return the world-aligned box enclosing the corners.
     AABB aabb() const;
 
@@ -201,7 +208,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Collision
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return whether the boxes overlap by the separating axis test (collides_with_rtcd).
     bool collides_with(const OBB& other) const;
 
@@ -217,7 +223,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
 
@@ -239,6 +244,11 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::BoundingBox to_proto() const;
+
+    /// Construct from the protobuf message.
+    static OBB from_proto(const session_proto::BoundingBox& proto);
 
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
@@ -255,7 +265,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Return "center\nx_axis\ny_axis\nz_axis\nhalf_size".
     std::string str() const;
 
@@ -263,13 +272,6 @@ public:
     std::string repr() const;
 
 private:
-    static constexpr int NUM_SAMPLES = 20; // Samples per span when searching curve extrema.
-    static constexpr int MAX_ITER = 20; // Newton iterations per extremum.
-    mutable std::string _guid; // Lazy guid.
-
-    /// Construct the world-aligned box with the center and half-size of aabb.
-    static OBB from_aabb(const AABB& aabb);
-
     /// Compute the parameter in [t_lo, t_hi] where the derivative along axis crosses zero, by Newton steps bracketed by bisection.
     static double compute_extremum(const NurbsCurve& curve, const Vector& axis, double t_lo, double t_hi, double d_start);
 
@@ -283,8 +285,9 @@ std::ostream& operator<<(std::ostream& os, const OBB& obb);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::OBB> {
-    constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
-    auto format(const session_cpp::OBB& o, fmt::format_context& ctx) const {
-        return fmt::format_to(ctx.out(), "{}", o.str());
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+
+    fmt::format_context::iterator format(const session_cpp::OBB& obb, fmt::format_context& ctx) const {
+        return fmt::format_to(ctx.out(), "{}", obb.str());
     }
 };

@@ -4,19 +4,19 @@
 #include "nurbssurface.h"
 #include "pointcloud.h"
 #include "polyline.h"
-#include "tolerance.h"
 #include "boundingbox.pb.h"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <limits>
+#include <stdexcept>
 
 namespace session_cpp {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 OBB::OBB()
     : center(0.0, 0.0, 0.0),
       x_axis(1.0, 0.0, 0.0),
@@ -59,8 +59,32 @@ OBB& OBB::operator=(const OBB& other) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+const std::string& OBB::guid() const {
+
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
+}
+
+std::string& OBB::guid() {
+
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
+}
+
+void OBB::refresh_guid() { _guid.clear(); }
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
+OBB OBB::from_plane(const Plane& plane, double dx, double dy, double dz) {
+    return OBB(plane, dx, dy, dz);
+}
 
 OBB OBB::from_aabb(const AABB& aabb) {
 
@@ -92,6 +116,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
     const Vector z_axis = plane.z_axis();
     const Xform world_to_local = Xform::world_to_frame(origin, x_axis, y_axis, z_axis);
     const Xform local_to_world = Xform::frame_to_world(origin, x_axis, y_axis, z_axis);
+
     double min_x = std::numeric_limits<double>::max();
     double min_y = std::numeric_limits<double>::max();
     double min_z = std::numeric_limits<double>::max();
@@ -101,6 +126,7 @@ OBB OBB::from_points(const std::vector<Point>& points, const Plane& plane, doubl
 
     for (const Point& pt : points) {
         const Point local = pt.transformed(world_to_local);
+
         min_x = std::min(min_x, local[0]);
         min_y = std::min(min_y, local[1]);
         min_z = std::min(min_z, local[2]);
@@ -140,9 +166,7 @@ OBB OBB::from_mesh(const Mesh& mesh, double inflate) {
 }
 
 OBB OBB::from_mesh(const Mesh& mesh, const Plane& plane, double inflate) {
-    const auto [vertices, faces] = mesh.to_vertices_and_faces();
-
-    return from_points(vertices, plane, inflate);
+    return from_points(mesh.to_vertices_and_faces().first, plane, inflate);
 }
 
 OBB OBB::from_pointcloud(const PointCloud& pointcloud, double inflate) {
@@ -171,7 +195,9 @@ OBB OBB::from_nurbscurve(const NurbsCurve& curve, const Plane& plane, double inf
         return from_points(points, plane, inflate);
     }
 
-    const auto [t0, t1] = curve.domain();
+    const double t0 = curve.domain_start();
+    const double t1 = curve.domain_end();
+
     points.push_back(curve.point_at(t0));
     points.push_back(curve.point_at(t1));
 
@@ -233,19 +259,19 @@ double OBB::compute_extremum(const NurbsCurve& curve, const Vector& axis, double
         if (deriv.size() < 3)
             break;
 
-        const double f = deriv[1].dot(axis);
-        const double fp = deriv[2].dot(axis);
+        const double d1 = deriv[1].dot(axis);
+        const double d2 = deriv[2].dot(axis);
 
-        if (std::abs(f) < 1e-12)
+        if (std::abs(d1) < 1e-12)
             break;
 
-        if (std::abs(fp) > 1e-14) {
-            const double t_new = t_root - f / fp;
+        if (std::abs(d2) > 1e-14) {
+            const double t_new = t_root - d1 / d2;
 
             if (t_new >= t_lo && t_new <= t_hi) {
                 t_root = t_new;
             } else {
-                if (f * d_start < 0)
+                if (d1 * d_start < 0)
                     t_hi = t_root;
                 else
                     t_lo = t_root;
@@ -261,13 +287,13 @@ double OBB::compute_extremum(const NurbsCurve& curve, const Vector& axis, double
         if (deriv_check.size() < 2)
             continue;
 
-        const double f_check = deriv_check[1].dot(axis);
+        const double d_check = deriv_check[1].dot(axis);
 
-        if (f_check * d_start < 0) {
+        if (d_check * d_start < 0) {
             t_hi = t_root;
         } else {
             t_lo = t_root;
-            d_start = f_check;
+            d_start = d_check;
         }
     }
 
@@ -277,7 +303,6 @@ double OBB::compute_extremum(const NurbsCurve& curve, const Vector& axis, double
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool OBB::operator==(const OBB& other) const {
 
     if (name != other.name)
@@ -310,7 +335,6 @@ bool OBB::operator!=(const OBB& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
-
 void OBB::transform(const Xform& xform) {
 
     center.transform(xform);
@@ -320,6 +344,7 @@ void OBB::transform(const Xform& xform) {
 }
 
 OBB OBB::transformed(const Xform& xform) const {
+
     OBB result = *this;
     result.transform(xform);
 
@@ -329,7 +354,6 @@ OBB OBB::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 AABB OBB::aabb() const {
 
     const double ex = half_size[0];
@@ -378,20 +402,20 @@ bool OBB::is_valid() const {
 
 Point OBB::closest_point(const Point& pt) const {
 
-    const Vector d = pt - center;
-    const double lx = std::max(-half_size[0], std::min(half_size[0], d.dot(x_axis)));
-    const double ly = std::max(-half_size[1], std::min(half_size[1], d.dot(y_axis)));
-    const double lz = std::max(-half_size[2], std::min(half_size[2], d.dot(z_axis)));
+    const Vector offset = pt - center;
+    const double lx = std::max(-half_size[0], std::min(half_size[0], offset.dot(x_axis)));
+    const double ly = std::max(-half_size[1], std::min(half_size[1], offset.dot(y_axis)));
+    const double lz = std::max(-half_size[2], std::min(half_size[2], offset.dot(z_axis)));
 
     return point_at(lx, ly, lz);
 }
 
 bool OBB::contains(const Point& pt) const {
 
-    const Vector d = pt - center;
-    const double lx = std::abs(d.dot(x_axis));
-    const double ly = std::abs(d.dot(y_axis));
-    const double lz = std::abs(d.dot(z_axis));
+    const Vector offset = pt - center;
+    const double lx = std::abs(offset.dot(x_axis));
+    const double ly = std::abs(offset.dot(y_axis));
+    const double lz = std::abs(offset.dot(z_axis));
 
     return lx <= half_size[0] && ly <= half_size[1] && lz <= half_size[2];
 }
@@ -425,21 +449,21 @@ std::array<Point, 8> OBB::get_corners() const {
 
 std::vector<Line> OBB::get_edges() const {
 
-    const std::array<Point, 8> c = corners();
+    const std::array<Point, 8> points = corners();
 
     return {
-        Line::from_points(c[0], c[1]),
-        Line::from_points(c[1], c[2]),
-        Line::from_points(c[2], c[3]),
-        Line::from_points(c[3], c[0]),
-        Line::from_points(c[4], c[5]),
-        Line::from_points(c[5], c[6]),
-        Line::from_points(c[6], c[7]),
-        Line::from_points(c[7], c[4]),
-        Line::from_points(c[0], c[4]),
-        Line::from_points(c[1], c[5]),
-        Line::from_points(c[2], c[6]),
-        Line::from_points(c[3], c[7]),
+        Line::from_points(points[0], points[1]),
+        Line::from_points(points[1], points[2]),
+        Line::from_points(points[2], points[3]),
+        Line::from_points(points[3], points[0]),
+        Line::from_points(points[4], points[5]),
+        Line::from_points(points[5], points[6]),
+        Line::from_points(points[6], points[7]),
+        Line::from_points(points[7], points[4]),
+        Line::from_points(points[0], points[4]),
+        Line::from_points(points[1], points[5]),
+        Line::from_points(points[2], points[6]),
+        Line::from_points(points[3], points[7]),
     };
 }
 
@@ -460,7 +484,6 @@ std::array<Point, 10> OBB::two_rectangles() const {
 }
 
 Point OBB::point_at(double x, double y, double z) const {
-
     return center + x_axis * x + y_axis * y + z_axis * z;
 }
 
@@ -477,11 +500,12 @@ void OBB::union_with(const OBB& other) {
     double max_y = half_size[1];
     double max_z = half_size[2];
 
-    for (const Point& c : other.corners()) {
-        const Vector d = c - center;
-        const double lx = d.dot(x_axis);
-        const double ly = d.dot(y_axis);
-        const double lz = d.dot(z_axis);
+    for (const Point& point : other.corners()) {
+        const Vector offset = point - center;
+        const double lx = offset.dot(x_axis);
+        const double ly = offset.dot(y_axis);
+        const double lz = offset.dot(z_axis);
+
         min_x = std::min(min_x, lx);
         min_y = std::min(min_y, ly);
         min_z = std::min(min_z, lz);
@@ -497,12 +521,12 @@ void OBB::union_with(const OBB& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Collision
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool OBB::collides_with(const OBB& other) const {
     return collides_with_rtcd(other);
 }
 
 bool OBB::collides_with_broad(const OBB& other) const {
+
     if (!aabb().intersects(other.aabb()))
         return false;
 
@@ -527,10 +551,10 @@ bool OBB::collides_with_rtcd(const OBB& other) const {
     const double r20 = z_axis.dot(other.x_axis);
     const double r21 = z_axis.dot(other.y_axis);
     const double r22 = z_axis.dot(other.z_axis);
-    const Vector d = other.center - center;
-    const double t0 = d.dot(x_axis);
-    const double t1 = d.dot(y_axis);
-    const double t2 = d.dot(z_axis);
+    const Vector offset = other.center - center;
+    const double t0 = offset.dot(x_axis);
+    const double t1 = offset.dot(y_axis);
+    const double t2 = offset.dot(z_axis);
     const double ar00 = std::abs(r00) + eps;
     const double ar01 = std::abs(r01) + eps;
     const double ar02 = std::abs(r02) + eps;
@@ -591,7 +615,7 @@ bool OBB::collides_with_rtcd(const OBB& other) const {
 
 bool OBB::collides_with_naive(const OBB& other) const {
 
-    const Vector rp = other.center - center;
+    const Vector offset = other.center - center;
     const Vector axes[15] = {
         x_axis,
         y_axis,
@@ -611,7 +635,7 @@ bool OBB::collides_with_naive(const OBB& other) const {
     };
 
     for (const Vector& axis : axes)
-        if (separating_plane_exists(rp, axis, *this, other))
+        if (separating_plane_exists(offset, axis, *this, other))
             return false;
 
     return true;
@@ -633,7 +657,6 @@ bool OBB::separating_plane_exists(const Vector& relative_position, const Vector&
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json OBB::jsondump() const {
 
     nlohmann::ordered_json data;
@@ -658,65 +681,58 @@ OBB OBB::jsonload(const nlohmann::json& data) {
         Vector::jsonload(data["z_axis"]),
         Vector::jsonload(data["half_size"])
     );
+
     obb.guid() = data["guid"];
     obb.name = data["name"];
 
     return obb;
 }
 
-std::string OBB::file_json_dumps() const {
-    return jsondump().dump();
-}
+std::string OBB::file_json_dumps() const { return jsondump().dump(); }
 
-OBB OBB::file_json_loads(const std::string& json_string) {
-    return jsonload(nlohmann::ordered_json::parse(json_string));
-}
+OBB OBB::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
 
 void OBB::file_json_dump(const std::string& filename) const {
-    std::ofstream ofs(filename);
-    ofs << jsondump().dump(2);
+
+    std::ofstream file(filename);
+    file << jsondump().dump(2);
 }
 
 OBB OBB::file_json_load(const std::string& filename) {
 
-    std::ifstream ifs(filename);
-    nlohmann::json data;
-    ifs >> data;
+    std::ifstream file(filename);
 
-    return jsonload(data);
+    return jsonload(nlohmann::json::parse(file));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
-std::string OBB::pb_dumps() const {
+session_proto::BoundingBox OBB::to_proto() const {
 
     session_proto::BoundingBox proto;
-    proto.mutable_center()->ParseFromString(center.pb_dumps());
-    proto.mutable_x_axis()->ParseFromString(x_axis.pb_dumps());
-    proto.mutable_y_axis()->ParseFromString(y_axis.pb_dumps());
-    proto.mutable_z_axis()->ParseFromString(z_axis.pb_dumps());
-    proto.mutable_half_size()->ParseFromString(half_size.pb_dumps());
+    *proto.mutable_center() = center.to_proto();
+    *proto.mutable_x_axis() = x_axis.to_proto();
+    *proto.mutable_y_axis() = y_axis.to_proto();
+    *proto.mutable_z_axis() = z_axis.to_proto();
+    *proto.mutable_half_size() = half_size.to_proto();
 
     if (has_guid())
         proto.set_guid(guid());
 
     proto.set_name(name);
 
-    return proto.SerializeAsString();
+    return proto;
 }
 
-OBB OBB::pb_loads(const std::string& data) {
+OBB OBB::from_proto(const session_proto::BoundingBox& proto) {
 
-    session_proto::BoundingBox proto;
-    proto.ParseFromString(data);
     OBB obb(
-        Point::pb_loads(proto.center().SerializeAsString()),
-        Vector::pb_loads(proto.x_axis().SerializeAsString()),
-        Vector::pb_loads(proto.y_axis().SerializeAsString()),
-        Vector::pb_loads(proto.z_axis().SerializeAsString()),
-        Vector::pb_loads(proto.half_size().SerializeAsString())
+        Point::from_proto(proto.center()),
+        Vector::from_proto(proto.x_axis()),
+        Vector::from_proto(proto.y_axis()),
+        Vector::from_proto(proto.z_axis()),
+        Vector::from_proto(proto.half_size())
     );
 
     if (!proto.guid().empty())
@@ -727,14 +743,28 @@ OBB OBB::pb_loads(const std::string& data) {
     return obb;
 }
 
+std::string OBB::pb_dumps() const { return to_proto().SerializeAsString(); }
+
+OBB OBB::pb_loads(const std::string& data) {
+
+    session_proto::BoundingBox proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse OBB protobuf data");
+
+    return from_proto(proto);
+}
+
 void OBB::pb_dump(const std::string& filename) const {
-    std::ofstream ofs(filename, std::ios::binary);
-    ofs << pb_dumps();
+
+    std::ofstream file(filename, std::ios::binary);
+    file << pb_dumps();
 }
 
 OBB OBB::pb_load(const std::string& filename) {
-    std::ifstream ifs(filename, std::ios::binary);
-    std::string data((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+
+    std::ifstream file(filename, std::ios::binary);
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
     return pb_loads(data);
 }
@@ -742,10 +772,7 @@ OBB OBB::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
-std::string OBB::str() const {
-    return fmt::format("{}\n{}\n{}\n{}\n{}", center.str(), x_axis.str(), y_axis.str(), z_axis.str(), half_size.str());
-}
+std::string OBB::str() const { return fmt::format("{}\n{}\n{}\n{}\n{}", center.str(), x_axis.str(), y_axis.str(), z_axis.str(), half_size.str()); }
 
 std::string OBB::repr() const {
 
