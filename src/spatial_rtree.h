@@ -10,9 +10,67 @@ namespace session_cpp {
 /// R-tree with dynamic insert and remove (Guttman quadratic split, fan-out 4 to 8) for box overlap queries.
 template<class DATATYPE, class ELEMTYPE, int NUMDIMS>
 class SpatialRTree {
+private:
+    static const int MAXNODES = 8; // Fan-out ceiling.
+    static const int MINNODES = 4; // Fan-out floor.
+    static const int NOT_TAKEN = -1; // Partition slot not yet assigned.
+    static const int STACK_SIZE = 64; // Explicit traversal stack depth.
+
+    struct Node;
+
+    Node* m_root; // Tree root.
+    int m_size; // Stored item count.
+
+    /// Axis-aligned box.
+    struct Rect {
+        ELEMTYPE m_min[NUMDIMS]; // Minimum corner.
+        ELEMTYPE m_max[NUMDIMS]; // Maximum corner.
+    };
+
+    /// Child pointer or leaf datum with its cover.
+    struct Branch {
+        Rect m_rect; // Cover of the child or datum.
+        Node* m_child; // Child node, null on leaves.
+        DATATYPE m_data; // Leaf datum.
+    };
+
+    /// Inner or leaf node with up to MAXNODES + 1 branches during a split.
+    struct Node {
+        int m_count; // Branches in use.
+        int m_level; // 0 for leaves.
+        Branch m_branch[MAXNODES + 1]; // Branch slots.
+
+        /// Whether the node is a leaf.
+        bool is_leaf() const { return m_level == 0; }
+    };
+
+    /// Traversal stack entry.
+    struct Visit {
+        Node* node; // Node being walked.
+        int index; // Next branch to visit.
+    };
+
+    /// Scratch state for a quadratic split.
+    struct PartitionVars {
+        int m_partition[MAXNODES + 1]; // Group of each buffered branch.
+        int m_total; // Buffered branch count.
+        int m_min_fill; // Minimum branches per group.
+        int m_count[2]; // Branches per group.
+        Rect m_cover[2]; // Cover per group.
+        ELEMTYPE m_area[2]; // Cover volume per group.
+        Branch m_branch_buf[MAXNODES + 1]; // Branches being split.
+        int m_branch_count; // Branches in the buffer.
+        Rect m_cover_split; // Cover of the whole buffer.
+        ELEMTYPE m_cover_split_area; // Volume of the whole buffer cover.
+    };
+
 public:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Construct an empty tree with a single leaf root.
     SpatialRTree() {
+
         m_root = alloc_node();
         m_size = 0;
     }
@@ -22,9 +80,30 @@ public:
         free_subtree(m_root);
     }
 
+    /// Copying would share nodes, so it is disabled.
+    SpatialRTree(const SpatialRTree&) = delete;
+
+    /// Copy assignment is disabled for the same reason.
+    SpatialRTree& operator=(const SpatialRTree&) = delete;
+
+    /// Take the nodes of another tree, leaving it empty.
+    SpatialRTree(SpatialRTree&& other) {
+
+        m_root = other.m_root;
+        m_size = other.m_size;
+        other.m_root = other.alloc_node();
+        other.m_size = 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Number of stored items.
     int count() const { return m_size; }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Insert an item with its bounding box.
     void insert(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const DATATYPE& a_data) {
 
@@ -32,6 +111,7 @@ public:
         branch.m_rect = make_rect(a_min, a_max);
         branch.m_child = nullptr;
         branch.m_data = a_data;
+
         insert_branch_internal(branch, 0);
         m_size++;
     }
@@ -65,11 +145,15 @@ public:
 
     /// Remove every item.
     void remove_all() {
+
         free_subtree(m_root);
         m_root = alloc_node();
         m_size = 0;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Queries
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Visit every item overlapping the box until the callback returns false; returns the visit count.
     int search(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const std::function<bool(const DATATYPE&)>& a_callback) const {
 
@@ -108,59 +192,9 @@ public:
     }
 
 private:
-    static const int MAXNODES = 8; // Fan-out ceiling.
-    static const int MINNODES = 4; // Fan-out floor.
-    static const int NOT_TAKEN = -1; // Partition slot not yet assigned.
-    static const int STACK_SIZE = 64; // Explicit traversal stack depth.
-
-    /// Axis-aligned box.
-    struct Rect {
-        ELEMTYPE m_min[NUMDIMS];
-        ELEMTYPE m_max[NUMDIMS];
-    };
-
-    struct Node;
-
-    /// Child pointer or leaf datum with its cover.
-    struct Branch {
-        Rect     m_rect; // Cover of the child or datum.
-        Node*    m_child; // Child node, null on leaves.
-        DATATYPE m_data; // Leaf datum.
-    };
-
-    /// Inner or leaf node with up to MAXNODES + 1 branches during a split.
-    struct Node {
-        int    m_count; // Branches in use.
-        int    m_level; // 0 for leaves.
-        Branch m_branch[MAXNODES + 1];
-
-        /// Whether the node is a leaf.
-        bool is_leaf() const { return m_level == 0; }
-    };
-
-    /// Traversal stack entry.
-    struct Visit {
-        Node* node; // Node being walked.
-        int   index; // Next branch to visit.
-    };
-
-    /// Scratch state for a quadratic split.
-    struct PartitionVars {
-        int      m_partition[MAXNODES + 1];
-        int      m_total;
-        int      m_min_fill;
-        int      m_count[2];
-        Rect     m_cover[2];
-        ELEMTYPE m_area[2];
-        Branch   m_branch_buf[MAXNODES + 1];
-        int      m_branch_count;
-        Rect     m_cover_split;
-        ELEMTYPE m_cover_split_area;
-    };
-
-    Node* m_root; // Tree root.
-    int   m_size; // Stored item count.
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Node allocation
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Allocate an empty leaf node.
     Node* alloc_node() {
 
@@ -193,11 +227,15 @@ private:
             }
 
             Node* child = visit.node->m_branch[visit.index++].m_child;
+
             assert(top < STACK_SIZE);
             stack[top++] = {child, 0};
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Rect math
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Build a rect from min and max corners.
     Rect make_rect(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS]) const {
 
@@ -256,6 +294,9 @@ private:
         return rect;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Branches
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Add a branch, splitting the node when full; returns the new sibling or null.
     Node* add_branch(const Branch& branch, Node* node) {
 
@@ -270,7 +311,9 @@ private:
 
     /// Remove a branch by swapping in the last one.
     void disconnect_branch(Node* node, int index) {
+
         assert(index >= 0 && index < node->m_count);
+
         node->m_branch[index] = node->m_branch[node->m_count - 1];
         node->m_count--;
     }
@@ -298,6 +341,9 @@ private:
         return best;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Quadratic split
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Collect the node's branches plus one extra into the partition buffer.
     void get_branches(Node* node, const Branch& branch, PartitionVars& part_vars) {
 
@@ -431,6 +477,7 @@ private:
 
         for (int i = 0; i < part_vars.m_total; i++) {
             Node* target = (part_vars.m_partition[i] == 0) ? node_a : node_b;
+
             add_branch(part_vars.m_branch_buf[i], target);
         }
     }
@@ -441,6 +488,7 @@ private:
         PartitionVars part_vars;
         get_branches(node, branch, part_vars);
         choose_partition(part_vars, MINNODES);
+
         Node* new_node = alloc_node();
         new_node->m_level = node->m_level;
         load_nodes(node, new_node, part_vars);
@@ -448,6 +496,9 @@ private:
         return new_node;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Insertion
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Insert a branch at a level; returns the root's new sibling or null.
     Node* insert_rect_internal(const Branch& branch, int level) {
 
@@ -458,6 +509,7 @@ private:
         while (node->m_level != level) {
             assert(node->m_level > level);
             assert(top < STACK_SIZE);
+
             const int idx = pick_branch(branch.m_rect, node);
             stack[top++] = {node, idx};
             node = node->m_branch[idx].m_child;
@@ -475,9 +527,11 @@ private:
             }
 
             parent->m_branch[idx].m_rect = node_cover(parent->m_branch[idx].m_child);
+
             Branch new_b;
             new_b.m_rect = node_cover(other);
             new_b.m_child = other;
+
             other = add_branch(new_b, parent);
         }
 
@@ -495,16 +549,22 @@ private:
         Node* old_root = m_root;
         m_root = alloc_node();
         m_root->m_level = old_root->m_level + 1;
+
         Branch b1;
         b1.m_rect = node_cover(old_root);
         b1.m_child = old_root;
+
         Branch b2;
         b2.m_rect = node_cover(new_node);
         b2.m_child = new_node;
+
         add_branch(b1, m_root);
         add_branch(b2, m_root);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Removal
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Remove the matching leaf branch; underfull nodes go to the reinsert list.
     bool remove_rect_internal(const Rect& rect, const DATATYPE& data, std::vector<Node*>& reinsert_list) {
 
@@ -560,7 +620,5 @@ private:
         disconnect_branch(node, index);
     }
 };
-
-using RTree3 = SpatialRTree<int, double, 3>;
 
 } // namespace session_cpp
