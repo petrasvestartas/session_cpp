@@ -10,12 +10,12 @@ public:
 
     /// Restores every setting to its default value.
     void reset() {
+
         explode_mesh_faces = false;
         scale_factor = 1.0;
     }
 };
 
-/// Process-wide settings used by session operations.
-extern SessionConfig SESSION_CONFIG;
+extern SessionConfig SESSION_CONFIG; // Process-wide settings used by session operations.
 
 } // namespace session_cpp

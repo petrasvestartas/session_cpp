@@ -8,8 +8,9 @@ namespace session_cpp {
     MINI_TEST("SessionConfig", "Runtime Modification") {
 
         SESSION_CONFIG.reset();
+
         SessionConfig config;
-        SessionConfig other;
+        const SessionConfig other;
 
         MINI_CHECK(!config.explode_mesh_faces);
         MINI_CHECK(config.scale_factor == 1.0);
