@@ -15,7 +15,14 @@ namespace session_cpp {
 
 /// Linear BVH (Karras 2012): leaves in Morton order, internal node i splits the sorted range it covers, node 0 is the root.
 class SpatialBVH {
+private:
+    static const int STACK_SIZE = 64; // Depth bound of the explicit traversal stack.
+    static const int NULL_IDX = -1; // Index of a missing child or object.
+
+    mutable std::string _guid; // Lazy guid.
+
 public:
+
     /// Tree node.
     struct Node {
         AABB aabb; // Bounds of the subtree.
@@ -27,11 +34,29 @@ public:
         bool is_leaf() const;
     };
 
+    std::string name; // Tree name.
+    double world_size; // Extent of the Morton cube.
+    std::vector<std::string> object_guids; // Guid per object id, set by build_with_guids.
+    std::vector<Node> nodes; // Internal nodes first, then the leaves in Morton order.
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct an empty tree over a Morton cube of world_size.
+    SpatialBVH(double world_size = 1000.0);
+
+    /// Construct and build over the boxes with the given world size.
+    static SpatialBVH from_boxes(const std::vector<OBB>& bounding_boxes, double world_size);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
     bool has_guid() const { return !_guid.empty(); }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
+
         if (_guid.empty())
             _guid = ::guid();
 
@@ -40,22 +65,12 @@ public:
 
     /// Return the mutable guid, creating it on first access.
     std::string& guid() {
+
         if (_guid.empty())
             _guid = ::guid();
 
         return _guid;
     }
-
-    std::string name; // Tree name.
-    double world_size; // Extent of the Morton cube.
-    std::vector<std::string> object_guids; // Guid per object id, set by build_with_guids.
-    std::vector<Node> nodes; // Internal nodes first, then the leaves in Morton order.
-
-    /// Construct an empty tree over a Morton cube of world_size.
-    SpatialBVH(double world_size = 1000.0);
-
-    /// Construct and build over the boxes with the given world size.
-    static SpatialBVH from_boxes(const std::vector<OBB>& bounding_boxes, double world_size);
 
     /// Return whether the tree has no nodes.
     bool empty() const;
@@ -63,9 +78,9 @@ public:
     /// Return the node count.
     size_t size() const;
 
-    /// Return the largest absolute box coordinate times 2.2, at least 10.
-    static double compute_world_size(const std::vector<OBB>& bounding_boxes);
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Build over the boxes with the current world size.
     void build(const std::vector<OBB>& bounding_boxes);
 
@@ -78,6 +93,9 @@ public:
     /// Build over boxes paired with their guids, world size computed from the boxes.
     void build_with_guids(const std::vector<std::pair<OBB, std::string>>& boxes_with_guids);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Queries
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the overlapping (i, j) pairs with i < j, the ids in any pair, and the number of nodes tested.
     std::tuple<std::vector<std::pair<int, int>>, std::vector<int>, int> check_all_collisions(const std::vector<OBB>& bounding_boxes);
 
@@ -99,6 +117,12 @@ public:
     /// Collect the leaf ids whose box the ray enters, nearest entry first; true when any.
     bool ray_cast(const Point& origin, const Vector& direction, std::vector<int>& candidate_leaf_ids, bool find_all = false) const;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boxes
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the largest absolute box coordinate times 2.2, at least 10.
+    static double compute_world_size(const std::vector<OBB>& bounding_boxes);
+
     /// Return the axis-aligned box enclosing both boxes.
     OBB merge_aabb(const OBB& aabb1, const OBB& aabb2) const;
 
@@ -109,20 +133,9 @@ public:
     bool aabb_intersect(const AABB& aabb1, const AABB& aabb2) const;
 
 private:
-    static const int STACK_SIZE = 64; // Depth bound of the explicit traversal stack.
-    static const int NULL_IDX = -1; // Index of a missing child or object.
-
-    mutable std::string _guid; // Lazy guid.
-
-    /// Return the axis-aligned bounds of obb.
-    static AABB aabb_from_obb(const OBB& obb);
-
-    /// Return the center coordinate of aabb along axis.
-    double center(const AABB& aabb, int axis) const;
-
-    /// Return the half-size of aabb along axis.
-    double half(const AABB& aabb, int axis) const;
-
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Build
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return (morton code, id) sorted by code, codes quantized over the bounding cube of the box centers.
     std::vector<std::pair<uint32_t, int>> sorted_codes(const AABB* aabbs, int n) const;
 
@@ -135,10 +148,25 @@ private:
     /// Return the last index of the left half of [first, last].
     int find_split(const std::vector<std::pair<uint32_t, int>>& codes, int first, int last) const;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Traversal
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the (entry, exit) ray parameters of the box slabs; a miss when exit < entry.
     std::pair<double, double> ray_aabb(const Point& origin, const Vector& direction, const AABB& aabb) const;
+
+    /// Return the axis-aligned bounds of obb.
+    static AABB aabb_from_obb(const OBB& obb);
+
+    /// Return the center coordinate of aabb along axis.
+    double center(const AABB& aabb, int axis) const;
+
+    /// Return the half-size of aabb along axis.
+    double half(const AABB& aabb, int axis) const;
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Morton codes
+// ═══════════════════════════════════════════════════════════════════════════
 /// Spread the low 10 bits of v to every third bit.
 uint32_t expand_bits(uint32_t v);
 
