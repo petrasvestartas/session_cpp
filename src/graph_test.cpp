@@ -290,17 +290,6 @@ MINI_TEST("Graph", "Neighbors") {
     MINI_CHECK(neigh.size() == 2);
 }
 
-MINI_TEST("Graph", "Get Neighbors") {
-
-    Graph g("g");
-    g.add_edge("a", "b");
-    g.add_edge("a", "c");
-
-    const std::vector<std::string> neigh = g.get_neighbors("a");
-
-    MINI_CHECK(neigh.size() == 2);
-}
-
 MINI_TEST("Graph", "Number Of Vertices") {
 
     Graph g("g");
@@ -484,7 +473,7 @@ MINI_TEST("Graph", "Vertices Where Predicate") {
     g.set_vertex_attribute("c", "load", 10.0);
 
     const std::vector<std::string> heavy = g.vertices_where_predicate(
-        [](const std::string &, const std::map<std::string, double> &attributes) {
+        [](const std::string&, const std::map<std::string, double>& attributes) {
             return attributes.at("load") > 4.0;
         }
     );
@@ -503,7 +492,7 @@ MINI_TEST("Graph", "Edges Where Predicate") {
     g.set_edge_attribute(bc, "weight", 5.0);
 
     const std::vector<std::tuple<std::string, std::string>> heavy = g.edges_where_predicate(
-        [](const std::tuple<std::string, std::string> &, const std::map<std::string, double> &attributes) {
+        [](const std::tuple<std::string, std::string>&, const std::map<std::string, double>& attributes) {
             return attributes.at("weight") > 4.0;
         }
     );
@@ -552,7 +541,7 @@ MINI_TEST("Graph", "Connected Components") {
     const std::vector<std::vector<std::string>> comps = g.connected_components();
 
     MINI_CHECK(comps.size() == 2);
-    MINI_CHECK(g.is_connected() == false);
+    MINI_CHECK(!g.is_connected());
     MINI_CHECK(g.number_connected_components() == 2);
 }
 
@@ -582,8 +571,8 @@ MINI_TEST("Graph", "Has Cycle") {
     g2.add_edge("x", "y");
     g2.add_edge("y", "z");
 
-    MINI_CHECK(g.has_cycle() == true);
-    MINI_CHECK(g2.has_cycle() == false);
+    MINI_CHECK(g.has_cycle());
+    MINI_CHECK(!g2.has_cycle());
 }
 
 MINI_TEST("Graph", "Cycle Basis") {
