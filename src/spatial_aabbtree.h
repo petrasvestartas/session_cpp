@@ -7,31 +7,6 @@ namespace session_cpp {
 
 /// Flat AABB tree with longest-axis median split; the left child of node i is i + 1, the right child is stored.
 class SpatialAABBTree {
-public:
-    /// Tree node.
-    struct Node {
-        AABB aabb; // Bounds of the subtree.
-        int right; // Right child index, NULL_IDX on a leaf.
-        int object_id; // Primitive id on a leaf, NULL_IDX on an internal node.
-    };
-
-    std::vector<Node> nodes; // Nodes in depth-first order.
-
-    /// Construct an empty tree.
-    SpatialAABBTree() = default;
-
-    /// Return whether the tree has no nodes.
-    bool empty() const;
-
-    /// Return the node count.
-    size_t size() const;
-
-    /// Build the tree over count boxes, one leaf per box.
-    void build(const AABB* aabbs, size_t count);
-
-    /// Return the ids of every leaf box that intersects query.
-    std::vector<int> query_aabb(const AABB& query) const;
-
 private:
     static const int STACK_SIZE = 64; // Depth bound of the explicit traversal stack.
     static const int NULL_IDX = -1; // Index of a missing child or object.
@@ -44,6 +19,48 @@ private:
         bool is_left; // Whether the range is the left child of parent.
     };
 
+public:
+
+    /// Tree node.
+    struct Node {
+        AABB aabb; // Bounds of the subtree.
+        int right; // Right child index, NULL_IDX on a leaf.
+        int object_id; // Primitive id on a leaf, NULL_IDX on an internal node.
+    };
+
+    std::vector<Node> nodes; // Nodes in depth-first order.
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct an empty tree.
+    SpatialAABBTree() = default;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the tree has no nodes.
+    bool empty() const;
+
+    /// Return the node count.
+    size_t size() const;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Build the tree over count boxes, one leaf per box.
+    void build(const AABB* aabbs, size_t count);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Queries
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the ids of every leaf box that intersects query.
+    std::vector<int> query_aabb(const AABB& query) const;
+
+private:
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Build
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the box enclosing ids[lo, hi).
     AABB bounds(const std::vector<int>& ids, int lo, int hi, const AABB* aabbs) const;
 

@@ -4,6 +4,9 @@
 
 namespace session_cpp {
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
 bool SpatialAABBTree::empty() const {
     return nodes.empty();
 }
@@ -12,16 +15,20 @@ size_t SpatialAABBTree::size() const {
     return nodes.size();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Mutators
+// ═══════════════════════════════════════════════════════════════════════════
 void SpatialAABBTree::build(const AABB* aabbs, size_t count) {
 
-    nodes.clear();
     const int n = (int)count;
     std::vector<int> ids(n);
 
     for (int i = 0; i < n; i++)
         ids[i] = i;
 
+    nodes.clear();
     nodes.reserve(2 * n);
+
     Range stack[STACK_SIZE];
     int top = 0;
 
@@ -32,6 +39,7 @@ void SpatialAABBTree::build(const AABB* aabbs, size_t count) {
         const Range range = stack[--top];
         const int node = (int)nodes.size();
         const AABB aabb = bounds(ids, range.lo, range.hi, aabbs);
+
         nodes.push_back({aabb, NULL_IDX, NULL_IDX});
 
         if (range.parent != NULL_IDX && !range.is_left)
@@ -44,18 +52,27 @@ void SpatialAABBTree::build(const AABB* aabbs, size_t count) {
 
         const int axis = longest_axis(nodes[node].aabb);
         const int mid = range.lo + (range.hi - range.lo) / 2;
-        std::nth_element(ids.begin() + range.lo, ids.begin() + mid, ids.begin() + range.hi, [&](int a, int b) {
-            return center(aabbs[a], axis) < center(aabbs[b], axis);
-        });
+
+        std::nth_element(
+            ids.begin() + range.lo,
+            ids.begin() + mid,
+            ids.begin() + range.hi,
+            [&](int a, int b) { return center(aabbs[a], axis) < center(aabbs[b], axis); }
+        );
+
         assert(top + 2 <= STACK_SIZE);
         stack[top++] = {mid, range.hi, node, false};
         stack[top++] = {range.lo, mid, node, true};
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Queries
+// ═══════════════════════════════════════════════════════════════════════════
 std::vector<int> SpatialAABBTree::query_aabb(const AABB& query) const {
 
     std::vector<int> hits;
+
     int stack[STACK_SIZE];
     int top = 0;
 
@@ -82,6 +99,9 @@ std::vector<int> SpatialAABBTree::query_aabb(const AABB& query) const {
     return hits;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Build
+// ═══════════════════════════════════════════════════════════════════════════
 AABB SpatialAABBTree::bounds(const std::vector<int>& ids, int lo, int hi, const AABB* aabbs) const {
 
     AABB aabb = aabbs[ids[lo]];
