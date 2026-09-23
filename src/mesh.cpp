@@ -443,6 +443,50 @@ static size_t lines_outer_cycle(const std::vector<std::vector<size_t>>& cycles, 
     return min_idx;
 }
 
+/// Sort and dedupe every neighbor list counter-clockwise by angle around its vertex.
+static void lines_sort_neighbors(std::map<size_t, std::vector<size_t>>& adj, const std::vector<Point>& verts) {
+
+    for (std::pair<const size_t, std::vector<size_t>>& entry : adj) {
+        std::vector<size_t>& nbrs = entry.second;
+        std::sort(nbrs.begin(), nbrs.end());
+        nbrs.erase(std::unique(nbrs.begin(), nbrs.end()), nbrs.end());
+        const double vx = verts[entry.first][0];
+        const double vy = verts[entry.first][1];
+        std::sort(nbrs.begin(), nbrs.end(), [&](size_t a, size_t b) {
+            return std::atan2(verts[a][1] - vy, verts[a][0] - vx) < std::atan2(verts[b][1] - vy, verts[b][0] - vx);
+        });
+    }
+}
+
+/// CDT triangles of one face cycle as mesh vertex keys, counter-clockwise in xy.
+static std::vector<std::array<size_t, 3>> lines_cycle_triangles(
+    const std::vector<size_t>& cycle,
+    const std::vector<Point>& verts,
+    const std::vector<size_t>& vkeys
+) {
+
+    std::vector<size_t> ordered = cycle;
+    std::vector<std::pair<double, double>> bpts;
+    bpts.reserve(ordered.size());
+
+    for (size_t vid : ordered)
+        bpts.push_back({verts[vid][0], verts[vid][1]});
+
+    if (signed_area_2d(bpts) < 0.0) {
+        std::reverse(bpts.begin(), bpts.end());
+        std::reverse(ordered.begin(), ordered.end());
+    }
+
+    const std::vector<std::array<int, 3>> tris = cdt_triangulate(bpts, {});
+    std::vector<std::array<size_t, 3>> tri_list;
+    tri_list.reserve(tris.size());
+
+    for (const std::array<int, 3>& t : tris)
+        tri_list.push_back({vkeys[ordered[t[0]]], vkeys[ordered[t[1]]], vkeys[ordered[t[2]]]});
+
+    return tri_list;
+}
+
 Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face, std::optional<double> precision) {
 
     if (lines.empty())
@@ -472,16 +516,7 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
         adj[b].push_back(a);
     }
 
-    for (std::pair<const size_t, std::vector<size_t>>& entry : adj) {
-        std::vector<size_t>& nbrs = entry.second;
-        std::sort(nbrs.begin(), nbrs.end());
-        nbrs.erase(std::unique(nbrs.begin(), nbrs.end()), nbrs.end());
-        const double vx = verts[entry.first][0];
-        const double vy = verts[entry.first][1];
-        std::sort(nbrs.begin(), nbrs.end(), [&](size_t a, size_t b) {
-            return std::atan2(verts[a][1] - vy, verts[a][0] - vx) < std::atan2(verts[b][1] - vy, verts[b][0] - vx);
-        });
-    }
+    lines_sort_neighbors(adj, verts);
 
     std::vector<std::vector<size_t>> cycles = lines_face_cycles(adj, verts.size());
 
@@ -504,29 +539,8 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
 
         const std::optional<size_t> fk = mesh.add_face(fvkeys);
 
-        if (!fk)
-            continue;
-
-        std::vector<size_t> ordered = cycle;
-        std::vector<std::pair<double, double>> bpts;
-        bpts.reserve(ordered.size());
-
-        for (size_t vid : ordered)
-            bpts.push_back({verts[vid][0], verts[vid][1]});
-
-        if (signed_area_2d(bpts) < 0.0) {
-            std::reverse(bpts.begin(), bpts.end());
-            std::reverse(ordered.begin(), ordered.end());
-        }
-
-        const std::vector<std::array<int, 3>> tris = cdt_triangulate(bpts, {});
-        std::vector<std::array<size_t, 3>> tri_list;
-        tri_list.reserve(tris.size());
-
-        for (const std::array<int, 3>& t : tris)
-            tri_list.push_back({vkeys[ordered[t[0]]], vkeys[ordered[t[1]]], vkeys[ordered[t[2]]]});
-
-        mesh.triangulation[*fk] = tri_list;
+        if (fk)
+            mesh.triangulation[*fk] = lines_cycle_triangles(cycle, verts, vkeys);
     }
 
     return mesh;
@@ -778,6 +792,82 @@ static void loft_drop_degenerate(std::vector<std::array<size_t, 3>>& tris, const
     tris = kept;
 }
 
+/// Point indices of the outer ring, skipping consecutive points that share a vertex key.
+static std::vector<size_t> loft_cap_outer(const LoftRing& ring, const std::vector<size_t>& vkeys) {
+
+    std::vector<size_t> outer;
+
+    for (size_t i = 0; i < ring.n; ++i) {
+        const size_t vi = ring.off + i;
+
+        if (!outer.empty() && vkeys[vi] == vkeys[outer.back()])
+            continue;
+
+        outer.push_back(vi);
+    }
+
+    return outer;
+}
+
+/// CDT triangles of the outer ring with its holes as vertex keys, reversed for the bottom.
+static std::vector<std::array<size_t, 3>> loft_cap_triangles(
+    const LoftFrame& frame,
+    const std::vector<LoftRing>& rings,
+    const std::vector<Point>& pts,
+    const std::vector<size_t>& vkeys,
+    const std::vector<size_t>& outer,
+    bool reverse
+) {
+
+    std::vector<std::pair<double, double>> border_2d;
+
+    for (size_t vi : outer)
+        border_2d.push_back(loft_project(frame, pts[vi]));
+
+    std::vector<size_t> flat = outer;
+    std::vector<std::vector<std::pair<double, double>>> holes_2d;
+
+    for (size_t h = 1; h < rings.size(); ++h) {
+        std::vector<std::pair<double, double>> hole;
+
+        for (size_t i = rings[h].off; i < rings[h].off + rings[h].n; ++i) {
+            hole.push_back(loft_project(frame, pts[i]));
+            flat.push_back(i);
+        }
+
+        holes_2d.push_back(std::move(hole));
+    }
+
+    const std::vector<std::array<int, 3>> tris = cdt_triangulate(border_2d, holes_2d);
+    std::vector<std::array<size_t, 3>> tri_list;
+    tri_list.reserve(tris.size());
+
+    for (const std::array<int, 3>& t : tris)
+        if (reverse)
+            tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[2]]], vkeys[flat[t[1]]]});
+        else
+            tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[1]]], vkeys[flat[t[2]]]});
+
+    return tri_list;
+}
+
+/// Vertex keys of the hole rings, every ring after the first.
+static std::vector<std::vector<size_t>> loft_cap_holes(const std::vector<LoftRing>& rings, const std::vector<size_t>& vkeys) {
+
+    std::vector<std::vector<size_t>> hole_rings;
+
+    for (size_t h = 1; h < rings.size(); ++h) {
+        std::vector<size_t> ring;
+
+        for (size_t i = rings[h].off; i < rings[h].off + rings[h].n; ++i)
+            ring.push_back(vkeys[i]);
+
+        hole_rings.push_back(std::move(ring));
+    }
+
+    return hole_rings;
+}
+
 /// One n-gon cap with stored CDT triangulation and hole rings; reversed for the bottom.
 static void loft_cap(
     Mesh& mesh,
@@ -789,38 +879,8 @@ static void loft_cap(
     bool fix_collinear
 ) {
 
-    std::vector<std::pair<double, double>> border_2d;
-    std::vector<size_t> outer;
-
-    for (size_t i = 0; i < rings[0].n; ++i) {
-        const size_t vi = rings[0].off + i;
-
-        if (!outer.empty() && vkeys[vi] == vkeys[outer.back()])
-            continue;
-
-        border_2d.push_back(loft_project(frame, pts[vi]));
-        outer.push_back(vi);
-    }
-
-    std::vector<size_t> flat = outer;
-    std::vector<std::vector<std::pair<double, double>>> holes_2d;
-    std::vector<std::vector<size_t>> hole_rings;
-
-    for (size_t h = 1; h < rings.size(); ++h) {
-        std::vector<std::pair<double, double>> hole;
-        std::vector<size_t> ring;
-
-        for (size_t i = rings[h].off; i < rings[h].off + rings[h].n; ++i) {
-            hole.push_back(loft_project(frame, pts[i]));
-            flat.push_back(i);
-            ring.push_back(vkeys[i]);
-        }
-
-        holes_2d.push_back(std::move(hole));
-        hole_rings.push_back(std::move(ring));
-    }
-
-    const std::vector<std::array<int, 3>> tris = cdt_triangulate(border_2d, holes_2d);
+    const std::vector<size_t> outer = loft_cap_outer(rings[0], vkeys);
+    std::vector<std::array<size_t, 3>> tri_list = loft_cap_triangles(frame, rings, pts, vkeys, outer, reverse);
     std::vector<size_t> fvkeys;
     fvkeys.reserve(outer.size());
 
@@ -832,20 +892,12 @@ static void loft_cap(
     if (!fk)
         return;
 
-    std::vector<std::array<size_t, 3>> tri_list;
-    tri_list.reserve(tris.size());
-
-    for (const std::array<int, 3>& t : tris)
-        if (reverse)
-            tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[2]]], vkeys[flat[t[1]]]});
-        else
-            tri_list.push_back({vkeys[flat[t[0]]], vkeys[flat[t[1]]], vkeys[flat[t[2]]]});
-
     if (fix_collinear) {
         loft_fix_collinear(tri_list, fvkeys);
         loft_drop_degenerate(tri_list, mesh, frame);
     }
 
+    const std::vector<std::vector<size_t>> hole_rings = loft_cap_holes(rings, vkeys);
     mesh.set_face_triangulation(*fk, tri_list);
 
     if (!hole_rings.empty() && !tri_list.empty())
@@ -1037,6 +1089,30 @@ static void loft_walls(
         loft_walls_zipper(mesh, poly, start.first, start.second, bpts, tpts, bot_vkeys, top_vkeys);
 }
 
+/// Polygon order with the border polygon first and the rest in input order.
+static std::vector<size_t> loft_order(size_t n, size_t border_idx) {
+
+    std::vector<size_t> order;
+    order.push_back(border_idx);
+
+    for (size_t i = 0; i < n; ++i)
+        if (i != border_idx)
+            order.push_back(i);
+
+    return order;
+}
+
+/// Top or bottom rings of every lofted polygon.
+static std::vector<LoftRing> loft_rings(const std::vector<LoftPoly>& polys, bool top) {
+
+    std::vector<LoftRing> rings;
+
+    for (const LoftPoly& poly : polys)
+        rings.push_back(top ? poly.top : poly.bot);
+
+    return rings;
+}
+
 Mesh Mesh::loft(
     const std::vector<Polyline>& polylines0,
     const std::vector<Polyline>& polylines1,
@@ -1052,13 +1128,7 @@ Mesh Mesh::loft(
 
     const size_t border_idx = loft_border_index(polylines0);
     const LoftFrame frame = loft_frame(polylines0[border_idx], polylines1[border_idx]);
-    std::vector<size_t> order;
-    order.push_back(border_idx);
-
-    for (size_t i = 0; i < polylines0.size(); ++i)
-        if (i != border_idx)
-            order.push_back(i);
-
+    const std::vector<size_t> order = loft_order(polylines0.size(), border_idx);
     std::vector<LoftPoly> polys;
     std::vector<Point> all_bot;
     std::vector<Point> all_top;
@@ -1087,16 +1157,8 @@ Mesh Mesh::loft(
     const std::vector<size_t> top_vkeys = loft_add_vkeys(mesh, all_top);
 
     if (cap) {
-        std::vector<LoftRing> bot_rings;
-        std::vector<LoftRing> top_rings;
-
-        for (const LoftPoly& poly : polys) {
-            bot_rings.push_back(poly.bot);
-            top_rings.push_back(poly.top);
-        }
-
-        loft_cap(mesh, frame, bot_rings, all_bot, bot_vkeys, true, fix_collinear);
-        loft_cap(mesh, frame, top_rings, all_top, top_vkeys, false, fix_collinear);
+        loft_cap(mesh, frame, loft_rings(polys, false), all_bot, bot_vkeys, true, fix_collinear);
+        loft_cap(mesh, frame, loft_rings(polys, true), all_top, top_vkeys, false, fix_collinear);
     }
 
     for (const LoftPoly& poly : polys)

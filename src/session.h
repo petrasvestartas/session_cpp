@@ -261,6 +261,24 @@ public:
     /// Add an edge between two geometry objects in the graph.
     void add_edge(const std::string& guid1, const std::string& guid2, const std::string& attribute = "");
 
+    /// Add or reuse an undirected interaction edge between registered objects; returns its stored endpoint order. Throws std::invalid_argument for missing objects or a self-pair. Preserves an existing edge's attributes and guid.
+    std::pair<std::string, std::string> add_interaction(const std::string& a, const std::string& b);
+
+    /// True when the pair has an interaction edge in either order.
+    bool has_interaction(const std::string& a, const std::string& b) const;
+
+    /// Remove the pair's edge in either order; a missing pair is a no-op.
+    void remove_interaction(const std::string& a, const std::string& b);
+
+    /// add_interaction using element identities.
+    std::pair<std::string, std::string> add_interaction(const Element& a, const Element& b) { return add_interaction(a.guid(), b.guid()); }
+
+    /// has_interaction using element identities.
+    bool has_interaction(const Element& a, const Element& b) const { return has_interaction(a.guid(), b.guid()); }
+
+    /// remove_interaction using element identities.
+    void remove_interaction(const Element& a, const Element& b) { return remove_interaction(a.guid(), b.guid()); }
+
     /// Add a parent-child relationship in the tree.
     bool add_hierarchy(const std::string& parent_guid, const std::string& child_guid);
 

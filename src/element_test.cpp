@@ -42,7 +42,7 @@ MINI_TEST("Element", "Constructor") {
     );
     Element e(m, "test_element");
 
-    const ElementGeometry& geo = e.geometry();
+    const Mesh& geo = e.geometry_mesh();
     const std::string name = e.name;
     const std::string& guid = e.guid();
     const bool dirty = e.is_dirty();
@@ -58,7 +58,7 @@ MINI_TEST("Element", "Constructor") {
     MINI_CHECK(name == "test_element");
     MINI_CHECK(!guid.empty());
     MINI_CHECK(dirty);
-    MINI_CHECK(std::holds_alternative<Mesh>(geo));
+    MINI_CHECK(geo.number_of_faces() == 1);
     MINI_CHECK(estr == "Element(test_element, Mesh)");
     MINI_CHECK(erepr == "Element(" + guid + ", test_element, Mesh)");
     MINI_CHECK(ecopy == e && ecopy.guid() != e.guid());
@@ -83,10 +83,11 @@ MINI_TEST("Element", "Place") {
 
     MINI_CHECK(e.is_dirty());
 
-    if (const Mesh* mesh = std::get_if<Mesh>(&e.geometry())) {
+    {
+        const Mesh& mesh = e.geometry_mesh();
         double min_x = std::numeric_limits<double>::max();
 
-        for (const std::pair<const size_t, VertexData>& entry : mesh->vertex)
+        for (const std::pair<const size_t, VertexData>& entry : mesh.vertex)
             min_x = std::min(min_x, entry.second.position()[0]);
 
         MINI_CHECK(min_x > 9.0);
@@ -134,11 +135,11 @@ MINI_TEST("Element", "Add Geometry Op") {
 
     Element eb(BRep::create_box(1.0, 1.0, 1.0), "brep_feature");
     eb.add_geometry_op(empty_mesh);
-    const ElementGeometry sg = eb.session_geometry(Xform::identity());
+    const BRep sg = eb.session_geometry_brep(Xform::identity());
 
     MINI_CHECK(e.is_dirty());
     MINI_CHECK(e.geometry_ops_count() == 1);
-    MINI_CHECK(std::holds_alternative<BRep>(sg));
+    MINI_CHECK(sg.face_count() == 6);
 }
 
 MINI_TEST("Element", "AABB") {
@@ -184,7 +185,7 @@ MINI_TEST("Element", "OBB") {
     MINI_CHECK(TOLERANCE.is_close(obb.half_size[1], 0.5));
 }
 
-MINI_TEST("Element", "Session Geometry") {
+MINI_TEST("Element", "Session Geometry Mesh") {
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -197,15 +198,192 @@ MINI_TEST("Element", "Session Geometry") {
     );
     const Element e(m);
     const Xform e_xf = Xform::translation(10.0, 0.0, 0.0);
-    const ElementGeometry sg = e.session_geometry(e_xf);
-
-    MINI_CHECK(std::holds_alternative<Mesh>(sg));
-
-    const Mesh& mesh = std::get<Mesh>(sg);
+    const Mesh mesh = e.session_geometry_mesh(e_xf);
 
     MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(0).position()[0], 10.0));
     MINI_CHECK(TOLERANCE.is_close(mesh.vertex.at(1).position()[0], 11.0));
-    MINI_CHECK(&std::get<Mesh>(e.geometry()) != &mesh);
+    MINI_CHECK(&e.geometry_mesh() != &mesh);
+}
+
+MINI_TEST("Element", "Element Geometry Mesh") {
+
+    const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
+    const Element element(mesh);
+    const Element brep(BRep::create_box(1.0, 1.0, 1.0));
+
+    MINI_CHECK(element.element_geometry_mesh() == mesh);
+    MINI_CHECK(&element.element_geometry_mesh() == &element.element_geometry_mesh());
+    MINI_CHECK(brep.element_geometry_mesh().number_of_faces() == 0);
+    MINI_CHECK(brep.element_geometry_brep().face_count() == 6);
+}
+
+MINI_TEST("Element", "Element Geometry Brep") {
+
+    const BRep brep = BRep::create_box(1.0, 1.0, 1.0);
+    const Element element(brep);
+    const Element mesh{Mesh()};
+
+    MINI_CHECK(element.element_geometry_brep().vertex_points() == brep.vertex_points());
+    MINI_CHECK(&element.element_geometry_brep() == &element.element_geometry_brep());
+    MINI_CHECK(mesh.element_geometry_brep().face_count() == 0);
+    MINI_CHECK(mesh.geometry_type_name() == "Mesh");
+}
+
+MINI_TEST("Element", "Model Geometry Mesh") {
+
+    const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
+    Element element(mesh);
+    int operations = 0;
+    element.add_geometry_op([&operations](Mesh geometry) {
+        ++operations;
+        geometry.transform(Xform::translation(10.0, 0.0, 0.0));
+        return geometry;
+    });
+    const Element& base = element;
+    const Mesh& model = base.model_geometry_mesh();
+    const std::string guid = model.guid();
+
+    MINI_CHECK(TOLERANCE.is_close(model.vertex.at(0).position()[0], 10.0));
+    MINI_CHECK(TOLERANCE.is_close(base.element_geometry_mesh().vertex.at(0).position()[0], 0.0));
+    MINI_CHECK(base.model_geometry_mesh().guid() == guid);
+    MINI_CHECK(base.model_geometry_brep().face_count() == 0);
+    MINI_CHECK(base.model_geometry_mesh().guid() == guid);
+    MINI_CHECK(operations == 1);
+
+    element.invalidate_geometry();
+    MINI_CHECK(base.model_geometry_mesh().guid() != guid);
+    MINI_CHECK(operations == 2);
+
+    element.set_geometry(mesh.transformed(Xform::translation(5.0, 0.0, 0.0)));
+    MINI_CHECK(TOLERANCE.is_close(base.model_geometry_mesh().vertex.at(0).position()[0], 15.0));
+    MINI_CHECK(operations == 3);
+}
+
+MINI_TEST("Element", "Model Geometry Brep") {
+
+    Element element(BRep::create_box(1.0, 1.0, 1.0));
+    const Element& base = element;
+    const BRep& model = base.model_geometry_brep();
+    const std::string guid = model.guid();
+    const std::vector<Point> points = model.vertex_points();
+
+    MINI_CHECK(points == base.element_geometry_brep().vertex_points());
+    MINI_CHECK(base.model_geometry_brep().guid() == guid);
+    MINI_CHECK(base.model_geometry_mesh().number_of_faces() == 0);
+    MINI_CHECK(base.model_geometry_brep().guid() == guid);
+
+    element.invalidate_geometry();
+    MINI_CHECK(base.model_geometry_brep().guid() != guid);
+    element.place(Xform::translation(10.0, 0.0, 0.0));
+    MINI_CHECK(base.model_geometry_brep().vertex_points() != points);
+    MINI_CHECK(base.model_geometry_brep().vertex_points() == base.element_geometry_brep().vertex_points());
+}
+
+MINI_TEST("Element", "Geometry Mesh") {
+
+    const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
+    const Element element(mesh);
+    const Element empty;
+    const Element brep(BRep::create_box(1.0, 1.0, 1.0));
+
+    MINI_CHECK(element.geometry_mesh().number_of_faces() == 1);
+    MINI_CHECK(&element.geometry_mesh() == &element.geometry_mesh());
+    MINI_CHECK(empty.geometry_mesh().number_of_faces() == 0);
+    MINI_CHECK(brep.geometry_mesh().number_of_faces() == 0);
+    MINI_CHECK(brep.geometry_type_name() == "BRep");
+}
+
+MINI_TEST("Element", "Geometry Brep") {
+
+    const Element element(BRep::create_box(1.0, 1.0, 1.0));
+    const Element empty;
+    const Element mesh{Mesh()};
+
+    MINI_CHECK(element.geometry_brep().face_count() == 6);
+    MINI_CHECK(&element.geometry_brep() == &element.geometry_brep());
+    MINI_CHECK(empty.geometry_brep().face_count() == 0);
+    MINI_CHECK(mesh.geometry_brep().face_count() == 0);
+    MINI_CHECK(mesh.geometry_type_name() == "Mesh");
+}
+
+MINI_TEST("Element", "Session Geometry Brep") {
+
+    const Element element(BRep::create_box(1.0, 1.0, 1.0));
+    const Xform xform = Xform::translation(10.0, 20.0, 30.0);
+    const BRep placed = element.session_geometry_brep(xform);
+    const BRep expected = element.geometry_brep().transformed(xform);
+
+    MINI_CHECK(placed.vertex_points() == expected.vertex_points());
+    MINI_CHECK(placed.vertex_points() != element.geometry_brep().vertex_points());
+    MINI_CHECK(Element().session_geometry_brep(xform).face_count() == 0);
+}
+
+namespace {
+
+class LazyGeometryElement : public Element {
+public:
+    int meshes = 0;
+    int breps = 0;
+    bool fail = false;
+
+protected:
+    void compute_geometry_mesh_impl() override {
+        if (fail)
+            throw std::runtime_error("test geometry failure");
+        ++meshes;
+        set_geometry(Mesh());
+    }
+
+    void compute_geometry_brep_impl() override {
+        ++breps;
+        set_geometry(BRep::create_box(1.0, 1.0, 1.0));
+    }
+};
+
+} // namespace
+
+MINI_TEST("Element", "Compute Geometry Mesh") {
+
+    LazyGeometryElement element;
+    element.compute_geometry_mesh();
+    element.compute_geometry_mesh();
+
+    MINI_CHECK(element.meshes == 1);
+    MINI_CHECK(element.breps == 0);
+    MINI_CHECK(element.geometry_type_name() == "Mesh");
+
+    element.invalidate_geometry();
+    element.fail = true;
+    bool threw = false;
+    try {
+        element.compute_geometry_mesh();
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    element.fail = false;
+    element.compute_geometry_mesh();
+
+    MINI_CHECK(threw);
+    MINI_CHECK(element.meshes == 2);
+}
+
+MINI_TEST("Element", "Compute Geometry Brep") {
+
+    LazyGeometryElement element;
+    element.compute_geometry_brep();
+    element.compute_geometry_brep();
+
+    MINI_CHECK(element.breps == 1);
+    MINI_CHECK(element.meshes == 0);
+    MINI_CHECK(element.geometry_type_name() == "BRep");
+
+    element.invalidate_geometry();
+    element.compute_geometry_brep();
+    const Element loaded = Element::pb_loads(element.pb_dumps());
+
+    MINI_CHECK(element.breps == 2);
+    MINI_CHECK(loaded.geometry_type_name() == "BRep");
+    MINI_CHECK(loaded.geometry_brep().face_count() == 6);
 }
 
 MINI_TEST("Element", "Reset") {
@@ -283,8 +461,8 @@ MINI_TEST("Element", "Json Roundtrip") {
     const Element loaded = Element::file_json_load(fname);
 
     MINI_CHECK(loaded.name == "json_test");
-    MINI_CHECK(std::holds_alternative<Mesh>(loaded.geometry()));
-    MINI_CHECK(std::get<Mesh>(loaded.geometry()).vertex.size() == 4);
+    MINI_CHECK(loaded.geometry_type_name() == "Mesh");
+    MINI_CHECK(loaded.geometry_mesh().vertex.size() == 4);
 }
 
 MINI_TEST("Element", "Protobuf Roundtrip") {
@@ -297,9 +475,9 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
     const Element loaded = Element::pb_load(path);
 
     MINI_CHECK(loaded.name == "proto_test");
-    MINI_CHECK(std::holds_alternative<BRep>(loaded.geometry()));
-    MINI_CHECK(std::get<BRep>(loaded.geometry()).face_count() == 6);
-    MINI_CHECK(std::get<BRep>(loaded.geometry()).vertex_count() == 8);
+    MINI_CHECK(loaded.geometry_type_name() == "BRep");
+    MINI_CHECK(loaded.geometry_brep().face_count() == 6);
+    MINI_CHECK(loaded.geometry_brep().vertex_count() == 8);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -465,7 +643,7 @@ MINI_TEST("Element", "Registry Round Trip") {
 
     MINI_CHECK(as_plate->guid() == guid);
     MINI_CHECK(as_plate->name == "plate_0");
-    MINI_CHECK(std::holds_alternative<Mesh>(as_plate->geometry()));
+    MINI_CHECK(as_plate->geometry_type_name() == "Mesh");
     MINI_CHECK(TOLERANCE.is_close(as_plate->thickness, 12.5));
     MINI_CHECK(as_plate->codes.size() == 3);
     MINI_CHECK(as_plate->codes[0] == 30 && as_plate->codes[1] == 11 && as_plate->codes[2] == 20);
@@ -485,7 +663,7 @@ MINI_TEST("Element", "Registry Unknown Type Degrades") {
 
     MINI_CHECK(loaded != nullptr);
     MINI_CHECK(loaded->name == "mystery");
-    MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
+    MINI_CHECK(loaded->geometry_type_name() == "Mesh");
 }
 
 MINI_TEST("Element", "Features Round Trip") {
@@ -566,7 +744,7 @@ MINI_TEST("Element", "Throwing Factory Degrades To Base") {
 
     MINI_CHECK(loaded != nullptr);
     MINI_CHECK(loaded->name == "victim");
-    MINI_CHECK(std::holds_alternative<Mesh>(loaded->geometry()));
+    MINI_CHECK(loaded->geometry_type_name() == "Mesh");
 }
 
 MINI_TEST("Element", "Unknown Type Survives Resave") {

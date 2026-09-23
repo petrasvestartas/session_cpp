@@ -322,6 +322,72 @@ MINI_TEST("Session", "Add Relationship") {
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
+MINI_TEST("Session", "Add Interaction") {
+
+    Session session;
+    const auto a = std::make_shared<Element>("a");
+    const auto b = std::make_shared<Element>("b");
+    const Element absent("absent");
+    session.add_element(a);
+    session.add_element(b);
+    session.add_edge(a->guid(), b->guid(), "authored");
+    const auto ends = session.add_interaction(*a, *b);
+    const std::string id = session.graph.edges.at(a->guid()).at(b->guid()).guid();
+    const auto reversed = session.add_interaction(*b, *a);
+
+    MINI_CHECK(ends == reversed);
+    MINI_CHECK(ends.first == a->guid());
+    MINI_CHECK(session.graph.number_of_edges() == 1);
+    MINI_CHECK(session.graph.edges.at(b->guid()).at(a->guid()).guid() == id);
+    MINI_CHECK(session.graph.edges.at(a->guid()).at(b->guid()).attribute == "authored");
+
+    bool missing_rejected = false;
+    bool self_rejected = false;
+    try { session.add_interaction(*a, absent); } catch (const std::invalid_argument&) { missing_rejected = true; }
+    try { session.add_interaction(*a, *a); } catch (const std::invalid_argument&) { self_rejected = true; }
+    MINI_CHECK(missing_rejected);
+    MINI_CHECK(self_rejected);
+    MINI_CHECK(session.graph.number_of_edges() == 1);
+}
+
+MINI_TEST("Session", "Has Interaction") {
+
+    Session session;
+    const auto a = std::make_shared<Element>("a");
+    const auto b = std::make_shared<Element>("b");
+    session.add_element(a);
+    session.add_element(b);
+
+    MINI_CHECK(!session.has_interaction(*a, *b));
+    session.add_interaction(*a, *b);
+    MINI_CHECK(session.has_interaction(*a, *b));
+    MINI_CHECK(session.has_interaction(*b, *a));
+    MINI_CHECK(!session.has_interaction(a->guid(), "missing"));
+
+    const Session loaded = Session::pb_loads(session.pb_dumps());
+    MINI_CHECK(loaded.has_interaction(*b, *a));
+}
+
+MINI_TEST("Session", "Remove Interaction") {
+
+    Session session;
+    const auto a = std::make_shared<Element>("a");
+    const auto b = std::make_shared<Element>("b");
+    const auto c = std::make_shared<Element>("c");
+    session.add_element(a);
+    session.add_element(b);
+    session.add_element(c);
+    session.add_interaction(*a, *b);
+    session.add_interaction(*a, *c);
+    session.remove_interaction(*b, *a);
+    session.remove_interaction(*b, *a);
+
+    MINI_CHECK(!session.has_interaction(*a, *b));
+    MINI_CHECK(session.has_interaction(*a, *c));
+    MINI_CHECK(session.graph.number_of_edges() == 1);
+    MINI_CHECK(session.graph.has_node(b->guid()));
+}
+
 MINI_TEST("Session", "Get Neighbours") {
 
     Session session;

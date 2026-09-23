@@ -647,6 +647,41 @@ void Session::add_edge(const std::string& guid1, const std::string& guid2, const
     graph.add_edge(guid1, guid2, attribute);
 }
 
+std::pair<std::string, std::string> Session::add_interaction(const std::string& a, const std::string& b) {
+
+    const auto registered = [this](const std::string& guid) {
+        return graph.has_node(guid) && (lookup.count(guid) || instance_lookup.count(guid) || component_lookup.count(guid));
+    };
+    if (a == b || !registered(a) || !registered(b))
+        throw std::invalid_argument("Session::add_interaction: add two distinct objects to the session first");
+
+    if (!has_interaction(a, b))
+        graph.add_edge(a, b);
+
+    Edge& edge = graph.has_edge({a, b}) ? graph.edges.at(a).at(b) : graph.edges.at(b).at(a);
+    const std::string id = edge.guid();
+    const std::pair<std::string, std::string> ends{edge.v0, edge.v1};
+    // Graph stores two copies; preserve one identity on both directions.
+    if (!graph.has_edge({a, b}))
+        graph.edges[a][b] = edge;
+    if (!graph.has_edge({b, a}))
+        graph.edges[b][a] = edge;
+    graph.edges[a][b].guid() = id;
+    graph.edges[b][a].guid() = id;
+    return ends;
+}
+
+bool Session::has_interaction(const std::string& a, const std::string& b) const {
+    return graph.has_edge({a, b}) || graph.has_edge({b, a});
+}
+
+void Session::remove_interaction(const std::string& a, const std::string& b) {
+    if (graph.has_edge({a, b}))
+        graph.remove_edge({a, b});
+    else if (graph.has_edge({b, a}))
+        graph.remove_edge({b, a});
+}
+
 bool Session::add_hierarchy(const std::string& parent_guid, const std::string& child_guid) {
     return tree.add_child_by_guid(parent_guid, child_guid);
 }

@@ -218,12 +218,12 @@ std::ostream& operator<<(std::ostream& os, const ElementFeature& f) {
 
 Element::Element(const std::string& name) : name(name) {}
 
-Element::Element(const Mesh& geometry, const std::string& name) : _geometry(geometry), name(name) {}
+Element::Element(const Mesh& geometry, const std::string& name) : _geometry_mesh(geometry), name(name) {}
 
-Element::Element(const BRep& geometry, const std::string& name) : _geometry(geometry), name(name) {}
+Element::Element(const BRep& geometry, const std::string& name) : _geometry_brep(geometry), name(name) {}
 
 Element::Element(const Element& other)
-    : _geometry(other._geometry), _geometry_synced(other._geometry_synced), _geometry_ops(other._geometry_ops),
+    : _geometry_mesh(other._geometry_mesh), _geometry_brep(other._geometry_brep), _geometry_synced(other._geometry_synced), _geometry_ops(other._geometry_ops),
       _features(other._features), _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions),
       _element_type(other._element_type), _element_data(other._element_data), name(other.name) {}
 
@@ -234,7 +234,8 @@ Element& Element::operator=(const Element& other) {
 
     _guid.clear();
     name = other.name;
-    _geometry = other._geometry;
+    _geometry_mesh = other._geometry_mesh;
+    _geometry_brep = other._geometry_brep;
     _geometry_ops = other._geometry_ops;
     _features = other._features;
     _insertion_vectors = other._insertion_vectors;
@@ -253,39 +254,100 @@ Element& Element::operator=(const Element& other) {
 
 bool Element::has_geometry() const {
     ensure_geometry();
-    return !std::holds_alternative<std::monostate>(_geometry);
+    return _geometry_mesh.has_value() || _geometry_brep.has_value();
 }
 
 std::string Element::geometry_type_name() const {
 
     ensure_geometry();
 
-    if (std::holds_alternative<Mesh>(_geometry))
+    if (_geometry_mesh.has_value())
         return "Mesh";
 
-    if (std::holds_alternative<BRep>(_geometry))
+    if (_geometry_brep.has_value())
         return "BRep";
 
     return "None";
 }
 
-ElementGeometry Element::session_geometry(const Xform& xform) const {
+const Mesh& Element::element_geometry_mesh() const {
+    return geometry_mesh();
+}
 
-    ensure_geometry();
+const BRep& Element::element_geometry_brep() const {
+    return geometry_brep();
+}
 
-    ElementGeometry geo = _geometry;
+const Mesh& Element::model_geometry_mesh() const {
+    if (!_model_mesh_cache)
+        _model_mesh_cache = apply_geometry_ops(element_geometry_mesh());
+    return *_model_mesh_cache;
+}
 
-    if (Mesh* mesh = std::get_if<Mesh>(&geo)) {
-        *mesh = apply_geometry_ops(*mesh);
+const BRep& Element::model_geometry_brep() const {
+    if (!_model_brep_cache)
+        _model_brep_cache = element_geometry_brep();
+    return *_model_brep_cache;
+}
 
-        if (!xform.is_identity())
-            mesh->transform(xform);
-    } else if (BRep* brep = std::get_if<BRep>(&geo)) {
-        if (!xform.is_identity())
-            brep->transform(xform);
+const Mesh& Element::geometry_mesh() const {
+    const_cast<Element*>(this)->compute_geometry_mesh();
+    static const Mesh empty;
+    return _geometry_mesh ? *_geometry_mesh : empty;
+}
+
+void Element::compute_geometry_mesh() {
+    if (_computing_geometry || (_geometry_synced && _geometry_mesh))
+        return;
+
+    _computing_geometry = true;
+    try {
+        compute_geometry_mesh_impl();
+    } catch (...) {
+        _computing_geometry = false;
+        throw;
     }
+    _computing_geometry = false;
+    _geometry_synced = true;
+}
 
-    return geo;
+Mesh Element::session_geometry_mesh(const Xform& xform) const {
+    const Mesh& local = geometry_mesh();
+    if (!_geometry_mesh)
+        return Mesh();
+    Mesh placed = apply_geometry_ops(local);
+    if (!xform.is_identity())
+        placed.transform(xform);
+    return placed;
+}
+
+const BRep& Element::geometry_brep() const {
+    const_cast<Element*>(this)->compute_geometry_brep();
+    static const BRep empty;
+    return _geometry_brep ? *_geometry_brep : empty;
+}
+
+void Element::compute_geometry_brep() {
+    if (_computing_geometry || (_geometry_synced && _geometry_brep))
+        return;
+
+    _computing_geometry = true;
+    try {
+        compute_geometry_brep_impl();
+    } catch (...) {
+        _computing_geometry = false;
+        throw;
+    }
+    _computing_geometry = false;
+    _geometry_synced = true;
+}
+
+BRep Element::session_geometry_brep(const Xform& xform) const {
+    const BRep& local = geometry_brep();
+    BRep placed = local;
+    if (!xform.is_identity())
+        placed.transform(xform);
+    return placed;
 }
 
 OBB Element::aabb() {
@@ -380,7 +442,11 @@ void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
 
 void Element::place(const Xform& xform) {
 
-    _geometry = session_geometry(xform);
+    ensure_geometry();
+    if (_geometry_mesh)
+        _geometry_mesh = session_geometry_mesh(xform);
+    if (_geometry_brep)
+        _geometry_brep = session_geometry_brep(xform);
 
     for (ElementFeature& feature : _features)
         for (Polyline& outline : feature.outlines)
@@ -394,18 +460,15 @@ void Element::place(const Xform& xform) {
 
 void Element::set_geometry(const Mesh& geo) {
 
-    _geometry = geo;
+    _geometry_mesh = geo;
+    _geometry_brep.reset();
     reset();
 }
 
 void Element::set_geometry(const BRep& geo) {
 
-    _geometry = geo;
-    reset();
-}
-
-void Element::set_geometry(const ElementGeometry& geo) {
-    _geometry = geo;
+    _geometry_brep = geo;
+    _geometry_mesh.reset();
     reset();
 }
 
@@ -422,6 +485,8 @@ void Element::set_planes(std::vector<Plane> plns) {
 void Element::reset() {
 
     _is_dirty = true;
+    _model_mesh_cache.reset();
+    _model_brep_cache.reset();
     _aabb.reset();
     _obb.reset();
     _collision_mesh.reset();
@@ -460,31 +525,27 @@ Element Element::duplicate() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 OBB Element::compute_aabb() {
-    return obb_from_geometry(session_geometry(Xform::identity()));
+    const std::vector<Point> points = geometry_points();
+    return points.empty() ? OBB::from_point(Point(0, 0, 0), 0.0) : OBB::from_points(points, 0.0);
 }
 
 OBB Element::compute_obb() {
-    return obb_from_geometry(session_geometry(Xform::identity()));
+    return compute_aabb();
 }
 
 Mesh Element::compute_collision_mesh() {
-
-    ElementGeometry geo = session_geometry(Xform::identity());
-
-    if (Mesh* mesh = std::get_if<Mesh>(&geo))
-        return *mesh;
-
-    return Mesh();
+    ensure_geometry();
+    return _geometry_mesh ? session_geometry_mesh(Xform::identity()) : Mesh();
 }
 
 Point Element::compute_point() {
-    return Point::centroid(points_from_geometry(session_geometry(Xform::identity())));
+    return Point::centroid(geometry_points());
 }
 
 std::vector<Polyline> Element::compute_polylines() const {
 
-    if (const Mesh* mesh = std::get_if<Mesh>(&_geometry))
-        return mesh->face_outlines();
+    if (_geometry_mesh)
+        return _geometry_mesh->face_outlines();
 
     return {};
 }
@@ -524,28 +585,17 @@ Mesh Element::apply_geometry_ops(Mesh geo) const {
     return geo;
 }
 
-std::vector<Point> Element::points_from_geometry(const ElementGeometry& geo) {
-
+std::vector<Point> Element::geometry_points() const {
+    ensure_geometry();
     std::vector<Point> points;
-
-    if (const Mesh* mesh = std::get_if<Mesh>(&geo))
-        for (const std::pair<const size_t, VertexData>& entry : mesh->vertex)
-            points.push_back(entry.second.position());
-
-    if (const BRep* brep = std::get_if<BRep>(&geo))
-        points = brep->vertex_points();
-
+    if (_geometry_mesh) {
+        const Mesh mesh = session_geometry_mesh(Xform::identity());
+        for (const auto& [key, vertex] : mesh.vertex)
+            points.push_back(vertex.position());
+    } else if (_geometry_brep) {
+        points = _geometry_brep->vertex_points();
+    }
     return points;
-}
-
-OBB Element::obb_from_geometry(const ElementGeometry& geo) {
-
-    const std::vector<Point> points = points_from_geometry(geo);
-
-    if (points.empty())
-        return OBB::from_point(Point(0, 0, 0), 0.0);
-
-    return OBB::from_points(points, 0.0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -558,11 +608,11 @@ nlohmann::ordered_json Element::jsondump() const {
 
     nlohmann::ordered_json geo_data = nullptr;
 
-    if (const Mesh* mesh = std::get_if<Mesh>(&_geometry))
-        geo_data = mesh->jsondump();
+    if (_geometry_mesh)
+        geo_data = _geometry_mesh->jsondump();
 
-    if (const BRep* brep = std::get_if<BRep>(&_geometry))
-        geo_data = brep->jsondump();
+    if (_geometry_brep)
+        geo_data = _geometry_brep->jsondump();
 
     nlohmann::ordered_json dims = nullptr;
 
@@ -600,10 +650,10 @@ Element Element::jsonload(const nlohmann::json& data) {
     const bool has_data = data.contains("geometry_data") && !data["geometry_data"].is_null();
 
     if (geo_type == "Mesh" && has_data)
-        elem._geometry = Mesh::jsonload(data["geometry_data"]);
+        elem._geometry_mesh = Mesh::jsonload(data["geometry_data"]);
 
     if (geo_type == "BRep" && has_data)
-        elem._geometry = BRep::jsonload(data["geometry_data"]);
+        elem._geometry_brep = BRep::jsonload(data["geometry_data"]);
 
     const std::string g = data.value("guid", std::string());
 
@@ -664,11 +714,11 @@ session_proto::Element Element::to_proto() const {
     proto.set_name(name);
     proto.set_geometry_type(geometry_type_name());
 
-    if (const Mesh* mesh = std::get_if<Mesh>(&_geometry))
-        proto.set_geometry_data(mesh->pb_dumps());
+    if (_geometry_mesh)
+        proto.set_geometry_data(_geometry_mesh->pb_dumps());
 
-    if (const BRep* brep = std::get_if<BRep>(&_geometry))
-        proto.set_geometry_data(brep->pb_dumps());
+    if (_geometry_brep)
+        proto.set_geometry_data(_geometry_brep->pb_dumps());
 
     proto.set_element_type(element_type_name());
     proto.set_element_data(element_data_dumps());
@@ -703,10 +753,10 @@ Element Element::from_proto(const session_proto::Element& proto) {
     const bool has_data = !proto.geometry_data().empty();
 
     if (proto.geometry_type() == "Mesh" && has_data)
-        elem._geometry = Mesh::pb_loads(proto.geometry_data());
+        elem._geometry_mesh = Mesh::pb_loads(proto.geometry_data());
 
     if (proto.geometry_type() == "BRep" && has_data)
-        elem._geometry = BRep::pb_loads(proto.geometry_data());
+        elem._geometry_brep = BRep::pb_loads(proto.geometry_data());
 
     elem._element_type = proto.element_type();
     elem._element_data = proto.element_data();

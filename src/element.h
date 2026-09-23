@@ -15,7 +15,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace session_proto {
@@ -24,8 +23,6 @@ class ElementFeature;
 }
 
 namespace session_cpp {
-
-using ElementGeometry = std::variant<std::monostate, Mesh, BRep>;
 
 /// One serializable modification of a host element - a cut, a drill, a joint pocket - that the kernel draws but never applies.
 struct ElementFeature {
@@ -161,9 +158,12 @@ private:
     mutable std::string _guid; // Lazily minted guid.
 
 protected:
-    ElementGeometry _geometry; // Mesh, BRep or nothing.
-    mutable bool _geometry_synced = false; // Whether the slot holds what compute_geometry() would write.
-    mutable bool _computing_geometry = false; // Guards ensure_geometry() against re-entry from compute_geometry().
+    std::optional<Mesh> _geometry_mesh; // Mesh stored for the session and serialization.
+    std::optional<BRep> _geometry_brep; // BRep stored for the session and serialization.
+    mutable std::optional<Mesh> _model_mesh_cache; // Model mesh with in-memory operations applied.
+    mutable std::optional<BRep> _model_brep_cache; // Model BRep, cached independently of the mesh.
+    mutable bool _geometry_synced = false; // Whether the slot holds what compute_geometry_mesh() would write.
+    mutable bool _computing_geometry = false; // Guards ensure_geometry() against re-entry from compute_geometry_mesh().
     bool _is_dirty = true; // Whether the caches must be recomputed.
     std::optional<OBB> _aabb; // Cached axis-aligned box.
     std::optional<OBB> _obb; // Cached oriented box.
@@ -237,30 +237,39 @@ public:
     /// Clear the guid so a fresh one mints lazily on the next read.
     void refresh_guid() { _guid.clear(); }
 
-    /// Return the local geometry, computing it first when a domain type left the slot stale.
-    const ElementGeometry& geometry() const {
-        ensure_geometry();
+    /// Return the element's mesh before modifications; empty when no mesh exists. Domain types override this with their lazy parametric mesh.
+    virtual const Mesh& element_geometry_mesh() const;
 
-        return _geometry;
-    }
+    /// Return the element's BRep before modifications; empty when no BRep exists. Domain types override this with their lazy parametric BRep.
+    virtual const BRep& element_geometry_brep() const;
 
-    /// Write the element's own geometry, features and dimensions onto the slot, a mesh when true, a BRep when false; skipped while the slot already holds that form, and a re-entrant call from inside the computation does nothing.
-    void compute_geometry(bool mesh_or_brep = true) {
+    /// Return the model mesh with in-memory operations applied, cached until invalidation. Domain types override this to apply their joints or cuts.
+    virtual const Mesh& model_geometry_mesh() const;
 
-        if (_computing_geometry || geometry_current(mesh_or_brep))
-            return;
+    /// Return the model BRep, cached independently until invalidation. Domain types override this to apply their joints or cuts.
+    virtual const BRep& model_geometry_brep() const;
 
-        _computing_geometry = true;
-        compute_geometry_impl(mesh_or_brep);
-        _computing_geometry = false;
-        _geometry_synced = true;
-    }
+    /// Return the local mesh, computing it on demand; empty when this element has no mesh.
+    const Mesh& geometry_mesh() const;
 
-    /// Return whether the slot already holds what compute_geometry() would write.
+    /// Return the local BRep, computing it on demand; empty when this element has no BRep.
+    const BRep& geometry_brep() const;
+
+    /// Write the element's mesh, features and dimensions into the session slot, reusing a current mesh.
+    void compute_geometry_mesh();
+
+    /// Write the element's BRep, features and dimensions into the session slot, reusing a current BRep.
+    void compute_geometry_brep();
+
+    /// Return whether the slot already holds what compute_geometry_mesh() would write.
     bool geometry_synced() const { return _geometry_synced; }
 
     /// Mark the slot stale, so the next read computes it again; a domain type overrides this to drop its own caches too.
-    virtual void invalidate_geometry() { _geometry_synced = false; }
+    virtual void invalidate_geometry() {
+        _geometry_synced = false;
+        _model_mesh_cache.reset();
+        _model_brep_cache.reset();
+    }
 
     /// Return whether the element carries a mesh or a BRep.
     bool has_geometry() const;
@@ -268,8 +277,11 @@ public:
     /// Return "Mesh", "BRep" or "None".
     std::string geometry_type_name() const;
 
-    /// Return the geometry placed by xform; the Session owns the placement, so pass identity for local geometry.
-    ElementGeometry session_geometry(const Xform& xform) const;
+    /// Return the mesh with in-memory operations and placement applied, empty when no mesh exists.
+    Mesh session_geometry_mesh(const Xform& xform) const;
+
+    /// Return the BRep with placement applied, empty when no BRep exists.
+    BRep session_geometry_brep(const Xform& xform) const;
 
     /// Return the cached axis-aligned box, computing it when dirty.
     OBB aabb();
@@ -365,9 +377,6 @@ public:
 
     /// Replace the geometry with a BRep and invalidate the caches.
     void set_geometry(const BRep& geo);
-
-    /// Replace the geometry with whichever form the variant holds and invalidate the caches.
-    void set_geometry(const ElementGeometry& geo);
 
     /// Override the cached face outlines, kept until the next reset.
     void set_polylines(std::vector<Polyline> polys);
@@ -475,22 +484,20 @@ protected:
     // ═══════════════════════════════════════════════════════════════════════════
     // Computation
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Run compute_geometry() once while the slot is stale, so every reader and the file see the current solid, features and dimensions.
+    /// Run compute_geometry_mesh() once while the slot is stale, so every reader and the file see the current solid, features and dimensions.
     void ensure_geometry() const {
 
         if (_geometry_synced || _computing_geometry)
             return;
 
-        const_cast<Element*>(this)->compute_geometry();
+        const_cast<Element*>(this)->compute_geometry_mesh();
     }
 
-    /// True while the slot already holds the requested form and nothing has invalidated it.
-    bool geometry_current(bool mesh_or_brep) const {
-        return _geometry_synced && (mesh_or_brep ? std::holds_alternative<Mesh>(_geometry) : std::holds_alternative<BRep>(_geometry));
-    }
+    /// Compute the mesh, features and dimensions; a domain type overrides this.
+    virtual void compute_geometry_mesh_impl() {}
 
-    /// Compute the element's own geometry, features and dimensions in the requested form; the base element has none, a domain type overrides it.
-    virtual void compute_geometry_impl(bool mesh_or_brep) { (void)mesh_or_brep; }
+    /// Compute the BRep, features and dimensions; a domain type overrides this.
+    virtual void compute_geometry_brep_impl() {}
 
     /// Compute the axis-aligned box of the placed geometry.
     OBB compute_aabb();
@@ -519,11 +526,8 @@ protected:
     /// Run the in-memory operations over a mesh.
     Mesh apply_geometry_ops(Mesh geo) const;
 
-    /// Return the vertices of a mesh or a BRep.
-    static std::vector<Point> points_from_geometry(const ElementGeometry& geo);
-
-    /// Return the world-aligned box of the geometry vertices, or a zero box when empty.
-    static OBB obb_from_geometry(const ElementGeometry& geo);
+    /// Return the stored geometry vertices with in-memory mesh operations applied.
+    std::vector<Point> geometry_points() const;
 };
 
 /// Write the element string to a stream.
