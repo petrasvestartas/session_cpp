@@ -4,9 +4,14 @@
 #include <array>
 #include <cmath>
 #include <numeric>
+#include <optional>
 #include <set>
 
 namespace session_cpp {
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
 /// Twice the signed area of o-a-b in XY, positive for a left turn.
@@ -17,8 +22,7 @@ double cross_2d(const Point& o, const Point& a, const Point& b) {
 /// Appends point i to the chain after popping every tail that no longer turns left towards it.
 void extend_chain(const std::vector<Point>& points, std::vector<int>& chain, int i) {
 
-    while (chain.size() >= 2 &&
-           cross_2d(points[chain[chain.size() - 2]], points[chain[chain.size() - 1]], points[i]) <= 0.0)
+    while (chain.size() >= 2 && cross_2d(points[chain[chain.size() - 2]], points[chain[chain.size() - 1]], points[i]) <= 0.0)
         chain.pop_back();
 
     chain.push_back(i);
@@ -95,59 +99,10 @@ void quickhull_faces(
     quickhull_faces(points, visible_from(visible, points, points[c], points[a], points[apex]), c, a, apex, faces);
 }
 
-} // namespace
-
-std::vector<Point> ConvexHull::hull_2d(const std::vector<Point>& points) {
-
-    const int n = static_cast<int>(points.size());
-
-    if (n < 3)
-        return points;
-
-    std::vector<int> order(n);
-    std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&points](int a, int b) {
-        return points[a][0] < points[b][0] || (points[a][0] == points[b][0] && points[a][1] < points[b][1]);
-    });
-    std::vector<int> lower;
-
-    for (int i : order)
-        extend_chain(points, lower, i);
-
-    std::vector<int> upper;
-
-    for (int i = n - 1; i >= 0; --i)
-        extend_chain(points, upper, order[i]);
-
-    lower.pop_back();
-    upper.pop_back();
-    std::vector<Point> hull;
-
-    for (int i : lower)
-        hull.push_back(points[i]);
-
-    for (int i : upper)
-        hull.push_back(points[i]);
-
-    return hull;
-}
-
-Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
+/// Corners of the starting tetrahedron with a-b-c facing away from d, none when the points are collinear or coplanar.
+std::optional<std::array<int, 4>> initial_tetrahedron(const std::vector<Point>& points) {
 
     const int n = static_cast<int>(points.size());
-    Mesh mesh;
-
-    if (n < 4) {
-        std::vector<size_t> vkeys;
-
-        for (const Point& point : points)
-            vkeys.push_back(mesh.add_vertex(point));
-
-        if (n == 3)
-            mesh.add_face(vkeys);
-
-        return mesh;
-    }
 
     int p0 = 0;
 
@@ -162,6 +117,7 @@ Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
             p1 = i;
 
     const Vector axis = points[p1] - points[p0];
+
     int p2 = -1;
     double best_distance = -1.0;
 
@@ -192,15 +148,87 @@ Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
         }
     }
 
-    if (p2 < 0 || p3 < 0 || best_distance <= 1e-20 || best_volume <= 1e-20) {
+    if (p2 < 0 || p3 < 0 || best_distance <= 1e-20 || best_volume <= 1e-20)
+        return std::nullopt;
+
+    if (signed_volume(points[p0], points[p1], points[p2], points[p3]) > 0.0)
+        std::swap(p1, p2);
+
+    return std::array<int, 4>{p0, p1, p2, p3};
+}
+
+} // namespace
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Geometry
+// ═══════════════════════════════════════════════════════════════════════════
+std::vector<Point> ConvexHull::hull_2d(const std::vector<Point>& points) {
+
+    const int n = static_cast<int>(points.size());
+
+    if (n < 3)
+        return points;
+
+    std::vector<int> order(n);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&points](int a, int b) {
+        return points[a][0] < points[b][0] || (points[a][0] == points[b][0] && points[a][1] < points[b][1]);
+    });
+
+    std::vector<int> lower;
+
+    for (int i : order)
+        extend_chain(points, lower, i);
+
+    std::vector<int> upper;
+
+    for (int i = n - 1; i >= 0; --i)
+        extend_chain(points, upper, order[i]);
+
+    lower.pop_back();
+    upper.pop_back();
+
+    std::vector<Point> hull;
+
+    for (int i : lower)
+        hull.push_back(points[i]);
+
+    for (int i : upper)
+        hull.push_back(points[i]);
+
+    return hull;
+}
+
+Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
+
+    const int n = static_cast<int>(points.size());
+    Mesh mesh;
+
+    if (n < 4) {
+        std::vector<size_t> vkeys;
+
+        for (const Point& point : points)
+            vkeys.push_back(mesh.add_vertex(point));
+
+        if (n == 3)
+            mesh.add_face(vkeys);
+
+        return mesh;
+    }
+
+    const std::optional<std::array<int, 4>> corners = initial_tetrahedron(points);
+
+    if (!corners.has_value()) {
         for (const Point& point : points)
             mesh.add_vertex(point);
 
         return mesh;
     }
 
-    if (signed_volume(points[p0], points[p1], points[p2], points[p3]) > 0.0)
-        std::swap(p1, p2);
+    const int p0 = (*corners)[0];
+    const int p1 = (*corners)[1];
+    const int p2 = (*corners)[2];
+    const int p3 = (*corners)[3];
 
     std::vector<int> rest;
 
@@ -209,10 +237,12 @@ Mesh ConvexHull::hull_3d(const std::vector<Point>& points) {
             rest.push_back(i);
 
     std::vector<std::array<int, 3>> faces;
+
     quickhull_faces(points, rest, p0, p1, p2, faces);
     quickhull_faces(points, rest, p0, p3, p1, faces);
     quickhull_faces(points, rest, p1, p3, p2, faces);
     quickhull_faces(points, rest, p2, p3, p0, faces);
+
     std::set<int> used;
 
     for (const std::array<int, 3>& face : faces)

@@ -11,7 +11,7 @@ namespace session_cpp {
 
 MINI_TEST("ConvexHull", "Hull 2d") {
 
-    std::vector<Point> points = {
+    const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -19,21 +19,21 @@ MINI_TEST("ConvexHull", "Hull 2d") {
         Point(0.5, 0.5, 0.0),
         Point(0.3, 0.3, 0.0),
     };
-    std::vector<Point> hull = ConvexHull::hull_2d(points);
+    const std::vector<Point> hull = ConvexHull::hull_2d(points);
 
     MINI_CHECK(hull.size() == 4);
 }
 
 MINI_TEST("ConvexHull", "Hull 2d Collinear") {
 
-    std::vector<Point> points = {
+    const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
         Point(2.0, 0.0, 0.0),
         Point(3.0, 0.0, 0.0),
         Point(1.5, 1.0, 0.0),
     };
-    std::vector<Point> hull = ConvexHull::hull_2d(points);
+    const std::vector<Point> hull = ConvexHull::hull_2d(points);
 
     MINI_CHECK(hull.size() >= 3);
 }
@@ -49,26 +49,27 @@ MINI_TEST("ConvexHull", "Hull 2d Circle") {
     }
 
     points.push_back(Point(0.0, 0.0, 0.0));
-    std::vector<Point> hull = ConvexHull::hull_2d(points);
+
+    const std::vector<Point> hull = ConvexHull::hull_2d(points);
 
     MINI_CHECK(hull.size() == n);
 }
 
 MINI_TEST("ConvexHull", "Hull 3d") {
 
-    std::vector<Point> points = {
+    const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
         Point(0.0, 1.0, 0.0),
         Point(0.0, 0.0, 1.0),
         Point(0.25, 0.25, 0.25),
     };
-    Mesh mesh = ConvexHull::hull_3d(points);
+    const Mesh mesh = ConvexHull::hull_3d(points);
 
     MINI_CHECK(mesh.number_of_vertices() == 4);
     MINI_CHECK(mesh.number_of_faces() == 4);
 
-    Mesh degenerate = ConvexHull::hull_3d({Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)});
+    const Mesh degenerate = ConvexHull::hull_3d({Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)});
 
     MINI_CHECK(degenerate.number_of_vertices() == 4);
     MINI_CHECK(degenerate.number_of_faces() == 0);
@@ -76,7 +77,7 @@ MINI_TEST("ConvexHull", "Hull 3d") {
 
 MINI_TEST("ConvexHull", "Hull 3d Cube") {
 
-    std::vector<Point> points = {
+    const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
         Point(1.0, 0.0, 0.0),
         Point(1.0, 1.0, 0.0),
@@ -87,7 +88,7 @@ MINI_TEST("ConvexHull", "Hull 3d Cube") {
         Point(0.0, 1.0, 1.0),
         Point(0.5, 0.5, 0.5),
     };
-    Mesh mesh = ConvexHull::hull_3d(points);
+    const Mesh mesh = ConvexHull::hull_3d(points);
 
     MINI_CHECK(mesh.number_of_vertices() == 8);
     MINI_CHECK(mesh.number_of_faces() == 12);

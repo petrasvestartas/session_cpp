@@ -7,6 +7,9 @@ namespace session_cpp {
 
 /// Convex hull: monotone chain in XY for 2D, quickhull for 3D.
 struct ConvexHull {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Geometry
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Counter-clockwise hull of the points projected to XY, collinear points dropped; fewer than three points come back as given.
     static std::vector<Point> hull_2d(const std::vector<Point>& points);
 
