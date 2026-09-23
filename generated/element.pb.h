@@ -222,6 +222,7 @@ class ElementFeature final : public ::google::protobuf::Message
     kFeatureTypeFieldNumber = 2,
     kGuidFieldNumber = 5,
     kFaceIndexFieldNumber = 3,
+    kVisibleFieldNumber = 6,
   };
   // repeated .session_proto.Polyline outlines = 4;
   int outlines_size() const;
@@ -295,11 +296,22 @@ class ElementFeature final : public ::google::protobuf::Message
   void _internal_set_face_index(::int32_t value);
 
   public:
+  // optional bool visible = 6;
+  bool has_visible() const;
+  void clear_visible() ;
+  bool visible() const;
+  void set_visible(bool value);
+
+  private:
+  bool _internal_visible() const;
+  void _internal_set_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.ElementFeature)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 5,
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
                                    1, 57,
                                    2>
       _table_;
@@ -326,6 +338,7 @@ class ElementFeature final : public ::google::protobuf::Message
     ::google::protobuf::internal::ArenaStringPtr feature_type_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::int32_t face_index_;
+    bool visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -957,6 +970,35 @@ inline void ElementFeature::set_allocated_guid(::std::string* PROTOBUF_NULLABLE 
     _impl_.guid_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:session_proto.ElementFeature.guid)
+}
+
+// optional bool visible = 6;
+inline bool ElementFeature::has_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000020U);
+  return value;
+}
+inline void ElementFeature::clear_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0],
+                  0x00000020U);
+}
+inline bool ElementFeature::visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.ElementFeature.visible)
+  return _internal_visible();
+}
+inline void ElementFeature::set_visible(bool value) {
+  _internal_set_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_set:session_proto.ElementFeature.visible)
+}
+inline bool ElementFeature::_internal_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.visible_;
+}
+inline void ElementFeature::_internal_set_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.visible_ = value;
 }
 
 // -------------------------------------------------------------------

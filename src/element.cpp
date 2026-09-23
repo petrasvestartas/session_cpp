@@ -1,6 +1,7 @@
 #include "element.h"
 #include "element.pb.h"
 #include <fstream>
+#include <stdexcept>
 
 namespace session_cpp {
 
@@ -11,7 +12,7 @@ namespace session_cpp {
 /// Encode bytes as hex text, since element_data is opaque and JSON carries no bytes.
 static std::string to_hex(const std::string& bytes) {
 
-    static const char* digits = "0123456789abcdef";
+    static const std::string digits = "0123456789abcdef";
     std::string out;
     out.reserve(bytes.size() * 2);
 
@@ -49,13 +50,14 @@ ElementFeature& ElementFeature::operator=(const ElementFeature& other) {
     feature_type = other.feature_type;
     face_index = other.face_index;
     outlines = other.outlines;
+    visible = other.visible;
 
     return *this;
 }
 
 bool ElementFeature::operator==(const ElementFeature& other) const {
     return name == other.name && feature_type == other.feature_type && face_index == other.face_index &&
-        outlines == other.outlines;
+        outlines == other.outlines && visible == other.visible;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -76,6 +78,7 @@ nlohmann::ordered_json ElementFeature::jsondump() const {
         {"name", name},
         {"outlines", outs},
         {"type", "ElementFeature"},
+        {"visible", visible},
     };
 }
 
@@ -84,6 +87,7 @@ ElementFeature ElementFeature::jsonload(const nlohmann::json& data) {
     ElementFeature f;
     f.face_index = data.value("face_index", -1);
     f.feature_type = data.value("feature_type", std::string());
+
     const std::string g = data.value("guid", std::string());
 
     if (!g.empty())
@@ -93,6 +97,8 @@ ElementFeature ElementFeature::jsonload(const nlohmann::json& data) {
 
     for (const nlohmann::json& o : data.value("outlines", nlohmann::json::array()))
         f.outlines.push_back(Polyline::jsonload(o));
+
+    f.visible = data.value("visible", true);
 
     return f;
 }
@@ -106,11 +112,13 @@ ElementFeature ElementFeature::file_json_loads(const std::string& json_string) {
 }
 
 void ElementFeature::file_json_dump(const std::string& filename) const {
+
     std::ofstream file(filename);
     file << jsondump().dump(2);
 }
 
 ElementFeature ElementFeature::file_json_load(const std::string& filename) {
+
     std::ifstream file(filename);
 
     return jsonload(nlohmann::json::parse(file));
@@ -120,7 +128,7 @@ ElementFeature ElementFeature::file_json_load(const std::string& filename) {
 // ElementFeature - Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 
-std::string ElementFeature::pb_dumps() const {
+session_proto::ElementFeature ElementFeature::to_proto() const {
 
     session_proto::ElementFeature proto;
 
@@ -132,15 +140,16 @@ std::string ElementFeature::pb_dumps() const {
     proto.set_face_index(face_index);
 
     for (const Polyline& o : outlines)
-        proto.add_outlines()->ParseFromString(o.pb_dumps());
+        *proto.add_outlines() = o.to_proto();
 
-    return proto.SerializeAsString();
+    if (!visible)
+        proto.set_visible(false);
+
+    return proto;
 }
 
-ElementFeature ElementFeature::pb_loads(const std::string& data) {
+ElementFeature ElementFeature::from_proto(const session_proto::ElementFeature& proto) {
 
-    session_proto::ElementFeature proto;
-    proto.ParseFromString(data);
     ElementFeature f;
 
     if (!proto.guid().empty())
@@ -151,23 +160,45 @@ ElementFeature ElementFeature::pb_loads(const std::string& data) {
     f.face_index = proto.face_index();
 
     for (const session_proto::Polyline& o : proto.outlines())
-        f.outlines.push_back(Polyline::pb_loads(o.SerializeAsString()));
+        f.outlines.push_back(Polyline::from_proto(o));
+
+    f.visible = !proto.has_visible() || proto.visible();
 
     return f;
 }
 
+std::string ElementFeature::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
+
+ElementFeature ElementFeature::pb_loads(const std::string& data) {
+
+    session_proto::ElementFeature proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse ElementFeature protobuf data");
+
+    return from_proto(proto);
+}
+
 void ElementFeature::pb_dump(const std::string& filename) const {
+
     const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 ElementFeature ElementFeature::pb_load(const std::string& filename) {
+
     std::ifstream file(filename, std::ios::binary);
     const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
     return pb_loads(data);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ElementFeature - String
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string ElementFeature::str() const {
     return fmt::format("ElementFeature({}, face {}, {} outline(s))", feature_type, face_index, outlines.size());
@@ -187,14 +218,14 @@ std::ostream& operator<<(std::ostream& os, const ElementFeature& f) {
 
 Element::Element(const std::string& name) : name(name) {}
 
-Element::Element(const Mesh& geometry, const std::string& name) : name(name), _geometry(geometry) {}
+Element::Element(const Mesh& geometry, const std::string& name) : _geometry(geometry), name(name) {}
 
-Element::Element(const BRep& geometry, const std::string& name) : name(name), _geometry(geometry) {}
+Element::Element(const BRep& geometry, const std::string& name) : _geometry(geometry), name(name) {}
 
 Element::Element(const Element& other)
-    : name(other.name), _geometry(other._geometry), _geometry_ops(other._geometry_ops), _features(other._features),
-      _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions), _element_type(other._element_type),
-      _element_data(other._element_data) {}
+    : _geometry(other._geometry), _geometry_synced(other._geometry_synced), _geometry_ops(other._geometry_ops),
+      _features(other._features), _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions),
+      _element_type(other._element_type), _element_data(other._element_data), name(other.name) {}
 
 Element& Element::operator=(const Element& other) {
 
@@ -210,16 +241,24 @@ Element& Element::operator=(const Element& other) {
     _dimensions = other._dimensions;
     _element_type = other._element_type;
     _element_data = other._element_data;
+    _geometry_synced = other._geometry_synced;
     reset();
 
     return *this;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Element - Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+
 bool Element::has_geometry() const {
+    ensure_geometry();
     return !std::holds_alternative<std::monostate>(_geometry);
 }
 
 std::string Element::geometry_type_name() const {
+
+    ensure_geometry();
 
     if (std::holds_alternative<Mesh>(_geometry))
         return "Mesh";
@@ -231,6 +270,8 @@ std::string Element::geometry_type_name() const {
 }
 
 ElementGeometry Element::session_geometry(const Xform& xform) const {
+
+    ensure_geometry();
 
     ElementGeometry geo = _geometry;
 
@@ -332,31 +373,50 @@ std::optional<Line> Element::axis() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
+
     _geometry_ops.push_back(std::move(f));
     reset();
 }
 
 void Element::place(const Xform& xform) {
+
     _geometry = session_geometry(xform);
+
+    for (ElementFeature& feature : _features)
+        for (Polyline& outline : feature.outlines)
+            outline.transform(xform);
+
+    for (Vector& direction : _insertion_vectors)
+        direction.transform(xform);
+
     reset();
 }
 
 void Element::set_geometry(const Mesh& geo) {
+
     _geometry = geo;
     reset();
 }
 
 void Element::set_geometry(const BRep& geo) {
+
+    _geometry = geo;
+    reset();
+}
+
+void Element::set_geometry(const ElementGeometry& geo) {
     _geometry = geo;
     reset();
 }
 
 void Element::set_polylines(std::vector<Polyline> polys) {
     _polylines = std::move(polys);
+    _is_dirty = false;
 }
 
 void Element::set_planes(std::vector<Plane> plns) {
     _planes = std::move(plns);
+    _is_dirty = false;
 }
 
 void Element::reset() {
@@ -377,7 +437,6 @@ void Element::reset() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 bool Element::operator==(const Element& other) const {
-
     return name == other.name && geometry_type_name() == other.geometry_type_name() &&
         element_type_name() == other.element_type_name() && element_data_dumps() == other.element_data_dumps() &&
         _insertion_vectors == other._insertion_vectors && _dimensions == other._dimensions &&
@@ -389,12 +448,16 @@ bool Element::operator!=(const Element& other) const {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Element - Computation
+// Element - Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 
 Element Element::duplicate() const {
     return Element(*this);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Element - Computation
+// ═══════════════════════════════════════════════════════════════════════════
 
 OBB Element::compute_aabb() {
     return obb_from_geometry(session_geometry(Xform::identity()));
@@ -419,6 +482,7 @@ Point Element::compute_point() {
 }
 
 std::vector<Polyline> Element::compute_polylines() const {
+
     if (const Mesh* mesh = std::get_if<Mesh>(&_geometry))
         return mesh->face_outlines();
 
@@ -453,6 +517,7 @@ std::optional<Line> Element::compute_axis() const {
 }
 
 Mesh Element::apply_geometry_ops(Mesh geo) const {
+
     for (const std::function<Mesh(Mesh)>& f : _geometry_ops)
         geo = f(geo);
 
@@ -464,8 +529,8 @@ std::vector<Point> Element::points_from_geometry(const ElementGeometry& geo) {
     std::vector<Point> points;
 
     if (const Mesh* mesh = std::get_if<Mesh>(&geo))
-        for (const auto& [k, v] : mesh->vertex)
-            points.push_back(v.position());
+        for (const std::pair<const size_t, VertexData>& entry : mesh->vertex)
+            points.push_back(entry.second.position());
 
     if (const BRep* brep = std::get_if<BRep>(&geo))
         points = brep->vertex_points();
@@ -488,6 +553,8 @@ OBB Element::obb_from_geometry(const ElementGeometry& geo) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 nlohmann::ordered_json Element::jsondump() const {
+
+    ensure_geometry();
 
     nlohmann::ordered_json geo_data = nullptr;
 
@@ -569,11 +636,13 @@ Element Element::file_json_loads(const std::string& s) {
 }
 
 void Element::file_json_dump(const std::string& path) const {
+
     std::ofstream file(path);
     file << jsondump().dump(2);
 }
 
 Element Element::file_json_load(const std::string& path) {
+
     std::ifstream file(path);
 
     return jsonload(nlohmann::json::parse(file));
@@ -583,7 +652,9 @@ Element Element::file_json_load(const std::string& path) {
 // Element - Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 
-std::string Element::pb_dumps() const {
+session_proto::Element Element::to_proto() const {
+
+    ensure_geometry();
 
     session_proto::Element proto;
 
@@ -615,21 +686,20 @@ std::string Element::pb_dumps() const {
     }
 
     for (const ElementFeature& f : _features)
-        proto.add_features()->ParseFromString(f.pb_dumps());
+        *proto.add_features() = f.to_proto();
 
-    return proto.SerializeAsString();
+    return proto;
 }
 
-Element Element::pb_loads(const std::string& data) {
+Element Element::from_proto(const session_proto::Element& proto) {
 
-    session_proto::Element proto;
-    proto.ParseFromString(data);
     Element elem;
 
     if (!proto.guid().empty())
         elem.guid() = proto.guid();
 
     elem.name = proto.name();
+
     const bool has_data = !proto.geometry_data().empty();
 
     if (proto.geometry_type() == "Mesh" && has_data)
@@ -645,22 +715,39 @@ Element Element::pb_loads(const std::string& data) {
         elem._insertion_vectors.push_back(
             Vector(proto.insertion_vectors(i), proto.insertion_vectors(i + 1), proto.insertion_vectors(i + 2))
         );
+
     if (proto.dimensions_size() == 3)
         elem._dimensions = Vector(proto.dimensions(0), proto.dimensions(1), proto.dimensions(2));
 
     for (const session_proto::ElementFeature& f : proto.features())
-        elem._features.push_back(ElementFeature::pb_loads(f.SerializeAsString()));
+        elem._features.push_back(ElementFeature::from_proto(f));
 
     return elem;
 }
 
+std::string Element::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
+
+Element Element::pb_loads(const std::string& data) {
+
+    session_proto::Element proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Element protobuf data");
+
+    return from_proto(proto);
+}
+
 void Element::pb_dump(const std::string& path) const {
+
     const std::string data = pb_dumps();
     std::ofstream file(path, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 Element Element::pb_load(const std::string& path) {
+
     std::ifstream file(path, std::ios::binary);
     const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
@@ -671,7 +758,9 @@ Element Element::pb_load(const std::string& path) {
 // Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Function-local so a package registering from a static initializer finds it built.
 static std::map<std::string, Element::Factory>& element_registry() {
+
     static std::map<std::string, Element::Factory> registry;
 
     return registry;
@@ -696,6 +785,7 @@ static std::shared_ptr<Element> build_registered(const std::string& type_name, c
 }
 
 void Element::register_type(const std::string& type_name, Element::Factory factory) {
+
     if (type_name.empty() || !factory)
         return;
 
@@ -710,8 +800,8 @@ std::vector<std::string> Element::registered_types() {
 
     std::vector<std::string> names;
 
-    for (const auto& [name, _] : element_registry())
-        names.push_back(name);
+    for (const std::pair<const std::string, Element::Factory>& entry : element_registry())
+        names.push_back(entry.first);
 
     return names;
 }
@@ -719,12 +809,14 @@ std::vector<std::string> Element::registered_types() {
 std::shared_ptr<Element> Element::pb_loads_polymorphic(const std::string& data) {
 
     session_proto::Element proto;
-    proto.ParseFromString(data);
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Element protobuf data");
 
     if (std::shared_ptr<Element> derived = build_registered(proto.element_type(), data))
         return derived;
 
-    return std::make_shared<Element>(pb_loads(data));
+    return std::make_shared<Element>(from_proto(proto));
 }
 
 std::shared_ptr<Element> Element::file_json_loads_polymorphic(const std::string& s) {
@@ -736,6 +828,10 @@ std::shared_ptr<Element> Element::file_json_loads_polymorphic(const std::string&
 
     return std::make_shared<Element>(std::move(base));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Element - String
+// ═══════════════════════════════════════════════════════════════════════════
 
 std::string Element::str() const {
     return fmt::format("Element({}, {})", name, geometry_type_name());
