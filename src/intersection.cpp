@@ -4794,6 +4794,86 @@ static FaceFrame face_frame(const NurbsSurface& s) {
     return f;
 }
 
+/// Boundary samples per side in one direction: cv_count - 1 when linear, else 4 * cv_count.
+static int boundary_steps(const NurbsSurface& s, int dir) {
+    return s.degree(dir) == 1 ? s.cv_count(dir) - 1 : 4 * s.cv_count(dir);
+}
+
+/// Surface boundary in loop order, each side split into boundary_steps pieces.
+static std::vector<Point> cutter_boundary(const NurbsSurface& cutter) {
+
+    const std::pair<double, double> cu = cutter.domain(0);
+    const std::pair<double, double> cv = cutter.domain(1);
+    const int nu = boundary_steps(cutter, 0);
+    const int nv = boundary_steps(cutter, 1);
+    std::vector<Point> points;
+
+    for (int i = 0; i < nu; ++i)
+        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.first));
+
+    for (int i = 0; i < nv; ++i)
+        points.push_back(cutter.point_at(cu.second, cv.first + (cv.second - cv.first) * i / nv));
+
+    for (int i = nu; i > 0; --i)
+        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.second));
+
+    for (int i = nv; i > 0; --i)
+        points.push_back(cutter.point_at(cu.first, cv.first + (cv.second - cv.first) * i / nv));
+
+    return points;
+}
+
+/// Boundary polygon of a surface in the plane through it, empty without area.
+static Polyline boundary_outline(const NurbsSurface& s, Plane& frame) {
+
+    const std::vector<Point> boundary = cutter_boundary(s);
+    Vector normal;
+
+    for (size_t i = 1; i + 1 < boundary.size(); ++i)
+        normal += (boundary[i] - boundary[0]).cross(boundary[i + 1] - boundary[0]);
+
+    if (normal.magnitude() < 1e-14)
+        return Polyline();
+
+    frame = Plane::from_point_normal(boundary[0], normal);
+    Polyline outline;
+
+    for (const Point& p : boundary) {
+        const Vector d = p - frame.origin();
+        outline.add_point(Point(d.dot(frame.x_axis()), d.dot(frame.y_axis()), 0.0));
+    }
+
+    return outline;
+}
+
+/// Whether the surface is the parallelogram of its corner frame, mapped affinely, checked on the boundary grid.
+static bool is_parallelogram_face(const NurbsSurface& s, const FaceFrame& f) {
+
+    if (std::abs(f.det) < 1e-18)
+        return false;
+
+    const std::pair<double, double> cu = s.domain(0);
+    const std::pair<double, double> cv = s.domain(1);
+    const int nu = boundary_steps(s, 0);
+    const int nv = boundary_steps(s, 1);
+    const double tol = 1e-9 * std::sqrt(f.exx + f.eyy);
+
+    for (int i = 0; i <= nu; ++i) {
+        const double a = static_cast<double>(i) / nu;
+
+        for (int j = 0; j <= nv; ++j) {
+            const double b = static_cast<double>(j) / nv;
+            const Point p = s.point_at(cu.first + (cu.second - cu.first) * a, cv.first + (cv.second - cv.first) * b);
+            const Point q(f.o[0] + a * f.eu[0] + b * f.ev[0], f.o[1] + a * f.eu[1] + b * f.ev[1], f.o[2] + a * f.eu[2] + b * f.ev[2]);
+
+            if (p.distance(q) > tol)
+                return false;
+        }
+    }
+
+    return true;
+}
+
 /// Narrow [t0, t1] to where c + t d lies in [0, 1]; false when d is zero and c is outside.
 static bool clip_axis(double c, double d, double& t0, double& t1) {
 
@@ -4812,20 +4892,15 @@ static bool clip_axis(double c, double d, double& t0, double& t1) {
     return true;
 }
 
-/// Narrow [tmin, tmax] to the part of the line inside the face; empty when it misses.
+/// Narrow [tmin, tmax] to the part of the line inside the parallelogram of the frame; empty when it misses.
 static bool clip_line_to_face(
-    const NurbsSurface& s,
+    const FaceFrame& f,
     const std::array<double, 3>& anchor,
     const std::array<double, 3>& dir,
     double& tmin,
     double& tmax,
     bool& empty
 ) {
-
-    FaceFrame f = face_frame(s);
-
-    if (std::abs(f.det) < 1e-18)
-        return false;
 
     double a0;
     double b0;
@@ -4848,13 +4923,96 @@ static bool clip_line_to_face(
     return true;
 }
 
+/// Parameter spans of the line inside the boundary polygon of the face; false when the polygon has no area.
+static bool clip_line_to_outline(
+    const NurbsSurface& s,
+    const std::array<double, 3>& anchor,
+    const std::array<double, 3>& dir,
+    std::vector<std::pair<double, double>>& spans
+) {
+
+    Plane frame;
+    const Polyline outline = boundary_outline(s, frame);
+
+    if (outline.point_count() == 0)
+        return false;
+
+    const Vector offset = Point(anchor[0], anchor[1], anchor[2]) - frame.origin();
+    const Vector direction(dir[0], dir[1], dir[2]);
+    const double ax = offset.dot(frame.x_axis());
+    const double ay = offset.dot(frame.y_axis());
+    const double dx = direction.dot(frame.x_axis());
+    const double dy = direction.dot(frame.y_axis());
+    const size_t n = outline.point_count();
+    std::vector<double> ts;
+
+    for (size_t i = 0; i < n; ++i) {
+        const Point a = outline[i];
+        const Point b = outline[(i + 1) % n];
+        const double ex = b[0] - a[0];
+        const double ey = b[1] - a[1];
+        const double denom = dx * ey - dy * ex;
+
+        if (std::abs(denom) < 1e-15)
+            continue;
+
+        const double wx = a[0] - ax;
+        const double wy = a[1] - ay;
+        const double along = (wx * dy - wy * dx) / denom;
+
+        if (along >= -1e-12 && along <= 1.0 + 1e-12)
+            ts.push_back((wx * ey - wy * ex) / denom);
+    }
+
+    std::sort(ts.begin(), ts.end());
+
+    for (size_t i = 0; i + 1 < ts.size(); ++i) {
+        const double mid = 0.5 * (ts[i] + ts[i + 1]);
+
+        if (ts[i + 1] - ts[i] <= 1e-9 || !outline.point_in_polygon_2d(Point(ax + mid * dx, ay + mid * dy, 0.0)))
+            continue;
+
+        if (!spans.empty() && ts[i] - spans.back().second <= 1e-9)
+            spans.back().second = ts[i + 1];
+        else
+            spans.push_back({ts[i], ts[i + 1]});
+    }
+
+    return true;
+}
+
+/// Parameter spans of the line inside the face: its corner parallelogram, else its boundary polygon; empty when it misses.
+static bool clip_line_to_face_spans(
+    const NurbsSurface& s,
+    const std::array<double, 3>& anchor,
+    const std::array<double, 3>& dir,
+    std::vector<std::pair<double, double>>& spans,
+    bool& empty
+) {
+
+    const FaceFrame f = face_frame(s);
+
+    if (!is_parallelogram_face(s, f))
+        return clip_line_to_outline(s, anchor, dir, spans);
+
+    double tmin = -1e300;
+    double tmax = 1e300;
+
+    if (!clip_line_to_face(f, anchor, dir, tmin, tmax, empty))
+        return false;
+
+    spans.push_back({tmin, tmax});
+
+    return true;
+}
+
 /// Exact plane-plane line clipped to both finite faces.
 static bool ssi_plane_plane(
     const NurbsSurface& sa,
     const RecogSurface& pa,
     const NurbsSurface& sb,
     const RecogSurface& pb,
-    NurbsCurve& c3,
+    std::vector<NurbsCurve>& out,
     bool& empty
 ) {
 
@@ -4880,24 +5038,31 @@ static bool ssi_plane_plane(
     };
 
     std::array<double, 3> dir{v[0] / vl, v[1] / vl, v[2] / vl};
-    double tmin = -1e300;
-    double tmax = 1e300;
+    std::vector<std::pair<double, double>> spans_a;
+    std::vector<std::pair<double, double>> spans_b;
 
-    if (!clip_line_to_face(sa, anchor, dir, tmin, tmax, empty) || !clip_line_to_face(sb, anchor, dir, tmin, tmax, empty))
+    if (!clip_line_to_face_spans(sa, anchor, dir, spans_a, empty) || !clip_line_to_face_spans(sb, anchor, dir, spans_b, empty))
         return false;
 
-    if (tmax - tmin <= 1e-9) {
-        empty = true;
+    for (const std::pair<double, double>& span_a : spans_a) {
+        for (const std::pair<double, double>& span_b : spans_b) {
+            const double tmin = std::max(span_a.first, span_b.first);
+            const double tmax = std::min(span_a.second, span_b.second);
 
-        return false;
+            if (tmax - tmin <= 1e-9)
+                continue;
+
+            Point start(anchor[0] + tmin * dir[0], anchor[1] + tmin * dir[1], anchor[2] + tmin * dir[2]);
+            Point end(anchor[0] + tmax * dir[0], anchor[1] + tmax * dir[1], anchor[2] + tmax * dir[2]);
+            NurbsCurve c3 = NurbsCurve::create(false, 1, {start, end});
+            c3.set_domain(0.0, 1.0);
+            out.push_back(c3);
+        }
     }
 
-    Point start(anchor[0] + tmin * dir[0], anchor[1] + tmin * dir[1], anchor[2] + tmin * dir[2]);
-    Point end(anchor[0] + tmax * dir[0], anchor[1] + tmax * dir[1], anchor[2] + tmax * dir[2]);
-    c3 = NurbsCurve::create(false, 1, {start, end});
-    c3.set_domain(0.0, 1.0);
+    empty = out.empty();
 
-    return true;
+    return !empty;
 }
 
 /// Tri-state analytic result: not analytic, recognised empty, or curve triples.
@@ -5057,7 +5222,32 @@ static bool bisect_height_v(
     return true;
 }
 
-/// Plane pcurve: the curve's control points mapped to the face's bilinear parameters.
+/// Pcurve on a planar face that is not its corner parallelogram: a polyline through 65 inverted points, invalid when the curve leaves the face.
+static NurbsCurve inverted_plane_pcurve(const NurbsSurface& srf, const FaceFrame& f, const NurbsCurve& c3d) {
+
+    const std::pair<double, double> domain = c3d.domain();
+    const double tol = 1e-6 * std::sqrt(f.exx + f.eyy);
+    std::vector<Point> uvs;
+
+    for (int i = 0; i <= 64; ++i) {
+        const Point p = c3d.point_at(domain.first + (domain.second - domain.first) * i / 64.0);
+        const std::tuple<double, double, double> closest = Closest::surface_point(srf, p, 0.0, 0.0, 0.0, 0.0);
+
+        if (std::get<2>(closest) > tol)
+            return NurbsCurve();
+
+        uvs.push_back(Point(std::get<0>(closest), std::get<1>(closest), 0.0));
+    }
+
+    NurbsCurve pc = NurbsCurve::create(false, 1, uvs);
+
+    if (!pc.set_domain(domain.first, domain.second))
+        return NurbsCurve();
+
+    return pc;
+}
+
+/// Plane pcurve: inverted points on a face that is not its corner parallelogram, else the control points mapped to its parameters.
 static NurbsCurve plane_pcurve(const NurbsSurface& srf, const NurbsCurve& c3d) {
 
     const std::pair<double, double> domain_u = srf.domain(0);
@@ -5067,6 +5257,13 @@ static NurbsCurve plane_pcurve(const NurbsSurface& srf, const NurbsCurve& c3d) {
     const double v0 = domain_v.first;
     const double v1 = domain_v.second;
     FaceFrame f = face_frame(srf);
+
+    if (!is_parallelogram_face(srf, f)) {
+        NurbsCurve inverted = inverted_plane_pcurve(srf, f, c3d);
+
+        if (inverted.is_valid())
+            return inverted;
+    }
 
     if (std::abs(f.det) < 1e-18)
         return NurbsCurve();
@@ -6854,14 +7051,10 @@ static bool analytic_curves(
 ) {
 
     if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::PLANE) {
-        NurbsCurve c3;
         bool empty = false;
 
-        if (ssi_plane_plane(a, ra, b, rb, c3, empty)) {
-            out.push_back(c3);
-
+        if (ssi_plane_plane(a, ra, b, rb, out, empty))
             return true;
-        }
 
         return empty;
     }
@@ -8321,30 +8514,6 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
 namespace {
 
-/// Cutter boundary in loop order, each side split into cv_count - 1 pieces when linear, else 4 * cv_count.
-std::vector<Point> cutter_boundary(const NurbsSurface& cutter) {
-
-    const std::pair<double, double> cu = cutter.domain(0);
-    const std::pair<double, double> cv = cutter.domain(1);
-    const int nu = cutter.degree(0) == 1 ? cutter.cv_count(0) - 1 : 4 * cutter.cv_count(0);
-    const int nv = cutter.degree(1) == 1 ? cutter.cv_count(1) - 1 : 4 * cutter.cv_count(1);
-    std::vector<Point> points;
-
-    for (int i = 0; i < nu; ++i)
-        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.first));
-
-    for (int i = 0; i < nv; ++i)
-        points.push_back(cutter.point_at(cu.second, cv.first + (cv.second - cv.first) * i / nv));
-
-    for (int i = nu; i > 0; --i)
-        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.second));
-
-    for (int i = nv; i > 0; --i)
-        points.push_back(cutter.point_at(cu.first, cv.first + (cv.second - cv.first) * i / nv));
-
-    return points;
-}
-
 /// Distance from a pcurve's lifted point to the cutter: clamped in the corner frame of a rectangle, else to the boundary polygon.
 class CutterGap {
 public:
@@ -8391,24 +8560,8 @@ CutterGap::CutterGap(const NurbsSurface& target_, const NurbsCurve& pc_, const N
     const bool bilinear = cutter.cv_count(0) == 2 && cutter.cv_count(1) == 2;
     rectangle = eu2 > 1e-28 && ev2 > 1e-28 && bilinear && square && parallelogram;
 
-    if (rectangle)
-        return;
-
-    const std::vector<Point> boundary = cutter_boundary(cutter);
-    Vector normal;
-
-    for (size_t i = 1; i + 1 < boundary.size(); ++i)
-        normal += (boundary[i] - boundary[0]).cross(boundary[i + 1] - boundary[0]);
-
-    if (normal.magnitude() < 1e-14)
-        return;
-
-    frame = Plane::from_point_normal(boundary[0], normal);
-
-    for (const Point& p : boundary) {
-        const Vector d = p - frame.origin();
-        outline.add_point(Point(d.dot(frame.x_axis()), d.dot(frame.y_axis()), 0.0));
-    }
+    if (!rectangle)
+        outline = boundary_outline(cutter, frame);
 }
 
 double CutterGap::gap(double t) const {

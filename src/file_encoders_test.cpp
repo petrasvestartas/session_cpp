@@ -6,6 +6,13 @@
 #include "mesh.h"
 #include "instance_ref.h"
 #include "xform.h"
+#include "polyline.h"
+#include "element.h"
+#include "objects.h"
+#include "brep.h"
+#include "nurbscurve.h"
+#include "nurbssurface.h"
+#include "nurbssurface_trimmed.h"
 #include "tolerance.h"
 #include <filesystem>
 #include <map>
@@ -265,6 +272,137 @@ namespace session_cpp {
 
         MINI_CHECK(loaded.definition_guid == "def-abc");
         MINI_CHECK(TOLERANCE.is_close(loaded[12], 1.0));
+    }
+
+    MINI_TEST("FileEncoders", "Decode Element Feature") {
+
+        const Polyline outline({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+        const ElementFeature feature("cut", 2, {outline}, "notch");
+        const std::string json_str = file_json_dumps(feature);
+        const ElementFeature loaded = file_json_loads<ElementFeature>(json_str);
+
+        MINI_CHECK(loaded.feature_type == "cut");
+        MINI_CHECK(loaded.face_index == 2);
+        MINI_CHECK(loaded.outlines.size() == 1);
+        MINI_CHECK(loaded.outlines[0].point_count() == 3);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Component") {
+
+        Component component;
+        component.type_name = "FloorBuilder";
+        component.name = "floor";
+        component.extra["height"] = 650;
+        const std::string json_str = file_json_dumps(component);
+        const Component loaded = file_json_loads<Component>(json_str);
+
+        MINI_CHECK(loaded.type_name == "FloorBuilder");
+        MINI_CHECK(loaded.name == "floor");
+        MINI_CHECK(loaded.extra["height"] == 650);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Nurbs Surface Trimmed") {
+
+        NurbsSurface surface(3, false, 2, 2, 2, 2);
+        surface.set_cv(0, 0, Point(0.0, 0.0, 0.0));
+        surface.set_cv(1, 0, Point(5.0, 0.0, 0.0));
+        surface.set_cv(0, 1, Point(0.0, 5.0, 0.0));
+        surface.set_cv(1, 1, Point(5.0, 5.0, 0.0));
+
+        const NurbsCurve outer = NurbsCurve::create(
+            true,
+            1,
+            {Point(0.1, 0.1, 0.0), Point(0.9, 0.1, 0.0), Point(0.9, 0.9, 0.0), Point(0.1, 0.9, 0.0)}
+        );
+        const NurbsCurve inner = NurbsCurve::create(
+            true,
+            1,
+            {Point(0.4, 0.4, 0.0), Point(0.6, 0.4, 0.0), Point(0.6, 0.6, 0.0)}
+        );
+
+        NurbsSurfaceTrimmed trimmed = NurbsSurfaceTrimmed::create(surface, outer);
+        trimmed.add_inner_loop(inner);
+        trimmed.name = "trimmed";
+        const std::string json_str = file_json_dumps(trimmed);
+        const NurbsSurfaceTrimmed loaded = file_json_loads<NurbsSurfaceTrimmed>(json_str);
+
+        MINI_CHECK(loaded.name == "trimmed");
+        MINI_CHECK(loaded.is_trimmed());
+        MINI_CHECK(loaded.inner_loop_count() == 1);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Nurbs Surface") {
+
+        NurbsSurface surface(3, false, 2, 2, 2, 2);
+        surface.set_cv(0, 0, Point(0.0, 0.0, 0.0));
+        surface.set_cv(1, 0, Point(5.0, 0.0, 0.0));
+        surface.set_cv(0, 1, Point(0.0, 5.0, 0.0));
+        surface.set_cv(1, 1, Point(5.0, 5.0, 0.0));
+        const Mesh mesh = surface.mesh();
+        const std::string json_str = file_json_dumps(surface);
+        const NurbsSurface loaded = file_json_loads<NurbsSurface>(json_str);
+
+        MINI_CHECK(loaded.mesh().number_of_vertices() == mesh.number_of_vertices());
+        MINI_CHECK(loaded.cv_count(0) == 2);
+        MINI_CHECK(loaded.cv_count(1) == 2);
+    }
+
+    MINI_TEST("FileEncoders", "Decode BRep") {
+
+        const BRep brep = BRep::create_box(1.0, 2.0, 3.0);
+        const std::string json_str = file_json_dumps(brep);
+        const BRep loaded = file_json_loads<BRep>(json_str);
+
+        MINI_CHECK(loaded.face_count() == 6);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Element") {
+
+        const Mesh mesh = Mesh::from_vertices_and_faces(
+            {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0)},
+            {{0, 1, 2}}
+        );
+        const Polyline outline({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+
+        Element element(mesh, "plate");
+        element.add_feature(ElementFeature("cut", 0, {outline}, "notch"));
+        const std::string json_str = file_json_dumps(element);
+        const Element loaded = file_json_loads<Element>(json_str);
+
+        MINI_CHECK(loaded.name == "plate");
+        MINI_CHECK(loaded.features_count() == 1);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Objects") {
+
+        Component component;
+        component.type_name = "FloorBuilder";
+        const Polyline outline({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
+        const std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>("def-abc", Xform::translation(1.0, 2.0, 3.0));
+        instance->features.push_back(ElementFeature("drill", 0, {outline}, "hole"));
+
+        Objects objects;
+        objects.points->push_back(std::make_shared<Point>(1.0, 2.0, 3.0));
+        objects.components->push_back(component);
+        objects.instances->push_back(instance);
+        const std::string json_str = file_json_dumps(objects);
+        const Objects loaded = file_json_loads<Objects>(json_str);
+
+        MINI_CHECK(loaded.points->size() == 1);
+        MINI_CHECK(loaded.components->size() == 1);
+        MINI_CHECK(loaded.instances->size() == 1);
+        MINI_CHECK(loaded.instances->at(0)->features.size() == 1);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Tolerance") {
+
+        Tolerance tolerance("MM");
+        tolerance.set_absolute(0.01);
+        const std::string json_str = file_json_dumps(tolerance);
+        const Tolerance loaded = file_json_loads<Tolerance>(json_str);
+
+        MINI_CHECK(loaded.unit() == "MM");
+        MINI_CHECK(TOLERANCE.is_close(loaded.absolute(), 0.01));
     }
 
     MINI_TEST("FileEncoders", "List In List In List") {

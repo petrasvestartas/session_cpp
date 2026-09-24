@@ -1417,6 +1417,37 @@ MINI_TEST("Intersection", "Cut Curves Slanted Cutter") {
     MINI_CHECK(distance_slanted(p) < 1e-3);
 }
 
+MINI_TEST("Intersection", "Cut Curves Plane Trapezoid") {
+
+    const NurbsSurface trapezoid = bilinear(Point(-3.0, -3.0, 0.0), Point(-1.0, 3.0, 0.0), Point(3.0, -3.0, 0.0), Point(7.0, 3.0, 0.0));
+    const NurbsSurface wall = bilinear(Point(6.0, -5.0, -1.0), Point(6.0, 5.0, -1.0), Point(6.0, -5.0, 1.0), Point(6.0, 5.0, 1.0));
+    const std::vector<NurbsCurve> target_cuts = Intersection::cut_curves_on_surface(trapezoid, wall);
+    const std::vector<NurbsCurve> cutter_cuts = Intersection::cut_curves_on_surface(wall, trapezoid);
+
+    MINI_CHECK(target_cuts.size() == 1);
+    MINI_CHECK(cutter_cuts.size() == 1);
+
+    const std::pair<double, double> target_domain = target_cuts[0].domain();
+    const Point target_uv0 = target_cuts[0].point_at(target_domain.first);
+    const Point target_uv1 = target_cuts[0].point_at(target_domain.second);
+    const Point target_p0 = trapezoid.point_at(target_uv0[0], target_uv0[1]);
+    const Point target_p1 = trapezoid.point_at(target_uv1[0], target_uv1[1]);
+
+    MINI_CHECK(std::abs(target_p0[0] - 6.0) < 1e-3);
+    MINI_CHECK(std::abs(target_p1[0] - 6.0) < 1e-3);
+    MINI_CHECK(std::abs(std::min(target_p0[1], target_p1[1]) - 1.5) < 1e-3);
+    MINI_CHECK(std::abs(std::max(target_p0[1], target_p1[1]) - 3.0) < 1e-3);
+
+    const std::pair<double, double> cutter_domain = cutter_cuts[0].domain();
+    const Point cutter_uv0 = cutter_cuts[0].point_at(cutter_domain.first);
+    const Point cutter_uv1 = cutter_cuts[0].point_at(cutter_domain.second);
+    const Point cutter_p0 = wall.point_at(cutter_uv0[0], cutter_uv0[1]);
+    const Point cutter_p1 = wall.point_at(cutter_uv1[0], cutter_uv1[1]);
+
+    MINI_CHECK(std::abs(std::min(cutter_p0[1], cutter_p1[1]) - 1.5) < 1e-3);
+    MINI_CHECK(std::abs(std::max(cutter_p0[1], cutter_p1[1]) - 3.0) < 1e-3);
+}
+
 MINI_TEST("Intersection", "Remap") {
 
     MINI_CHECK(std::fabs(Intersection::remap(5.0, 0.0, 10.0, 0.0, 1.0) - 0.5) < 1e-9);
