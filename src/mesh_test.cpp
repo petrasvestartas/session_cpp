@@ -30,6 +30,7 @@ MINI_TEST("Mesh", "Constructor") {
     MINI_CHECK(mcopy == mesh);
 
     MINI_CHECK(mesh.is_valid());
+
     mesh.name = "hexagon";
 
     std::vector<Color> palette = Color::palette();
@@ -75,6 +76,7 @@ MINI_TEST("Mesh", "Constructor") {
     mesh.color_mode = ColorMode::FACECOLORS;
 
     MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+
     mesh.clear_facecolors();
 
     MINI_CHECK(mesh.color_mode == ColorMode::OBJECTCOLOR);
@@ -83,6 +85,7 @@ MINI_TEST("Mesh", "Constructor") {
     mesh.color_mode = ColorMode::FACECOLORS;
 
     MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
+
     mesh.clear_pointcolors();
 
     MINI_CHECK(mesh.color_mode == ColorMode::FACECOLORS);
@@ -459,6 +462,7 @@ MINI_TEST("Mesh", "From Polygon With Holes Many") {
     MINI_CHECK(meshes[1].is_valid());
     MINI_CHECK(meshes[2].is_valid());
     MINI_CHECK(meshes[3].is_valid());
+
     std::vector<Mesh> meshes_seq = Mesh::from_polygon_with_holes_many(inputs, false, false);
 
     MINI_CHECK(meshes_seq[0].number_of_faces() == meshes[0].number_of_faces());
@@ -854,18 +858,23 @@ MINI_TEST("Mesh", "Attributes") {
 
     MINI_CHECK(ne.size() == 4);
     MINI_CHECK(ne[0] == std::make_pair(0ul, 1ul));
+
     std::vector<std::pair<size_t, size_t>> ni = mesh.naked_edges(false);
 
     MINI_CHECK(ni.size() == 8);
+
     std::vector<size_t> nv = mesh.naked_vertices(true);
 
     MINI_CHECK(nv.size() == 4);
+
     std::vector<size_t> nvi = mesh.naked_vertices(false);
 
     MINI_CHECK(nvi.size() == 4);
+
     std::vector<size_t> nf = mesh.naked_faces(true);
 
     MINI_CHECK(nf.size() == 4);
+
     std::vector<size_t> nfi = mesh.naked_faces(false);
 
     MINI_CHECK(nfi.size() == 1);
@@ -952,10 +961,12 @@ MINI_TEST("Mesh", "Vertex And Face Operations") {
     mesh = mesh.unweld();
 
     MINI_CHECK(mesh.number_of_vertices() == 24);
+
     mesh = mesh.weld(0.001);
 
     MINI_CHECK(mesh.number_of_vertices() == 8);
     MINI_CHECK(mesh.number_of_faces() == 6);
+
     std::vector<size_t> fv0 = *mesh.face_vertices(0);
     std::vector<size_t> fv1 = *mesh.face_vertices(1);
     std::vector<size_t> fv2 = *mesh.face_vertices(2);
@@ -1993,6 +2004,7 @@ MINI_TEST("Mesh", "Vertices On Boundary") {
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
     MINI_CHECK(mesh.vertices_on_boundary().size() == 0);
+
     mesh.remove_face(mesh.faces()[0]);
 
     MINI_CHECK(mesh.vertices_on_boundary().size() == 4);
@@ -2003,6 +2015,7 @@ MINI_TEST("Mesh", "Edges On Boundary") {
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
     MINI_CHECK(mesh.edges_on_boundary().size() == 0);
+
     mesh.remove_face(mesh.faces()[0]);
 
     MINI_CHECK(mesh.edges_on_boundary().size() == 4);
@@ -2013,6 +2026,7 @@ MINI_TEST("Mesh", "Faces On Boundary") {
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
     MINI_CHECK(mesh.faces_on_boundary().size() == 0);
+
     mesh.remove_face(mesh.faces()[0]);
 
     MINI_CHECK(mesh.faces_on_boundary().size() == 4);
@@ -2025,6 +2039,7 @@ MINI_TEST("Mesh", "Halfedge Face") {
 
     MINI_CHECK(f.has_value());
     MINI_CHECK(*f == 0);
+
     mesh.remove_face(0);
 
     MINI_CHECK(!mesh.halfedge_face({0, 3}).has_value());
@@ -2067,9 +2082,11 @@ MINI_TEST("Mesh", "Vertex Sample") {
     std::vector<size_t> s = mesh.vertex_sample(3, 42);
 
     MINI_CHECK(s.size() == 3);
+
     std::set<size_t> uniq(s.begin(), s.end());
 
     MINI_CHECK(uniq.size() == 3);
+
     std::vector<size_t> s2 = mesh.vertex_sample(3, 42);
 
     MINI_CHECK(s == s2);
@@ -2081,6 +2098,7 @@ MINI_TEST("Mesh", "Edge Sample") {
     std::vector<std::pair<size_t, size_t>> s = mesh.edge_sample(2, 7);
 
     MINI_CHECK(s.size() == 2);
+
     std::vector<std::pair<size_t, size_t>> s2 = mesh.edge_sample(2, 7);
 
     MINI_CHECK(s == s2);
@@ -2092,6 +2110,7 @@ MINI_TEST("Mesh", "Face Sample") {
     std::vector<size_t> s = mesh.face_sample(2, 11);
 
     MINI_CHECK(s.size() == 2);
+
     std::vector<size_t> s2 = mesh.face_sample(2, 11);
 
     MINI_CHECK(s == s2);
@@ -2283,6 +2302,7 @@ MINI_TEST("Mesh", "Refresh Guid") {
     Mesh copy = mesh;
 
     MINI_CHECK(copy.guid() == original);
+
     copy.refresh_guid();
 
     MINI_CHECK(copy.guid() != original);

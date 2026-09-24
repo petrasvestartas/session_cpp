@@ -1501,6 +1501,37 @@ static void lp_add_top_triangles(
     }
 }
 
+/// Quad wall between bottom edge j and its matched top edge ti, recorded with the original keys it spans.
+static void lp_add_quad_wall(
+    LoftPanel& panel,
+    const std::vector<size_t>& top_vkeys,
+    const std::vector<size_t>& bot_vkeys,
+    size_t j,
+    size_t ti,
+    double edge_gap
+) {
+
+    const size_t n = top_vkeys.size();
+    const size_t m = bot_vkeys.size();
+    const size_t b0 = panel.orig_bot_to_local[bot_vkeys[j]];
+    const size_t b1 = panel.orig_bot_to_local[bot_vkeys[(j + 1) % m]];
+    const size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
+    const size_t t1 = panel.orig_top_to_local[top_vkeys[(ti + 1) % n]];
+    const std::optional<size_t> fk = lp_add_quad(panel, b0, b1, t0, t1, edge_gap);
+
+    if (!fk)
+        return;
+
+    LoftWallFace w;
+    w.face_key = *fk;
+    w.is_quad = true;
+    w.top_v0 = top_vkeys[ti];
+    w.top_v1 = top_vkeys[(ti + 1) % n];
+    w.bot_v0 = bot_vkeys[(j + 1) % m];
+    w.bot_v1 = bot_vkeys[j];
+    panel.wall_faces.push_back(w);
+}
+
 /// Walls of one panel: a quad per mutually nearest edge pair, a triangle for every unmatched edge.
 static void lp_add_walls(
     LoftPanel& panel,
@@ -1543,21 +1574,7 @@ static void lp_add_walls(
         const size_t ti = bot_to_top[j];
 
         if (bot_dist[j] <= threshold && top_to_bot[ti] == j) {
-            const size_t t0 = panel.orig_top_to_local[top_vkeys[ti]];
-            const size_t t1 = panel.orig_top_to_local[top_vkeys[(ti + 1) % n]];
-            const std::optional<size_t> fk = lp_add_quad(panel, b0, b1, t0, t1, edge_gap);
-
-            if (fk) {
-                LoftWallFace w;
-                w.face_key = *fk;
-                w.is_quad = true;
-                w.top_v0 = top_vkeys[ti];
-                w.top_v1 = top_vkeys[(ti + 1) % n];
-                w.bot_v0 = bot_vkeys[(j + 1) % m];
-                w.bot_v1 = bot_vkeys[j];
-                panel.wall_faces.push_back(w);
-            }
-
+            lp_add_quad_wall(panel, top_vkeys, bot_vkeys, j, ti, edge_gap);
             top_used[ti] = true;
         } else if (!skip_triangles) {
             const size_t tv = panel.orig_top_to_local[top_vkeys[lp_nearest(bot_mids[j], top_pts)]];
@@ -1573,6 +1590,27 @@ static void lp_add_walls(
 
     if (!skip_triangles)
         lp_add_top_triangles(panel, top_mids, top_vkeys, bot_pts, bot_vkeys, top_used);
+}
+
+/// Face index of every wall and the role of every wall and cap face.
+static void lp_assign_roles(LoftPanel& panel) {
+
+    std::map<size_t, size_t> fkey_to_idx;
+    size_t fi = 0;
+
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : panel.mesh.face)
+        fkey_to_idx[entry.first] = fi++;
+
+    for (LoftWallFace& w : panel.wall_faces) {
+        w.face_index = fkey_to_idx[w.face_key];
+        panel.face_roles[w.face_key] = w.is_quad ? LoftFaceRole::QuadWall : LoftFaceRole::TriWall;
+    }
+
+    if (panel.top_face_key)
+        panel.face_roles[*panel.top_face_key] = LoftFaceRole::TopCap;
+
+    if (panel.bot_face_key)
+        panel.face_roles[*panel.bot_face_key] = LoftFaceRole::BotCap;
 }
 
 /// One panel between matched faces tfk of the top mesh and bfk of the bottom mesh.
@@ -1624,22 +1662,7 @@ static LoftPanel lp_build_panel(
     if (add_caps)
         panel.bot_face_key = lp_add_cap(panel.mesh, panel.bot_vertices, bot_pts);
 
-    std::map<size_t, size_t> fkey_to_idx;
-    size_t fi = 0;
-
-    for (const std::pair<const size_t, std::vector<size_t>>& entry : panel.mesh.face)
-        fkey_to_idx[entry.first] = fi++;
-
-    for (LoftWallFace& w : panel.wall_faces) {
-        w.face_index = fkey_to_idx[w.face_key];
-        panel.face_roles[w.face_key] = w.is_quad ? LoftFaceRole::QuadWall : LoftFaceRole::TriWall;
-    }
-
-    if (panel.top_face_key)
-        panel.face_roles[*panel.top_face_key] = LoftFaceRole::TopCap;
-
-    if (panel.bot_face_key)
-        panel.face_roles[*panel.bot_face_key] = LoftFaceRole::BotCap;
+    lp_assign_roles(panel);
 
     return panel;
 }
@@ -2718,6 +2741,31 @@ static size_t weld_find(std::vector<size_t>& parent, size_t x) {
     return x;
 }
 
+/// Join in the union-find forest every pair of positions closer than tolerance.
+static void weld_union(std::vector<size_t>& parent, const std::vector<Point>& positions, double tolerance) {
+
+    std::vector<OBB> boxes;
+    boxes.reserve(positions.size());
+
+    for (const Point& p : positions)
+        boxes.push_back(OBB::from_point(p, tolerance));
+
+    const double ws = SpatialBVH::compute_world_size(boxes);
+    SpatialBVH bvh = SpatialBVH::from_boxes(boxes, ws);
+    const std::vector<std::pair<int, int>> pairs = std::get<0>(bvh.check_all_collisions(boxes));
+
+    for (const std::pair<int, int>& pair : pairs) {
+        if (positions[pair.first].distance(positions[pair.second]) > tolerance)
+            continue;
+
+        const size_t ri = weld_find(parent, pair.first);
+        const size_t rj = weld_find(parent, pair.second);
+
+        if (ri != rj)
+            parent[ri] = rj;
+    }
+}
+
 Mesh Mesh::weld(double tolerance) const {
 
     if (vertex.empty())
@@ -2734,28 +2782,8 @@ Mesh Mesh::weld(double tolerance) const {
     std::vector<size_t> parent(n);
     std::iota(parent.begin(), parent.end(), 0);
 
-    if (tolerance > 0.0) {
-        std::vector<OBB> boxes;
-        boxes.reserve(n);
-
-        for (const Point& p : positions)
-            boxes.push_back(OBB::from_point(p, tolerance));
-
-        const double ws = SpatialBVH::compute_world_size(boxes);
-        SpatialBVH bvh = SpatialBVH::from_boxes(boxes, ws);
-        const std::vector<std::pair<int, int>> pairs = std::get<0>(bvh.check_all_collisions(boxes));
-
-        for (const std::pair<int, int>& pair : pairs) {
-            if (positions[pair.first].distance(positions[pair.second]) > tolerance)
-                continue;
-
-            const size_t ri = weld_find(parent, pair.first);
-            const size_t rj = weld_find(parent, pair.second);
-
-            if (ri != rj)
-                parent[ri] = rj;
-        }
-    }
+    if (tolerance > 0.0)
+        weld_union(parent, positions, tolerance);
 
     std::map<size_t, size_t> root_to_rep;
 
@@ -2795,10 +2823,10 @@ Mesh Mesh::weld(double tolerance) const {
     return m;
 }
 
-bool Mesh::unify_winding() {
-
-    if (face.size() < 2)
-        return false;
+/// Faces on every undirected edge as (face key, u, v) in ring direction.
+static std::map<std::pair<size_t, size_t>, std::vector<std::tuple<size_t, size_t, size_t>>> winding_edge_faces(
+    const std::map<size_t, std::vector<size_t>>& face
+) {
 
     std::map<std::pair<size_t, size_t>, std::vector<std::tuple<size_t, size_t, size_t>>> edge_faces;
 
@@ -2812,6 +2840,15 @@ bool Mesh::unify_winding() {
             edge_faces[std::minmax(u, v)].emplace_back(entry.first, u, v);
         }
     }
+
+    return edge_faces;
+}
+
+/// Faces to reverse so every face agrees with the neighbor it was first reached from.
+static std::set<size_t> winding_flipped(
+    const std::map<size_t, std::vector<size_t>>& face,
+    const std::map<std::pair<size_t, size_t>, std::vector<std::tuple<size_t, size_t, size_t>>>& edge_faces
+) {
 
     std::set<size_t> visited;
     std::set<size_t> flipped;
@@ -2829,7 +2866,7 @@ bool Mesh::unify_winding() {
             const size_t f = queue.back();
             queue.pop_back();
             const bool is_flipped = flipped.count(f) > 0;
-            const std::vector<size_t>& verts = face[f];
+            const std::vector<size_t>& verts = face.at(f);
             const size_t n = verts.size();
 
             for (size_t i = 0; i < n; ++i) {
@@ -2838,7 +2875,7 @@ bool Mesh::unify_winding() {
                 const size_t eff_u = is_flipped ? v_orig : u_orig;
                 const size_t eff_v = is_flipped ? u_orig : v_orig;
 
-                for (const std::tuple<size_t, size_t, size_t>& adj : edge_faces[std::minmax(u_orig, v_orig)]) {
+                for (const std::tuple<size_t, size_t, size_t>& adj : edge_faces.at(std::minmax(u_orig, v_orig))) {
                     const size_t adj_key = std::get<0>(adj);
                     const size_t adj_u = std::get<1>(adj);
                     const size_t adj_v = std::get<2>(adj);
@@ -2855,6 +2892,16 @@ bool Mesh::unify_winding() {
             }
         }
     }
+
+    return flipped;
+}
+
+bool Mesh::unify_winding() {
+
+    if (face.size() < 2)
+        return false;
+
+    const std::set<size_t> flipped = winding_flipped(face, winding_edge_faces(face));
 
     if (flipped.empty())
         return false;
@@ -3456,11 +3503,12 @@ template <typename T> static std::vector<T> lcg_sample(const std::vector<T>& key
     if (s == 0)
         s = 1;
 
+    const uint64_t period = uint64_t(1) << 31;
     std::set<size_t> used;
     std::vector<T> out;
     out.reserve(take);
 
-    while (out.size() < take) {
+    for (uint64_t step = 0; step < period && out.size() < take; ++step) {
         s = (s * 1103515245u + 12345u) & 0x7FFFFFFFu;
         const size_t i = static_cast<size_t>(s) % n;
 
@@ -3970,6 +4018,55 @@ static std::optional<Vector> dihedral_arm(const Point& centroid, const Point& mi
     return d / len;
 }
 
+/// Arc of arc_n + 1 points around mid from the arm toward c0 to the arm toward c1, empty when degenerate.
+static std::vector<Point> dihedral_arc(
+    const Point& ep0,
+    const Point& ep1,
+    const Point& mid,
+    const Point& c0,
+    const Point& c1,
+    double scale,
+    int arc_n
+) {
+
+    Vector edge = ep1 - ep0;
+
+    if (edge.magnitude() < 1e-10 || !edge.normalize_self())
+        return {};
+
+    const std::optional<Vector> d0 = dihedral_arm(c0, mid, edge);
+    const std::optional<Vector> d1 = dihedral_arm(c1, mid, edge);
+
+    if (!d0 || !d1)
+        return {};
+
+    const double theta = std::acos(std::clamp(d0->dot(*d1), -1.0, 1.0));
+
+    if (std::abs(std::sin(theta)) < 1e-10)
+        return {};
+
+    std::vector<Point> arc_pts;
+    arc_pts.reserve(arc_n + 1);
+
+    for (int j = 0; j <= arc_n; j++) {
+        const double t = static_cast<double>(j) / arc_n;
+        const double w1 = std::sin((1.0 - t) * theta) / std::sin(theta);
+        const double w2 = std::sin(t * theta) / std::sin(theta);
+        arc_pts.push_back(mid + (*d0 * w1 + *d1 * w2) * scale);
+    }
+
+    return arc_pts;
+}
+
+/// Label point at p named by the angle.
+static Point dihedral_label(const Point& p, double angle, const Color& color) {
+
+    Point pt(p[0], p[1], p[2], std::to_string(angle));
+    pt.pointcolor = color;
+
+    return pt;
+}
+
 std::tuple<std::map<std::pair<size_t, size_t>, double>, std::vector<Polyline>, std::vector<Point>> Mesh::
     dihedral_angles(double scale, bool with_arcs, bool with_points) const {
 
@@ -3993,41 +4090,17 @@ std::tuple<std::map<std::pair<size_t, size_t>, double>, std::vector<Polyline>, s
         const Point mid((ep0[0] + ep1[0]) * 0.5, (ep0[1] + ep1[1]) * 0.5, (ep0[2] + ep1[2]) * 0.5);
 
         if (scale == 0.0) {
-            if (!with_points)
-                continue;
+            if (with_points)
+                points.push_back(dihedral_label(mid, *da, label_color));
 
-            Point pt(mid[0], mid[1], mid[2], std::to_string(*da));
-            pt.pointcolor = label_color;
-            points.push_back(pt);
             continue;
         }
 
         const std::vector<size_t> ef = *edge_faces(u, v);
-        Vector edge = ep1 - ep0;
+        const std::vector<Point> arc_pts = dihedral_arc(ep0, ep1, mid, *face_centroid(ef[0]), *face_centroid(ef[1]), scale, arc_n);
 
-        if (edge.magnitude() < 1e-10 || !edge.normalize_self())
+        if (arc_pts.empty())
             continue;
-
-        const std::optional<Vector> d0 = dihedral_arm(*face_centroid(ef[0]), mid, edge);
-        const std::optional<Vector> d1 = dihedral_arm(*face_centroid(ef[1]), mid, edge);
-
-        if (!d0 || !d1)
-            continue;
-
-        const double theta = std::acos(std::clamp(d0->dot(*d1), -1.0, 1.0));
-
-        if (std::abs(std::sin(theta)) < 1e-10)
-            continue;
-
-        std::vector<Point> arc_pts;
-        arc_pts.reserve(arc_n + 1);
-
-        for (int j = 0; j <= arc_n; j++) {
-            const double t = static_cast<double>(j) / arc_n;
-            const double w1 = std::sin((1.0 - t) * theta) / std::sin(theta);
-            const double w2 = std::sin(t * theta) / std::sin(theta);
-            arc_pts.push_back(mid + (*d0 * w1 + *d1 * w2) * scale);
-        }
 
         if (with_arcs) {
             Polyline arc(arc_pts);
@@ -4036,11 +4109,8 @@ std::tuple<std::map<std::pair<size_t, size_t>, double>, std::vector<Polyline>, s
             arcs.push_back(arc);
         }
 
-        if (with_points) {
-            Point pt(arc_pts[arc_n / 2][0], arc_pts[arc_n / 2][1], arc_pts[arc_n / 2][2], std::to_string(*da));
-            pt.pointcolor = label_color;
-            points.push_back(pt);
-        }
+        if (with_points)
+            points.push_back(dihedral_label(arc_pts[arc_n / 2], *da, label_color));
     }
 
     return {angles, arcs, points};
@@ -4817,121 +4887,106 @@ static std::vector<CutFace> cut_caps(
     return cut_regions(cut_loops(section, uv), uv);
 }
 
-Mesh Mesh::cut_by_plane(const Plane& plane) const {
+/// Face ring followed by its hole rings, every hole turned against the face normal.
+static std::vector<std::vector<size_t>> cut_rings(
+    size_t fk,
+    const std::vector<size_t>& ring,
+    const std::map<size_t, std::vector<std::vector<size_t>>>& face_holes,
+    const Vector& normal,
+    const std::map<size_t, Point>& points
+) {
 
-    const double big = std::numeric_limits<double>::max();
-    Point low(big, big, big);
-    Point high(-big, -big, -big);
-    std::map<size_t, Point> points;
+    std::vector<std::vector<size_t>> rings = {ring};
+    const auto hit = face_holes.find(fk);
 
-    for (const std::pair<const size_t, VertexData>& entry : vertex) {
-        const Point point = entry.second.position();
+    if (hit != face_holes.end())
+        for (const std::vector<size_t>& hole : hit->second) {
+            rings.push_back(hole);
 
-        for (int k = 0; k < 3; ++k) {
-            low[k] = std::min(low[k], point[k]);
-            high[k] = std::max(high[k], point[k]);
+            if (newell_normal(cut_points(hole, points)).dot(normal) > 0.0)
+                std::reverse(rings.back().begin(), rings.back().end());
         }
 
-        points[entry.first] = point;
-    }
+    return rings;
+}
 
-    const double tolerance = 1e-9 * low.distance(high);
-    std::map<size_t, double> distance;
-    double lowest = 0.0;
-    double highest = 0.0;
+/// Rings with the crossing vertex inserted after every edge that crosses the plane.
+static std::vector<std::vector<size_t>> cut_split_rings(
+    const std::vector<std::vector<size_t>>& rings,
+    std::map<std::pair<size_t, size_t>, size_t>& crossings,
+    std::map<size_t, double>& distance,
+    std::map<size_t, Point>& points,
+    size_t first
+) {
 
-    for (const std::pair<const size_t, Point>& entry : points) {
-        const double d = (entry.second - plane.origin()).dot(plane.z_axis());
-        const double value = std::abs(d) <= tolerance ? 0.0 : d;
-        distance[entry.first] = value;
-        lowest = std::min(lowest, value);
-        highest = std::max(highest, value);
-    }
+    std::vector<std::vector<size_t>> split;
 
-    if (lowest >= 0.0) {
-        Mesh copy = *this;
-        copy.refresh_guid();
+    for (const std::vector<size_t>& r : rings) {
+        split.emplace_back();
 
-        return copy;
-    }
+        for (size_t i = 0; i < r.size(); ++i) {
+            split.back().push_back(r[i]);
 
-    if (highest <= 0.0)
-        return Mesh();
-
-    std::map<std::pair<size_t, size_t>, size_t> crossings;
-    std::map<size_t, CutFace> output;
-    size_t count = max_face;
-
-    for (const std::pair<const size_t, std::vector<size_t>>& entry : face) {
-        const size_t fk = entry.first;
-        const std::vector<size_t>& ring = entry.second;
-        const Vector normal = newell_normal(cut_points(ring, points));
-        std::vector<std::vector<size_t>> rings = {ring};
-        const auto hit = face_holes.find(fk);
-
-        if (hit != face_holes.end())
-            for (const std::vector<size_t>& hole : hit->second) {
-                rings.push_back(hole);
-
-                if (newell_normal(cut_points(hole, points)).dot(normal) > 0.0)
-                    std::reverse(rings.back().begin(), rings.back().end());
-            }
-
-        bool above = false;
-        bool below = false;
-
-        for (const std::vector<size_t>& r : rings)
-            for (size_t key : r) {
-                above = above || distance[key] > 0.0;
-                below = below || distance[key] < 0.0;
-            }
-
-        if (!above)
-            continue;
-
-        if (!below) {
-            output[fk] = {rings, fk};
-            continue;
-        }
-
-        Vector xaxis = plane.z_axis() - normal * plane.z_axis().dot(normal);
-
-        if (!xaxis.normalize_self())
-            continue;
-
-        std::vector<std::vector<size_t>> split;
-
-        for (const std::vector<size_t>& r : rings) {
-            split.emplace_back();
-
-            for (size_t i = 0; i < r.size(); ++i) {
-                split.back().push_back(r[i]);
-
-                if (distance[r[i]] * distance[r[(i + 1) % r.size()]] < 0.0)
-                    split.back().push_back(cut_crossing(
-                        {r[i], r[(i + 1) % r.size()]},
-                        crossings,
-                        distance,
-                        points,
-                        max_vertex
-                    ));
-            }
-        }
-
-        std::vector<CutFace> pieces = cut_pieces(split, normal, xaxis, distance, points, tolerance);
-
-        for (size_t i = 0; i < pieces.size(); ++i) {
-            pieces[i].parent = fk;
-            output[i == 0 ? fk : count++] = pieces[i];
+            if (distance[r[i]] * distance[r[(i + 1) % r.size()]] < 0.0)
+                split.back().push_back(cut_crossing({r[i], r[(i + 1) % r.size()]}, crossings, distance, points, first));
         }
     }
 
-    for (const CutFace& cap : cut_caps(output, distance, points, plane))
-        output[count++] = cap;
+    return split;
+}
+
+/// Kept pieces of face fk: none below the plane, the whole face above it, the split pieces when it crosses.
+static std::vector<CutFace> cut_face(
+    size_t fk,
+    const std::vector<std::vector<size_t>>& rings,
+    const Vector& normal,
+    const Plane& plane,
+    std::map<std::pair<size_t, size_t>, size_t>& crossings,
+    std::map<size_t, double>& distance,
+    std::map<size_t, Point>& points,
+    size_t first,
+    double tolerance
+) {
+
+    bool above = false;
+    bool below = false;
+
+    for (const std::vector<size_t>& r : rings)
+        for (size_t key : r) {
+            above = above || distance[key] > 0.0;
+            below = below || distance[key] < 0.0;
+        }
+
+    if (!above)
+        return {};
+
+    if (!below)
+        return {{rings, fk}};
+
+    Vector xaxis = plane.z_axis() - normal * plane.z_axis().dot(normal);
+
+    if (!xaxis.normalize_self())
+        return {};
+
+    const std::vector<std::vector<size_t>> split = cut_split_rings(rings, crossings, distance, points, first);
+    std::vector<CutFace> pieces = cut_pieces(split, normal, xaxis, distance, points, tolerance);
+
+    for (CutFace& piece : pieces)
+        piece.parent = fk;
+
+    return pieces;
+}
+
+/// Mesh of the kept pieces with the parent face data and the triangulation of every untouched face.
+static Mesh cut_result(
+    const std::map<size_t, CutFace>& output,
+    std::map<size_t, Point>& points,
+    const std::map<size_t, std::vector<size_t>>& face,
+    const std::map<size_t, std::map<std::string, double>>& facedata,
+    const std::map<size_t, std::vector<std::array<size_t, 3>>>& triangulation
+) {
 
     Mesh result;
-    result.name = name;
-    result.objectcolor = objectcolor;
     std::set<size_t> used;
 
     for (const std::pair<const size_t, CutFace>& entry : output)
@@ -4962,6 +5017,75 @@ Mesh Mesh::cut_by_plane(const Plane& plane) const {
         if (!whole && (piece.rings.size() > 1 || piece.rings[0].size() > 3))
             result.set_face_triangulation(fk, cut_triangulation(piece, points));
     }
+
+    return result;
+}
+
+/// Snap distance of the plane test, 1e-9 of the bounding box diagonal.
+static double cut_tolerance(const std::map<size_t, Point>& points) {
+
+    const double big = std::numeric_limits<double>::max();
+    Point low(big, big, big);
+    Point high(-big, -big, -big);
+
+    for (const std::pair<const size_t, Point>& entry : points)
+        for (int k = 0; k < 3; ++k) {
+            low[k] = std::min(low[k], entry.second[k]);
+            high[k] = std::max(high[k], entry.second[k]);
+        }
+
+    return 1e-9 * low.distance(high);
+}
+
+Mesh Mesh::cut_by_plane(const Plane& plane) const {
+
+    std::map<size_t, Point> points;
+
+    for (const std::pair<const size_t, VertexData>& entry : vertex)
+        points[entry.first] = entry.second.position();
+
+    const double tolerance = cut_tolerance(points);
+    std::map<size_t, double> distance;
+    double lowest = 0.0;
+    double highest = 0.0;
+
+    for (const std::pair<const size_t, Point>& entry : points) {
+        const double d = (entry.second - plane.origin()).dot(plane.z_axis());
+        const double value = std::abs(d) <= tolerance ? 0.0 : d;
+        distance[entry.first] = value;
+        lowest = std::min(lowest, value);
+        highest = std::max(highest, value);
+    }
+
+    if (lowest >= 0.0) {
+        Mesh copy = *this;
+        copy.refresh_guid();
+
+        return copy;
+    }
+
+    if (highest <= 0.0)
+        return Mesh();
+
+    std::map<std::pair<size_t, size_t>, size_t> crossings;
+    std::map<size_t, CutFace> output;
+    size_t count = max_face;
+
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : face) {
+        const Vector normal = newell_normal(cut_points(entry.second, points));
+        const std::vector<std::vector<size_t>> rings = cut_rings(entry.first, entry.second, face_holes, normal, points);
+        const std::vector<CutFace> pieces = cut_face(entry.first, rings, normal, plane, crossings, distance, points, max_vertex, tolerance);
+
+        for (size_t i = 0; i < pieces.size(); ++i)
+            output[i == 0 ? entry.first : count++] = pieces[i];
+    }
+
+    for (const CutFace& cap : cut_caps(output, distance, points, plane))
+        output[count++] = cap;
+
+    Mesh result = cut_result(output, points, face, facedata, triangulation);
+    result.name = name;
+    result.objectcolor = objectcolor;
 
     return result;
 }
@@ -5000,6 +5124,58 @@ static std::vector<Color> colors_from_json(const nlohmann::json& arr) {
     return colors;
 }
 
+/// Halfedge connectivity keyed by vertex, null where no face lies on the left.
+static nlohmann::ordered_json halfedge_to_json(const std::map<size_t, std::map<size_t, std::optional<size_t>>>& halfedge) {
+
+    nlohmann::ordered_json halfedge_json = nlohmann::ordered_json::object();
+
+    for (const std::pair<const size_t, std::map<size_t, std::optional<size_t>>>& entry : halfedge) {
+        nlohmann::ordered_json neighbor_json = nlohmann::ordered_json::object();
+
+        for (const std::pair<const size_t, std::optional<size_t>>& neighbor : entry.second)
+            neighbor_json[std::to_string(neighbor.first)] =
+                neighbor.second.has_value() ? nlohmann::json(neighbor.second.value()) : nlohmann::json(nullptr);
+
+        halfedge_json[std::to_string(entry.first)] = neighbor_json;
+    }
+
+    return halfedge_json;
+}
+
+/// Triangles keyed by face as [a, b, c] arrays.
+static nlohmann::ordered_json triangulation_to_json(const std::map<size_t, std::vector<std::array<size_t, 3>>>& triangulation) {
+
+    nlohmann::ordered_json triangulation_json = nlohmann::ordered_json::object();
+
+    for (const std::pair<const size_t, std::vector<std::array<size_t, 3>>>& entry : triangulation) {
+        nlohmann::json tri_arr = nlohmann::json::array();
+
+        for (const std::array<size_t, 3>& t : entry.second)
+            tri_arr.push_back({t[0], t[1], t[2]});
+
+        triangulation_json[std::to_string(entry.first)] = tri_arr;
+    }
+
+    return triangulation_json;
+}
+
+/// Vertex positions and attributes keyed by vertex.
+static nlohmann::ordered_json vertex_to_json(const std::map<size_t, VertexData>& vertex) {
+
+    nlohmann::ordered_json vertex_json = nlohmann::ordered_json::object();
+
+    for (const std::pair<const size_t, VertexData>& entry : vertex) {
+        nlohmann::ordered_json v;
+        v["attributes"] = entry.second.attributes;
+        v["x"] = entry.second.x;
+        v["y"] = entry.second.y;
+        v["z"] = entry.second.z;
+        vertex_json[std::to_string(entry.first)] = v;
+    }
+
+    return vertex_json;
+}
+
 nlohmann::ordered_json Mesh::jsondump() const {
 
     nlohmann::ordered_json data;
@@ -5033,121 +5209,94 @@ nlohmann::ordered_json Mesh::jsondump() const {
 
     data["facedata"] = facedata_json;
     data["guid"] = guid();
-    const std::map<size_t, std::map<size_t, std::optional<size_t>>> he =
-        halfedge.empty() && !face.empty() ? compute_halfedges() : halfedge;
-
-    nlohmann::ordered_json halfedge_json = nlohmann::ordered_json::object();
-
-    for (const std::pair<const size_t, std::map<size_t, std::optional<size_t>>>& entry : he) {
-        nlohmann::ordered_json neighbor_json = nlohmann::ordered_json::object();
-
-        for (const std::pair<const size_t, std::optional<size_t>>& neighbor : entry.second)
-            neighbor_json[std::to_string(neighbor.first)] =
-                neighbor.second.has_value() ? nlohmann::json(neighbor.second.value()) : nlohmann::json(nullptr);
-
-        halfedge_json[std::to_string(entry.first)] = neighbor_json;
-    }
-
-    data["halfedge"] = halfedge_json;
+    data["halfedge"] = halfedge_to_json(halfedge.empty() && !face.empty() ? compute_halfedges() : halfedge);
     data["linecolors"] = colors_to_json(linecolors);
     data["max_face"] = max_face;
     data["max_vertex"] = max_vertex;
     data["name"] = name;
     data["objectcolor"] = objectcolor.jsondump();
     data["pointcolors"] = colors_to_json(pointcolors);
-    nlohmann::ordered_json triangulation_json = nlohmann::ordered_json::object();
-
-    for (const std::pair<const size_t, std::vector<std::array<size_t, 3>>>& entry : triangulation) {
-        nlohmann::json tri_arr = nlohmann::json::array();
-
-        for (const std::array<size_t, 3>& t : entry.second)
-            tri_arr.push_back({t[0], t[1], t[2]});
-
-        triangulation_json[std::to_string(entry.first)] = tri_arr;
-    }
-
-    data["triangulation"] = triangulation_json;
+    data["triangulation"] = triangulation_to_json(triangulation);
     data["type"] = "Mesh";
-    nlohmann::ordered_json vertex_json = nlohmann::ordered_json::object();
-
-    for (const std::pair<const size_t, VertexData>& entry : vertex) {
-        nlohmann::ordered_json v;
-        v["attributes"] = entry.second.attributes;
-        v["x"] = entry.second.x;
-        v["y"] = entry.second.y;
-        v["z"] = entry.second.z;
-        vertex_json[std::to_string(entry.first)] = v;
-    }
-
-    data["vertex"] = vertex_json;
+    data["vertex"] = vertex_to_json(vertex);
     data["widths"] = widths;
 
     return data;
 }
 
-Mesh Mesh::jsonload(const nlohmann::json& data) {
+/// Halfedge connectivity from a JSON object keyed by vertex.
+static std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge_from_json(const nlohmann::json& halfedge_json) {
 
-    Mesh mesh;
+    std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge;
 
-    if (data.contains("guid"))
-        mesh.guid() = data["guid"];
+    for (nlohmann::json::const_iterator it = halfedge_json.begin(); it != halfedge_json.end(); ++it) {
+        const size_t u = std::stoull(it.key());
+        halfedge[u] = {};
 
-    if (data.contains("name"))
-        mesh.name = data["name"];
+        for (nlohmann::json::const_iterator jt = it.value().begin(); jt != it.value().end(); ++jt) {
+            const size_t v = std::stoull(jt.key());
 
-    if (data.contains("halfedge")) {
-        const nlohmann::json& halfedge_json = data["halfedge"];
-
-        for (nlohmann::json::const_iterator it = halfedge_json.begin(); it != halfedge_json.end(); ++it) {
-            const size_t u = std::stoull(it.key());
-            mesh.halfedge[u] = {};
-
-            for (nlohmann::json::const_iterator jt = it.value().begin(); jt != it.value().end(); ++jt) {
-                const size_t v = std::stoull(jt.key());
-
-                if (jt.value().is_null())
-                    mesh.halfedge[u][v] = std::nullopt;
-                else
-                    mesh.halfedge[u][v] = jt.value().get<size_t>();
-            }
+            if (jt.value().is_null())
+                halfedge[u][v] = std::nullopt;
+            else
+                halfedge[u][v] = jt.value().get<size_t>();
         }
     }
 
-    if (data.contains("vertex")) {
-        const nlohmann::json& vertex_json = data["vertex"];
+    return halfedge;
+}
 
-        for (nlohmann::json::const_iterator it = vertex_json.begin(); it != vertex_json.end(); ++it) {
-            const size_t key = std::stoull(it.key());
-            const nlohmann::json& vdata = it.value();
-            VertexData vertex_data;
-            vertex_data.x = vdata["x"];
-            vertex_data.y = vdata["y"];
-            vertex_data.z = vdata["z"];
+/// Vertex positions and attributes from a JSON object keyed by vertex.
+static std::map<size_t, VertexData> vertex_from_json(const nlohmann::json& vertex_json) {
 
-            if (vdata.contains("attributes"))
-                vertex_data.attributes = vdata["attributes"].get<std::map<std::string, double>>();
+    std::map<size_t, VertexData> vertex;
 
-            mesh.vertex[key] = vertex_data;
+    for (nlohmann::json::const_iterator it = vertex_json.begin(); it != vertex_json.end(); ++it) {
+        const nlohmann::json& vdata = it.value();
+        VertexData vertex_data;
+        vertex_data.x = vdata["x"];
+        vertex_data.y = vdata["y"];
+        vertex_data.z = vdata["z"];
 
-            if (!data.contains("halfedge"))
-                mesh.halfedge[key] = {};
+        if (vdata.contains("attributes"))
+            vertex_data.attributes = vdata["attributes"].get<std::map<std::string, double>>();
 
-            if (key >= mesh.max_vertex)
-                mesh.max_vertex = key + 1;
-        }
+        vertex[std::stoull(it.key())] = vertex_data;
     }
 
-    if (data.contains("face")) {
-        const nlohmann::json& face_json = data["face"];
+    return vertex;
+}
 
-        for (nlohmann::json::const_iterator it = face_json.begin(); it != face_json.end(); ++it) {
-            const size_t key = std::stoull(it.key());
-            mesh.face[key] = it.value().get<std::vector<size_t>>();
+/// Face rings from a JSON object keyed by face.
+static std::map<size_t, std::vector<size_t>> face_from_json(const nlohmann::json& face_json) {
 
-            if (key >= mesh.max_face)
-                mesh.max_face = key + 1;
-        }
+    std::map<size_t, std::vector<size_t>> face;
+
+    for (nlohmann::json::const_iterator it = face_json.begin(); it != face_json.end(); ++it)
+        face[std::stoull(it.key())] = it.value().get<std::vector<size_t>>();
+
+    return face;
+}
+
+/// Triangles from a JSON object of [a, b, c] arrays keyed by face.
+static std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation_from_json(const nlohmann::json& triangulation_json) {
+
+    std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation;
+
+    for (nlohmann::json::const_iterator it = triangulation_json.begin(); it != triangulation_json.end(); ++it) {
+        std::vector<std::array<size_t, 3>> tris;
+
+        for (const nlohmann::json& t : it.value())
+            tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
+
+        triangulation[std::stoull(it.key())] = tris;
     }
+
+    return triangulation;
+}
+
+/// Read face holes, face data, edge data and default attributes into mesh.
+static void jsonload_attributes(const nlohmann::json& data, Mesh& mesh) {
 
     if (data.contains("face_holes")) {
         const nlohmann::json& face_holes_json = data["face_holes"];
@@ -5183,6 +5332,38 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
 
     if (data.contains("default_edge_attributes"))
         mesh.default_edge_attributes = data["default_edge_attributes"];
+}
+
+Mesh Mesh::jsonload(const nlohmann::json& data) {
+
+    Mesh mesh;
+
+    if (data.contains("guid"))
+        mesh.guid() = data["guid"];
+
+    if (data.contains("name"))
+        mesh.name = data["name"];
+
+    if (data.contains("halfedge"))
+        mesh.halfedge = halfedge_from_json(data["halfedge"]);
+
+    if (data.contains("vertex"))
+        mesh.vertex = vertex_from_json(data["vertex"]);
+
+    if (!data.contains("halfedge"))
+        for (const std::pair<const size_t, VertexData>& entry : mesh.vertex)
+            mesh.halfedge[entry.first] = {};
+
+    if (!mesh.vertex.empty())
+        mesh.max_vertex = mesh.vertex.rbegin()->first + 1;
+
+    if (data.contains("face"))
+        mesh.face = face_from_json(data["face"]);
+
+    if (!mesh.face.empty())
+        mesh.max_face = mesh.face.rbegin()->first + 1;
+
+    jsonload_attributes(data, mesh);
 
     if (data.contains("max_vertex"))
         mesh.max_vertex = data["max_vertex"];
@@ -5208,18 +5389,8 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
     if (data.contains("color_mode"))
         mesh.color_mode = color_mode_from_string(data["color_mode"].get<std::string>());
 
-    if (data.contains("triangulation")) {
-        const nlohmann::json& triangulation_json = data["triangulation"];
-
-        for (nlohmann::json::const_iterator it = triangulation_json.begin(); it != triangulation_json.end(); ++it) {
-            std::vector<std::array<size_t, 3>> tris;
-
-            for (const nlohmann::json& t : it.value())
-                tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
-
-            mesh.triangulation[std::stoull(it.key())] = tris;
-        }
-    }
+    if (data.contains("triangulation"))
+        mesh.triangulation = triangulation_from_json(data["triangulation"]);
 
     return mesh;
 }
@@ -5268,14 +5439,8 @@ static std::vector<Color> colors_from_rgba(const google::protobuf::RepeatedField
     return colors;
 }
 
-session_proto::Mesh Mesh::to_proto() const {
-
-    session_proto::Mesh proto;
-
-    if (has_guid())
-        proto.set_guid(guid());
-
-    proto.set_name(name);
+/// Write vertex positions and attributes into the proto.
+static void vertices_to_proto(const std::map<size_t, VertexData>& vertex, session_proto::Mesh& proto) {
 
     for (const std::pair<const size_t, VertexData>& entry : vertex) {
         session_proto::VertexData& vertex_proto = (*proto.mutable_vertices())[entry.first];
@@ -5286,6 +5451,15 @@ session_proto::Mesh Mesh::to_proto() const {
         for (const std::pair<const std::string, double>& attr : entry.second.attributes)
             (*vertex_proto.mutable_attributes())[attr.first] = attr.second;
     }
+}
+
+/// Write face rings with their attributes and hole rings into the proto.
+static void faces_to_proto(
+    const std::map<size_t, std::vector<size_t>>& face,
+    const std::map<size_t, std::map<std::string, double>>& facedata,
+    const std::map<size_t, std::vector<std::vector<size_t>>>& face_holes,
+    session_proto::Mesh& proto
+) {
 
     for (const std::pair<const size_t, std::vector<size_t>>& entry : face) {
         session_proto::FaceData& face_proto = (*proto.mutable_faces())[entry.first];
@@ -5310,6 +5484,19 @@ session_proto::Mesh Mesh::to_proto() const {
             }
         }
     }
+}
+
+session_proto::Mesh Mesh::to_proto() const {
+
+    session_proto::Mesh proto;
+
+    if (has_guid())
+        proto.set_guid(guid());
+
+    proto.set_name(name);
+
+    vertices_to_proto(vertex, proto);
+    faces_to_proto(face, facedata, face_holes, proto);
 
     for (const std::pair<const size_t, std::vector<std::array<size_t, 3>>>& entry : triangulation) {
         session_proto::TriList& tri_list = (*proto.mutable_triangulation())[entry.first];
@@ -5352,14 +5539,10 @@ session_proto::Mesh Mesh::to_proto() const {
     return proto;
 }
 
-Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
+/// Vertex positions and attributes of the proto.
+static std::map<size_t, VertexData> vertices_from_proto(const session_proto::Mesh& proto) {
 
-    Mesh mesh;
-
-    if (!proto.guid().empty())
-        mesh.guid() = proto.guid();
-
-    mesh.name = proto.name();
+    std::map<size_t, VertexData> vertex;
 
     for (const google::protobuf::Map<uint64_t, session_proto::VertexData>::value_type& entry : proto.vertices()) {
         VertexData vd;
@@ -5370,8 +5553,14 @@ Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
         for (const google::protobuf::Map<std::string, double>::value_type& attr : entry.second.attributes())
             vd.attributes[attr.first] = attr.second;
 
-        mesh.vertex[entry.first] = vd;
+        vertex[entry.first] = vd;
     }
+
+    return vertex;
+}
+
+/// Read face rings with their attributes and hole rings into mesh.
+static void faces_from_proto(const session_proto::Mesh& proto, Mesh& mesh) {
 
     for (const google::protobuf::Map<uint64_t, session_proto::FaceData>::value_type& entry : proto.faces()) {
         const size_t fkey = entry.first;
@@ -5401,6 +5590,12 @@ Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
             mesh.face_holes[fkey] = rings;
         }
     }
+}
+
+/// Triangles of the proto keyed by face.
+static std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation_from_proto(const session_proto::Mesh& proto) {
+
+    std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation;
 
     for (const google::protobuf::Map<uint64_t, session_proto::TriList>::value_type& entry : proto.triangulation()) {
         std::vector<std::array<size_t, 3>> tris;
@@ -5411,8 +5606,24 @@ Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
                 {static_cast<size_t>(vlist[i]), static_cast<size_t>(vlist[i + 1]), static_cast<size_t>(vlist[i + 2])}
             );
 
-        mesh.triangulation[entry.first] = tris;
+        triangulation[entry.first] = tris;
     }
+
+    return triangulation;
+}
+
+Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
+
+    Mesh mesh;
+
+    if (!proto.guid().empty())
+        mesh.guid() = proto.guid();
+
+    mesh.name = proto.name();
+
+    mesh.vertex = vertices_from_proto(proto);
+    faces_from_proto(proto, mesh);
+    mesh.triangulation = triangulation_from_proto(proto);
 
     for (const session_proto::EdgeData& edata : proto.edge_data()) {
         const std::pair<size_t, size_t> key(static_cast<size_t>(edata.vertex1()), static_cast<size_t>(edata.vertex2()));
