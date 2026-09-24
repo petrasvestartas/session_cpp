@@ -40,6 +40,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
     Mesh mesh = trimmed.mesh_loops(loops, 5.0, 0.001);
 
     MINI_CHECK(!mesh.face.empty());
+
     bool apex = false;
 
     for (const std::pair<const size_t, VertexData>& entry : mesh.vertex) {
@@ -47,6 +48,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
 
         MINI_CHECK(std::abs(normal[0]) < 1e-12 && std::abs(normal[2]) < 1e-12);
         MINI_CHECK(std::abs(std::abs(normal[1]) - 1.0) < 1e-12);
+
         apex = apex || entry.second.z == 1.0;
     }
 
@@ -80,6 +82,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
     Mesh mesh = ts.mesh_loops(loops, 20.0, 0.005);
 
     MINI_CHECK(mesh.vertex.size() == 16 && mesh.face.size() == 12);
+
     int flat = 0;
     int tilted = 0;
 
@@ -96,6 +99,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
                 interval = true;
 
         MINI_CHECK(interval && vd.z == 0.0);
+
         const std::array<double, 3> normal = vd.normal().value();
 
         if (std::abs(normal[0]) < 1e-12)
@@ -122,6 +126,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
         }
 
         MINI_CHECK(!(low < 1.0 && high > 1.0));
+
         u /= 3;
         v /= 3;
 
@@ -192,6 +197,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
 
                     if (vd.attributes.count(key)) {
                         MINI_CHECK(vd.x == p[0] && vd.y == p[1] && vd.z == p[2]);
+
                         found = true;
                         break;
                     }
@@ -248,6 +254,8 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
     const std::string srepr = ts.repr();
 
     const NurbsSurfaceTrimmed tscopy = ts;
+    NurbsSurfaceTrimmed tshole = ts;
+    tshole.add_inner_loop(outer);
 
     MINI_CHECK(ts.is_valid());
     MINI_CHECK(ts.is_trimmed());
@@ -258,6 +266,7 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
     MINI_CHECK(tscopy.is_valid());
     MINI_CHECK(tscopy.guid() != ts.guid());
     MINI_CHECK(tscopy == ts);
+    MINI_CHECK(tshole != ts);
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Constructor Planar") {

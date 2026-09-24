@@ -83,10 +83,10 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Compare name, width, color and surface; guid and loops ignored.
+    /// Compare name, width, color, surface and trim loops; guid ignored.
     bool operator==(const NurbsSurfaceTrimmed& other) const;
 
-    /// Compare name, width, color and surface; guid and loops ignored.
+    /// Compare name, width, color, surface and trim loops; guid ignored.
     bool operator!=(const NurbsSurfaceTrimmed& other) const;
 
     // ═══════════════════════════════════════════════════════════════════════════

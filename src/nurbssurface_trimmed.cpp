@@ -23,7 +23,7 @@ namespace {
 /// Normal on the side of a C0 knot line that belongs to the triangle around center.
 Vector crease_side_normal(
     const NurbsSurface& surface,
-    const std::vector<double> (&knots)[2],
+    const std::array<std::vector<double>, 2>& knots,
     const std::array<double, 2>& center,
     std::array<double, 2> uv
 ) {
@@ -126,6 +126,51 @@ void refine_crossing(
     }
 }
 
+/// Normal turn in degrees along dir over [t0, t1] on the line smid of the other direction, summed over four steps.
+double span_turn(const NurbsSurface& srf, int dir, double t0, double t1, double smid) {
+
+    double ma = 0.0;
+    Vector pn(0.0, 0.0, 0.0);
+
+    for (int k = 0; k <= 4; ++k) {
+        const double t = t0 + k * (t1 - t0) / 4.0;
+        const Vector nm = (dir == 0) ? srf.normal_at(t, smid) : srf.normal_at(smid, t);
+
+        if (k > 0) {
+            const double d = std::max(-1.0, std::min(1.0, pn.dot(nm)));
+            ma += std::acos(d) * 180.0 / Tolerance::PI;
+        }
+
+        pn = nm;
+    }
+
+    return ma;
+}
+
+/// Largest distance of the quarter points along dir over [t0, t1] on the line smid from their chord.
+double span_deviation(const NurbsSurface& srf, int dir, double t0, double t1, double smid) {
+
+    const std::array<double, 3> p0 = (dir == 0) ? eval3(srf, t0, smid) : eval3(srf, smid, t0);
+    const std::array<double, 3> p1 = (dir == 0) ? eval3(srf, t1, smid) : eval3(srf, smid, t1);
+    double dev = 0.0;
+
+    for (int k = 1; k <= 3; ++k) {
+        const double fr = k / 4.0;
+        const double tm = t0 + fr * (t1 - t0);
+        const std::array<double, 3> pm = (dir == 0) ? eval3(srf, tm, smid) : eval3(srf, smid, tm);
+        const double lx = p0[0] + fr * (p1[0] - p0[0]);
+        const double ly = p0[1] + fr * (p1[1] - p0[1]);
+        const double lz = p0[2] + fr * (p1[2] - p0[2]);
+        const double dd =
+            std::sqrt((pm[0] - lx) * (pm[0] - lx) + (pm[1] - ly) * (pm[1] - ly) + (pm[2] - lz) * (pm[2] - lz));
+
+        if (dd > dev)
+            dev = dd;
+    }
+
+    return dev;
+}
+
 /// Subdivisions per span along dir from the normal turn (max_angle_deg) and the chord deviation (chord_tol) at the mid line of the other direction.
 std::vector<int> span_subdivisions(
     const NurbsSurface& srf,
@@ -146,41 +191,11 @@ std::vector<int> span_subdivisions(
         const double t1 = sp[i + 1];
 
         if (deg > 1) {
-            double ma = 0.0;
-            Vector pn(0.0, 0.0, 0.0);
-
-            for (int k = 0; k <= 4; ++k) {
-                const double t = t0 + k * (t1 - t0) / 4.0;
-                const Vector nm = (dir == 0) ? srf.normal_at(t, smid) : srf.normal_at(smid, t);
-
-                if (k > 0) {
-                    const double d = std::max(-1.0, std::min(1.0, pn.dot(nm)));
-                    ma += std::acos(d) * 180.0 / Tolerance::PI;
-                }
-
-                pn = nm;
-            }
-
+            const double ma = span_turn(srf, dir, t0, t1, smid);
             subs[i] = std::max(subs[i], std::max(1, std::min((int)std::ceil(ma / max_angle_deg), 64)));
         }
 
-        std::array<double, 3> p0 = (dir == 0) ? eval3(srf, t0, smid) : eval3(srf, smid, t0);
-        std::array<double, 3> p1 = (dir == 0) ? eval3(srf, t1, smid) : eval3(srf, smid, t1);
-        double dev = 0.0;
-
-        for (int k = 1; k <= 3; ++k) {
-            const double fr = k / 4.0;
-            const double tm = t0 + fr * (t1 - t0);
-            std::array<double, 3> pm = (dir == 0) ? eval3(srf, tm, smid) : eval3(srf, smid, tm);
-            const double lx = p0[0] + fr * (p1[0] - p0[0]);
-            const double ly = p0[1] + fr * (p1[1] - p0[1]);
-            const double lz = p0[2] + fr * (p1[2] - p0[2]);
-            const double dd =
-                std::sqrt((pm[0] - lx) * (pm[0] - lx) + (pm[1] - ly) * (pm[1] - ly) + (pm[2] - lz) * (pm[2] - lz));
-
-            if (dd > dev)
-                dev = dd;
-        }
+        const double dev = span_deviation(srf, dir, t0, t1, smid);
 
         if (dev > chord_tol)
             subs[i] = std::max(subs[i], std::min((int)std::ceil(std::sqrt(dev / chord_tol)), 64));
@@ -201,6 +216,27 @@ std::vector<double> span_parameters(const std::vector<double>& sp, const std::ve
     out.push_back(sp.back());
 
     return out;
+}
+
+/// Span-adaptive grid parameters in u and v; false when the surface has no span in a direction.
+bool span_grid(
+    const NurbsSurface& srf,
+    double max_angle_deg,
+    double chord_tol,
+    std::vector<double>& us,
+    std::vector<double>& vs
+) {
+
+    const std::vector<double> usp = srf.get_span_vector(0);
+    const std::vector<double> vsp = srf.get_span_vector(1);
+
+    if (usp.size() < 2 || vsp.size() < 2)
+        return false;
+
+    us = span_parameters(usp, span_subdivisions(srf, 0, usp, vsp, srf.degree(0), max_angle_deg, chord_tol));
+    vs = span_parameters(vsp, span_subdivisions(srf, 1, vsp, usp, srf.degree(1), max_angle_deg, chord_tol));
+
+    return us.size() >= 2 && vs.size() >= 2;
 }
 
 /// Unit normal as a plain array, or none when degenerate.
@@ -311,22 +347,6 @@ Point project_to_uv(
     return Point(d.dot(u_axis) / u_len2, d.dot(v_axis) / v_len2, 0.0);
 }
 
-/// Snap a UV point onto the domain border when within snap_uv of it.
-void snap_to_border(std::array<double, 2>& p, double u0, double u1, double v0, double v1, double snap_uv) {
-
-    if (std::abs(p[0] - u0) < snap_uv)
-        p[0] = u0;
-
-    if (std::abs(p[0] - u1) < snap_uv)
-        p[0] = u1;
-
-    if (std::abs(p[1] - v0) < snap_uv)
-        p[1] = v0;
-
-    if (std::abs(p[1] - v1) < snap_uv)
-        p[1] = v1;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // VertexWelder
 // ═══════════════════════════════════════════════════════════════════════════
@@ -383,6 +403,144 @@ public:
         return vk;
     }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Plane clipping
+// ═══════════════════════════════════════════════════════════════════════════
+/// Welded polygon of the part of a grid cell where the field is <= 0: kept corners and Newton-refined edge crossings in order.
+std::vector<size_t> clip_cell(
+    VertexWelder& welder,
+    const NurbsSurface& srf,
+    const std::array<double, 3>& q,
+    const std::array<double, 3>& n,
+    const std::array<double, 4>& cu,
+    const std::array<double, 4>& cv,
+    const std::array<double, 4>& fc
+) {
+
+    const bool in[4] = {fc[0] <= 0, fc[1] <= 0, fc[2] <= 0, fc[3] <= 0};
+    std::vector<size_t> poly;
+
+    for (int k = 0; k < 4; ++k) {
+        const int kn = (k + 1) % 4;
+
+        if (in[k])
+            poly.push_back(welder.weld_surface(srf, cu[k], cv[k]));
+
+        if (in[k] != in[kn]) {
+            const double t = (std::abs(fc[k] - fc[kn]) > 1e-30) ? fc[k] / (fc[k] - fc[kn]) : 0.5;
+            double u = cu[k] + (cu[kn] - cu[k]) * t;
+            double v = cv[k] + (cv[kn] - cv[k]) * t;
+            refine_crossing(srf, q, n, u, v);
+            poly.push_back(welder.weld_surface(srf, u, v));
+        }
+    }
+
+    return poly;
+}
+
+/// Fan a welded polygon into the mesh from its first vertex, skipping triangles with a repeated vertex.
+void add_fan(Mesh& mesh, const std::vector<size_t>& poly) {
+
+    for (size_t t = 1; t + 1 < poly.size(); ++t) {
+        const size_t a = poly[0];
+        const size_t b = poly[t];
+        const size_t c = poly[t + 1];
+
+        if (a == b || b == c || c == a)
+            continue;
+
+        mesh.add_face({a, b, c});
+    }
+}
+
+/// Two UV triangles per cell of the grid us x vs.
+std::vector<std::array<std::array<double, 2>, 3>> grid_triangles(
+    const std::vector<double>& us,
+    const std::vector<double>& vs
+) {
+
+    std::vector<std::array<std::array<double, 2>, 3>> tris;
+    tris.reserve((us.size() - 1) * (vs.size() - 1) * 2);
+
+    for (size_t i = 0; i + 1 < us.size(); ++i) {
+        for (size_t j = 0; j + 1 < vs.size(); ++j) {
+            const std::array<double, 2> a = {us[i], vs[j]};
+            const std::array<double, 2> b = {us[i + 1], vs[j]};
+            const std::array<double, 2> c = {us[i + 1], vs[j + 1]};
+            const std::array<double, 2> d = {us[i], vs[j + 1]};
+            tris.push_back({a, b, c});
+            tris.push_back({a, c, d});
+        }
+    }
+
+    return tris;
+}
+
+/// UV triangles clipped to the half (S-q).n <= 1e-9, each kept part fanned from its first corner.
+std::vector<std::array<std::array<double, 2>, 3>> clip_triangles(
+    const NurbsSurface& srf,
+    const std::array<double, 3>& q,
+    const std::array<double, 3>& n,
+    const std::vector<std::array<std::array<double, 2>, 3>>& tris
+) {
+
+    const double eps = 1e-9;
+    std::vector<std::array<std::array<double, 2>, 3>> next;
+
+    for (const std::array<std::array<double, 2>, 3>& t : tris) {
+        std::vector<std::array<double, 2>> poly;
+
+        for (int e = 0; e < 3; ++e) {
+            const std::array<double, 2>& p = t[e];
+            const std::array<double, 2>& r = t[(e + 1) % 3];
+            const double fp = plane_field(srf, q, n, p[0], p[1]);
+            const double fr = plane_field(srf, q, n, r[0], r[1]);
+            const bool pin = fp <= eps;
+            const bool rin = fr <= eps;
+
+            if (pin)
+                poly.push_back(p);
+
+            if (pin != rin) {
+                const double tt = (std::abs(fp - fr) > 1e-30) ? fp / (fp - fr) : 0.5;
+                double cu = p[0] + (r[0] - p[0]) * tt;
+                double cv = p[1] + (r[1] - p[1]) * tt;
+                refine_crossing(srf, q, n, cu, cv);
+                poly.push_back({cu, cv});
+            }
+        }
+
+        for (size_t w = 1; w + 1 < poly.size(); ++w)
+            next.push_back({poly[0], poly[w], poly[w + 1]});
+    }
+
+    return next;
+}
+
+/// Mesh of UV triangles lifted onto the surface, seams welded within weld_tol, degenerate faces skipped.
+Mesh weld_triangles(
+    const NurbsSurface& srf,
+    const std::vector<std::array<std::array<double, 2>, 3>>& tris,
+    double weld_tol
+) {
+
+    Mesh result;
+    VertexWelder welder(result, weld_tol, weld_tol);
+
+    for (const std::array<std::array<double, 2>, 3>& t : tris) {
+        const size_t a = welder.weld_surface(srf, t[0][0], t[0][1]);
+        const size_t b = welder.weld_surface(srf, t[1][0], t[1][1]);
+        const size_t c = welder.weld_surface(srf, t[2][0], t[2][1]);
+
+        if (a == b || b == c || c == a)
+            continue;
+
+        result.add_face({a, b, c});
+    }
+
+    return result;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UVGraph
@@ -446,6 +604,485 @@ struct HalfEdge {
     int fwd; // 1 when it runs a -> b.
 };
 
+/// UV domain of the split surface and the distance under which UV points snap together.
+struct SplitDomain {
+    double u0; // Start of the u domain.
+    double u1; // End of the u domain.
+    double v0; // Start of the v domain.
+    double v1; // End of the v domain.
+    double snap; // Snap distance in UV.
+};
+
+/// Sampled pcurve in UV with the parameter of each sample.
+struct UVPoly {
+    int cidx; // Pcurve index, negative for a domain border.
+    std::vector<std::array<double, 2>> pts; // UV samples.
+    std::vector<double> ts; // Parameter per sample.
+};
+
+/// Consecutive half-edges of a cycle on one pcurve.
+struct Run {
+    int cidx; // Pcurve index, negative for a domain border.
+    int va; // First vertex.
+    int vb; // Last vertex.
+    double ta; // Parameter at va.
+    double tb; // Parameter at vb.
+};
+
+/// Domain of the surface with the snap distance: tolerance carried from 3D into UV, else 1e-7 of the shorter side.
+SplitDomain split_domain(const NurbsSurface& srf, double tolerance) {
+
+    const std::pair<double, double> dom_u = srf.domain(0);
+    const std::pair<double, double> dom_v = srf.domain(1);
+    const double u0 = dom_u.first;
+    const double u1 = dom_u.second;
+    const double v0 = dom_v.first;
+    const double v1 = dom_v.second;
+    const double range_u = u1 - u0;
+    const double range_v = v1 - v0;
+
+    const std::vector<double> spans_u = srf.get_span_vector(0);
+    const std::vector<double> spans_v = srf.get_span_vector(1);
+    const int nu = std::max((int)spans_u.size() - 1, 1) * 4;
+    const int nv = std::max((int)spans_v.size() - 1, 1) * 4;
+    const double du = range_u / nu;
+    const double dv = range_v / nv;
+    const double mu = (u0 + u1) * 0.5;
+    const double mv = (v0 + v1) * 0.5;
+    const Point pmid = srf.point_at(mu, mv);
+    const double uv_to_3d_u = pmid.distance(srf.point_at(std::min(mu + du, u1), mv)) / du;
+    const double uv_to_3d_v = pmid.distance(srf.point_at(mu, std::min(mv + dv, v1))) / dv;
+    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+
+    if (uv_to_3d < 1e-10)
+        uv_to_3d = 1.0;
+
+    if (tolerance > 0.0)
+        return {u0, u1, v0, v1, std::max(1e-9, tolerance / uv_to_3d)};
+
+    return {u0, u1, v0, v1, std::min(range_u, range_v) * 1e-7};
+}
+
+/// Snap a UV point onto the domain border when within the snap distance of it.
+void snap_to_border(std::array<double, 2>& p, const SplitDomain& dom) {
+
+    if (std::abs(p[0] - dom.u0) < dom.snap)
+        p[0] = dom.u0;
+
+    if (std::abs(p[0] - dom.u1) < dom.snap)
+        p[0] = dom.u1;
+
+    if (std::abs(p[1] - dom.v0) < dom.snap)
+        p[1] = dom.v0;
+
+    if (std::abs(p[1] - dom.v1) < dom.snap)
+        p[1] = dom.v1;
+}
+
+/// One pass inserting the parameter midpoint of every chord farther than samp_tol from the curve; the count inserted.
+int refine_samples(const NurbsCurve& crv, std::vector<std::array<double, 3>>& entries, double samp_tol) {
+
+    int inserted = 0;
+    size_t i = 0;
+
+    while (i + 1 < entries.size()) {
+        const std::array<double, 3> a = entries[i];
+        const std::array<double, 3> b = entries[i + 1];
+        const double tm = (a[0] + b[0]) * 0.5;
+        const Point pm = crv.point_at(tm);
+        const double exu = b[1] - a[1];
+        const double exv = b[2] - a[2];
+        const double l2 = exu * exu + exv * exv;
+        double dev = 0.0;
+
+        if (l2 > 1e-30) {
+            const double s = ((pm[0] - a[1]) * exu + (pm[1] - a[2]) * exv) / l2;
+            const double cx = a[1] + s * exu;
+            const double cy = a[2] + s * exv;
+            dev = std::hypot(pm[0] - cx, pm[1] - cy);
+        }
+
+        if (dev > samp_tol && entries.size() < 4096) {
+            entries.insert(entries.begin() + i + 1, {tm, pm[0], pm[1]});
+            inserted += 1;
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    return inserted;
+}
+
+/// Samples (t, u, v) of a pcurve: uniform in t, then up to six passes of chord refinement.
+std::vector<std::array<double, 3>> sample_pcurve(const NurbsCurve& crv, double samp_tol) {
+
+    const std::pair<double, double> cdom = crv.domain();
+    const double ct0 = cdom.first;
+    const double ct1 = cdom.second;
+    const int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
+    std::vector<std::array<double, 3>> entries;
+
+    for (int i = 0; i <= n; ++i) {
+        const double t = ct0 + (ct1 - ct0) * i / n;
+        const Point p = crv.point_at(t);
+        entries.push_back({t, p[0], p[1]});
+    }
+
+    for (int depth = 0; depth < 6; ++depth)
+        if (refine_samples(crv, entries, samp_tol) == 0)
+            break;
+
+    return entries;
+}
+
+/// Polyline of pcurve cidx from its samples: clamped into the domain, snapped to the border, repeats dropped.
+UVPoly clamp_samples(const std::vector<std::array<double, 3>>& entries, int cidx, const SplitDomain& dom) {
+
+    UVPoly poly{cidx, {}, {}};
+
+    for (const std::array<double, 3>& e : entries) {
+        std::array<double, 2> p = {std::min(std::max(e[1], dom.u0), dom.u1), std::min(std::max(e[2], dom.v0), dom.v1)};
+        snap_to_border(p, dom);
+
+        if (!poly.pts.empty() && std::abs(p[0] - poly.pts.back()[0]) < 1e-15 &&
+            std::abs(p[1] - poly.pts.back()[1]) < 1e-15)
+            continue;
+
+        poly.pts.push_back(p);
+        poly.ts.push_back(e[0]);
+    }
+
+    return poly;
+}
+
+/// True when every point lies within the snap distance of one domain side.
+bool on_border(const std::vector<std::array<double, 2>>& pts, const SplitDomain& dom) {
+
+    bool on_u0 = true;
+    bool on_u1 = true;
+    bool on_v0 = true;
+    bool on_v1 = true;
+
+    for (const std::array<double, 2>& p : pts) {
+        if (std::abs(p[0] - dom.u0) >= dom.snap)
+            on_u0 = false;
+
+        if (std::abs(p[0] - dom.u1) >= dom.snap)
+            on_u1 = false;
+
+        if (std::abs(p[1] - dom.v0) >= dom.snap)
+            on_v0 = false;
+
+        if (std::abs(p[1] - dom.v1) >= dom.snap)
+            on_v1 = false;
+    }
+
+    return on_u0 || on_u1 || on_v0 || on_v1;
+}
+
+/// Length of a UV polyline.
+double polyline_length(const std::vector<std::array<double, 2>>& pts) {
+
+    double ext = 0.0;
+
+    for (size_t k = 1; k < pts.size(); ++k)
+        ext += std::hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+
+    return ext;
+}
+
+/// Polylines of the valid pcurves that neither hug the border nor fall short of min_ext, then the four domain sides.
+std::vector<UVPoly> uv_polylines(const std::vector<NurbsCurve>& pcurves, const SplitDomain& dom) {
+
+    const double range_u = dom.u1 - dom.u0;
+    const double range_v = dom.v1 - dom.v0;
+    const double samp_tol = std::max(range_u, range_v) * 2e-5;
+    const double min_ext = std::max(dom.snap * 8.0, std::min(range_u, range_v) * 1e-5);
+    std::vector<UVPoly> polylines;
+
+    for (int cidx = 0; cidx < (int)pcurves.size(); ++cidx) {
+        if (!pcurves[cidx].is_valid())
+            continue;
+
+        const UVPoly poly = clamp_samples(sample_pcurve(pcurves[cidx], samp_tol), cidx, dom);
+
+        if (poly.pts.size() >= 2 && !on_border(poly.pts, dom) && polyline_length(poly.pts) >= min_ext)
+            polylines.push_back(poly);
+    }
+
+    polylines.push_back({-1, {{dom.u0, dom.v0}, {dom.u1, dom.v0}}, {dom.u0, dom.u1}});
+    polylines.push_back({-2, {{dom.u1, dom.v0}, {dom.u1, dom.v1}}, {dom.v0, dom.v1}});
+    polylines.push_back({-3, {{dom.u1, dom.v1}, {dom.u0, dom.v1}}, {dom.u1, dom.u0}});
+    polylines.push_back({-4, {{dom.u0, dom.v1}, {dom.u0, dom.v0}}, {dom.v1, dom.v0}});
+
+    return polylines;
+}
+
+/// UV bounds (umin, umax, vmin, vmax) of a polyline.
+std::array<double, 4> uv_bounds(const std::vector<std::array<double, 2>>& pts) {
+
+    std::array<double, 4> bounds = {pts[0][0], pts[0][0], pts[0][1], pts[0][1]};
+
+    for (const std::array<double, 2>& p : pts) {
+        bounds[0] = std::min(bounds[0], p[0]);
+        bounds[1] = std::max(bounds[1], p[0]);
+        bounds[2] = std::min(bounds[2], p[1]);
+        bounds[3] = std::max(bounds[3], p[1]);
+    }
+
+    return bounds;
+}
+
+/// True when the bounds of B meet the bounds of A grown by snap.
+bool boxes_overlap(const UVPoly& A, const UVPoly& B, double snap) {
+
+    const std::array<double, 4> a = uv_bounds(A.pts);
+    const std::array<double, 4> b = uv_bounds(B.pts);
+
+    return !(b[0] > a[1] + snap || b[1] < a[0] - snap || b[2] > a[3] + snap || b[3] < a[2] - snap);
+}
+
+/// Parameter of a point along domain side cidx: u on the bottom and top sides, v on the left and right.
+double border_parameter(int cidx, const std::array<double, 2>& hp) {
+    return (cidx == -1 || cidx == -3) ? hp[0] : hp[1];
+}
+
+/// UV point of a crossing moved onto its pcurves, Newton-refined when both are pcurves, snapped to the border; ta and tb follow it.
+std::array<double, 2> crossing_point(
+    int acidx,
+    double& ta,
+    int bcidx,
+    double& tb,
+    const std::array<double, 2>& hit,
+    const std::vector<NurbsCurve>& pcurves,
+    const SplitDomain& dom
+) {
+
+    std::array<double, 2> hp = hit;
+
+    if (acidx >= 0 && bcidx >= 0)
+        newton_curve_curve(pcurves[acidx], ta, pcurves[bcidx], tb, dom.snap * 0.01);
+
+    if (acidx >= 0) {
+        const Point pa = pcurves[acidx].point_at(ta);
+        hp = {pa[0], pa[1]};
+    } else if (bcidx >= 0) {
+        const Point pb = pcurves[bcidx].point_at(tb);
+        hp = {pb[0], pb[1]};
+    }
+
+    snap_to_border(hp, dom);
+
+    if (bcidx < 0)
+        tb = border_parameter(bcidx, hp);
+
+    if (acidx < 0)
+        ta = border_parameter(acidx, hp);
+
+    return hp;
+}
+
+/// Crossings of polylines pi and pj as events (fraction, u, v, parameter) on each crossed segment.
+void add_crossings(
+    const std::vector<UVPoly>& polylines,
+    int pi,
+    int pj,
+    const std::vector<NurbsCurve>& pcurves,
+    const SplitDomain& dom,
+    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>>& splits
+) {
+
+    const UVPoly& A = polylines[pi];
+    const UVPoly& B = polylines[pj];
+
+    for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
+        for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
+            double s;
+            double t;
+
+            if (!segment_intersection(A.pts[ia], A.pts[ia + 1], B.pts[ib], B.pts[ib + 1], s, t))
+                continue;
+
+            double ta = A.ts[ia] + (A.ts[ia + 1] - A.ts[ia]) * s;
+            double tb = B.ts[ib] + (B.ts[ib + 1] - B.ts[ib]) * t;
+            const std::array<double, 2> hit = {
+                A.pts[ia][0] + (A.pts[ia + 1][0] - A.pts[ia][0]) * s,
+                A.pts[ia][1] + (A.pts[ia + 1][1] - A.pts[ia][1]) * s
+            };
+            const std::array<double, 2> hp = crossing_point(A.cidx, ta, B.cidx, tb, hit, pcurves, dom);
+            splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
+            splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
+        }
+    }
+}
+
+/// Crossing events of every pair of overlapping polylines with at least one pcurve, keyed by (polyline, segment).
+std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> polyline_crossings(
+    const std::vector<UVPoly>& polylines,
+    const std::vector<NurbsCurve>& pcurves,
+    const SplitDomain& dom
+) {
+
+    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;
+
+    for (int pi = 0; pi < (int)polylines.size(); ++pi)
+        for (int pj = pi + 1; pj < (int)polylines.size(); ++pj)
+            if ((polylines[pi].cidx >= 0 || polylines[pj].cidx >= 0) &&
+                boxes_overlap(polylines[pi], polylines[pj], dom.snap))
+                add_crossings(polylines, pi, pj, pcurves, dom, splits);
+
+    return splits;
+}
+
+/// Graph edges along every polyline between consecutive pool vertices, its crossings inserted in order.
+std::vector<SplitEdge> split_edges(
+    const std::vector<UVPoly>& polylines,
+    const std::map<std::pair<int, int>, std::vector<std::array<double, 4>>>& splits,
+    UVVertexPool& pool
+) {
+
+    std::vector<SplitEdge> edges;
+
+    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
+        const UVPoly& poly = polylines[pi];
+        std::vector<std::pair<int, double>> chain;
+
+        for (int i = 0; i < (int)poly.pts.size(); ++i) {
+            chain.push_back({pool.id(poly.pts[i]), poly.ts[i]});
+            const auto sit = splits.find({pi, i});
+
+            if (i + 1 < (int)poly.pts.size() && sit != splits.end()) {
+                std::vector<std::array<double, 4>> evs = sit->second;
+                std::sort(evs.begin(), evs.end());
+
+                for (const std::array<double, 4>& ev : evs)
+                    chain.push_back({pool.id({ev[1], ev[2]}), ev[3]});
+            }
+        }
+
+        for (int i = 0; i + 1 < (int)chain.size(); ++i) {
+            const int a = chain[i].first;
+            const int b = chain[i + 1].first;
+
+            if (a == b)
+                continue;
+
+            edges.push_back({a, b, poly.cidx, chain[i].second, chain[i + 1].second});
+        }
+    }
+
+    return edges;
+}
+
+/// Edges left after repeatedly dropping every edge with an end of degree one.
+std::vector<SplitEdge> prune_dangling(const std::vector<SplitEdge>& edges) {
+
+    std::vector<bool> alive(edges.size(), true);
+    bool changed = true;
+
+    for (size_t pass = 0; changed && pass <= edges.size(); ++pass) {
+        changed = false;
+        std::map<int, int> degree;
+
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei])
+                continue;
+
+            degree[edges[ei].a] += 1;
+            degree[edges[ei].b] += 1;
+        }
+
+        for (size_t ei = 0; ei < edges.size(); ++ei) {
+            if (!alive[ei])
+                continue;
+
+            if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) {
+                alive[ei] = false;
+                changed = true;
+            }
+        }
+    }
+
+    std::vector<SplitEdge> live_edges;
+
+    for (size_t ei = 0; ei < edges.size(); ++ei)
+        if (alive[ei])
+            live_edges.push_back(edges[ei]);
+
+    return live_edges;
+}
+
+/// Two opposite half-edges per edge, the forward one at the even index.
+std::vector<HalfEdge> half_edges(const std::vector<SplitEdge>& edges) {
+
+    std::vector<HalfEdge> hes;
+
+    for (int ei = 0; ei < (int)edges.size(); ++ei) {
+        hes.push_back({edges[ei].a, edges[ei].b, ei, 1});
+        hes.push_back({edges[ei].b, edges[ei].a, ei, 0});
+    }
+
+    return hes;
+}
+
+/// Successor of every half-edge around its face: the twin of an outgoing half-edge continues with its predecessor in the angle-sorted fan.
+std::vector<int> next_half_edges(const std::vector<HalfEdge>& hes, const std::vector<std::array<double, 2>>& verts) {
+
+    std::vector<std::vector<int>> out_map(verts.size());
+
+    for (int hi = 0; hi < (int)hes.size(); ++hi)
+        out_map[hes[hi].tail].push_back(hi);
+
+    for (size_t vid = 0; vid < out_map.size(); ++vid) {
+        std::vector<std::pair<double, int>> fan;
+
+        for (int hi : out_map[vid]) {
+            const double angle = std::atan2(verts[hes[hi].head][1] - verts[vid][1], verts[hes[hi].head][0] - verts[vid][0]);
+            fan.push_back({angle, hi});
+        }
+
+        std::sort(fan.begin(), fan.end());
+
+        for (size_t k = 0; k < fan.size(); ++k)
+            out_map[vid][k] = fan[k].second;
+    }
+
+    std::vector<int> next_he(hes.size(), -1);
+
+    for (const std::vector<int>& outs : out_map)
+        for (size_t pos = 0; pos < outs.size(); ++pos)
+            next_he[outs[pos] ^ 1] = outs[(pos + outs.size() - 1) % outs.size()];
+
+    return next_he;
+}
+
+/// Cycles of at least two half-edges traced through next_he, each half-edge in one cycle.
+std::vector<std::vector<int>> face_cycles(const std::vector<int>& next_he) {
+
+    std::vector<bool> visited(next_he.size(), false);
+    std::vector<std::vector<int>> faces;
+
+    for (int hi = 0; hi < (int)next_he.size(); ++hi) {
+        if (visited[hi])
+            continue;
+
+        std::vector<int> cycle;
+        int cur = hi;
+
+        while (cur >= 0 && !visited[cur]) {
+            visited[cur] = true;
+            cycle.push_back(cur);
+            cur = next_he[cur];
+        }
+
+        if (cycle.size() >= 2)
+            faces.push_back(cycle);
+    }
+
+    return faces;
+}
+
 /// Signed area of a half-edge cycle.
 double cycle_area(
     const std::vector<int>& cycle,
@@ -462,6 +1099,46 @@ double cycle_area(
     }
 
     return s * 0.5;
+}
+
+/// True when a cycle passes through a vertex of the domain border.
+bool touches_border(const std::vector<int>& cycle, const std::vector<HalfEdge>& hes, const std::set<int>& border_vids) {
+
+    for (int hi : cycle)
+        if (border_vids.count(hes[hi].tail))
+            return true;
+
+    return false;
+}
+
+/// Face cycles by orientation: counter-clockwise faces with their area, clockwise holes clear of the domain border.
+void classify_faces(
+    const std::vector<std::vector<int>>& faces,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<std::array<double, 2>>& verts,
+    const std::vector<SplitEdge>& edges,
+    double snap,
+    std::vector<std::pair<std::vector<int>, double>>& pos_faces,
+    std::vector<std::vector<int>>& neg_faces
+) {
+
+    std::set<int> border_vids;
+
+    for (const SplitEdge& e : edges) {
+        if (e.cidx < 0) {
+            border_vids.insert(e.a);
+            border_vids.insert(e.b);
+        }
+    }
+
+    for (const std::vector<int>& cycle : faces) {
+        const double area = cycle_area(cycle, hes, verts);
+
+        if (area > snap * snap)
+            pos_faces.push_back({cycle, area});
+        else if (area < -snap * snap && !touches_border(cycle, hes, border_vids))
+            neg_faces.push_back(cycle);
+    }
 }
 
 /// Even-odd test of p against a half-edge cycle.
@@ -485,23 +1162,59 @@ bool point_in_cycle(
     return inside;
 }
 
-/// Pieces of a cycle: trimmed pcurve runs, straight UV segments where a run cannot be cut.
-std::vector<NurbsCurve> cycle_to_segments(
-    const std::vector<int>& cycle,
+/// True when two cycles pass through the same set of vertices.
+bool same_vertices(const std::vector<int>& a, const std::vector<int>& b, const std::vector<HalfEdge>& hes) {
+
+    std::set<int> a_vids;
+    std::set<int> b_vids;
+
+    for (int hi : a)
+        a_vids.insert(hes[hi].tail);
+
+    for (int hi : b)
+        b_vids.insert(hes[hi].tail);
+
+    return a_vids == b_vids;
+}
+
+/// Holes per positive face: each hole goes to the smallest face that contains it and is not its own vertex ring.
+std::vector<std::vector<std::vector<int>>> assign_holes(
+    const std::vector<std::vector<int>>& neg_faces,
+    const std::vector<std::pair<std::vector<int>, double>>& pos_faces,
     const std::vector<HalfEdge>& hes,
-    const std::vector<SplitEdge>& edges,
-    const std::vector<std::array<double, 2>>& verts,
-    const std::vector<NurbsCurve>& pcurves
+    const std::vector<std::array<double, 2>>& verts
 ) {
 
-    /// Consecutive half-edges on one pcurve.
-    struct Run {
-        int cidx; // Pcurve index, negative for a domain border.
-        int va; // First vertex.
-        int vb; // Last vertex.
-        double ta; // Parameter at va.
-        double tb; // Parameter at vb.
-    };
+    std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
+
+    for (const std::vector<int>& cycle : neg_faces) {
+        const std::array<double, 2>& sample = verts[hes[cycle[0]].tail];
+        int best = -1;
+        double best_area = std::numeric_limits<double>::infinity();
+
+        for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
+            const std::vector<int>& fc = pos_faces[fi].first;
+            const double area = pos_faces[fi].second;
+
+            if (area < best_area && point_in_cycle(sample, fc, hes, verts) && !same_vertices(cycle, fc, hes)) {
+                best = fi;
+                best_area = area;
+            }
+        }
+
+        if (best >= 0)
+            holes_of[best].push_back(cycle);
+    }
+
+    return holes_of;
+}
+
+/// Runs of a cycle: consecutive half-edges on one pcurve merged.
+std::vector<Run> cycle_runs(
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<SplitEdge>& edges
+) {
 
     std::vector<Run> runs;
 
@@ -519,50 +1232,88 @@ std::vector<NurbsCurve> cycle_to_segments(
         }
     }
 
+    return runs;
+}
+
+/// Pcurve piece of a run, trimmed to its parameters and oriented along it; false when the run cannot be cut.
+bool run_piece(const Run& run, const std::vector<NurbsCurve>& pcurves, NurbsCurve& piece) {
+
+    if (run.cidx < 0)
+        return false;
+
+    const NurbsCurve& crv = pcurves[run.cidx];
+    const std::pair<double, double> cdom = crv.domain();
+    const double c0 = cdom.first;
+    const double c1 = cdom.second;
+    const double lo = std::max(c0, std::min(run.ta, run.tb));
+    const double hi_ = std::min(c1, std::max(run.ta, run.tb));
+    piece = crv;
+
+    if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
+        if (!piece.trim(lo, hi_))
+            return false;
+    } else if (hi_ - lo <= 1e-14 && !(run.va == run.vb && piece.is_closed())) {
+        return false;
+    }
+
+    if (!piece.is_valid())
+        return false;
+
+    return run.ta <= run.tb || piece.reverse();
+}
+
+/// Pieces of a cycle: trimmed pcurve runs, straight UV segments where a run cannot be cut.
+std::vector<NurbsCurve> cycle_to_segments(
+    const std::vector<int>& cycle,
+    const std::vector<HalfEdge>& hes,
+    const std::vector<SplitEdge>& edges,
+    const std::vector<std::array<double, 2>>& verts,
+    const std::vector<NurbsCurve>& pcurves
+) {
+
     std::vector<NurbsCurve> pieces;
 
-    for (const Run& run : runs) {
-        bool made = false;
+    for (const Run& run : cycle_runs(cycle, hes, edges)) {
+        NurbsCurve piece;
 
-        if (run.cidx >= 0) {
-            const NurbsCurve& crv = pcurves[run.cidx];
-            const std::pair<double, double> cdom = crv.domain();
-            const double c0 = cdom.first;
-            const double c1 = cdom.second;
-            const double lo = std::max(c0, std::min(run.ta, run.tb));
-            const double hi_ = std::min(c1, std::max(run.ta, run.tb));
-            NurbsCurve piece = crv;
-            bool piece_ok = true;
-
-            if (hi_ - lo < (c1 - c0) - 1e-12 && hi_ - lo > 1e-14) {
-                if (!piece.trim(lo, hi_))
-                    piece_ok = false;
-            } else if (hi_ - lo <= 1e-14) {
-                if (!(run.va == run.vb && piece.is_closed()))
-                    piece_ok = false;
-            }
-
-            if (piece_ok && piece.is_valid()) {
-                if (run.ta > run.tb)
-                    piece.reverse();
-
-                pieces.push_back(piece);
-                made = true;
-            }
+        if (run_piece(run, pcurves, piece)) {
+            pieces.push_back(piece);
+            continue;
         }
 
-        if (!made) {
-            const std::array<double, 2>& pa = verts[run.va];
-            const std::array<double, 2>& pb = verts[run.vb];
+        const std::array<double, 2>& pa = verts[run.va];
+        const std::array<double, 2>& pb = verts[run.vb];
 
-            if (std::hypot(pb[0] - pa[0], pb[1] - pa[1]) > 1e-14) {
-                std::vector<Point> seg_pts = {Point(pa[0], pa[1], 0.0), Point(pb[0], pb[1], 0.0)};
-                pieces.push_back(NurbsCurve::create(false, 1, seg_pts));
-            }
-        }
+        if (std::hypot(pb[0] - pa[0], pb[1] - pa[1]) > 1e-14)
+            pieces.push_back(NurbsCurve::create(false, 1, {Point(pa[0], pa[1], 0.0), Point(pb[0], pb[1], 0.0)}));
     }
 
     return pieces;
+}
+
+/// Close a curve whose ends lie within tol by moving its last control point onto the first; true when it ends closed.
+bool close_curve(NurbsCurve& curve, double tol) {
+
+    if (curve.is_closed())
+        return true;
+
+    if (curve.point_at_start().distance(curve.point_at_end()) > tol)
+        return false;
+
+    const int last = curve.cv_count() - 1;
+    double x;
+    double y;
+    double z;
+    double w;
+    double xe;
+    double ye;
+    double ze;
+    double we;
+
+    if (!curve.get_cv_4d(0, x, y, z, w) || !curve.get_cv_4d(last, xe, ye, ze, we))
+        return false;
+
+    return curve.set_cv_4d(last, x, y, z, we) && curve.is_closed();
 }
 
 /// Closed loop of a cycle: the joined pieces when they close, else the polygon through its vertices.
@@ -575,7 +1326,7 @@ NurbsCurve cycle_to_loop(
     double snap_uv
 ) {
 
-    std::vector<NurbsCurve> pieces = cycle_to_segments(cycle, hes, edges, verts, pcurves);
+    const std::vector<NurbsCurve> pieces = cycle_to_segments(cycle, hes, edges, verts, pcurves);
 
     if (pieces.empty())
         return NurbsCurve();
@@ -583,29 +1334,8 @@ NurbsCurve cycle_to_loop(
     const double join_tol = snap_uv * 4.0;
     std::vector<NurbsCurve> joined = NurbsCurve::join(pieces, join_tol);
 
-    if (joined.size() == 1 && joined[0].is_valid()) {
-        NurbsCurve& J = joined[0];
-
-        if (!J.is_closed() && J.point_at_start().distance(J.point_at_end()) <= join_tol) {
-            double x;
-            double y;
-            double z;
-            double w;
-
-            if (J.get_cv_4d(0, x, y, z, w)) {
-                double xe;
-                double ye;
-                double ze;
-                double we;
-
-                if (J.get_cv_4d(J.cv_count() - 1, xe, ye, ze, we))
-                    J.set_cv_4d(J.cv_count() - 1, x, y, z, we);
-            }
-        }
-
-        if (J.is_closed())
-            return J;
-    }
+    if (joined.size() == 1 && joined[0].is_valid() && close_curve(joined[0], join_tol))
+        return joined[0];
 
     std::vector<Point> loop_pts;
 
@@ -914,6 +1644,62 @@ private:
         return triangles[ti].v[0] == v || triangles[ti].v[1] == v || triangles[ti].v[2] == v;
     }
 
+    /// Corner of triangle ti holding vertex v, -1 when none does.
+    int vertex_index(int ti, int v) const;
+
+    /// Vertex of triangle ti across its edge shared with triangle nb, -1 when they are not neighbours.
+    int opposite_vertex(int ti, int nb) const;
+
+    /// Vertex of triangle start within 1e-6 of (x, y), -1 when none.
+    int find_coincident(int start, double x, double y) const;
+
+    /// True when (x, y) lies inside the circumcircle of triangle ti.
+    bool circumcircle_contains(int ti, double x, double y) const;
+
+    /// Fill bad_ with the triangles whose circumcircle holds (x, y), grown from start across unconstrained edges.
+    void collect_cavity(int start, double x, double y);
+
+    /// Fill polygon_ with the edges of the bad_ triangles that face a good neighbour or the hull.
+    void cavity_polygon();
+
+    /// Replace the bad_ triangles by a fan from vertex vi to the polygon_ edges.
+    void fill_cavity(int vi);
+
+    /// Mark v0-v1 constrained when it already is a triangle edge; false when it is not.
+    bool constrain_existing(int v0, int v1);
+
+    /// Lowest live triangle with vertex v, -1 when none.
+    int first_triangle_at(int v) const;
+
+    /// Triangle around v0 whose opposite edge the segment v0-v1 crosses, with that edge's left and right ends; -1 when none.
+    int first_crossed(int start_ti, int v0, int v1, int& ivl, int& ivr) const;
+
+    /// Walk the triangles crossed by v0-v1 from intersected[0], collecting the vertices left and right of it.
+    void walk_crossed(
+        int v0,
+        int v1,
+        int ivl,
+        int ivr,
+        std::vector<int>& poly_l,
+        std::vector<int>& poly_r,
+        std::vector<int>& intersected
+    ) const;
+
+    /// Replace the crossed triangles by the two fans on either side of v0-v1 and constrain it.
+    void retriangulate(
+        int v0,
+        int v1,
+        const std::vector<int>& poly_l,
+        const std::vector<int>& poly_r,
+        const std::vector<int>& intersected
+    );
+
+    /// Constrain every edge of a triangle from first_new on that its older neighbour holds constrained.
+    void inherit_constraints(int first_new);
+
+    /// Mark the edge v0-v1 constrained in every live triangle that has it.
+    void mark_edge(int v0, int v1);
+
     /// New counter-clockwise triangle over three vertices; skipped when degenerate.
     void add_triangle(int pa, int pb, int pc);
 
@@ -1072,75 +1858,113 @@ int Delaunay2D::locate(double x, double y, int start_tri) const {
 int Delaunay2D::insert(double x, double y) {
 
     const int start = locate(x, y, last_found);
+    const int existing = find_coincident(start, x, y);
 
-    if (start >= 0 && triangles[start].alive)
-        for (int k = 0; k < 3; ++k) {
-            const int vi2 = triangles[start].v[k];
-            const double ddx = vertices[vi2].x - x;
-            const double ddy = vertices[vi2].y - y;
-
-            if (ddx * ddx + ddy * ddy < 1e-12)
-                return vi2;
-        }
+    if (existing >= 0)
+        return existing;
 
     const int vi = (int)vertices.size();
     vertices.push_back({x, y});
-    ++visit_epoch_;
-
-    if ((int)visit_stamp_.size() < (int)triangles.size() + 64)
-        visit_stamp_.resize(triangles.size() + 64, 0);
-
-    bad_.clear();
-    bad_.push_back(start);
-    visit_stamp_[start] = visit_epoch_;
-    int bfs_front = 0;
-
-    while (bfs_front < (int)bad_.size()) {
-        const int ti = bad_[bfs_front++];
-        const Triangle& tri = triangles[ti];
-
-        if (!tri.alive) {
-            bad_[bfs_front - 1] = -1;
-            continue;
-        }
-
-        const Vertex2D& a = vertices[tri.v[0]];
-        const Vertex2D& b = vertices[tri.v[1]];
-        const Vertex2D& c = vertices[tri.v[2]];
-        const double o = orient2d(a.x, a.y, b.x, b.y, c.x, c.y);
-        const double ic = (o > 0) ? in_circumcircle(a.x, a.y, b.x, b.y, c.x, c.y, x, y)
-                                  : in_circumcircle(a.x, a.y, c.x, c.y, b.x, b.y, x, y);
-
-        if (ic > 0) {
-            for (int k = 0; k < 3; ++k) {
-                if (tri.constrained[k])
-                    continue;
-
-                int nb = tri.adj[k];
-
-                if (nb >= 0 && nb < (int)visit_stamp_.size() && visit_stamp_[nb] != visit_epoch_) {
-                    visit_stamp_[nb] = visit_epoch_;
-                    bad_.push_back(nb);
-                }
-            }
-        } else {
-            bad_[bfs_front - 1] = -1;
-        }
-    }
-
-    int write = 0;
-
-    for (int i = 0; i < (int)bad_.size(); ++i)
-        if (bad_[i] >= 0)
-            bad_[write++] = bad_[i];
-
-    bad_.resize(write);
+    collect_cavity(start, x, y);
 
     if (bad_.empty()) {
         vertices.pop_back();
 
         return -1;
     }
+
+    cavity_polygon();
+    fill_cavity(vi);
+    last_found = (int)triangles.size() - 1;
+
+    return vi;
+}
+
+int Delaunay2D::vertex_index(int ti, int v) const {
+
+    for (int k = 0; k < 3; ++k)
+        if (triangles[ti].v[k] == v)
+            return k;
+
+    return -1;
+}
+
+int Delaunay2D::opposite_vertex(int ti, int nb) const {
+
+    for (int k = 0; k < 3; ++k)
+        if (triangles[ti].adj[k] == nb)
+            return triangles[ti].v[k];
+
+    return -1;
+}
+
+int Delaunay2D::find_coincident(int start, double x, double y) const {
+
+    if (start < 0 || !triangles[start].alive)
+        return -1;
+
+    for (int k = 0; k < 3; ++k) {
+        const int vi = triangles[start].v[k];
+        const double ddx = vertices[vi].x - x;
+        const double ddy = vertices[vi].y - y;
+
+        if (ddx * ddx + ddy * ddy < 1e-12)
+            return vi;
+    }
+
+    return -1;
+}
+
+bool Delaunay2D::circumcircle_contains(int ti, double x, double y) const {
+
+    const Triangle& tri = triangles[ti];
+    const Vertex2D& a = vertices[tri.v[0]];
+    const Vertex2D& b = vertices[tri.v[1]];
+    const Vertex2D& c = vertices[tri.v[2]];
+    const double o = orient2d(a.x, a.y, b.x, b.y, c.x, c.y);
+    const double ic = (o > 0) ? in_circumcircle(a.x, a.y, b.x, b.y, c.x, c.y, x, y)
+                              : in_circumcircle(a.x, a.y, c.x, c.y, b.x, b.y, x, y);
+
+    return ic > 0;
+}
+
+void Delaunay2D::collect_cavity(int start, double x, double y) {
+
+    ++visit_epoch_;
+
+    if ((int)visit_stamp_.size() < (int)triangles.size() + 64)
+        visit_stamp_.resize(triangles.size() + 64, 0);
+
+    bad_.clear();
+
+    if (start >= 0) {
+        bad_.push_back(start);
+        visit_stamp_[start] = visit_epoch_;
+    }
+
+    for (size_t front = 0; front < bad_.size(); ++front) {
+        const int ti = bad_[front];
+
+        if (!triangles[ti].alive || !circumcircle_contains(ti, x, y)) {
+            bad_[front] = -1;
+            continue;
+        }
+
+        for (int k = 0; k < 3; ++k) {
+            const int nb = triangles[ti].adj[k];
+
+            if (triangles[ti].constrained[k] || nb < 0 || visit_stamp_[nb] == visit_epoch_)
+                continue;
+
+            visit_stamp_[nb] = visit_epoch_;
+            bad_.push_back(nb);
+        }
+    }
+
+    std::erase(bad_, -1);
+}
+
+void Delaunay2D::cavity_polygon() {
 
     polygon_.clear();
 
@@ -1149,19 +1973,14 @@ int Delaunay2D::insert(double x, double y) {
 
         for (int k = 0; k < 3; ++k) {
             const int nb = tri.adj[k];
-            bool nb_bad = false;
 
-            if (nb >= 0)
-                for (int bi : bad_)
-                    if (bi == nb) {
-                        nb_bad = true;
-                        break;
-                    }
-
-            if (!nb_bad)
+            if (nb < 0 || std::find(bad_.begin(), bad_.end(), nb) == bad_.end())
                 polygon_.push_back({tri.v[(k + 1) % 3], tri.v[(k + 2) % 3], tri.constrained[k]});
         }
     }
+}
+
+void Delaunay2D::fill_cavity(int vi) {
 
     for (int ti : bad_) {
         unregister_edges(ti);
@@ -1169,7 +1988,7 @@ int Delaunay2D::insert(double x, double y) {
     }
 
     for (const BEdge& edge : polygon_) {
-        double o = orient2d(
+        const double o = orient2d(
             vertices[vi].x,
             vertices[vi].y,
             vertices[edge.e0].x,
@@ -1197,77 +2016,86 @@ int Delaunay2D::insert(double x, double y) {
         triangles.push_back(nt);
         register_edges(new_ti);
     }
-
-    last_found = (int)triangles.size() - 1;
-
-    return vi;
 }
 
 void Delaunay2D::insert_constraint(int v0, int v1) {
 
-    if (v0 == v1)
+    if (v0 == v1 || constrain_existing(v0, v1))
         return;
+
+    const int start_ti = first_triangle_at(v0);
+
+    if (start_ti < 0)
+        return;
+
+    int ivl = -1;
+    int ivr = -1;
+    const int it = first_crossed(start_ti, v0, v1, ivl, ivr);
+
+    if (it < 0)
+        return;
+
+    std::vector<int> poly_l = {v0, ivl};
+    std::vector<int> poly_r = {v0, ivr};
+    std::vector<int> intersected = {it};
+    walk_crossed(v0, v1, ivl, ivr, poly_l, poly_r, intersected);
+    poly_l.push_back(v1);
+    poly_r.push_back(v1);
+    retriangulate(v0, v1, poly_l, poly_r, intersected);
+}
+
+bool Delaunay2D::constrain_existing(int v0, int v1) {
 
     for (int ti = 0; ti < (int)triangles.size(); ++ti) {
         if (!triangles[ti].alive)
             continue;
 
         for (int k = 0; k < 3; ++k) {
-            int e0 = triangles[ti].v[(k + 1) % 3];
-            int e1 = triangles[ti].v[(k + 2) % 3];
+            const int e0 = triangles[ti].v[(k + 1) % 3];
+            const int e1 = triangles[ti].v[(k + 2) % 3];
 
-            if ((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0)) {
-                triangles[ti].constrained[k] = true;
-                int nb = triangles[ti].adj[k];
+            if (!((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0)))
+                continue;
 
-                if (nb >= 0 && triangles[nb].alive)
-                    for (int kk = 0; kk < 3; ++kk)
-                        if (triangles[nb].adj[kk] == ti) {
-                            triangles[nb].constrained[kk] = true;
-                            break;
-                        }
+            triangles[ti].constrained[k] = true;
+            const int nb = triangles[ti].adj[k];
 
-                return;
-            }
+            if (nb >= 0 && triangles[nb].alive)
+                for (int kk = 0; kk < 3; ++kk)
+                    if (triangles[nb].adj[kk] == ti) {
+                        triangles[nb].constrained[kk] = true;
+                        break;
+                    }
+
+            return true;
         }
     }
 
-    int start_ti = -1;
+    return false;
+}
 
-    for (int i = (int)triangles.size() - 1; i >= 0; --i)
-        if (triangles[i].alive)
-            for (int k = 0; k < 3; ++k)
-                if (triangles[i].v[k] == v0) {
-                    start_ti = i;
-                    break;
-                }
+int Delaunay2D::first_triangle_at(int v) const {
 
-    if (start_ti < 0)
-        return;
+    for (int ti = 0; ti < (int)triangles.size(); ++ti)
+        if (triangles[ti].alive && has_vertex(ti, v))
+            return ti;
+
+    return -1;
+}
+
+int Delaunay2D::first_crossed(int start_ti, int v0, int v1, int& ivl, int& ivr) const {
 
     const Vertex2D& a = vertices[v0];
     const Vertex2D& b = vertices[v1];
-    int ivl = -1;
-    int ivr = -1;
-    int it = -1;
-    int ti = start_ti;
     const int walk_guard = (int)triangles.size() + 4;
+    int ti = start_ti;
 
-    for (int g = 0; g < walk_guard; ++g) {
-        if (!triangles[ti].alive)
-            break;
-
+    for (int g = 0; g < walk_guard && triangles[ti].alive; ++g) {
         const Triangle& t = triangles[ti];
-        int k_v0 = -1;
-
-        for (int i = 0; i < 3; ++i)
-            if (t.v[i] == v0) {
-                k_v0 = i;
-                break;
-            }
+        const int k_v0 = vertex_index(ti, v0);
 
         if (k_v0 < 0)
-            break;
+            return -1;
 
         const int ip2 = t.v[(k_v0 + 1) % 3];
         const int ip1 = t.v[(k_v0 + 2) % 3];
@@ -1277,53 +2105,49 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
         if (op2 < 0 && op1 >= 0) {
             ivl = ip1;
             ivr = ip2;
-            it = ti;
-            break;
+
+            return ti;
         }
 
         const int next = t.adj[(k_v0 + 1) % 3];
 
         if (next < 0 || !triangles[next].alive || next == start_ti)
-            break;
+            return -1;
 
         ti = next;
     }
 
-    if (it < 0)
-        return;
+    return -1;
+}
 
-    std::vector<int> poly_l = {v0, ivl};
-    std::vector<int> poly_r = {v0, ivr};
-    std::vector<int> intersected = {it};
-    int iv = v0;
-    int cur_it = it;
+void Delaunay2D::walk_crossed(
+    int v0,
+    int v1,
+    int ivl,
+    int ivr,
+    std::vector<int>& poly_l,
+    std::vector<int>& poly_r,
+    std::vector<int>& intersected
+) const {
+
+    const Vertex2D& a = vertices[v0];
+    const Vertex2D& b = vertices[v1];
     const int cross_guard = (int)triangles.size() * 2 + 8;
+    int iv = v0;
+    int cur_it = intersected[0];
 
     for (int g = 0; g < cross_guard && !has_vertex(cur_it, v1); ++g) {
-        const Triangle& t = triangles[cur_it];
-        int k_iv = -1;
-
-        for (int i = 0; i < 3; ++i)
-            if (t.v[i] == iv) {
-                k_iv = i;
-                break;
-            }
+        const int k_iv = vertex_index(cur_it, iv);
 
         if (k_iv < 0)
             break;
 
-        const int i_topo = t.adj[k_iv];
+        const int i_topo = triangles[cur_it].adj[k_iv];
 
         if (i_topo < 0 || !triangles[i_topo].alive)
             break;
 
-        int i_vopo = -1;
-
-        for (int k = 0; k < 3; ++k)
-            if (triangles[i_topo].adj[k] == cur_it) {
-                i_vopo = triangles[i_topo].v[k];
-                break;
-            }
+        const int i_vopo = opposite_vertex(i_topo, cur_it);
 
         if (i_vopo < 0)
             break;
@@ -1347,9 +2171,15 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
         intersected.push_back(i_topo);
         cur_it = i_topo;
     }
+}
 
-    poly_l.push_back(v1);
-    poly_r.push_back(v1);
+void Delaunay2D::retriangulate(
+    int v0,
+    int v1,
+    const std::vector<int>& poly_l,
+    const std::vector<int>& poly_r,
+    const std::vector<int>& intersected
+) {
 
     for (int ti : intersected) {
         unregister_edges(ti);
@@ -1364,6 +2194,12 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
     for (int i = 1; i + 1 < (int)poly_r.size(); ++i)
         add_triangle(v0, poly_r[i], poly_r[i + 1]);
 
+    inherit_constraints(first_new);
+    mark_edge(v0, v1);
+}
+
+void Delaunay2D::inherit_constraints(int first_new) {
+
     for (int new_ti = first_new; new_ti < (int)triangles.size(); ++new_ti) {
         if (!triangles[new_ti].alive)
             continue;
@@ -1376,7 +2212,7 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
             if (nb < 0 || nb >= first_new || !triangles[nb].alive)
                 continue;
 
-            Triangle& nb_t = triangles[nb];
+            const Triangle& nb_t = triangles[nb];
 
             for (int kk = 0; kk < 3; ++kk)
                 if (nb_t.adj[kk] == new_ti && nb_t.constrained[kk]) {
@@ -1385,6 +2221,9 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
                 }
         }
     }
+}
+
+void Delaunay2D::mark_edge(int v0, int v1) {
 
     for (Triangle& tri : triangles) {
         if (!tri.alive)
@@ -1469,6 +2308,531 @@ std::vector<std::array<int, 3>> Delaunay2D::get_triangles() const {
     }
 
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Triangulation
+// ═══════════════════════════════════════════════════════════════════════════
+/// Loop polygon in UV before refinement: the control points of a polyline, else samples, the closing repeat dropped.
+std::vector<Point> loop_points(const NurbsCurve& crv) {
+
+    std::vector<Point> raw;
+
+    if (crv.degree() <= 1 && !crv.is_rational()) {
+        for (int i = 0; i < crv.cv_count(); ++i)
+            raw.push_back(crv.get_cv(i));
+    } else {
+        const int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
+        raw = crv.divide_by_count(n).first;
+    }
+
+    while (raw.size() > 1) {
+        const double dx = raw.front()[0] - raw.back()[0];
+        const double dy = raw.front()[1] - raw.back()[1];
+
+        if (dx * dx + dy * dy < 1e-20)
+            raw.pop_back();
+        else
+            break;
+    }
+
+    return raw;
+}
+
+/// Append the UV points of the edge start-end without end, halved up to six times until each 3D chord is within deflection.
+void subdivide_edge(
+    const NurbsSurface& srf,
+    const Point& start,
+    const Point& end,
+    double deflection,
+    std::vector<Point>& out
+) {
+
+    std::vector<std::tuple<Point, Point, int>> stack = {{start, end, 0}};
+
+    while (!stack.empty()) {
+        Point a;
+        Point b;
+        int depth;
+        std::tie(a, b, depth) = stack.back();
+        stack.pop_back();
+        const double mu = (a[0] + b[0]) * 0.5;
+        const double mv = (a[1] + b[1]) * 0.5;
+        const Point pa = srf.point_at(a[0], a[1]);
+        const Point pm = srf.point_at(mu, mv);
+        const Vector edge = srf.point_at(b[0], b[1]) - pa;
+        const double l2 = edge.magnitude_squared();
+        double dev = 0.0;
+
+        if (l2 > 1e-30) {
+            const double t = (pm - pa).dot(edge) / l2;
+            dev = std::sqrt((pm - (pa + edge * t)).magnitude_squared());
+        } else {
+            dev = std::sqrt((pm - pa).magnitude_squared());
+        }
+
+        if (dev > deflection && depth < 6) {
+            stack.push_back({Point(mu, mv, 0.0), b, depth + 1});
+            stack.push_back({a, Point(mu, mv, 0.0), depth + 1});
+        } else {
+            out.push_back(a);
+        }
+    }
+}
+
+/// Interior knots per direction whose multiplicity reaches the degree: the C0 lines of the surface.
+std::array<std::vector<double>, 2> find_crease_knots(const NurbsSurface& surface) {
+
+    std::array<std::vector<double>, 2> crease_knots;
+
+    for (int dir = 0; dir < 2; ++dir) {
+        const std::pair<double, double> domain = surface.domain(dir);
+        const std::vector<double>& knots = surface.m_nurbsknot[dir];
+
+        for (double knot : knots) {
+            if (knot <= domain.first || knot >= domain.second ||
+                std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end())
+                continue;
+
+            if (std::count(knots.begin(), knots.end(), knot) >= surface.degree(dir))
+                crease_knots[dir].push_back(knot);
+        }
+    }
+
+    return crease_knots;
+}
+
+/// UV bounds (umin, vmin, umax, vmax) of a loop polygon.
+std::array<double, 4> loop_bounds(const std::vector<Point>& pts) {
+
+    std::array<double, 4> bounds = {1e30, 1e30, -1e30, -1e30};
+
+    for (const Point& p : pts) {
+        if (p[0] < bounds[0])
+            bounds[0] = p[0];
+
+        if (p[1] < bounds[1])
+            bounds[1] = p[1];
+
+        if (p[0] > bounds[2])
+            bounds[2] = p[0];
+
+        if (p[1] > bounds[3])
+            bounds[3] = p[1];
+    }
+
+    return bounds;
+}
+
+/// Constrain loop edge i in pieces cut where it crosses a crease knot line, each crossing inserted and recorded.
+void insert_loop_edge(
+    Delaunay2D& dt,
+    const std::vector<Point>& pts,
+    const std::vector<int>& vis,
+    size_t li,
+    size_t i,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    std::map<int, std::tuple<size_t, size_t, double>>& boundary_intervals
+) {
+
+    const size_t j = (i + 1) % vis.size();
+    std::vector<std::pair<double, int>> events = {{0.0, vis[i]}, {1.0, vis[j]}};
+
+    for (int dir = 0; dir < 2; ++dir) {
+        const double delta = pts[j][dir] - pts[i][dir];
+
+        if (delta == 0.0)
+            continue;
+
+        for (double knot : crease_knots[dir]) {
+            const double t = (knot - pts[i][dir]) / delta;
+
+            if (t <= 0.0 || t >= 1.0)
+                continue;
+
+            double uv[2] = {pts[i][0] + t * (pts[j][0] - pts[i][0]), pts[i][1] + t * (pts[j][1] - pts[i][1])};
+            uv[dir] = knot;
+            const int vi = dt.insert(uv[0], uv[1]);
+
+            if (vi >= 0)
+                boundary_intervals[vi] = {li, i, t};
+
+            events.push_back({t, vi});
+        }
+    }
+
+    std::sort(events.begin(), events.end());
+
+    for (size_t k = 1; k < events.size(); ++k)
+        if (events[k - 1].second >= 0 && events[k].second >= 0 && events[k - 1].second != events[k].second)
+            dt.insert_constraint(events[k - 1].second, events[k].second);
+}
+
+/// Insert each loop's vertices, then constrain its edges; the vertex index of every loop sample.
+std::vector<std::vector<int>> insert_loops(
+    Delaunay2D& dt,
+    const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    std::map<int, std::tuple<size_t, size_t, double>>& boundary_intervals
+) {
+
+    std::vector<std::vector<int>> loop_vids;
+
+    for (size_t li = 0; li < loops_uv.size(); ++li) {
+        std::vector<int> vis;
+
+        for (const Point& p : loops_uv[li])
+            vis.push_back(dt.insert(p[0], p[1]));
+
+        for (size_t i = 0; i < vis.size(); ++i)
+            insert_loop_edge(dt, loops_uv[li], vis, li, i, crease_knots, boundary_intervals);
+
+        loop_vids.push_back(vis);
+    }
+
+    return loop_vids;
+}
+
+/// Insert the crease knot crossings inside the loops and constrain each knot line between consecutive vertices on it.
+void insert_crease_lines(
+    Delaunay2D& dt,
+    const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<std::vector<double>, 2>& crease_knots
+) {
+
+    for (double u : crease_knots[0])
+        for (double v : crease_knots[1])
+            if (inside_loops(u, v, loops_uv))
+                dt.insert(u, v);
+
+    for (int dir = 0; dir < 2; ++dir) {
+        for (double knot : crease_knots[dir]) {
+            std::vector<std::pair<double, int>> nodes;
+
+            for (size_t vi = 0; vi < dt.vertices.size(); ++vi) {
+                const double uv[2] = {dt.vertices[vi].x, dt.vertices[vi].y};
+
+                if (uv[dir] == knot)
+                    nodes.push_back({uv[1 - dir], (int)vi});
+            }
+
+            std::sort(nodes.begin(), nodes.end());
+
+            for (size_t k = 1; k < nodes.size(); ++k) {
+                double uv[2] = {knot, knot};
+                uv[1 - dir] = (nodes[k - 1].first + nodes[k].first) * 0.5;
+
+                if (inside_loops(uv[0], uv[1], loops_uv))
+                    dt.insert_constraint(nodes[k - 1].second, nodes[k].second);
+            }
+        }
+    }
+}
+
+/// Smallest dot product between the crease-side normals at the corners of triangle ABC around its centroid.
+double min_normal_dot(
+    const NurbsSurface& surface,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    const std::array<double, 2>& center,
+    const Vertex2D& A,
+    const Vertex2D& B,
+    const Vertex2D& C
+) {
+
+    const Vector na = crease_side_normal(surface, crease_knots, center, {A.x, A.y});
+    const Vector nb = crease_side_normal(surface, crease_knots, center, {B.x, B.y});
+    const Vector nc2 = crease_side_normal(surface, crease_knots, center, {C.x, C.y});
+    const double d1 = na.dot(nb);
+    const double d2 = nb.dot(nc2);
+    const double d3 = na.dot(nc2);
+
+    return std::min(d1, std::min(d2, d3));
+}
+
+/// Centroids of the live triangles inside the loops whose chord leaves deflection or whose corner normals turn past the angle bound.
+std::vector<std::array<double, 2>> refinement_points(
+    const Delaunay2D& dt,
+    const NurbsSurface& surface,
+    const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    double deflection,
+    double cos_max_angle
+) {
+
+    std::vector<std::array<double, 2>> to_insert;
+
+    for (const Triangle& tri : dt.triangles) {
+        if (!tri.alive)
+            continue;
+
+        const Vertex2D& A = dt.vertices[tri.v[0]];
+        const Vertex2D& B = dt.vertices[tri.v[1]];
+        const Vertex2D& C = dt.vertices[tri.v[2]];
+        const double cu = (A.x + B.x + C.x) / 3.0;
+        const double cv = (A.y + B.y + C.y) / 3.0;
+
+        if (!inside_loops(cu, cv, loops_uv))
+            continue;
+
+        const Point pa = surface.point_at(A.x, A.y);
+        const Point pb = surface.point_at(B.x, B.y);
+        const Point pc = surface.point_at(C.x, C.y);
+        const Point pm = surface.point_at(cu, cv);
+        const Vector n = (pb - pa).cross(pc - pa);
+        const double nl = std::sqrt(n.magnitude_squared());
+
+        if (nl < 1e-30)
+            continue;
+
+        const double dev = std::abs((pm - pa).dot(n) / nl);
+
+        if (dev > deflection || min_normal_dot(surface, crease_knots, {cu, cv}, A, B, C) < cos_max_angle)
+            to_insert.push_back({cu, cv});
+    }
+
+    return to_insert;
+}
+
+/// Insert refinement centroids for up to eight rounds, until none is needed or the vertex cap is hit.
+void refine(
+    Delaunay2D& dt,
+    const NurbsSurface& surface,
+    const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    double deflection,
+    double cos_max_angle
+) {
+
+    const int MAX_ITERS = 8;
+    const size_t MAX_VERTS = 200000;
+
+    for (int iter = 0; iter < MAX_ITERS; ++iter) {
+        const std::vector<std::array<double, 2>> to_insert =
+            refinement_points(dt, surface, loops_uv, crease_knots, deflection, cos_max_angle);
+
+        if (to_insert.empty())
+            break;
+
+        for (const std::array<double, 2>& uv : to_insert) {
+            if (dt.vertices.size() >= MAX_VERTS)
+                break;
+
+            dt.insert(uv[0], uv[1]);
+        }
+
+        if (dt.vertices.size() >= MAX_VERTS)
+            break;
+    }
+}
+
+/// Drop the super triangle and every triangle whose centroid lies outside the loops.
+void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_uv) {
+
+    dt.cleanup();
+
+    for (Triangle& tri : dt.triangles) {
+        if (!tri.alive)
+            continue;
+
+        const double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
+        const double cv = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
+
+        if (!inside_loops(cu, cv, loops_uv))
+            tri.alive = false;
+    }
+}
+
+/// True when a triangle spans a crease knot line in either direction.
+bool crosses_crease(
+    const std::vector<std::array<int, 3>>& tris,
+    const Delaunay2D& dt,
+    const std::array<std::vector<double>, 2>& crease_knots
+) {
+
+    for (const std::array<int, 3>& tri : tris)
+        for (int dir = 0; dir < 2; ++dir) {
+            double low = INFINITY;
+            double high = -INFINITY;
+
+            for (int vi : tri) {
+                const double value = dir == 0 ? dt.vertices[vi].x : dt.vertices[vi].y;
+                low = std::min(low, value);
+                high = std::max(high, value);
+            }
+
+            for (double knot : crease_knots[dir])
+                if (low < knot && knot < high)
+                    return true;
+        }
+
+    return false;
+}
+
+/// Loop and sample of the 3D point given for each triangulation vertex, (-1, -1) where none is.
+std::vector<std::pair<int, int>> given_points(
+    size_t count,
+    const TrimLoops& loops,
+    const std::vector<std::vector<int>>& loop_vids
+) {
+
+    std::vector<std::pair<int, int>> given(count, {-1, -1});
+
+    for (size_t li = 0; li < loop_vids.size() && li < loops.xyz.size(); ++li)
+        for (size_t k = 0; k < loop_vids[li].size() && k < loops.xyz[li].size(); ++k)
+            if (loop_vids[li][k] >= 0)
+                given[loop_vids[li][k]] = {(int)li, (int)k};
+
+    return given;
+}
+
+/// 3D point of triangulation vertex vi: its given loop point, the loop chord at a knot crossing, else the surface point.
+Point vertex_point(
+    const NurbsSurface& surface,
+    const Delaunay2D& dt,
+    int vi,
+    const TrimLoops& loops,
+    const std::vector<std::pair<int, int>>& given,
+    const std::map<int, std::tuple<size_t, size_t, double>>& boundary_intervals
+) {
+
+    if (given[vi].first >= 0)
+        return loops.xyz[given[vi].first][given[vi].second];
+
+    const auto interval = boundary_intervals.find(vi);
+
+    if (interval != boundary_intervals.end() && !loops.xyz.empty()) {
+        size_t li;
+        size_t segment;
+        double t;
+        std::tie(li, segment, t) = interval->second;
+        const Point& a = loops.xyz[li][segment];
+        const Point& b = loops.xyz[li][(segment + 1) % loops.xyz[li].size()];
+
+        return a + (b - a) * t;
+    }
+
+    return surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
+}
+
+/// Welded mesh vertex of every triangulation vertex a triangle uses, SIZE_MAX for the others.
+std::vector<size_t> weld_vertices(
+    VertexWelder& welder,
+    const NurbsSurface& surface,
+    const Delaunay2D& dt,
+    const std::vector<std::array<int, 3>>& tris,
+    const TrimLoops& loops,
+    const std::vector<std::vector<int>>& loop_vids,
+    const std::map<int, std::tuple<size_t, size_t, double>>& boundary_intervals
+) {
+
+    const std::vector<std::pair<int, int>> given = given_points(dt.vertices.size(), loops, loop_vids);
+    std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
+
+    for (const std::array<int, 3>& tri : tris)
+        for (int vi : tri)
+            if (vert_map[vi] == SIZE_MAX)
+                vert_map[vi] = welder.weld(vertex_point(surface, dt, vi, loops, given, boundary_intervals));
+
+    return vert_map;
+}
+
+/// One face per triangle over its welded vertices, collapsed ones skipped.
+void add_faces(Mesh& mesh, const std::vector<std::array<int, 3>>& tris, const std::vector<size_t>& vert_map) {
+
+    for (const std::array<int, 3>& tri : tris) {
+        const size_t v0 = vert_map[tri[0]];
+        const size_t v1 = vert_map[tri[1]];
+        const size_t v2 = vert_map[tri[2]];
+
+        if (v0 == v1 || v1 == v2 || v2 == v0)
+            continue;
+
+        mesh.add_face({v0, v1, v2});
+    }
+}
+
+/// Area-weighted sum of the face normals around each mesh vertex.
+std::map<size_t, Vector> fan_normals(const Mesh& mesh) {
+
+    std::map<size_t, Vector> fan;
+
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : mesh.face) {
+        const std::vector<size_t>& verts = entry.second;
+        const Point a = mesh.vertex.at(verts[0]).position();
+        const Point b = mesh.vertex.at(verts[1]).position();
+        const Point c = mesh.vertex.at(verts[2]).position();
+        const Vector n = (b - a).cross(c - a);
+
+        for (size_t vk : verts)
+            fan[vk] += n;
+    }
+
+    return fan;
+}
+
+/// Normal of every used vertex from the surface derivatives, the fan normal where they degenerate, and its u and v.
+void set_vertex_normals(
+    Mesh& mesh,
+    const NurbsSurface& surface,
+    const Delaunay2D& dt,
+    const std::vector<size_t>& vert_map
+) {
+
+    const std::map<size_t, Vector> fan = fan_normals(mesh);
+
+    for (size_t vi = 0; vi < vert_map.size(); ++vi) {
+        if (vert_map[vi] == SIZE_MAX)
+            continue;
+
+        VertexData& vd = mesh.vertex[vert_map[vi]];
+        const std::vector<Vector> derivatives = surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
+        Vector nrm(0.0, 0.0, 0.0);
+
+        if (derivatives.size() >= 3)
+            nrm = derivatives[2].cross(derivatives[1]);
+
+        const double nl = std::sqrt(nrm.magnitude_squared());
+
+        if (std::isfinite(nl) && nl > 0.0) {
+            nrm = nrm / nl;
+        } else {
+            const Vector f = fan.count(vert_map[vi]) ? fan.at(vert_map[vi]) : Vector(0.0, 0.0, 1.0);
+            const double fl = std::sqrt(f.magnitude_squared());
+            nrm = std::isfinite(fl) && fl > 0.0 ? f / fl : Vector(0.0, 0.0, 1.0);
+        }
+
+        vd.set_normal(nrm[0], nrm[1], nrm[2]);
+        vd.attributes["u"] = dt.vertices[vi].x;
+        vd.attributes["v"] = dt.vertices[vi].y;
+    }
+}
+
+/// Tag loop vertices boundary/{loop}/{sample} and knot crossings boundary_interval/{loop}/{segment} with their chord parameter.
+void tag_boundary(
+    Mesh& mesh,
+    const std::vector<std::vector<int>>& loop_vids,
+    const std::map<int, std::tuple<size_t, size_t, double>>& boundary_intervals,
+    const std::vector<size_t>& vert_map
+) {
+
+    for (size_t li = 0; li < loop_vids.size(); ++li) {
+        for (size_t k = 0; k < loop_vids[li].size(); ++k) {
+            const int vi = loop_vids[li][k];
+            const std::string key = "boundary/" + std::to_string(li) + "/" + std::to_string(k);
+
+            if (vi >= 0 && vert_map[vi] != SIZE_MAX)
+                mesh.vertex[vert_map[vi]].attributes[key] = 1.0;
+        }
+    }
+
+    for (const std::pair<const int, std::tuple<size_t, size_t, double>>& entry : boundary_intervals) {
+        const size_t li = std::get<0>(entry.second);
+        const size_t segment = std::get<1>(entry.second);
+        const std::string key = "boundary_interval/" + std::to_string(li) + "/" + std::to_string(segment);
+
+        if (vert_map[entry.first] != SIZE_MAX)
+            mesh.vertex[vert_map[entry.first]].attributes[key] = std::get<2>(entry.second);
+    }
 }
 
 } // namespace
@@ -1558,472 +2922,38 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurfaceTrimmed::split_by_uv_curves(
     if (!srf.is_valid())
         return {};
 
-    const std::pair<double, double> dom_u = srf.domain(0);
-    const std::pair<double, double> dom_v = srf.domain(1);
-    const double u0 = dom_u.first;
-    const double u1 = dom_u.second;
-    const double v0 = dom_v.first;
-    const double v1 = dom_v.second;
-    const double range_u = u1 - u0;
-    const double range_v = v1 - v0;
-
-    const std::vector<double> spans_u = srf.get_span_vector(0);
-    const std::vector<double> spans_v = srf.get_span_vector(1);
-    const int nu = std::max((int)spans_u.size() - 1, 1) * 4;
-    const int nv = std::max((int)spans_v.size() - 1, 1) * 4;
-    const double du = range_u / nu;
-    const double dv = range_v / nv;
-    const double mu = (u0 + u1) * 0.5;
-    const double mv = (v0 + v1) * 0.5;
-    Point pmid = srf.point_at(mu, mv);
-    const double uv_to_3d_u = pmid.distance(srf.point_at(std::min(mu + du, u1), mv)) / du;
-    const double uv_to_3d_v = pmid.distance(srf.point_at(mu, std::min(mv + dv, v1))) / dv;
-    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
-
-    if (uv_to_3d < 1e-10)
-        uv_to_3d = 1.0;
-
-    double snap_uv;
-
-    if (tolerance > 0.0)
-        snap_uv = std::max(1e-9, tolerance / uv_to_3d);
-    else
-        snap_uv = std::min(range_u, range_v) * 1e-7;
-
-    const double samp_tol = std::max(range_u, range_v) * 2e-5;
-
-    /// Sampled pcurve in UV with the parameter of each sample.
-    struct UVPoly {
-        int cidx; // Pcurve index, negative for a domain border.
-        std::vector<std::array<double, 2>> pts; // UV samples.
-        std::vector<double> ts; // Parameter per sample.
-    };
-
-    std::vector<UVPoly> polylines;
-
-    for (int cidx = 0; cidx < (int)pcurves.size(); ++cidx) {
-        const NurbsCurve& crv = pcurves[cidx];
-
-        if (!crv.is_valid())
-            continue;
-
-        const std::pair<double, double> cdom = crv.domain();
-        const double ct0 = cdom.first;
-        const double ct1 = cdom.second;
-        std::vector<std::array<double, 3>> entries;
-        const int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
-
-        for (int i = 0; i <= n; ++i) {
-            const double t = ct0 + (ct1 - ct0) * i / n;
-            Point p = crv.point_at(t);
-            entries.push_back({t, p[0], p[1]});
-        }
-
-        int depth = 0;
-
-        while (depth < 6) {
-            int inserted = 0;
-            size_t i = 0;
-
-            while (i + 1 < entries.size()) {
-                std::array<double, 3> a = entries[i];
-                std::array<double, 3> b = entries[i + 1];
-                const double tm = (a[0] + b[0]) * 0.5;
-                Point pm = crv.point_at(tm);
-                const double exu = b[1] - a[1];
-                const double exv = b[2] - a[2];
-                const double l2 = exu * exu + exv * exv;
-                double dev;
-
-                if (l2 > 1e-30) {
-                    const double s = ((pm[0] - a[1]) * exu + (pm[1] - a[2]) * exv) / l2;
-                    const double cx = a[1] + s * exu;
-                    const double cy = a[2] + s * exv;
-                    dev = std::hypot(pm[0] - cx, pm[1] - cy);
-                } else {
-                    dev = 0.0;
-                }
-
-                if (dev > samp_tol && entries.size() < 4096) {
-                    entries.insert(entries.begin() + i + 1, {tm, pm[0], pm[1]});
-                    inserted += 1;
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-
-            if (inserted == 0)
-                break;
-
-            depth += 1;
-        }
-
-        std::vector<std::array<double, 2>> pts;
-        std::vector<double> ts;
-
-        for (const std::array<double, 3>& e : entries) {
-            std::array<double, 2> p = {std::min(std::max(e[1], u0), u1), std::min(std::max(e[2], v0), v1)};
-            snap_to_border(p, u0, u1, v0, v1, snap_uv);
-
-            if (!pts.empty() && std::abs(p[0] - pts.back()[0]) < 1e-15 && std::abs(p[1] - pts.back()[1]) < 1e-15)
-                continue;
-
-            pts.push_back(p);
-            ts.push_back(e[0]);
-        }
-
-        if (pts.size() < 2)
-            continue;
-
-        bool on_u0 = true;
-        bool on_u1 = true;
-        bool on_v0 = true;
-        bool on_v1 = true;
-
-        for (const std::array<double, 2>& p : pts) {
-            if (std::abs(p[0] - u0) >= snap_uv)
-                on_u0 = false;
-
-            if (std::abs(p[0] - u1) >= snap_uv)
-                on_u1 = false;
-
-            if (std::abs(p[1] - v0) >= snap_uv)
-                on_v0 = false;
-
-            if (std::abs(p[1] - v1) >= snap_uv)
-                on_v1 = false;
-        }
-
-        if (on_u0 || on_u1 || on_v0 || on_v1)
-            continue;
-
-        polylines.push_back({cidx, pts, ts});
-    }
-
-    polylines.push_back({-1, {{u0, v0}, {u1, v0}}, {u0, u1}});
-    polylines.push_back({-2, {{u1, v0}, {u1, v1}}, {v0, v1}});
-    polylines.push_back({-3, {{u1, v1}, {u0, v1}}, {u1, u0}});
-    polylines.push_back({-4, {{u0, v1}, {u0, v0}}, {v1, v0}});
-
-    const double min_ext = std::max(snap_uv * 8.0, std::min(range_u, range_v) * 1e-5);
-    std::vector<UVPoly> kept;
-
-    for (const UVPoly& P : polylines) {
-        double ext = 0.0;
-
-        for (size_t k = 1; k < P.pts.size(); ++k)
-            ext += std::hypot(P.pts[k][0] - P.pts[k - 1][0], P.pts[k][1] - P.pts[k - 1][1]);
-
-        if (P.cidx < 0 || ext >= min_ext)
-            kept.push_back(P);
-    }
-
-    polylines = kept;
-
-    std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits;
-
-    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
-        for (int pj = pi + 1; pj < (int)polylines.size(); ++pj) {
-            const UVPoly& A = polylines[pi];
-            const UVPoly& B = polylines[pj];
-
-            if (A.cidx < 0 && B.cidx < 0)
-                continue;
-
-            double aminu = A.pts[0][0];
-            double amaxu = A.pts[0][0];
-            double aminv = A.pts[0][1];
-            double amaxv = A.pts[0][1];
-
-            for (const std::array<double, 2>& p : A.pts) {
-                aminu = std::min(aminu, p[0]);
-                amaxu = std::max(amaxu, p[0]);
-                aminv = std::min(aminv, p[1]);
-                amaxv = std::max(amaxv, p[1]);
-            }
-
-            aminu -= snap_uv;
-            amaxu += snap_uv;
-            aminv -= snap_uv;
-            amaxv += snap_uv;
-            double bminu = B.pts[0][0];
-            double bmaxu = B.pts[0][0];
-            double bminv = B.pts[0][1];
-            double bmaxv = B.pts[0][1];
-
-            for (const std::array<double, 2>& p : B.pts) {
-                bminu = std::min(bminu, p[0]);
-                bmaxu = std::max(bmaxu, p[0]);
-                bminv = std::min(bminv, p[1]);
-                bmaxv = std::max(bmaxv, p[1]);
-            }
-
-            if (bminu > amaxu || bmaxu < aminu || bminv > amaxv || bmaxv < aminv)
-                continue;
-
-            for (int ia = 0; ia + 1 < (int)A.pts.size(); ++ia) {
-                for (int ib = 0; ib + 1 < (int)B.pts.size(); ++ib) {
-                    double s;
-                    double t;
-
-                    if (!segment_intersection(A.pts[ia], A.pts[ia + 1], B.pts[ib], B.pts[ib + 1], s, t))
-                        continue;
-
-                    double ta = A.ts[ia] + (A.ts[ia + 1] - A.ts[ia]) * s;
-                    double tb = B.ts[ib] + (B.ts[ib + 1] - B.ts[ib]) * t;
-                    double hu = A.pts[ia][0] + (A.pts[ia + 1][0] - A.pts[ia][0]) * s;
-                    double hv = A.pts[ia][1] + (A.pts[ia + 1][1] - A.pts[ia][1]) * s;
-
-                    if (A.cidx >= 0 && B.cidx >= 0) {
-                        newton_curve_curve(pcurves[A.cidx], ta, pcurves[B.cidx], tb, snap_uv * 0.01);
-                        Point pa = pcurves[A.cidx].point_at(ta);
-                        hu = pa[0];
-                        hv = pa[1];
-                    } else if (A.cidx >= 0) {
-                        Point pa = pcurves[A.cidx].point_at(ta);
-                        hu = pa[0];
-                        hv = pa[1];
-                    } else if (B.cidx >= 0) {
-                        Point pb = pcurves[B.cidx].point_at(tb);
-                        hu = pb[0];
-                        hv = pb[1];
-                    }
-
-                    std::array<double, 2> hp = {hu, hv};
-                    snap_to_border(hp, u0, u1, v0, v1, snap_uv);
-
-                    if (B.cidx < 0) {
-                        if (B.cidx == -1 || B.cidx == -3)
-                            tb = hp[0];
-                        else
-                            tb = hp[1];
-                    }
-
-                    if (A.cidx < 0) {
-                        if (A.cidx == -1 || A.cidx == -3)
-                            ta = hp[0];
-                        else
-                            ta = hp[1];
-                    }
-
-                    splits[{pi, ia}].push_back({s, hp[0], hp[1], ta});
-                    splits[{pj, ib}].push_back({t, hp[0], hp[1], tb});
-                }
-            }
-        }
-    }
-
-    UVVertexPool pool(snap_uv);
-    std::vector<SplitEdge> edges;
-
-    for (int pi = 0; pi < (int)polylines.size(); ++pi) {
-        const UVPoly& poly = polylines[pi];
-        std::vector<std::pair<int, double>> chain;
-
-        for (int i = 0; i < (int)poly.pts.size(); ++i) {
-            chain.push_back({pool.id(poly.pts[i]), poly.ts[i]});
-            const auto sit = splits.find({pi, i});
-
-            if (i + 1 < (int)poly.pts.size() && sit != splits.end()) {
-                std::vector<std::array<double, 4>> evs = sit->second;
-                std::sort(evs.begin(), evs.end());
-
-                for (const std::array<double, 4>& ev : evs)
-                    chain.push_back({pool.id({ev[1], ev[2]}), ev[3]});
-            }
-        }
-
-        for (int i = 0; i + 1 < (int)chain.size(); ++i) {
-            const int a = chain[i].first;
-            const int b = chain[i + 1].first;
-
-            if (a == b)
-                continue;
-
-            edges.push_back({a, b, poly.cidx, chain[i].second, chain[i + 1].second});
-        }
-    }
-
-    std::vector<bool> alive(edges.size(), true);
-    bool changed = true;
-
-    for (size_t pass = 0; changed && pass <= edges.size(); ++pass) {
-        changed = false;
-        std::map<int, int> degree;
-
-        for (size_t ei = 0; ei < edges.size(); ++ei) {
-            if (!alive[ei])
-                continue;
-
-            degree[edges[ei].a] += 1;
-            degree[edges[ei].b] += 1;
-        }
-
-        for (size_t ei = 0; ei < edges.size(); ++ei) {
-            if (!alive[ei])
-                continue;
-
-            if (degree[edges[ei].a] == 1 || degree[edges[ei].b] == 1) {
-                alive[ei] = false;
-                changed = true;
-            }
-        }
-    }
-
-    std::vector<SplitEdge> live_edges;
-
-    for (size_t ei = 0; ei < edges.size(); ++ei)
-        if (alive[ei])
-            live_edges.push_back(edges[ei]);
+    const SplitDomain dom = split_domain(srf, tolerance);
+    const std::vector<UVPoly> polylines = uv_polylines(pcurves, dom);
+    UVVertexPool pool(dom.snap);
+    const std::map<std::pair<int, int>, std::vector<std::array<double, 4>>> splits =
+        polyline_crossings(polylines, pcurves, dom);
+    const std::vector<SplitEdge> live_edges = prune_dangling(split_edges(polylines, splits, pool));
 
     if (live_edges.empty())
         return {};
 
     const std::vector<std::array<double, 2>>& verts = pool.verts;
-    std::vector<HalfEdge> hes;
-
-    for (int ei = 0; ei < (int)live_edges.size(); ++ei) {
-        hes.push_back({live_edges[ei].a, live_edges[ei].b, ei, 1});
-        hes.push_back({live_edges[ei].b, live_edges[ei].a, ei, 0});
-    }
-
-    std::vector<std::vector<int>> out_map(verts.size());
-
-    for (int hi = 0; hi < (int)hes.size(); ++hi)
-        out_map[hes[hi].tail].push_back(hi);
-
-    for (size_t vid = 0; vid < out_map.size(); ++vid) {
-        std::vector<std::pair<double, int>> fan;
-
-        for (int hi : out_map[vid])
-            fan.push_back({std::atan2(verts[hes[hi].head][1] - verts[vid][1], verts[hes[hi].head][0] - verts[vid][0]), hi});
-
-        std::sort(fan.begin(), fan.end());
-
-        for (size_t k = 0; k < fan.size(); ++k)
-            out_map[vid][k] = fan[k].second;
-    }
-
-    std::vector<int> next_he(hes.size(), -1);
-
-    for (size_t vid = 0; vid < out_map.size(); ++vid) {
-        const std::vector<int>& outs = out_map[vid];
-
-        for (size_t pos = 0; pos < outs.size(); ++pos) {
-            int hi = outs[pos];
-            const int tw = hi ^ 1;
-            const int nxt = outs[(pos + outs.size() - 1) % outs.size()];
-            next_he[tw] = nxt;
-        }
-    }
-
-    std::vector<bool> visited(hes.size(), false);
-    std::vector<std::vector<int>> faces;
-
-    for (int hi = 0; hi < (int)hes.size(); ++hi) {
-        if (visited[hi])
-            continue;
-
-        std::vector<int> cycle;
-        int cur = hi;
-
-        while (cur >= 0 && !visited[cur]) {
-            visited[cur] = true;
-            cycle.push_back(cur);
-            cur = next_he[cur];
-        }
-
-        if (cycle.size() >= 2)
-            faces.push_back(cycle);
-    }
-
-    std::set<int> border_vids;
-
-    for (const SplitEdge& e : live_edges) {
-        if (e.cidx < 0) {
-            border_vids.insert(e.a);
-            border_vids.insert(e.b);
-        }
-    }
-
+    const std::vector<HalfEdge> hes = half_edges(live_edges);
     std::vector<std::pair<std::vector<int>, double>> pos_faces;
     std::vector<std::vector<int>> neg_faces;
-
-    for (const std::vector<int>& cycle : faces) {
-        double area = cycle_area(cycle, hes, verts);
-
-        if (area > snap_uv * snap_uv) {
-            pos_faces.push_back({cycle, area});
-        } else if (area < -snap_uv * snap_uv) {
-            bool touches_border = false;
-
-            for (int hi : cycle) {
-                if (border_vids.count(hes[hi].tail)) {
-                    touches_border = true;
-                    break;
-                }
-            }
-
-            if (!touches_border)
-                neg_faces.push_back(cycle);
-        }
-    }
-
-    std::vector<std::vector<std::vector<int>>> holes_of(pos_faces.size());
-
-    for (const std::vector<int>& cycle : neg_faces) {
-        const std::array<double, 2>& sample = verts[hes[cycle[0]].tail];
-        int best = -1;
-        double best_area = std::numeric_limits<double>::infinity();
-
-        for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-            const std::vector<int>& fc = pos_faces[fi].first;
-            const double area = pos_faces[fi].second;
-
-            if (area < best_area && point_in_cycle(sample, fc, hes, verts)) {
-                std::set<int> hole_vids;
-                std::set<int> face_vids;
-
-                for (int hi : cycle)
-                    hole_vids.insert(hes[hi].tail);
-
-                for (int hi : fc)
-                    face_vids.insert(hes[hi].tail);
-
-                if (hole_vids == face_vids)
-                    continue;
-
-                best = fi;
-                best_area = area;
-            }
-        }
-
-        if (best >= 0)
-            holes_of[best].push_back(cycle);
-    }
-
+    const std::vector<std::vector<int>> faces = face_cycles(next_half_edges(hes, verts));
+    classify_faces(faces, hes, verts, live_edges, dom.snap, pos_faces, neg_faces);
+    const std::vector<std::vector<std::vector<int>>> holes_of = assign_holes(neg_faces, pos_faces, hes, verts);
     std::vector<NurbsSurfaceTrimmed> result;
 
     for (int fi = 0; fi < (int)pos_faces.size(); ++fi) {
-        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, hes, live_edges, verts, pcurves, snap_uv);
+        NurbsCurve outer = cycle_to_loop(pos_faces[fi].first, hes, live_edges, verts, pcurves, dom.snap);
 
-        if (!outer.is_valid())
+        if (!outer.is_valid() || (loop_signed_area(outer) < 0.0 && !outer.reverse()))
             continue;
-
-        if (loop_signed_area(outer) < 0.0)
-            outer.reverse();
 
         NurbsSurfaceTrimmed ts = NurbsSurfaceTrimmed::create(srf, outer);
 
         for (const std::vector<int>& hole_cycle : holes_of[fi]) {
-            NurbsCurve hole = cycle_to_loop(hole_cycle, hes, live_edges, verts, pcurves, snap_uv);
+            NurbsCurve hole = cycle_to_loop(hole_cycle, hes, live_edges, verts, pcurves, dom.snap);
 
-            if (!hole.is_valid())
+            if (!hole.is_valid() || (loop_signed_area(hole) > 0.0 && !hole.reverse()))
                 continue;
-
-            if (loop_signed_area(hole) > 0.0)
-                hole.reverse();
 
             ts.add_inner_loop(hole);
         }
@@ -2084,7 +3014,10 @@ bool NurbsSurfaceTrimmed::operator==(const NurbsSurfaceTrimmed& other) const {
     if (m_surface != other.m_surface)
         return false;
 
-    return true;
+    if (m_outer_loop != other.m_outer_loop)
+        return false;
+
+    return m_inner_loops == other.m_inner_loops;
 }
 
 bool NurbsSurfaceTrimmed::operator!=(const NurbsSurfaceTrimmed& other) const {
@@ -2264,30 +3197,16 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(
     if (!unit3(normal, n))
         return srf.mesh();
 
-    std::array<double, 3> q = {q0[0], q0[1], q0[2]};
+    const std::array<double, 3> q = {q0[0], q0[1], q0[2]};
+    const double bbox_diag = bbox_diagonal();
+    std::vector<double> us;
+    std::vector<double> vs;
 
-    const std::vector<double> usp = srf.get_span_vector(0);
-    const std::vector<double> vsp = srf.get_span_vector(1);
-
-    if (usp.size() < 2 || vsp.size() < 2)
+    if (!span_grid(srf, max_angle_deg, bbox_diag * chord_factor, us, vs))
         return srf.mesh();
 
-    const double bbox_diag = bbox_diagonal();
-    const double chord_tol = bbox_diag * chord_factor;
-    const std::vector<double> us = span_parameters(
-        usp,
-        span_subdivisions(srf, 0, usp, vsp, srf.degree(0), max_angle_deg, chord_tol)
-    );
-    const std::vector<double> vs = span_parameters(
-        vsp,
-        span_subdivisions(srf, 1, vsp, usp, srf.degree(1), max_angle_deg, chord_tol)
-    );
     const int nu = (int)us.size();
     const int nv = (int)vs.size();
-
-    if (nu < 2 || nv < 2)
-        return srf.mesh();
-
     std::vector<std::vector<double>> field(nu, std::vector<double>(nv));
 
     for (int i = 0; i < nu; ++i)
@@ -2300,42 +3219,10 @@ Mesh NurbsSurfaceTrimmed::mesh_by_plane(
 
     for (int i = 0; i + 1 < nu; ++i) {
         for (int j = 0; j + 1 < nv; ++j) {
-            double cu[4] = {us[i], us[i + 1], us[i + 1], us[i]};
-            double cv[4] = {vs[j], vs[j], vs[j + 1], vs[j + 1]};
-            double fc[4] = {field[i][j], field[i + 1][j], field[i + 1][j + 1], field[i][j + 1]};
-            bool in[4] = {fc[0] <= 0, fc[1] <= 0, fc[2] <= 0, fc[3] <= 0};
-            const int cnt = (in[0] ? 1 : 0) + (in[1] ? 1 : 0) + (in[2] ? 1 : 0) + (in[3] ? 1 : 0);
-
-            if (cnt == 0)
-                continue;
-
-            std::vector<size_t> poly;
-
-            for (int k = 0; k < 4; ++k) {
-                const int kn = (k + 1) % 4;
-
-                if (in[k])
-                    poly.push_back(welder.weld_surface(srf, cu[k], cv[k]));
-
-                if (in[k] != in[kn]) {
-                    const double t = (std::abs(fc[k] - fc[kn]) > 1e-30) ? fc[k] / (fc[k] - fc[kn]) : 0.5;
-                    double u = cu[k] + (cu[kn] - cu[k]) * t;
-                    double v = cv[k] + (cv[kn] - cv[k]) * t;
-                    refine_crossing(srf, q, n, u, v);
-                    poly.push_back(welder.weld_surface(srf, u, v));
-                }
-            }
-
-            for (size_t t = 1; t + 1 < poly.size(); ++t) {
-                const size_t a = poly[0];
-                const size_t b = poly[t];
-                const size_t c = poly[t + 1];
-
-                if (a == b || b == c || c == a)
-                    continue;
-
-                result.add_face({a, b, c});
-            }
+            const std::array<double, 4> cu = {us[i], us[i + 1], us[i + 1], us[i]};
+            const std::array<double, 4> cv = {vs[j], vs[j], vs[j + 1], vs[j + 1]};
+            const std::array<double, 4> fc = {field[i][j], field[i + 1][j], field[i + 1][j + 1], field[i][j + 1]};
+            add_fan(result, clip_cell(welder, srf, q, n, cu, cv, fc));
         }
     }
 
@@ -2366,77 +3253,17 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(
     if (pl.empty())
         return srf.mesh();
 
-    const std::vector<double> usp = srf.get_span_vector(0);
-    const std::vector<double> vsp = srf.get_span_vector(1);
-
-    if (usp.size() < 2 || vsp.size() < 2)
-        return srf.mesh();
-
     const double bbox_diag = bbox_diagonal();
-    const double chord_tol = bbox_diag * chord_factor;
-    const std::vector<double> us = span_parameters(
-        usp,
-        span_subdivisions(srf, 0, usp, vsp, srf.degree(0), max_angle_deg, chord_tol)
-    );
-    const std::vector<double> vs = span_parameters(
-        vsp,
-        span_subdivisions(srf, 1, vsp, usp, srf.degree(1), max_angle_deg, chord_tol)
-    );
-    const int nu = (int)us.size();
-    const int nv = (int)vs.size();
+    std::vector<double> us;
+    std::vector<double> vs;
 
-    if (nu < 2 || nv < 2)
+    if (!span_grid(srf, max_angle_deg, bbox_diag * chord_factor, us, vs))
         return srf.mesh();
 
-    std::vector<std::array<std::array<double, 2>, 3>> tris;
-    tris.reserve((size_t)(nu - 1) * (nv - 1) * 2);
+    std::vector<std::array<std::array<double, 2>, 3>> tris = grid_triangles(us, vs);
 
-    for (int i = 0; i + 1 < nu; ++i) {
-        for (int j = 0; j + 1 < nv; ++j) {
-            std::array<double, 2> a = {us[i], vs[j]};
-            std::array<double, 2> b = {us[i + 1], vs[j]};
-            std::array<double, 2> c = {us[i + 1], vs[j + 1]};
-            std::array<double, 2> d = {us[i], vs[j + 1]};
-            tris.push_back({a, b, c});
-            tris.push_back({a, c, d});
-        }
-    }
-
-    const double eps = 1e-9;
-
-    for (int k = 0; k < (int)pl.size(); ++k) {
-        const std::array<double, 3>& q = pl[k].first;
-        const std::array<double, 3>& n = pl[k].second;
-        std::vector<std::array<std::array<double, 2>, 3>> next;
-
-        for (const std::array<std::array<double, 2>, 3>& t : tris) {
-            std::vector<std::array<double, 2>> poly;
-
-            for (int e = 0; e < 3; ++e) {
-                const std::array<double, 2>& p = t[e];
-                const std::array<double, 2>& r = t[(e + 1) % 3];
-                const double fp = plane_field(srf, q, n, p[0], p[1]);
-                const double fr = plane_field(srf, q, n, r[0], r[1]);
-                const bool pin = fp <= eps;
-                const bool rin = fr <= eps;
-
-                if (pin)
-                    poly.push_back(p);
-
-                if (pin != rin) {
-                    const double tt = (std::abs(fp - fr) > 1e-30) ? fp / (fp - fr) : 0.5;
-                    double cu = p[0] + (r[0] - p[0]) * tt;
-                    double cv = p[1] + (r[1] - p[1]) * tt;
-                    refine_crossing(srf, q, n, cu, cv);
-                    poly.push_back({cu, cv});
-                }
-            }
-
-            for (size_t w = 1; w + 1 < poly.size(); ++w)
-                next.push_back({poly[0], poly[w], poly[w + 1]});
-        }
-
-        tris = std::move(next);
+    for (const std::pair<std::array<double, 3>, std::array<double, 3>>& plane : pl) {
+        tris = clip_triangles(srf, plane.first, plane.second, tris);
 
         if (tris.empty())
             break;
@@ -2445,25 +3272,9 @@ Mesh NurbsSurfaceTrimmed::mesh_by_planes(
     if (tris.empty())
         return Mesh();
 
-    Mesh result;
-    const double weld_tol = bbox_diag * 1e-5;
-    VertexWelder welder(result, weld_tol, weld_tol);
+    const Mesh result = weld_triangles(srf, tris, bbox_diag * 1e-5);
 
-    for (const std::array<std::array<double, 2>, 3>& t : tris) {
-        const size_t a = welder.weld_surface(srf, t[0][0], t[0][1]);
-        const size_t b = welder.weld_surface(srf, t[1][0], t[1][1]);
-        const size_t c = welder.weld_surface(srf, t[2][0], t[2][1]);
-
-        if (a == b || b == c || c == a)
-            continue;
-
-        result.add_face({a, b, c});
-    }
-
-    if (result.face.empty())
-        return Mesh();
-
-    return result;
+    return result.face.empty() ? Mesh() : result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2693,25 +3504,7 @@ double NurbsSurfaceTrimmed::bbox_diagonal() const {
 
 std::vector<Point> NurbsSurfaceTrimmed::discretize_loop(const NurbsCurve& crv, double deflection) const {
 
-    std::vector<Point> raw;
-
-    if (crv.degree() <= 1 && !crv.is_rational()) {
-        for (int i = 0; i < crv.cv_count(); ++i)
-            raw.push_back(crv.get_cv(i));
-    } else {
-        const int n = std::min(std::max(crv.cv_count() * 4, 16), 2048);
-        raw = crv.divide_by_count(n).first;
-    }
-
-    while (raw.size() > 1) {
-        const double dx = raw.front()[0] - raw.back()[0];
-        const double dy = raw.front()[1] - raw.back()[1];
-
-        if (dx * dx + dy * dy < 1e-20)
-            raw.pop_back();
-        else
-            break;
-    }
+    const std::vector<Point> raw = loop_points(crv);
 
     if (raw.size() < 2)
         return raw;
@@ -2719,38 +3512,8 @@ std::vector<Point> NurbsSurfaceTrimmed::discretize_loop(const NurbsCurve& crv, d
     std::vector<Point> out;
     out.reserve(raw.size() * 2);
 
-    for (size_t i = 0; i < raw.size(); ++i) {
-        std::vector<std::tuple<Point, Point, int>> stack = {{raw[i], raw[(i + 1) % raw.size()], 0}};
-
-        while (!stack.empty()) {
-            Point a;
-            Point b;
-            int depth;
-            std::tie(a, b, depth) = stack.back();
-            stack.pop_back();
-            const double mu = (a[0] + b[0]) * 0.5;
-            const double mv = (a[1] + b[1]) * 0.5;
-            const Point pa = m_surface.point_at(a[0], a[1]);
-            const Point pm = m_surface.point_at(mu, mv);
-            const Vector edge = m_surface.point_at(b[0], b[1]) - pa;
-            const double l2 = edge.magnitude_squared();
-            double dev = 0.0;
-
-            if (l2 > 1e-30) {
-                const double t = (pm - pa).dot(edge) / l2;
-                dev = std::sqrt((pm - (pa + edge * t)).magnitude_squared());
-            } else {
-                dev = std::sqrt((pm - pa).magnitude_squared());
-            }
-
-            if (dev > deflection && depth < 6) {
-                stack.push_back({Point(mu, mv, 0.0), b, depth + 1});
-                stack.push_back({a, Point(mu, mv, 0.0), depth + 1});
-            } else {
-                out.push_back(a);
-            }
-        }
-    }
+    for (size_t i = 0; i < raw.size(); ++i)
+        subdivide_edge(m_surface, raw[i], raw[(i + 1) % raw.size()], deflection, out);
 
     return out;
 }
@@ -2760,333 +3523,34 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     if (loops.uv.empty() || loops.uv[0].size() < 3)
         return m_surface.mesh();
 
-    const std::vector<Point>& outer_uv = loops.uv[0];
     const double bbox_diag = bbox_diagonal();
     const double deflection = bbox_diag * chord_factor;
     const double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
+    const std::array<std::vector<double>, 2> crease_knots = find_crease_knots(m_surface);
+    const std::array<double, 4> bounds = loop_bounds(loops.uv[0]);
 
-    double bb_umin = 1e30;
-    double bb_vmin = 1e30;
-    double bb_umax = -1e30;
-    double bb_vmax = -1e30;
-
-    for (const Point& p : outer_uv) {
-        if (p[0] < bb_umin)
-            bb_umin = p[0];
-
-        if (p[1] < bb_vmin)
-            bb_vmin = p[1];
-
-        if (p[0] > bb_umax)
-            bb_umax = p[0];
-
-        if (p[1] > bb_vmax)
-            bb_vmax = p[1];
-    }
-
-    std::vector<double> crease_knots[2];
-
-    for (int dir = 0; dir < 2; ++dir) {
-        const std::pair<double, double> domain = m_surface.domain(dir);
-        const std::vector<double>& knots = m_surface.m_nurbsknot[dir];
-
-        for (double knot : knots) {
-            if (knot <= domain.first || knot >= domain.second ||
-                std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end())
-                continue;
-
-            if (std::count(knots.begin(), knots.end(), knot) >= m_surface.degree(dir))
-                crease_knots[dir].push_back(knot);
-        }
-    }
-
-    Delaunay2D dt(bb_umin, bb_vmin, bb_umax, bb_vmax);
-    std::vector<std::vector<int>> loop_vids;
+    Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3]);
     std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
-
-    for (size_t li = 0; li < loops.uv.size(); ++li) {
-        const std::vector<Point>& pts = loops.uv[li];
-        std::vector<int> vis;
-
-        for (const Point& p : pts)
-            vis.push_back(dt.insert(p[0], p[1]));
-
-        for (size_t i = 0; i < vis.size(); ++i) {
-            const size_t j = (i + 1) % vis.size();
-            std::vector<std::pair<double, int>> events = {{0.0, vis[i]}, {1.0, vis[j]}};
-
-            for (int dir = 0; dir < 2; ++dir) {
-                const double delta = pts[j][dir] - pts[i][dir];
-
-                if (delta == 0.0)
-                    continue;
-
-                for (double knot : crease_knots[dir]) {
-                    const double t = (knot - pts[i][dir]) / delta;
-
-                    if (t <= 0.0 || t >= 1.0)
-                        continue;
-
-                    double uv[2] = {pts[i][0] + t * (pts[j][0] - pts[i][0]), pts[i][1] + t * (pts[j][1] - pts[i][1])};
-                    uv[dir] = knot;
-                    int vi = dt.insert(uv[0], uv[1]);
-
-                    if (vi >= 0)
-                        boundary_intervals[vi] = {li, i, t};
-
-                    events.push_back({t, vi});
-                }
-            }
-
-            std::sort(events.begin(), events.end());
-
-            for (size_t k = 1; k < events.size(); ++k)
-                if (events[k - 1].second >= 0 && events[k].second >= 0 && events[k - 1].second != events[k].second)
-                    dt.insert_constraint(events[k - 1].second, events[k].second);
-        }
-
-        loop_vids.push_back(vis);
-    }
-
-    for (double u : crease_knots[0])
-        for (double v : crease_knots[1])
-            if (inside_loops(u, v, loops.uv))
-                dt.insert(u, v);
-
-    for (int dir = 0; dir < 2; ++dir) {
-        for (double knot : crease_knots[dir]) {
-            std::vector<std::pair<double, int>> nodes;
-
-            for (size_t vi = 0; vi < dt.vertices.size(); ++vi) {
-                double uv[2] = {dt.vertices[vi].x, dt.vertices[vi].y};
-
-                if (uv[dir] == knot)
-                    nodes.push_back({uv[1 - dir], (int)vi});
-            }
-
-            std::sort(nodes.begin(), nodes.end());
-
-            for (size_t k = 1; k < nodes.size(); ++k) {
-                double uv[2] = {knot, knot};
-                uv[1 - dir] = (nodes[k - 1].first + nodes[k].first) * 0.5;
-
-                if (inside_loops(uv[0], uv[1], loops.uv))
-                    dt.insert_constraint(nodes[k - 1].second, nodes[k].second);
-            }
-        }
-    }
+    const std::vector<std::vector<int>> loop_vids = insert_loops(dt, loops.uv, crease_knots, boundary_intervals);
+    insert_crease_lines(dt, loops.uv, crease_knots);
 
     for (const Point& p : loops.interior_uv)
         if (inside_loops(p[0], p[1], loops.uv))
             dt.insert(p[0], p[1]);
 
-    const int MAX_ITERS = 8;
-    const size_t MAX_VERTS = 200000;
-    const int iters = MAX_ITERS;
-
-    for (int iter = 0; iter < iters; ++iter) {
-        std::vector<std::array<double, 2>> to_insert;
-
-        for (const Triangle& tri : dt.triangles) {
-            if (!tri.alive)
-                continue;
-
-            const Vertex2D& A = dt.vertices[tri.v[0]];
-            const Vertex2D& B = dt.vertices[tri.v[1]];
-            const Vertex2D& C = dt.vertices[tri.v[2]];
-            double cu = (A.x + B.x + C.x) / 3.0;
-            double cv = (A.y + B.y + C.y) / 3.0;
-
-            if (!inside_loops(cu, cv, loops.uv))
-                continue;
-
-            const Point pa = m_surface.point_at(A.x, A.y);
-            const Point pb = m_surface.point_at(B.x, B.y);
-            const Point pc = m_surface.point_at(C.x, C.y);
-            const Point pm = m_surface.point_at(cu, cv);
-            const Vector n = (pb - pa).cross(pc - pa);
-            const double nl = std::sqrt(n.magnitude_squared());
-
-            if (nl < 1e-30)
-                continue;
-
-            const double dev = std::abs((pm - pa).dot(n) / nl);
-            bool refine = dev > deflection;
-
-            if (!refine) {
-                const Vector na = crease_side_normal(m_surface, crease_knots, {cu, cv}, {A.x, A.y});
-                const Vector nb = crease_side_normal(m_surface, crease_knots, {cu, cv}, {B.x, B.y});
-                const Vector nc2 = crease_side_normal(m_surface, crease_knots, {cu, cv}, {C.x, C.y});
-                const double d1 = na.dot(nb);
-                const double d2 = nb.dot(nc2);
-                const double d3 = na.dot(nc2);
-                const double mind = std::min(d1, std::min(d2, d3));
-
-                if (mind < cos_max_angle)
-                    refine = true;
-            }
-
-            if (refine)
-                to_insert.push_back({cu, cv});
-        }
-
-        if (to_insert.empty())
-            break;
-
-        for (const std::array<double, 2>& uv : to_insert) {
-            if (dt.vertices.size() >= MAX_VERTS)
-                break;
-
-            dt.insert(uv[0], uv[1]);
-        }
-
-        if (dt.vertices.size() >= MAX_VERTS)
-            break;
-    }
-
-    dt.cleanup();
-
-    for (Triangle& tri : dt.triangles) {
-        if (!tri.alive)
-            continue;
-
-        const double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
-        const double cv = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
-
-        if (!inside_loops(cu, cv, loops.uv))
-            tri.alive = false;
-    }
-
+    refine(dt, m_surface, loops.uv, crease_knots, deflection, cos_max_angle);
+    trim_outside(dt, loops.uv);
     const std::vector<std::array<int, 3>> tris = dt.get_triangles();
 
-    if (tris.empty())
+    if (tris.empty() || crosses_crease(tris, dt, crease_knots))
         return Mesh();
 
-    for (const std::array<int, 3>& tri : tris)
-        for (int dir = 0; dir < 2; ++dir) {
-            double low = INFINITY;
-            double high = -INFINITY;
-
-            for (int vi : tri) {
-                const double value = dir == 0 ? dt.vertices[vi].x : dt.vertices[vi].y;
-                low = std::min(low, value);
-                high = std::max(high, value);
-            }
-
-            for (double knot : crease_knots[dir])
-                if (low < knot && knot < high)
-                    return Mesh();
-        }
-
-    std::vector<std::pair<int, int>> given(dt.vertices.size(), {-1, -1});
-
-    for (size_t li = 0; li < loop_vids.size() && li < loops.xyz.size(); ++li)
-        for (size_t k = 0; k < loop_vids[li].size() && k < loops.xyz[li].size(); ++k)
-            if (loop_vids[li][k] >= 0)
-                given[loop_vids[li][k]] = {(int)li, (int)k};
-
     Mesh result;
-    std::vector<size_t> vert_map(dt.vertices.size(), SIZE_MAX);
-
-    const double weld_tol = loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0;
-    VertexWelder welder(result, weld_tol, bbox_diag * 1e-5);
-
-    for (const std::array<int, 3>& tri : tris)
-        for (int k = 0; k < 3; ++k) {
-            int vi = tri[k];
-
-            if (vert_map[vi] != SIZE_MAX)
-                continue;
-
-            Point p;
-
-            if (given[vi].first >= 0) {
-                p = loops.xyz[given[vi].first][given[vi].second];
-            } else if (boundary_intervals.count(vi) && !loops.xyz.empty()) {
-                size_t li;
-                size_t segment;
-                double t;
-                std::tie(li, segment, t) = boundary_intervals[vi];
-                const Point& a = loops.xyz[li][segment];
-                const Point& b = loops.xyz[li][(segment + 1) % loops.xyz[li].size()];
-                p = a + (b - a) * t;
-            } else {
-                p = m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y);
-            }
-
-            vert_map[vi] = welder.weld(p);
-        }
-
-    for (const std::array<int, 3>& tri : tris) {
-        const size_t v0 = vert_map[tri[0]];
-        const size_t v1 = vert_map[tri[1]];
-        const size_t v2 = vert_map[tri[2]];
-
-        if (v0 == v1 || v1 == v2 || v2 == v0)
-            continue;
-
-        result.add_face({v0, v1, v2});
-    }
-
-    std::map<size_t, Vector> fan;
-
-    for (const std::pair<const size_t, std::vector<size_t>>& entry : result.face) {
-        const std::vector<size_t>& verts = entry.second;
-        const Point a = result.vertex[verts[0]].position();
-        const Point b = result.vertex[verts[1]].position();
-        const Point c = result.vertex[verts[2]].position();
-        const Vector n = (b - a).cross(c - a);
-
-        for (size_t vk : verts)
-            fan[vk] += n;
-    }
-
-    for (size_t vi = 0; vi < vert_map.size(); ++vi) {
-        if (vert_map[vi] == SIZE_MAX)
-            continue;
-
-        VertexData& vd = result.vertex[vert_map[vi]];
-        const std::vector<Vector> derivatives = m_surface.evaluate(dt.vertices[vi].x, dt.vertices[vi].y, 1);
-        Vector nrm(0.0, 0.0, 0.0);
-
-        if (derivatives.size() >= 3)
-            nrm = derivatives[2].cross(derivatives[1]);
-
-        const double nl = std::sqrt(nrm.magnitude_squared());
-
-        if (std::isfinite(nl) && nl > 0.0) {
-            nrm = nrm / nl;
-        } else {
-            const Vector f = fan.count(vert_map[vi]) ? fan[vert_map[vi]] : Vector(0.0, 0.0, 1.0);
-            const double fl = std::sqrt(f.magnitude_squared());
-            nrm = std::isfinite(fl) && fl > 0.0 ? f / fl : Vector(0.0, 0.0, 1.0);
-        }
-
-        vd.set_normal(nrm[0], nrm[1], nrm[2]);
-        vd.attributes["u"] = dt.vertices[vi].x;
-        vd.attributes["v"] = dt.vertices[vi].y;
-    }
-
-    for (size_t li = 0; li < loop_vids.size(); ++li) {
-        for (size_t k = 0; k < loop_vids[li].size(); ++k) {
-            const int vi = loop_vids[li][k];
-
-            const std::string key = "boundary/" + std::to_string(li) + "/" + std::to_string(k);
-
-            if (vi >= 0 && vert_map[vi] != SIZE_MAX)
-                result.vertex[vert_map[vi]].attributes[key] = 1.0;
-        }
-    }
-
-    for (const std::pair<const int, std::tuple<size_t, size_t, double>>& entry : boundary_intervals) {
-        const size_t li = std::get<0>(entry.second);
-        const size_t segment = std::get<1>(entry.second);
-        const std::string key = "boundary_interval/" + std::to_string(li) + "/" + std::to_string(segment);
-
-        if (vert_map[entry.first] != SIZE_MAX)
-            result.vertex[vert_map[entry.first]].attributes[key] = std::get<2>(entry.second);
-    }
-
+    VertexWelder welder(result, loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0, bbox_diag * 1e-5);
+    const std::vector<size_t> vert_map = weld_vertices(welder, m_surface, dt, tris, loops, loop_vids, boundary_intervals);
+    add_faces(result, tris, vert_map);
+    set_vertex_normals(result, m_surface, dt, vert_map);
+    tag_boundary(result, loop_vids, boundary_intervals, vert_map);
     RemeshNurbsSurfaceGrid::split_crease_normals(m_surface, result);
 
     return result;
