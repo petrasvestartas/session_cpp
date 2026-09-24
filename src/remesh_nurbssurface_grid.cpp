@@ -333,6 +333,29 @@ void fix_closed_gap(std::vector<double>& params, double domain_end) {
         params.push_back(params.back() + step);
 }
 
+/// Parameters along dir: arc-length spaced when count is positive, else the span subdivisions; a closed direction made odd and its wrap gap filled.
+std::vector<double> grid_params(
+    const NurbsSurface& s,
+    int dir,
+    int count,
+    const std::vector<double>& sp,
+    double fixed,
+    std::vector<int> subs
+) {
+
+    const bool closed = s.is_closed(dir);
+
+    if (closed && count == 0)
+        make_odd(subs);
+
+    std::vector<double> params = count > 0 ? arclen_params(s, dir, std::max(count, 2), sp, fixed) : span_params(sp, subs);
+
+    if (closed)
+        fix_closed_gap(params, sp.back());
+
+    return params;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Vertices and faces
 // ═══════════════════════════════════════════════════════════════════════════
@@ -586,28 +609,15 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
             sub = std::max(sub, twist);
     }
 
-    const bool closed_u = s.is_closed(0);
-    const bool closed_v = s.is_closed(1);
-
-    if (closed_u && max_u == 0)
-        make_odd(u_subs);
-
-    if (closed_v && max_v == 0)
-        make_odd(v_subs);
-
     const double u_mid = (usp.front() + usp.back()) * 0.5;
     const double v_mid = (vsp.front() + vsp.back()) * 0.5;
 
-    std::vector<double> us = max_u > 0 ? arclen_params(s, 0, std::max(max_u, 2), usp, v_mid) : span_params(usp, u_subs);
-    std::vector<double> vs = max_v > 0 ? arclen_params(s, 1, std::max(max_v, 2), vsp, u_mid) : span_params(vsp, v_subs);
-
-    if (closed_u)
-        fix_closed_gap(us, usp.back());
-
-    if (closed_v)
-        fix_closed_gap(vs, vsp.back());
-
+    const std::vector<double> us = grid_params(s, 0, max_u, usp, v_mid, u_subs);
+    const std::vector<double> vs = grid_params(s, 1, max_v, vsp, u_mid, v_subs);
     const int nv = (int)vs.size();
+
+    if (sing_v0 && sing_v1 && nv < 3)
+        return Mesh();
 
     Mesh mesh;
     std::optional<size_t> south;
@@ -621,7 +631,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
 
     const std::vector<size_t> grid = add_grid(s, mesh, us, vs, sing_v0 ? 1 : 0, sing_v1 ? nv - 1 : nv);
 
-    add_faces(mesh, grid, (int)us.size(), closed_u, closed_v && !sing_v0 && !sing_v1, south, north);
+    add_faces(mesh, grid, (int)us.size(), s.is_closed(0), s.is_closed(1) && !sing_v0 && !sing_v1, south, north);
     set_normals(s, mesh, south, north);
     split_crease_normals(s, mesh);
 

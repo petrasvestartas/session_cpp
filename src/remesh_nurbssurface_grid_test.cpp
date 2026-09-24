@@ -42,6 +42,7 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
 
             MINI_CHECK(std::abs(normal[0]) < 1e-12 && std::abs(normal[2]) < 1e-12);
             MINI_CHECK(std::abs(std::abs(normal[1]) - 1.0) < 1e-12);
+
             apex = apex || vertex.z == 1.0;
         }
     }
@@ -130,6 +131,20 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
     MINI_CHECK(mesh.is_valid());
     MINI_CHECK(mesh.number_of_vertices() == 191);
     MINI_CHECK(mesh.number_of_faces() == 378);
+}
+
+MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere Few Rows") {
+
+    const NurbsSurface surface = Primitives::sphere_surface(0, 0, 0, 1.0);
+    const Mesh one = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 1);
+    const Mesh two = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 2);
+    const Mesh three = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 3);
+
+    MINI_CHECK(one.number_of_vertices() == 0);
+    MINI_CHECK(two.number_of_vertices() == 0);
+    MINI_CHECK(three.is_valid());
+    MINI_CHECK(three.number_of_vertices() == 23);
+    MINI_CHECK(three.number_of_faces() == 42);
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
