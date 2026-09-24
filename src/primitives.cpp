@@ -164,11 +164,11 @@ bool nurbsknot_vectors_equal(const std::vector<double>& a, const std::vector<dou
     return true;
 }
 
-/// Same degree, rationality, domain [0, 1] and nurbsknot vector for every curve.
-void make_curves_compatible(std::vector<NurbsCurve>& curves) {
+/// Same degree, rationality, domain [0, 1] and nurbsknot vector for every curve; false when a curve cannot be changed.
+bool unify_curves(std::vector<NurbsCurve>& curves) {
 
     if (curves.size() < 2)
-        return;
+        return true;
 
     int max_degree = 0;
     bool any_rational = false;
@@ -179,11 +179,11 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
     }
 
     for (NurbsCurve& c : curves) {
-        if (c.degree() < max_degree)
-            c.increase_degree(max_degree);
+        if (c.degree() < max_degree && !c.increase_degree(max_degree))
+            return false;
 
-        if (any_rational)
-            c.make_rational();
+        if (any_rational && !c.make_rational())
+            return false;
     }
 
     bool compatible = true;
@@ -194,10 +194,11 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
             compatible = false;
 
     if (compatible)
-        return;
+        return true;
 
     for (NurbsCurve& c : curves)
-        c.set_domain(0.0, 1.0);
+        if (!c.set_domain(0.0, 1.0))
+            return false;
 
     std::vector<double> unified = curves[0].get_nurbsknots();
 
@@ -216,6 +217,8 @@ void make_curves_compatible(std::vector<NurbsCurve>& curves) {
             else
                 c.insert_nurbsknot(unified[ui], 1);
     }
+
+    return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -359,6 +362,24 @@ std::vector<double> loft_basis_row(const std::vector<double>& nurbsknots, int or
     return row;
 }
 
+/// Right-hand side of column i: control point i of every section, homogeneous when rational.
+std::vector<std::vector<double>> loft_column(const std::vector<NurbsCurve>& curves, int i, bool is_rat) {
+
+    std::vector<std::vector<double>> rhs;
+
+    for (const NurbsCurve& curve : curves) {
+        if (is_rat) {
+            const std::tuple<double, double, double, double> xyzw = curve.get_cv_4d(i);
+            rhs.push_back({std::get<0>(xyzw), std::get<1>(xyzw), std::get<2>(xyzw), std::get<3>(xyzw)});
+        } else {
+            const Point p = curve.get_cv(i);
+            rhs.push_back({p[0], p[1], p[2]});
+        }
+    }
+
+    return rhs;
+}
+
 /// Solves a x = b by Gaussian elimination with partial pivoting, one right-hand side per column of b.
 std::vector<std::vector<double>> solve_linear(std::vector<std::vector<double>> a, std::vector<std::vector<double>> b) {
 
@@ -407,6 +428,58 @@ std::vector<std::vector<double>> solve_linear(std::vector<std::vector<double>> a
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Revolve helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Number of quarter arcs, at most 4, that cover the angle.
+int revolve_arc_count(double angle) {
+
+    if (angle <= Tolerance::PI / 2.0 + 1e-10)
+        return 1;
+
+    if (angle <= Tolerance::PI + 1e-10)
+        return 2;
+
+    if (angle <= 3.0 * Tolerance::PI / 2.0 + 1e-10)
+        return 3;
+
+    return 4;
+}
+
+/// Column j of a surface of revolution: profile control point j swept around the axis in arcs of d_theta.
+void set_revolve_column(
+    NurbsSurface& surface,
+    const NurbsCurve& profile,
+    int j,
+    const Point& axis_origin,
+    const Vector& axis,
+    double d_theta
+) {
+
+    const double w_mid = std::cos(d_theta / 2.0);
+    const Point p = profile.get_cv(j);
+    const double profile_w = profile.is_rational() ? profile.weight(j) : 1.0;
+    const Point center = axis_origin + axis * (p - axis_origin).dot(axis);
+    Vector x_local = p - center;
+    const double r = x_local.magnitude();
+
+    if (r > 1e-14)
+        x_local /= r;
+
+    const Vector y_local = axis.cross(x_local);
+
+    for (int i = 0; i < surface.cv_count(0); i++) {
+        const bool shoulder = i % 2 == 1;
+        const double theta = (i / 2) * d_theta + (shoulder ? d_theta / 2.0 : 0.0);
+        const double w = (shoulder ? w_mid : 1.0) * profile_w;
+        const Point q =
+            center + (x_local * std::cos(theta) + y_local * std::sin(theta)) * (shoulder ? r / w_mid : r);
+
+        surface.set_cv_4d(i, j, q[0] * w, q[1] * w, q[2] * w, w);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Sweep helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -418,6 +491,27 @@ Point lerp_point(const Point& a, const Point& b, double s) {
 /// Vector at fraction s from a to b.
 Vector lerp_vector(const Vector& a, const Vector& b, double s) {
     return a + (b - a) * s;
+}
+
+/// Copy of a with every control point at fraction s toward the matching control point of b.
+NurbsCurve blend_curves(const NurbsCurve& a, const NurbsCurve& b, double s) {
+
+    NurbsCurve blend = a;
+
+    for (int c = 0; c < blend.cv_count(); c++)
+        blend.set_cv(c, lerp_point(a.get_cv(c), b.get_cv(c), s));
+
+    return blend;
+}
+
+/// Plane at fraction s from a to b.
+Plane blend_planes(const Plane& a, const Plane& b, double s) {
+
+    return Plane(
+        lerp_point(a.origin(), b.origin(), s),
+        lerp_vector(a.x_axis(), b.x_axis(), s),
+        lerp_vector(a.y_axis(), b.y_axis(), s)
+    );
 }
 
 /// World to the profile frame: centroid origin, x toward the start point, z the profile normal.
@@ -476,6 +570,30 @@ double shape_width(const NurbsCurve& shape) {
     return width < 1e-14 ? 1.0 : width;
 }
 
+/// Source plane onto the rail points p1 and p2, x toward p2, scaled from width to the rail distance.
+Xform rail_xform(const Plane& source, double width, const Point& p1, const Point& p2, const Plane& frame) {
+
+    Vector x_dir = p2 - p1;
+    const double rail_dist = x_dir.magnitude();
+
+    if (!x_dir.normalize_self())
+        x_dir = frame.x_axis();
+
+    Vector y_dir = frame.z_axis().cross(x_dir);
+
+    if (!y_dir.normalize_self())
+        y_dir = frame.y_axis();
+
+    if (y_dir.dot(source.y_axis()) < 0.0)
+        y_dir = -y_dir;
+
+    const double scale = rail_dist > 1e-14 && width > 1e-14 ? rail_dist / width : 1.0;
+    const Plane target(p1, x_dir, y_dir);
+    const Xform to_source = Xform::world_to_frame(source.origin(), source.x_axis(), source.y_axis(), source.z_axis());
+
+    return Xform::to_frame(target) * Xform::scale_xyz(scale, scale, scale) * to_source;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge helpers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -529,6 +647,45 @@ std::vector<double> normalized_greville(const NurbsCurve& curve) {
         g = domain.second > domain.first ? (g - domain.first) / (domain.second - domain.first) : 0.0;
 
     return grev;
+}
+
+/// Control points of a Coons patch: boundary blends at the Greville abcissae minus the bilinear corners.
+void set_coons_cvs(
+    NurbsSurface& surface,
+    const NurbsCurve& south,
+    const NurbsCurve& north,
+    const NurbsCurve& west,
+    const NurbsCurve& east
+) {
+
+    const int cv_count_u = west.cv_count();
+    const int cv_count_v = south.cv_count();
+    const std::vector<double> u_grev = normalized_greville(west);
+    const std::vector<double> v_grev = normalized_greville(south);
+    const Point c00 = south.get_cv(0);
+    const Point c01 = south.get_cv(cv_count_v - 1);
+    const Point c10 = north.get_cv(0);
+    const Point c11 = north.get_cv(cv_count_v - 1);
+
+    for (int i = 0; i < cv_count_u; i++) {
+        const double ui = u_grev[i];
+        const Point wi = west.get_cv(i);
+        const Point ei = east.get_cv(i);
+
+        for (int j = 0; j < cv_count_v; j++) {
+            const double vj = v_grev[j];
+            const Point sj = south.get_cv(j);
+            const Point nj = north.get_cv(j);
+            double q[3];
+
+            for (int axis = 0; axis < 3; axis++)
+                q[axis] = (1.0 - ui) * sj[axis] + ui * nj[axis] + (1.0 - vj) * wi[axis] + vj * ei[axis] -
+                    (1.0 - ui) * (1.0 - vj) * c00[axis] - (1.0 - ui) * vj * c01[axis] - ui * (1.0 - vj) * c10[axis] -
+                    ui * vj * c11[axis];
+
+            surface.set_cv(i, j, Point(q[0], q[1], q[2]));
+        }
+    }
 }
 
 } // namespace
@@ -951,9 +1108,9 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curve_a, const NurbsCurv
         return NurbsSurface();
 
     std::vector<NurbsCurve> curves = {curve_a, curve_b};
-    curves[0].set_domain(0.0, 1.0);
-    curves[1].set_domain(0.0, 1.0);
-    make_curves_compatible(curves);
+
+    if (!curves[0].set_domain(0.0, 1.0) || !curves[1].set_domain(0.0, 1.0) || !unify_curves(curves))
+        return NurbsSurface();
 
     const int cv_count_u = curves[0].cv_count();
     const bool is_rat = curves[0].is_rational();
@@ -1046,7 +1203,9 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
             return NurbsSurface();
 
     std::vector<NurbsCurve> curves = input_curves;
-    make_curves_compatible(curves);
+
+    if (!unify_curves(curves))
+        return NurbsSurface();
 
     const int n = static_cast<int>(curves.size());
     const int cv_count_u = curves[0].cv_count();
@@ -1070,22 +1229,8 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
     for (int k = 0; k < n; k++)
         basis[k] = loft_basis_row(nurbsknots_v, order_v, n, v_params[k]);
 
-    const int dim = is_rat ? 4 : 3;
-
     for (int i = 0; i < cv_count_u; i++) {
-        std::vector<std::vector<double>> rhs(n, std::vector<double>(dim, 0.0));
-
-        for (int k = 0; k < n; k++) {
-            if (is_rat) {
-                const std::tuple<double, double, double, double> xyzw = curves[k].get_cv_4d(i);
-                rhs[k] = {std::get<0>(xyzw), std::get<1>(xyzw), std::get<2>(xyzw), std::get<3>(xyzw)};
-            } else {
-                const Point p = curves[k].get_cv(i);
-                rhs[k] = {p[0], p[1], p[2]};
-            }
-        }
-
-        const std::vector<std::vector<double>> q = solve_linear(basis, rhs);
+        const std::vector<std::vector<double>> q = solve_linear(basis, loft_column(curves, i, is_rat));
 
         for (int j = 0; j < n; j++)
             if (is_rat)
@@ -1117,17 +1262,8 @@ NurbsSurface Primitives::create_revolve(
     if (angle < 1e-14)
         return NurbsSurface();
 
-    int n_arcs = 4;
-
-    if (angle <= Tolerance::PI / 2.0 + 1e-10)
-        n_arcs = 1;
-    else if (angle <= Tolerance::PI + 1e-10)
-        n_arcs = 2;
-    else if (angle <= 3.0 * Tolerance::PI / 2.0 + 1e-10)
-        n_arcs = 3;
-
+    const int n_arcs = revolve_arc_count(angle);
     const double d_theta = angle / n_arcs;
-    const double w_mid = std::cos(d_theta / 2.0);
     const int n_u = 2 * n_arcs + 1;
     const int cv_count_v = profile.cv_count();
     NurbsSurface surface(3, true, 3, profile.order(), n_u, cv_count_v);
@@ -1141,28 +1277,8 @@ NurbsSurface Primitives::create_revolve(
     for (int i = 0; i < surface.nurbsknot_count(1); i++)
         surface.set_nurbsknot(1, i, profile.nurbsknot(i));
 
-    for (int j = 0; j < cv_count_v; j++) {
-        const Point p = profile.get_cv(j);
-        const double profile_w = profile.is_rational() ? profile.weight(j) : 1.0;
-        const Point center = axis_origin + axis * (p - axis_origin).dot(axis);
-        Vector x_local = p - center;
-        const double r = x_local.magnitude();
-
-        if (r > 1e-14)
-            x_local /= r;
-
-        const Vector y_local = axis.cross(x_local);
-
-        for (int i = 0; i < n_u; i++) {
-            const bool shoulder = i % 2 == 1;
-            const double theta = (i / 2) * d_theta + (shoulder ? d_theta / 2.0 : 0.0);
-            const double w = (shoulder ? w_mid : 1.0) * profile_w;
-            const Point q =
-                center + (x_local * std::cos(theta) + y_local * std::sin(theta)) * (shoulder ? r / w_mid : r);
-
-            surface.set_cv_4d(i, j, q[0] * w, q[1] * w, q[2] * w, w);
-        }
-    }
+    for (int j = 0; j < cv_count_v; j++)
+        set_revolve_column(surface, profile, j, axis_origin, axis, d_theta);
 
     return surface;
 }
@@ -1204,7 +1320,9 @@ NurbsSurface Primitives::create_sweep2(
             return NurbsSurface();
 
     std::vector<NurbsCurve> compat = shapes;
-    make_curves_compatible(compat);
+
+    if (!unify_curves(compat))
+        return NurbsSurface();
 
     const int n_shapes = static_cast<int>(compat.size());
     std::vector<Plane> planes;
@@ -1230,37 +1348,11 @@ NurbsSurface Primitives::create_sweep2(
         const int j = n_shapes == 1 ? 0 : std::min(static_cast<int>(t * (n_shapes - 1)), n_shapes - 2);
         const int j1 = n_shapes == 1 ? 0 : j + 1;
         const double s = n_shapes == 1 ? 0.0 : std::clamp(t * (n_shapes - 1) - j, 0.0, 1.0);
-        NurbsCurve section = compat[j];
-
-        for (int c = 0; c < section.cv_count(); c++)
-            section.set_cv(c, lerp_point(compat[j].get_cv(c), compat[j1].get_cv(c), s));
-
-        const Plane source(
-            lerp_point(planes[j].origin(), planes[j1].origin(), s),
-            lerp_vector(planes[j].x_axis(), planes[j1].x_axis(), s),
-            lerp_vector(planes[j].y_axis(), planes[j1].y_axis(), s)
-        );
+        NurbsCurve section = blend_curves(compat[j], compat[j1], s);
+        const Plane source = blend_planes(planes[j], planes[j1], s);
         const double width = widths[j] * (1.0 - s) + widths[j1] * s;
-        const Point p1 = pts1[i];
-        Vector x_dir = pts2[i] - p1;
-        const double rail_dist = x_dir.magnitude();
 
-        if (!x_dir.normalize_self())
-            x_dir = frames[i].x_axis();
-
-        Vector y_dir = frames[i].z_axis().cross(x_dir);
-
-        if (!y_dir.normalize_self())
-            y_dir = frames[i].y_axis();
-
-        if (y_dir.dot(source.y_axis()) < 0.0)
-            y_dir = -y_dir;
-
-        const double scale = rail_dist > 1e-14 && width > 1e-14 ? rail_dist / width : 1.0;
-        const Plane target(p1, x_dir, y_dir);
-        const Xform to_source = Xform::world_to_frame(source.origin(), source.x_axis(), source.y_axis(), source.z_axis());
-
-        section.transform(Xform::to_frame(target) * Xform::scale_xyz(scale, scale, scale) * to_source);
+        section.transform(rail_xform(source, width, pts1[i], pts2[i], frames[i]));
         sections.push_back(section);
     }
 
@@ -1283,26 +1375,22 @@ NurbsSurface Primitives::create_edge(
         return NurbsSurface();
 
     std::vector<NurbsCurve> v_pair = {loop[0], loop[2]};
-    v_pair[1].reverse();
-    make_curves_compatible(v_pair);
-
     std::vector<NurbsCurve> u_pair = {loop[3], loop[1]};
-    u_pair[0].reverse();
-    make_curves_compatible(u_pair);
+
+    if (!v_pair[1].reverse() || !u_pair[0].reverse() || !unify_curves(v_pair) || !unify_curves(u_pair))
+        return NurbsSurface();
 
     const NurbsCurve& south = v_pair[0];
     const NurbsCurve& north = v_pair[1];
     const NurbsCurve& west = u_pair[0];
     const NurbsCurve& east = u_pair[1];
-    const int cv_count_u = west.cv_count();
-    const int cv_count_v = south.cv_count();
     NurbsSurface surface(
         3,
         south.is_rational() || west.is_rational(),
         west.order(),
         south.order(),
-        cv_count_u,
-        cv_count_v
+        west.cv_count(),
+        south.cv_count()
     );
 
     if (!surface.is_valid())
@@ -1314,32 +1402,7 @@ NurbsSurface Primitives::create_edge(
     for (int i = 0; i < surface.nurbsknot_count(1); i++)
         surface.set_nurbsknot(1, i, south.nurbsknot(i));
 
-    const std::vector<double> u_grev = normalized_greville(west);
-    const std::vector<double> v_grev = normalized_greville(south);
-    const Point c00 = south.get_cv(0);
-    const Point c01 = south.get_cv(cv_count_v - 1);
-    const Point c10 = north.get_cv(0);
-    const Point c11 = north.get_cv(cv_count_v - 1);
-
-    for (int i = 0; i < cv_count_u; i++) {
-        const double ui = u_grev[i];
-        const Point wi = west.get_cv(i);
-        const Point ei = east.get_cv(i);
-
-        for (int j = 0; j < cv_count_v; j++) {
-            const double vj = v_grev[j];
-            const Point sj = south.get_cv(j);
-            const Point nj = north.get_cv(j);
-            double q[3];
-
-            for (int axis = 0; axis < 3; axis++)
-                q[axis] = (1.0 - ui) * sj[axis] + ui * nj[axis] + (1.0 - vj) * wi[axis] + vj * ei[axis] -
-                    (1.0 - ui) * (1.0 - vj) * c00[axis] - (1.0 - ui) * vj * c01[axis] - ui * (1.0 - vj) * c10[axis] -
-                    ui * vj * c11[axis];
-
-            surface.set_cv(i, j, Point(q[0], q[1], q[2]));
-        }
-    }
+    set_coons_cvs(surface, south, north, west, east);
 
     return surface;
 }
