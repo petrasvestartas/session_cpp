@@ -39,7 +39,10 @@ struct BRepRef {
     BRepOrientation orientation = BRepOrientation::Forward; // Orientation of this use.
 
     /// Compare index and orientation.
-    bool operator==(const BRepRef& o) const { return index == o.index && orientation == o.orientation; }
+    bool operator==(const BRepRef& o) const {
+
+        return index == o.index && orientation == o.orientation;
+    }
 };
 
 /// BRep_TVertex
@@ -171,7 +174,10 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -192,7 +198,10 @@ public:
     }
 
     /// Clear the guid so a fresh one mints lazily on next read
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+
+        _guid.clear();
+    }
 
     /// Return the number of vertices.
     int vertex_count() const;

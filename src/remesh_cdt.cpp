@@ -1485,8 +1485,6 @@ Mesh build_mesh(
 // ═══════════════════════════════════════════════════════════════════════════
 // RemeshCDT
 // ═══════════════════════════════════════════════════════════════════════════
-
-/// Triangle index triples of a counter-clockwise 2D border with clockwise holes into the flat list [border..., hole0..., hole1...].
 std::vector<std::array<int, 3>> cdt_triangulate(
     const std::vector<std::pair<double, double>>& border_2d,
     const std::vector<std::vector<std::pair<double, double>>>& holes_2d

@@ -3,6 +3,7 @@
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.h"
 #include "primitives.h"
+#include "remesh_cdt.h"
 #include "remesh_nurbssurface_grid.h"
 #include <algorithm>
 #include <array>
@@ -43,12 +44,6 @@ BRepOrientation brep_compose(BRepOrientation a, BRepOrientation b) {
 
     return brep_reverse(b);
 }
-
-/// remesh_cdt.cpp: triangle index triples of a counter-clockwise 2D border with clockwise holes into the flat list [border..., hole0..., hole1...]
-std::vector<std::array<int, 3>> cdt_triangulate(
-    const std::vector<std::pair<double, double>>& border_2d,
-    const std::vector<std::vector<std::pair<double, double>>>& holes_2d
-);
 
 namespace {
 
@@ -98,10 +93,9 @@ bool in_range(int index, size_t count) {
 NurbsSurface bilinear_patch(const Point& p00, const Point& p10, const Point& p01, const Point& p11) {
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
-    srf.set_cv(0, 0, p00);
-    srf.set_cv(1, 0, p10);
-    srf.set_cv(0, 1, p01);
-    srf.set_cv(1, 1, p11);
+
+    if (!srf.set_cv(0, 0, p00) || !srf.set_cv(1, 0, p10) || !srf.set_cv(0, 1, p01) || !srf.set_cv(1, 1, p11))
+        return NurbsSurface();
 
     return srf;
 }
@@ -126,7 +120,8 @@ NurbsCurve project_to_patch(const NurbsCurve& crv, const NurbsSurface& srf) {
     NurbsCurve c2(3, crv.is_rational(), crv.order(), crv.cv_count());
 
     for (int i = 0; i < crv.nurbsknot_count(); ++i)
-        c2.set_nurbsknot(i, crv.nurbsknot(i));
+        if (!c2.set_nurbsknot(i, crv.nurbsknot(i)))
+            return NurbsCurve();
 
     for (int i = 0; i < crv.cv_count(); ++i) {
         double wx = 0.0;
@@ -138,10 +133,10 @@ NurbsCurve project_to_patch(const NurbsCurve& crv, const NurbsSurface& srf) {
         const double u = d.dot(eu) / eu2;
         const double v = d.dot(ev) / ev2;
 
-        if (crv.is_rational())
-            c2.set_cv_4d(i, u * w, v * w, 0.0, w);
-        else
-            c2.set_cv(i, Point(u, v, 0));
+        const bool written = crv.is_rational() ? c2.set_cv_4d(i, u * w, v * w, 0.0, w) : c2.set_cv(i, Point(u, v, 0));
+
+        if (!written)
+            return NurbsCurve();
     }
 
     return c2;
@@ -1441,6 +1436,44 @@ void tag_loop_vertices(Mesh& mesh, const TrimLoops& loops, const Vector& normal)
     }
 }
 
+/// Add the border and hole vertices and the CDT triangles of their 2D rings, degenerate triangles skipped
+void add_ring_faces(
+    Mesh& mesh,
+    const std::vector<Point>& border,
+    const std::vector<std::vector<Point>>& holes,
+    const std::vector<std::pair<double, double>>& border_2d,
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d
+) {
+
+    std::vector<size_t> vkeys;
+
+    for (const Point& p : border)
+        vkeys.push_back(mesh.add_vertex(p));
+
+    for (const std::vector<Point>& hole : holes)
+        for (const Point& p : hole)
+            vkeys.push_back(mesh.add_vertex(p));
+
+    for (const std::array<int, 3>& t : cdt_triangulate(border_2d, holes_2d))
+        if (t[0] != t[1] && t[1] != t[2] && t[2] != t[0])
+            mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+}
+
+/// Flip the mesh when its first face winds against the normal
+void wind_to_normal(Mesh& mesh, const Vector& normal) {
+
+    if (mesh.face.empty())
+        return;
+
+    const std::vector<size_t>& fverts = mesh.face.begin()->second;
+    const Point a = mesh.vertex[fverts[0]].position();
+    const Point b = mesh.vertex[fverts[1]].position();
+    const Point c = mesh.vertex[fverts[2]].position();
+
+    if ((b - a).cross(c - a).dot(normal) < 0.0)
+        mesh.flip();
+}
+
 /// Phase 3 for a planar face: the sampled loops triangulated as one polygon with holes, wound to the surface normal, every loop vertex tagged boundary/{loop}/{sample} as mesh_loops does; no grid, no surface evaluation
 Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
 
@@ -1486,33 +1519,12 @@ Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
         holes_2d.push_back(hole_2d);
     }
 
-    std::vector<size_t> vkeys;
-
-    for (const Point& p : border)
-        vkeys.push_back(mesh.add_vertex(p));
-
-    for (const std::vector<Point>& hole : holes)
-        for (const Point& p : hole)
-            vkeys.push_back(mesh.add_vertex(p));
-
-    for (const std::array<int, 3>& t : cdt_triangulate(border_2d, holes_2d))
-        if (t[0] != t[1] && t[1] != t[2] && t[2] != t[0])
-            mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+    add_ring_faces(mesh, border, holes, border_2d, holes_2d);
 
     const std::pair<double, double> du = srf.domain(0);
     const std::pair<double, double> dv = srf.domain(1);
     const Vector normal = srf.normal_at(0.5 * (du.first + du.second), 0.5 * (dv.first + dv.second));
-
-    if (!mesh.face.empty()) {
-        const std::vector<size_t>& fverts = mesh.face.begin()->second;
-        const Point a = mesh.vertex[fverts[0]].position();
-        const Point b = mesh.vertex[fverts[1]].position();
-        const Point c = mesh.vertex[fverts[2]].position();
-
-        if ((b - a).cross(c - a).dot(normal) < 0.0)
-            mesh.flip();
-    }
-
+    wind_to_normal(mesh, normal);
     tag_loop_vertices(mesh, loops, normal);
 
     return mesh;
@@ -1818,7 +1830,10 @@ BRepFace face_from_proto(const session_proto::BRepFace& f) {
 // ═══════════════════════════════════════════════════════════════════════════
 BRep::BRep() {}
 
-BRep::BRep(const BRep& other) { *this = other; }
+BRep::BRep(const BRep& other) {
+
+    *this = other;
+}
 
 BRep& BRep::operator=(const BRep& other) {
 
@@ -2144,22 +2159,43 @@ bool BRep::operator==(const BRep& other) const {
         && m_solids.size() == other.m_solids.size();
 }
 
-bool BRep::operator!=(const BRep& other) const { return !(*this == other); }
+bool BRep::operator!=(const BRep& other) const {
+
+    return !(*this == other);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-int BRep::vertex_count() const { return (int)m_vertices.size(); }
+int BRep::vertex_count() const {
 
-int BRep::edge_count() const { return (int)m_edges.size(); }
+    return (int)m_vertices.size();
+}
 
-int BRep::wire_count() const { return (int)m_wires.size(); }
+int BRep::edge_count() const {
 
-int BRep::face_count() const { return (int)m_faces.size(); }
+    return (int)m_edges.size();
+}
 
-int BRep::shell_count() const { return (int)m_shells.size(); }
+int BRep::wire_count() const {
 
-int BRep::solid_count() const { return (int)m_solids.size(); }
+    return (int)m_wires.size();
+}
+
+int BRep::face_count() const {
+
+    return (int)m_faces.size();
+}
+
+int BRep::shell_count() const {
+
+    return (int)m_shells.size();
+}
+
+int BRep::solid_count() const {
+
+    return (int)m_solids.size();
+}
 
 bool BRep::is_valid() const {
 
@@ -2314,9 +2350,15 @@ std::vector<Point> BRep::vertex_points() const {
     return pts;
 }
 
-std::vector<Polyline> BRep::face_polylines() const { return planar_faces(*this).first; }
+std::vector<Polyline> BRep::face_polylines() const {
 
-std::vector<Plane> BRep::face_planes() const { return planar_faces(*this).second; }
+    return planar_faces(*this).first;
+}
+
+std::vector<Plane> BRep::face_planes() const {
+
+    return planar_faces(*this).second;
+}
 
 double BRep::update_tolerances() {
 
@@ -2357,7 +2399,10 @@ double BRep::update_tolerances() {
     return worst;
 }
 
-double BRep::volume() const { return mesh().volume(); }
+double BRep::volume() const {
+
+    return mesh().volume();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Building
@@ -2467,7 +2512,10 @@ Mesh BRep::mesh() const {
     return Mesh::from_polylines(polygons, 1e-6);
 }
 
-std::vector<Mesh> BRep::face_meshes() const { return face_meshes_q(false, 0.0, 0.0); }
+std::vector<Mesh> BRep::face_meshes() const {
+
+    return face_meshes_q(false, 0.0, 0.0);
+}
 
 std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const {
 
@@ -2735,9 +2783,15 @@ BRep BRep::jsonload(const nlohmann::json& data) {
     return b;
 }
 
-std::string BRep::file_json_dumps() const { return jsondump().dump(); }
+std::string BRep::file_json_dumps() const {
 
-BRep BRep::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+    return jsondump().dump();
+}
+
+BRep BRep::file_json_loads(const std::string& json_string) {
+
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void BRep::file_json_dump(const std::string& filename) const {
 
@@ -2846,7 +2900,10 @@ BRep BRep::from_proto(const session_proto::BRep& proto) {
     return b;
 }
 
-std::string BRep::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string BRep::pb_dumps() const {
+
+    return to_proto().SerializeAsString();
+}
 
 BRep BRep::pb_loads(const std::string& data) {
 

@@ -18,11 +18,6 @@
 
 namespace session_cpp {
 
-std::vector<std::array<int, 3>> cdt_triangulate(
-    const std::vector<std::pair<double, double>>&,
-    const std::vector<std::vector<std::pair<double, double>>>&
-);
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
