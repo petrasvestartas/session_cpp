@@ -29,6 +29,10 @@
 #include <variant>
 #include <memory>
 
+namespace session_proto {
+class Session;
+}
+
 namespace session_cpp {
 
 /// The Objects lists, those order() walks first and in its sequence, each with the prefix of its graph node attribute.
@@ -68,6 +72,9 @@ public:
     std::vector<OBB> cached_boxes;                               // Box per leaf of cached_ray_bvh.
     bool bvh_cache_dirty = true;                                 // Flag to rebuild cached_ray_bvh.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Constructs an empty session whose tree root carries the session name.
     Session(std::string name = "my_session");
 
@@ -84,13 +91,14 @@ public:
     Session& operator=(Session&&) noexcept = default;
 
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
-        if (_guid.empty())
 
-            /// Return the mutable guid, creating it on first access.
+        if (_guid.empty())
             _guid = ::guid();
 
         return _guid;
@@ -98,6 +106,7 @@ public:
 
     /// Return the mutable guid, creating it on first access.
     std::string& guid() {
+
         if (_guid.empty())
             _guid = ::guid();
 
@@ -107,11 +116,10 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Get a geometry object by GUID with type safety.
     template <typename T> std::shared_ptr<T> get_object(const std::string& guid) {
 
-        auto it = lookup.find(guid);
+        std::unordered_map<std::string, Geometry>::iterator it = lookup.find(guid);
 
         if (it == lookup.end())
             return nullptr;
@@ -124,7 +132,7 @@ public:
     /// Get a geometry object by GUID (const version).
     template <typename T> std::shared_ptr<const T> get_object(const std::string& guid) const {
 
-        auto it = lookup.find(guid);
+        std::unordered_map<std::string, Geometry>::const_iterator it = lookup.find(guid);
 
         if (it == lookup.end())
             return nullptr;
@@ -144,6 +152,7 @@ public:
             return groups;
 
         for (TreeNode* group : root->children()) {
+
             std::vector<T> items;
 
             for (TreeNode* node : group->descendants())
@@ -193,7 +202,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometry management
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Add a point; null adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent = nullptr);
 
@@ -271,13 +279,19 @@ public:
     void remove_interaction(const std::string& a, const std::string& b);
 
     /// add_interaction using element identities.
-    std::pair<std::string, std::string> add_interaction(const Element& a, const Element& b) { return add_interaction(a.guid(), b.guid()); }
+    std::pair<std::string, std::string> add_interaction(const Element& a, const Element& b) {
+        return add_interaction(a.guid(), b.guid());
+    }
 
     /// has_interaction using element identities.
-    bool has_interaction(const Element& a, const Element& b) const { return has_interaction(a.guid(), b.guid()); }
+    bool has_interaction(const Element& a, const Element& b) const {
+        return has_interaction(a.guid(), b.guid());
+    }
 
     /// remove_interaction using element identities.
-    void remove_interaction(const Element& a, const Element& b) { return remove_interaction(a.guid(), b.guid()); }
+    void remove_interaction(const Element& a, const Element& b) {
+        remove_interaction(a.guid(), b.guid());
+    }
 
     /// Add a parent-child relationship in the tree.
     bool add_hierarchy(const std::string& parent_guid, const std::string& child_guid);
@@ -316,7 +330,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // History
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Open a history transaction: every add, remove, replace and xform change until commit becomes one undo step.
     void begin(const std::string& label);
 
@@ -332,7 +345,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Collision detection and ray casting
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Bounding box of an object in WORLD placement, inflated by tolerance.
     static OBB compute_bounding_box(const Geometry& geometry, const Xform& xform);
 
@@ -350,9 +362,8 @@ public:
     std::vector<RayHit> ray_cast(const Point& origin, const Vector& direction, double tolerance = 1e-3);
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Serialization
+    // JSON
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Serialize to a JSON object.
     nlohmann::ordered_json jsondump() const;
 
@@ -371,6 +382,15 @@ public:
     /// Read from a JSON file.
     static Session file_json_load(const std::string& filename);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Convert to the protobuf message.
+    session_proto::Session to_proto() const;
+
+    /// Construct from the protobuf message.
+    static Session from_proto(const session_proto::Session& proto);
+
     /// Serialize to protobuf bytes.
     std::string pb_dumps() const;
 
@@ -383,16 +403,22 @@ public:
     /// Read from a protobuf file.
     static Session pb_load(const std::string& filename);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return the spatial hierarchy and the element interactions as a banner block.
     std::string str() const;
 
-    /// "Session(name, objects, tree, graph)".
+    /// Return "Session(name=..., objects=..., tree=..., graph=...)".
     std::string repr() const;
 
 private:
     friend class History;
     mutable std::string _guid; // Lazily minted guid.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Details
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Store an object in its typed list, lookup, graph and tree, recording an AddOp when a transaction is open.
     std::shared_ptr<TreeNode> _add_object(
         const std::string& collection,

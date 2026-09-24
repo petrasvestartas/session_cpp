@@ -102,16 +102,18 @@ template <typename E> E element_of(const Item& item) {
 /// Which list of objects holds a guid, and where; ("", -1) when none does.
 std::pair<std::string, int> locate(const Objects& objects, const std::string& guid) {
 
-    for (const auto& [collection, prefix] : COLLECTIONS) {
+    for (const std::pair<std::string, std::string>& entry : COLLECTIONS) {
+
         int found = -1;
-        with_collection(objects, collection, [&](const auto& items) {
+
+        with_collection(objects, entry.first, [&](const auto& items) {
             for (size_t i = 0; i < items.size(); ++i)
                 if (guid_of(items[i]) == guid)
                     found = static_cast<int>(i);
         });
 
         if (found >= 0)
-            return {collection, found};
+            return {entry.first, found};
     }
 
     return {"", -1};
@@ -121,7 +123,9 @@ std::pair<std::string, int> locate(const Objects& objects, const std::string& gu
 std::pair<std::string, std::string> collection_of(const Objects& objects, const Geometry& geometry) {
 
     for (const std::pair<std::string, std::string>& entry : COLLECTIONS) {
+
         bool match = false;
+
         with_collection(objects, entry.first, [&](const auto& items) {
             using E = typename std::decay_t<decltype(items)>::value_type;
             if constexpr (IS_GEOMETRY<E>)
@@ -138,8 +142,8 @@ std::pair<std::string, std::string> collection_of(const Objects& objects, const 
 /// Every geometry of objects under its guid.
 void index_geometry(const Objects& objects, std::unordered_map<std::string, Geometry>& lookup) {
 
-    for (const auto& [collection, prefix] : COLLECTIONS)
-        with_collection(objects, collection, [&](const auto& items) {
+    for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
+        with_collection(objects, entry.first, [&](const auto& items) {
             using E = typename std::decay_t<decltype(items)>::value_type;
             if constexpr (IS_GEOMETRY<E>)
                 for (const E& item : items)
@@ -169,6 +173,7 @@ void place(const Geometry& geometry, const Xform& xform) {
 Geometry resolve(const InstanceRef& instance, const Geometry& definition, const Xform& xform) {
 
     const Geometry copy = clone(definition);
+
     std::visit(
         [&](const auto& live) {
             using P = typename std::decay_t<decltype(live)>::element_type;
@@ -181,6 +186,7 @@ Geometry resolve(const InstanceRef& instance, const Geometry& definition, const 
         },
         copy
     );
+
     place(copy, xform);
 
     return copy;
@@ -191,6 +197,7 @@ template <typename T>
 void bake(std::vector<std::shared_ptr<T>>& items, const std::unordered_map<std::string, Xform>& world) {
 
     for (std::shared_ptr<T>& item : items) {
+
         auto it = world.find(item->guid());
 
         if (it == world.end() || it->second.is_identity())
@@ -245,12 +252,131 @@ std::optional<Point> ray_point(const Line& ray, const Point& point, double toler
     return closest;
 }
 
+/// The segment hit closest to the ray start.
+std::optional<Point> ray_polyline(const Line& ray, const Polyline& polyline, double tolerance) {
+
+    std::optional<Point> closest;
+    double min_dist = std::numeric_limits<double>::infinity();
+
+    for (size_t i = 0; i < polyline.segment_count(); ++i) {
+
+        const Line segment = Line::from_points(polyline.get_point(i), polyline.get_point(i + 1));
+        Point hit;
+
+        if (!Intersection::line_line(ray, segment, hit, tolerance))
+            continue;
+
+        const double dist = ray.start().distance(hit);
+
+        if (dist < min_dist) {
+            min_dist = dist;
+            closest = hit;
+        }
+    }
+
+    return closest;
+}
+
+/// The ray point closest to a cloud point within tolerance.
+std::optional<Point> ray_pointcloud(const Line& ray, const PointCloud& pointcloud, double tolerance) {
+
+    std::optional<Point> closest;
+    double min_dist = std::numeric_limits<double>::infinity();
+
+    for (const Point& point : pointcloud.get_points()) {
+
+        const std::optional<Point> hit = ray_point(ray, point, tolerance);
+
+        if (!hit)
+            continue;
+
+        const double dist = point.distance(*hit);
+
+        if (dist < min_dist) {
+            min_dist = dist;
+            closest = hit;
+        }
+    }
+
+    return closest;
+}
+
+/// The first hit of the ray on the placed mesh, tested in the mesh frame.
+std::optional<Point> ray_mesh(const Line& ray, const Mesh& mesh, double tolerance, const Xform& placement) {
+
+    const std::optional<Xform> inverse = placement.inverse();
+
+    if (!inverse)
+        return std::nullopt;
+
+    const Line local_ray = Line::from_points(
+        inverse->transform_point(ray.start()),
+        inverse->transform_point(ray.end())
+    );
+    const std::vector<Point> hits = Intersection::ray_mesh_bvh(local_ray, mesh, tolerance, true);
+
+    if (hits.empty())
+        return std::nullopt;
+
+    return placement.transform_point(hits[0]);
+}
+
+/// The points whose box bounds a geometry: vertices, control points or surface samples.
+std::vector<Point> box_points(const Geometry& geometry) {
+
+    std::vector<Point> points;
+
+    if (const std::shared_ptr<Line>* line = std::get_if<std::shared_ptr<Line>>(&geometry)) {
+        points.push_back((*line)->start());
+        points.push_back((*line)->end());
+    } else if (const std::shared_ptr<Polyline>* polyline = std::get_if<std::shared_ptr<Polyline>>(&geometry)) {
+        points = (*polyline)->get_points();
+    } else if (const std::shared_ptr<PointCloud>* pointcloud = std::get_if<std::shared_ptr<PointCloud>>(&geometry)) {
+        points = (*pointcloud)->get_points();
+    } else if (const std::shared_ptr<Mesh>* mesh = std::get_if<std::shared_ptr<Mesh>>(&geometry)) {
+        for (const std::pair<const size_t, VertexData>& vertex : (*mesh)->vertex)
+            points.push_back(vertex.second.position());
+    } else if (const std::shared_ptr<BRep>* brep = std::get_if<std::shared_ptr<BRep>>(&geometry)) {
+        for (const BRepVertex& vertex : (*brep)->m_vertices)
+            points.push_back(vertex.point);
+
+        for (const NurbsSurface& surface : (*brep)->m_surfaces) {
+
+            const std::pair<double, double> u = surface.domain(0);
+            const std::pair<double, double> v = surface.domain(1);
+
+            for (int i = 0; i <= 2; ++i)
+                for (int j = 0; j <= 2; ++j)
+                    points.push_back(surface.point_at(
+                        u.first + (u.second - u.first) * i / 2.0,
+                        v.first + (v.second - v.first) * j / 2.0
+                    ));
+        }
+    } else if (const std::shared_ptr<NurbsCurve>* nurbscurve = std::get_if<std::shared_ptr<NurbsCurve>>(&geometry)) {
+        for (int i = 0; i < (*nurbscurve)->cv_count(); ++i)
+            points.push_back((*nurbscurve)->get_cv(i));
+    } else if (const std::shared_ptr<NurbsSurface>* nurbssurface = std::get_if<std::shared_ptr<NurbsSurface>>(&geometry)) {
+        for (int i = 0; i < (*nurbssurface)->cv_count(0); ++i)
+            for (int j = 0; j < (*nurbssurface)->cv_count(1); ++j)
+                points.push_back((*nurbssurface)->get_cv(i, j));
+    }
+
+    return points;
+}
+
+/// Whether guid is a graph node held by an object, instance or component.
+bool registered(const Session& session, const std::string& guid) {
+
+    const bool held = session.lookup.count(guid) || session.instance_lookup.count(guid) || session.component_lookup.count(guid);
+
+    return session.graph.has_node(guid) && held;
+}
+
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 Session::Session(std::string name)
     : name(std::move(name)), objects(), tree(this->name + "_tree"), graph(this->name + "_graph") {
 
@@ -281,7 +407,6 @@ Session& Session::operator=(const Session& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::shared_ptr<TreeNode> Session::find_group(const std::string& group_name) const {
 
     std::shared_ptr<TreeNode> root = tree.root();
@@ -336,6 +461,7 @@ std::vector<std::string> Session::order() const {
 }
 
 Xform Session::xform(const std::string& guid) const {
+
     auto it = xforms.find(guid);
 
     return it == xforms.end() ? Xform::identity() : it->second;
@@ -350,6 +476,7 @@ Xform Session::world_xform(const std::string& guid) const {
         return acc;
 
     for (TreeNode* ancestor : node->ancestors()) {
+
         auto it = xforms.find(ancestor->name);
 
         if (it != xforms.end())
@@ -372,7 +499,9 @@ std::unordered_map<std::string, Xform> Session::world_xforms() const {
         stack.emplace_back(tree.root().get(), Xform::identity());
 
     while (!stack.empty()) {
-        auto [node, parent_xform] = stack.back();
+
+        TreeNode* node = stack.back().first;
+        const Xform parent_xform = stack.back().second;
         stack.pop_back();
         auto it = xforms.find(node->name);
         const Xform current = it == xforms.end() ? parent_xform : parent_xform * it->second;
@@ -382,8 +511,8 @@ std::unordered_map<std::string, Xform> Session::world_xforms() const {
             stack.emplace_back(child, current);
     }
 
-    for (const auto& [obj_guid, obj_xform] : xforms)
-        out.emplace(obj_guid, obj_xform);
+    for (const std::pair<const std::string, Xform>& entry : xforms)
+        out.emplace(entry.first, entry.second);
 
     return out;
 }
@@ -400,6 +529,7 @@ Objects Session::get_geometry() const {
 
     Objects out(objects);
     const std::unordered_map<std::string, Xform> world = world_xforms();
+
     bake(*out.points, world);
     bake(*out.lines, world);
     bake(*out.planes, world);
@@ -412,6 +542,7 @@ Objects Session::get_geometry() const {
     bake(*out.breps, world);
 
     for (std::shared_ptr<Element>& element : *out.elements) {
+
         auto it = world.find(element->guid());
 
         if (it == world.end() || it->second.is_identity())
@@ -421,14 +552,16 @@ Objects Session::get_geometry() const {
     }
 
     for (const std::shared_ptr<InstanceRef>& instance : *objects.instances) {
+
         auto definition = definition_lookup.find(instance->definition_guid);
 
         if (definition == definition_lookup.end())
             continue;
 
         auto it = world.find(instance->guid());
-        const Geometry resolved =
-            resolve(*instance, definition->second, it == world.end() ? Xform::identity() : it->second);
+        const Xform placement = it == world.end() ? Xform::identity() : it->second;
+        const Geometry resolved = resolve(*instance, definition->second, placement);
+
         with_collection(out, collection_of(out, resolved).first, [&](auto& items) {
             items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(resolved));
         });
@@ -470,6 +603,7 @@ std::optional<Geometry> Session::world_geometry(const std::string& guid) const {
     const Xform world = world_xform(guid);
 
     if (auto it = lookup.find(guid); it != lookup.end()) {
+
         const Geometry copy = clone(it->second);
         place(copy, world);
 
@@ -487,8 +621,8 @@ std::optional<Geometry> Session::world_geometry(const std::string& guid) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry management
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent) {
+
     if (!point)
         return nullptr;
 
@@ -496,6 +630,7 @@ std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
+
     if (!line)
         return nullptr;
 
@@ -503,6 +638,7 @@ std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
+
     if (!plane)
         return nullptr;
 
@@ -510,6 +646,7 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
+
     if (!bbox)
         return nullptr;
 
@@ -517,6 +654,7 @@ std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
+
     if (!polyline || polyline->point_count() < 2)
         return nullptr;
 
@@ -527,6 +665,7 @@ std::shared_ptr<TreeNode> Session::add_pointcloud(
     std::shared_ptr<PointCloud> pointcloud,
     std::shared_ptr<TreeNode> parent
 ) {
+
     if (!pointcloud || pointcloud->is_empty())
         return nullptr;
 
@@ -544,6 +683,7 @@ std::shared_ptr<TreeNode> Session::add_nurbscurve(
     std::shared_ptr<NurbsCurve> nurbscurve,
     std::shared_ptr<TreeNode> parent
 ) {
+
     if (!nurbscurve || nurbscurve->cv_count() < 2)
         return nullptr;
 
@@ -554,6 +694,7 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(
     std::shared_ptr<NurbsSurface> nurbssurface,
     std::shared_ptr<TreeNode> parent
 ) {
+
     if (!nurbssurface || nurbssurface->cv_count() == 0)
         return nullptr;
 
@@ -561,6 +702,7 @@ std::shared_ptr<TreeNode> Session::add_nurbssurface(
 }
 
 std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent) {
+
     if (!brep || (brep->face_count() == 0 && brep->vertex_count() == 0))
         return nullptr;
 
@@ -568,6 +710,7 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::sha
 }
 
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
+
     if (!element)
         return nullptr;
 
@@ -637,6 +780,7 @@ void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> pare
 }
 
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
+
     std::shared_ptr<TreeNode> node = std::make_shared<TreeNode>(group_name);
     add(node);
 
@@ -649,26 +793,16 @@ void Session::add_edge(const std::string& guid1, const std::string& guid2, const
 
 std::pair<std::string, std::string> Session::add_interaction(const std::string& a, const std::string& b) {
 
-    const auto registered = [this](const std::string& guid) {
-        return graph.has_node(guid) && (lookup.count(guid) || instance_lookup.count(guid) || component_lookup.count(guid));
-    };
-    if (a == b || !registered(a) || !registered(b))
+    if (a == b || !registered(*this, a) || !registered(*this, b))
         throw std::invalid_argument("Session::add_interaction: add two distinct objects to the session first");
 
     if (!has_interaction(a, b))
         graph.add_edge(a, b);
 
-    Edge& edge = graph.has_edge({a, b}) ? graph.edges.at(a).at(b) : graph.edges.at(b).at(a);
-    const std::string id = edge.guid();
-    const std::pair<std::string, std::string> ends{edge.v0, edge.v1};
-    // Graph stores two copies; preserve one identity on both directions.
-    if (!graph.has_edge({a, b}))
-        graph.edges[a][b] = edge;
-    if (!graph.has_edge({b, a}))
-        graph.edges[b][a] = edge;
-    graph.edges[a][b].guid() = id;
-    graph.edges[b][a].guid() = id;
-    return ends;
+    const Edge& edge = graph.edges.at(a).at(b);
+    graph.edges.at(b).at(a).guid() = edge.guid();
+
+    return {edge.v0, edge.v1};
 }
 
 bool Session::has_interaction(const std::string& a, const std::string& b) const {
@@ -676,6 +810,7 @@ bool Session::has_interaction(const std::string& a, const std::string& b) const 
 }
 
 void Session::remove_interaction(const std::string& a, const std::string& b) {
+
     if (graph.has_edge({a, b}))
         graph.remove_edge({a, b});
     else if (graph.has_edge({b, a}))
@@ -776,7 +911,12 @@ bool Session::to_instance(const std::string& guid, const std::string& definition
     instance->guid() = guid;
     instance->name = item_name(it->second);
     const Xform placement = xform(guid) * frame;
-    const RemoveOp removed = *_detach(guid);
+    const std::optional<RemoveOp> detached = _detach(guid);
+
+    if (!detached)
+        return false;
+
+    const RemoveOp removed = *detached;
     const AddOp added(
         guid,
         instance,
@@ -789,6 +929,7 @@ bool Session::to_instance(const std::string& guid, const std::string& definition
         "instance_" + instance->name,
         removed.edges
     );
+
     history.record(removed);
     history.record(added);
     _attach(added);
@@ -805,12 +946,21 @@ bool Session::explode(const std::string& instance_guid) {
 
     const std::shared_ptr<InstanceRef> instance = instance_lookup.at(instance_guid);
     const Geometry copy = resolve(*instance, *definition, Xform::identity());
-    const auto [collection, prefix] = collection_of(objects, copy);
+    const std::pair<std::string, std::string> entry = collection_of(objects, copy);
+    const std::string collection = entry.first;
+    const std::string prefix = entry.second;
     int size = 0;
+
     with_collection(objects, collection, [&](const auto& items) {
         size = static_cast<int>(items.size());
     });
-    const RemoveOp removed = *_detach(instance_guid);
+
+    const std::optional<RemoveOp> detached = _detach(instance_guid);
+
+    if (!detached)
+        return false;
+
+    const RemoveOp removed = *detached;
     const AddOp added(
         instance_guid,
         copy,
@@ -823,6 +973,7 @@ bool Session::explode(const std::string& instance_guid) {
         prefix + "_" + instance->name,
         removed.edges
     );
+
     history.record(removed);
     history.record(added);
     _attach(added);
@@ -836,6 +987,7 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
         return;
 
     if (history.current) {
+
         std::optional<Xform> before;
         auto it = xforms.find(guid);
 
@@ -868,7 +1020,6 @@ bool Session::remove_xform(const std::string& guid) {
 // ═══════════════════════════════════════════════════════════════════════════
 // History
 // ═══════════════════════════════════════════════════════════════════════════
-
 void Session::begin(const std::string& label) {
     history.begin(label);
 }
@@ -888,7 +1039,6 @@ bool Session::redo() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Collision detection and ray casting
 // ═══════════════════════════════════════════════════════════════════════════
-
 OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) {
 
     const double inflate = Tolerance::APPROXIMATION;
@@ -900,6 +1050,7 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
         return OBB::from_point(xform.transform_point((*plane)->origin()), inflate * 10.0);
 
     if (const std::shared_ptr<OBB>* bbox = std::get_if<std::shared_ptr<OBB>>(&geometry)) {
+
         OBB inflated = **bbox;
         inflated.half_size = inflated.half_size + Vector(inflate, inflate, inflate);
         inflated.transform(xform);
@@ -908,6 +1059,7 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
     }
 
     if (const std::shared_ptr<Element>* element = std::get_if<std::shared_ptr<Element>>(&geometry)) {
+
         const std::shared_ptr<Element> copy = (*element)->clone();
         OBB box = copy->aabb();
         box.transform(xform);
@@ -915,42 +1067,7 @@ OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) 
         return box;
     }
 
-    std::vector<Point> points;
-
-    if (const std::shared_ptr<Line>* line = std::get_if<std::shared_ptr<Line>>(&geometry)) {
-        points.push_back((*line)->start());
-        points.push_back((*line)->end());
-    } else if (const std::shared_ptr<Polyline>* polyline = std::get_if<std::shared_ptr<Polyline>>(&geometry)) {
-        points = (*polyline)->get_points();
-    } else if (const std::shared_ptr<PointCloud>* pointcloud = std::get_if<std::shared_ptr<PointCloud>>(&geometry)) {
-        points = (*pointcloud)->get_points();
-    } else if (const std::shared_ptr<Mesh>* mesh = std::get_if<std::shared_ptr<Mesh>>(&geometry)) {
-        for (const auto& [key, vertex] : (*mesh)->vertex)
-            points.push_back(vertex.position());
-    } else if (const std::shared_ptr<BRep>* brep = std::get_if<std::shared_ptr<BRep>>(&geometry)) {
-        for (const BRepVertex& vertex : (*brep)->m_vertices)
-            points.push_back(vertex.point);
-
-        for (const NurbsSurface& surface : (*brep)->m_surfaces) {
-            const auto [u0, u1] = surface.domain(0);
-            const auto [v0, v1] = surface.domain(1);
-
-            for (int i = 0; i <= 2; ++i)
-                for (int j = 0; j <= 2; ++j)
-                    points.push_back(surface.point_at(u0 + (u1 - u0) * i / 2.0, v0 + (v1 - v0) * j / 2.0));
-        }
-    } else if (const std::shared_ptr<NurbsCurve>* nurbscurve = std::get_if<std::shared_ptr<NurbsCurve>>(&geometry)) {
-        for (int i = 0; i < (*nurbscurve)->cv_count(); ++i)
-            points.push_back((*nurbscurve)->get_cv(i));
-    } else if (
-        const std::shared_ptr<NurbsSurface>* nurbssurface = std::get_if<std::shared_ptr<NurbsSurface>>(&geometry)
-    ) {
-        for (int i = 0; i < (*nurbssurface)->cv_count(0); ++i)
-            for (int j = 0; j < (*nurbssurface)->cv_count(1); ++j)
-                points.push_back((*nurbssurface)->get_cv(i, j));
-    }
-
-    return placed_box(points, xform, inflate);
+    return placed_box(box_points(geometry), xform, inflate);
 }
 
 std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
@@ -962,11 +1079,15 @@ std::vector<std::pair<std::string, std::string>> Session::get_collisions() {
         return {};
 
     bvh = SpatialBVH::from_boxes(boxes, SpatialBVH::compute_world_size(boxes));
-    const auto [pairs, colliding, checks] = bvh.check_all_collisions(boxes);
+    const std::vector<std::pair<int, int>> pairs = std::get<0>(bvh.check_all_collisions(boxes));
     std::vector<std::pair<std::string, std::string>> guid_pairs;
     guid_pairs.reserve(pairs.size());
 
-    for (const auto& [i, j] : pairs) {
+    for (const std::pair<int, int>& pair : pairs) {
+
+        const int i = pair.first;
+        const int j = pair.second;
+
         if (i < 0 || j < 0 || i >= static_cast<int>(guids.size()) || j >= static_cast<int>(guids.size()))
             continue;
 
@@ -995,6 +1116,7 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
     double closest = std::numeric_limits<double>::infinity();
 
     for (int index : candidates) {
+
         const std::string& guid = cached_guids[index];
         auto it = lookup.find(guid);
         const std::optional<Geometry> geometry = it == lookup.end() ? definition_of(guid) : it->second;
@@ -1025,31 +1147,32 @@ std::vector<Session::RayHit> Session::ray_cast(const Point& origin, const Vector
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Serialization
+// JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Session::jsondump() const {
 
-    nlohmann::ordered_json data;
-    data["type"] = "Session";
-    data["name"] = name;
-    data["guid"] = guid();
-    data["objects"] = objects.jsondump();
-    data["tree"] = tree.jsondump();
-    data["graph"] = graph.jsondump();
     nlohmann::ordered_json xforms_json = nlohmann::ordered_json::array();
 
-    for (const auto& [obj_guid, obj_xform] : _xforms_ordered()) {
-        nlohmann::ordered_json entry;
-        entry["guid"] = obj_guid;
-        entry["xform"] = obj_xform.jsondump();
-        xforms_json.push_back(entry);
+    for (const std::pair<std::string, Xform>& entry : _xforms_ordered()) {
+
+        nlohmann::ordered_json item;
+        item["guid"] = entry.first;
+        item["xform"] = entry.second.jsondump();
+        xforms_json.push_back(item);
     }
 
-    data["xforms"] = xforms_json;
+    nlohmann::ordered_json data;
 
     if (!definition_lookup.empty())
         data["definitions"] = definitions.jsondump();
+
+    data["graph"] = graph.jsondump();
+    data["guid"] = guid();
+    data["name"] = name;
+    data["objects"] = objects.jsondump();
+    data["tree"] = tree.jsondump();
+    data["type"] = "Session";
+    data["xforms"] = xforms_json;
 
     return data;
 }
@@ -1083,6 +1206,7 @@ Session Session::jsonload(const nlohmann::json& data) {
 }
 
 std::string Session::file_json_dumps() const {
+
     history.clear();
 
     return jsondump().dump();
@@ -1093,92 +1217,118 @@ Session Session::file_json_loads(const std::string& json_string) {
 }
 
 void Session::file_json_dump(const std::string& filename) const {
+
     history.clear();
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
 Session Session::file_json_load(const std::string& filename) {
+
     std::ifstream file(filename);
 
     return jsonload(nlohmann::json::parse(file));
 }
 
-std::string Session::pb_dumps() const {
+// ═══════════════════════════════════════════════════════════════════════════
+// Protobuf
+// ═══════════════════════════════════════════════════════════════════════════
+session_proto::Session Session::to_proto() const {
 
-    history.clear();
     session_proto::Session proto;
     proto.set_name(name);
 
     if (has_guid())
         proto.set_guid(guid());
 
-    proto.mutable_objects()->ParseFromString(objects.pb_dumps());
+    *proto.mutable_objects() = objects.to_proto();
     proto.mutable_tree()->ParseFromString(tree.pb_dumps());
-    proto.mutable_graph()->ParseFromString(graph.pb_dumps());
+    *proto.mutable_graph() = graph.to_proto();
 
-    for (const auto& [obj_guid, obj_xform] : _xforms_ordered()) {
-        session_proto::XformEntry* entry = proto.add_xforms();
-        entry->set_guid(obj_guid);
-        entry->mutable_xform()->ParseFromString(obj_xform.pb_dumps());
+    for (const std::pair<std::string, Xform>& entry : _xforms_ordered()) {
+
+        session_proto::XformEntry* item = proto.add_xforms();
+        item->set_guid(entry.first);
+        *item->mutable_xform() = entry.second.to_proto();
     }
 
     if (!definition_lookup.empty())
-        proto.mutable_definitions()->ParseFromString(definitions.pb_dumps());
+        *proto.mutable_definitions() = definitions.to_proto();
 
-    return proto.SerializeAsString();
+    return proto;
 }
 
-Session Session::pb_loads(const std::string& data) {
+Session Session::from_proto(const session_proto::Session& proto) {
 
-    session_proto::Session proto;
-    proto.ParseFromString(data);
     Session session(proto.name());
 
     if (!proto.guid().empty())
         session.guid() = proto.guid();
 
     if (proto.has_objects())
-        session.objects = Objects::pb_loads(proto.objects().SerializeAsString());
+        session.objects = Objects::from_proto(proto.objects());
 
     if (proto.has_tree())
         session.tree = Tree::pb_loads(proto.tree().SerializeAsString());
 
     if (proto.has_graph())
-        session.graph = Graph::pb_loads(proto.graph().SerializeAsString());
+        session.graph = Graph::from_proto(proto.graph());
 
     if (proto.has_definitions())
-        session.definitions = Objects::pb_loads(proto.definitions().SerializeAsString());
+        session.definitions = Objects::from_proto(proto.definitions());
 
     for (const session_proto::XformEntry& entry : proto.xforms())
-        session.xforms[entry.guid()] = Xform::pb_loads(entry.xform().SerializeAsString());
+        session.xforms[entry.guid()] = Xform::from_proto(entry.xform());
 
     session._index_objects();
 
     return session;
 }
 
-void Session::pb_dump(const std::string& filename) const {
+std::string Session::pb_dumps() const {
 
     history.clear();
+
+    return to_proto().SerializeAsString();
+}
+
+Session Session::pb_loads(const std::string& data) {
+
+    session_proto::Session proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Session protobuf data");
+
+    return from_proto(proto);
+}
+
+void Session::pb_dump(const std::string& filename) const {
+
     const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 Session Session::pb_load(const std::string& filename) {
+
     std::ifstream file(filename, std::ios::binary);
     const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
     return pb_loads(data);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
 std::string Session::str() const {
 
     const std::string bar(80, '=');
 
     return fmt::format(
-        "{0}\nSpatial Hierarchy\n{0}\n{1}{0}\nElement Interactions\n{0}\n{2}\n{0}\n", bar, tree.str(), graph.str()
+        "{0}\nSpatial Hierarchy\n{0}\n{1}{0}\nElement Interactions\n{0}\n{2}\n{0}\n",
+        bar,
+        tree.str(),
+        graph.str()
     );
 }
 
@@ -1189,7 +1339,6 @@ std::string Session::repr() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Details
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::shared_ptr<TreeNode> Session::_add_object(
     const std::string& collection,
     const Item& obj,
@@ -1199,6 +1348,7 @@ std::shared_ptr<TreeNode> Session::_add_object(
 
     const std::string guid = item_guid(obj);
     int obj_index = 0;
+
     with_collection(objects, collection, [&](auto& items) {
         items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
         obj_index = static_cast<int>(items.size()) - 1;
@@ -1251,7 +1401,9 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
     if (!obj)
         return std::nullopt;
 
-    const auto [collection, obj_index] = _locate(guid);
+    const std::pair<std::string, int> location = _locate(guid);
+    const std::string collection = location.first;
+    const int obj_index = location.second;
 
     if (obj_index >= 0)
         with_collection(objects, collection, [&](auto& items) {
@@ -1274,6 +1426,7 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
     std::shared_ptr<TreeNode> node = tree.get_node_by_name(guid);
 
     if (node) {
+
         if (std::shared_ptr<TreeNode> parent = node->parent()) {
             parent_guid = parent->name;
             const std::vector<TreeNode*> children = parent->children();
@@ -1287,10 +1440,16 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
     std::vector<std::tuple<std::string, std::string, bool, std::string>> edges;
 
     if (graph.has_node(guid)) {
+
         attribute = graph.node_label(guid);
 
-        for (const auto& [other, label, forward] : graph.edges_of(guid))
-            edges.emplace_back(other, label, forward, edge_guid(graph, guid, other));
+        for (const std::tuple<std::string, std::string, bool>& edge : graph.edges_of(guid))
+            edges.emplace_back(
+                std::get<0>(edge),
+                std::get<1>(edge),
+                std::get<2>(edge),
+                edge_guid(graph, guid, std::get<0>(edge))
+            );
 
         graph.remove_node(guid);
     }
@@ -1301,9 +1460,10 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
 void Session::_attach(const Tombstone& op) {
 
     const Item obj = clone(op.obj);
+
     with_collection(objects, op.collection, [&](auto& items) {
-        using E = typename std::decay_t<decltype(items)>::value_type;
-        items.insert(items.begin() + std::min<size_t>(op.obj_index, items.size()), element_of<E>(obj));
+        const size_t at = std::min<size_t>(op.obj_index, items.size());
+        items.insert(items.begin() + at, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
     });
 
     if (const Geometry* geometry = std::get_if<Geometry>(&obj))
@@ -1323,9 +1483,11 @@ void Session::_attach(const Tombstone& op) {
         node = std::make_shared<TreeNode>(op.guid);
 
     if (op.parent_guid) {
+
         std::shared_ptr<TreeNode> parent = tree.get_node_by_name(*op.parent_guid);
 
         if (parent) {
+
             tree.add(node, parent);
             const std::vector<TreeNode*> children = parent->children();
 
@@ -1336,7 +1498,13 @@ void Session::_attach(const Tombstone& op) {
 
     graph.add_node(op.guid, op.attribute);
 
-    for (const auto& [other, attribute, forward, id] : op.edges) {
+    for (const std::tuple<std::string, std::string, bool, std::string>& edge : op.edges) {
+
+        const std::string& other = std::get<0>(edge);
+        const std::string& attribute = std::get<1>(edge);
+        const bool forward = std::get<2>(edge);
+        const std::string& id = std::get<3>(edge);
+
         if (!graph.has_node(other))
             continue;
 
@@ -1355,7 +1523,9 @@ void Session::_attach(const Tombstone& op) {
 
 void Session::_swap(const std::string& guid, const Item& obj) {
 
-    const auto [collection, obj_index] = _locate(guid);
+    const std::pair<std::string, int> location = _locate(guid);
+    const std::string collection = location.first;
+    const int obj_index = location.second;
 
     if (obj_index < 0)
         return;
@@ -1374,9 +1544,9 @@ void Session::_swap(const std::string& guid, const Item& obj) {
     bvh_cache_dirty = true;
     std::string attribute;
 
-    for (const auto& [name, prefix] : COLLECTIONS)
-        if (name == collection)
-            attribute = prefix + "_" + item_name(obj);
+    for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
+        if (entry.first == collection)
+            attribute = entry.second + "_" + item_name(obj);
 
     if (graph.has_node(guid))
         graph.node_label(guid, attribute);
@@ -1395,6 +1565,7 @@ void Session::_index_objects() {
         component_lookup[component.guid()] = component;
 
     for (const std::shared_ptr<InstanceRef>& instance : *objects.instances) {
+
         instance_lookup[instance->guid()] = instance;
 
         if (instance->xform.is_identity())
@@ -1407,10 +1578,13 @@ void Session::_index_objects() {
 
 void Session::_define(const std::string& guid, const std::optional<Geometry>& definition) {
 
-    const auto [collection, position] = locate(definitions, guid);
-    with_collection(definitions, collection, [&](auto& items) {
+    const std::pair<std::string, int> location = locate(definitions, guid);
+    const int position = location.second;
+
+    with_collection(definitions, location.first, [&](auto& items) {
         items.erase(items.begin() + position);
     });
+
     definition_lookup.erase(guid);
     bvh_cache_dirty = true;
 
@@ -1418,10 +1592,10 @@ void Session::_define(const std::string& guid, const std::optional<Geometry>& de
         return;
 
     with_collection(definitions, collection_of(definitions, *definition).first, [&](auto& items) {
-        using E = typename std::decay_t<decltype(items)>::value_type;
         const size_t at = position < 0 ? items.size() : std::min<size_t>(position, items.size());
-        items.insert(items.begin() + at, element_of<E>(*definition));
+        items.insert(items.begin() + at, element_of<typename std::decay_t<decltype(items)>::value_type>(*definition));
     });
+
     definition_lookup[guid] = *definition;
 }
 
@@ -1440,11 +1614,12 @@ std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {
     std::vector<std::pair<std::string, Xform>> ordered;
     std::map<std::string, Xform> rest;
 
-    for (const auto& [obj_guid, obj_xform] : xforms)
-        if (!obj_xform.is_identity())
-            rest.emplace(obj_guid, obj_xform);
+    for (const std::pair<const std::string, Xform>& entry : xforms)
+        if (!entry.second.is_identity())
+            rest.emplace(entry.first, entry.second);
 
     for (const std::string& obj_guid : order()) {
+
         auto it = rest.find(obj_guid);
 
         if (it == rest.end())
@@ -1454,8 +1629,8 @@ std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {
         rest.erase(it);
     }
 
-    for (const auto& [obj_guid, obj_xform] : rest)
-        ordered.emplace_back(obj_guid, obj_xform);
+    for (const std::pair<const std::string, Xform>& entry : rest)
+        ordered.emplace_back(entry.first, entry.second);
 
     return ordered;
 }
@@ -1468,6 +1643,7 @@ std::vector<OBB> Session::_compute_boxes(std::vector<std::string>& guids) const 
     const std::unordered_map<std::string, Xform> world = world_xforms();
 
     for (const std::string& guid : order()) {
+
         auto it = lookup.find(guid);
 
         if (it == lookup.end())
@@ -1481,6 +1657,7 @@ std::vector<OBB> Session::_compute_boxes(std::vector<std::string>& guids) const 
     std::unordered_map<std::string, OBB> local;
 
     for (const std::shared_ptr<InstanceRef>& instance : *objects.instances) {
+
         auto definition = definition_lookup.find(instance->definition_guid);
 
         if (definition == definition_lookup.end())
@@ -1525,6 +1702,7 @@ std::optional<Point> Session::_ray_intersect_geometry(
         return ray_point(ray, **point, tolerance);
 
     if (const std::shared_ptr<Line>* line = std::get_if<std::shared_ptr<Line>>(&geometry)) {
+
         Point hit;
 
         if (Intersection::line_line(ray, **line, hit, tolerance))
@@ -1534,6 +1712,7 @@ std::optional<Point> Session::_ray_intersect_geometry(
     }
 
     if (const std::shared_ptr<Plane>* plane = std::get_if<std::shared_ptr<Plane>>(&geometry)) {
+
         Point hit;
 
         if (Intersection::line_plane(ray, **plane, hit, true))
@@ -1542,67 +1721,17 @@ std::optional<Point> Session::_ray_intersect_geometry(
         return std::nullopt;
     }
 
-    if (const std::shared_ptr<Polyline>* polyline = std::get_if<std::shared_ptr<Polyline>>(&geometry)) {
-        std::optional<Point> closest;
-        double min_dist = std::numeric_limits<double>::infinity();
+    if (const std::shared_ptr<Polyline>* polyline = std::get_if<std::shared_ptr<Polyline>>(&geometry))
+        return ray_polyline(ray, **polyline, tolerance);
 
-        for (size_t i = 0; i < (*polyline)->segment_count(); ++i) {
-            const Line segment = Line::from_points((*polyline)->get_point(i), (*polyline)->get_point(i + 1));
-            Point hit;
+    if (const std::shared_ptr<PointCloud>* pointcloud = std::get_if<std::shared_ptr<PointCloud>>(&geometry))
+        return ray_pointcloud(ray, **pointcloud, tolerance);
 
-            if (!Intersection::line_line(ray, segment, hit, tolerance))
-                continue;
-
-            const double dist = ray.start().distance(hit);
-
-            if (dist < min_dist) {
-                min_dist = dist;
-                closest = hit;
-            }
-        }
-
-        return closest;
-    }
-
-    if (const std::shared_ptr<PointCloud>* pointcloud = std::get_if<std::shared_ptr<PointCloud>>(&geometry)) {
-        std::optional<Point> closest;
-        double min_dist = std::numeric_limits<double>::infinity();
-
-        for (const Point& point : (*pointcloud)->get_points()) {
-            const std::optional<Point> hit = ray_point(ray, point, tolerance);
-
-            if (!hit)
-                continue;
-
-            const double dist = point.distance(*hit);
-
-            if (dist < min_dist) {
-                min_dist = dist;
-                closest = hit;
-            }
-        }
-
-        return closest;
-    }
-
-    if (const std::shared_ptr<Mesh>* mesh = std::get_if<std::shared_ptr<Mesh>>(&geometry)) {
-        const std::optional<Xform> inverse = placement.inverse();
-
-        if (!inverse)
-            return std::nullopt;
-
-        const Line local_ray =
-            Line::from_points(inverse->transform_point(ray.start()), inverse->transform_point(ray.end()));
-
-        const std::vector<Point> hits = Intersection::ray_mesh_bvh(local_ray, **mesh, tolerance, true);
-
-        if (hits.empty())
-            return std::nullopt;
-
-        return placement.transform_point(hits[0]);
-    }
+    if (const std::shared_ptr<Mesh>* mesh = std::get_if<std::shared_ptr<Mesh>>(&geometry))
+        return ray_mesh(ray, **mesh, tolerance, placement);
 
     if (const std::shared_ptr<OBB>* bbox = std::get_if<std::shared_ptr<OBB>>(&geometry)) {
+
         double tmin = 0.0;
         double tmax = 0.0;
 
