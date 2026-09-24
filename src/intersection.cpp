@@ -8321,7 +8321,31 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
 namespace {
 
-/// Distance from a pcurve's lifted point to the cutter, projected onto the corner frame when it is not degenerate.
+/// Cutter boundary in loop order, each side split into cv_count - 1 pieces when linear, else 4 * cv_count.
+std::vector<Point> cutter_boundary(const NurbsSurface& cutter) {
+
+    const std::pair<double, double> cu = cutter.domain(0);
+    const std::pair<double, double> cv = cutter.domain(1);
+    const int nu = cutter.degree(0) == 1 ? cutter.cv_count(0) - 1 : 4 * cutter.cv_count(0);
+    const int nv = cutter.degree(1) == 1 ? cutter.cv_count(1) - 1 : 4 * cutter.cv_count(1);
+    std::vector<Point> points;
+
+    for (int i = 0; i < nu; ++i)
+        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.first));
+
+    for (int i = 0; i < nv; ++i)
+        points.push_back(cutter.point_at(cu.second, cv.first + (cv.second - cv.first) * i / nv));
+
+    for (int i = nu; i > 0; --i)
+        points.push_back(cutter.point_at(cu.first + (cu.second - cu.first) * i / nu, cv.second));
+
+    for (int i = nv; i > 0; --i)
+        points.push_back(cutter.point_at(cu.first, cv.first + (cv.second - cv.first) * i / nv));
+
+    return points;
+}
+
+/// Distance from a pcurve's lifted point to the cutter: clamped in the corner frame of a rectangle, else to the boundary polygon.
 class CutterGap {
 public:
     const NurbsSurface& target; // Surface the pcurve lives on.
@@ -8332,13 +8356,21 @@ public:
     Vector ev; // Cutter edge to (u0, v1).
     double eu2; // Squared length of eu.
     double ev2; // Squared length of ev.
-    bool fast_planar; // Whether both edges are usable.
+    bool rectangle; // Whether the cutter is a 2 x 2 rectangle.
+    Plane frame; // Plane of the boundary polygon.
+    Polyline outline; // Boundary polygon in the frame, empty without area.
 
-    /// Corner frame of the cutter.
+    /// Corner frame and boundary polygon of the cutter.
     CutterGap(const NurbsSurface& target_, const NurbsCurve& pc_, const NurbsSurface& cutter_);
 
     /// Distance to the cutter at pcurve parameter t.
     double gap(double t) const;
+
+    /// Distance from p3 to the rectangle spanned by eu and ev.
+    double rectangle_gap(const Point& p3) const;
+
+    /// Distance from p3 to the region inside the boundary polygon.
+    double outline_gap(const Point& p3) const;
 };
 
 CutterGap::CutterGap(const NurbsSurface& target_, const NurbsCurve& pc_, const NurbsSurface& cutter_)
@@ -8349,11 +8381,34 @@ CutterGap::CutterGap(const NurbsSurface& target_, const NurbsCurve& pc_, const N
     q00 = cutter.point_at(cu.first, cv.first);
     Point q10 = cutter.point_at(cu.second, cv.first);
     Point q01 = cutter.point_at(cu.first, cv.second);
+    const Point q11 = cutter.point_at(cu.second, cv.second);
     eu = Vector(q10[0] - q00[0], q10[1] - q00[1], q10[2] - q00[2]);
     ev = Vector(q01[0] - q00[0], q01[1] - q00[1], q01[2] - q00[2]);
     eu2 = eu[0] * eu[0] + eu[1] * eu[1] + eu[2] * eu[2];
     ev2 = ev[0] * ev[0] + ev[1] * ev[1] + ev[2] * ev[2];
-    fast_planar = (eu2 > 1e-28 && ev2 > 1e-28);
+    const bool square = std::abs(eu.dot(ev)) <= 1e-9 * std::sqrt(eu2 * ev2);
+    const bool parallelogram = q11.distance(q00 + eu + ev) <= 1e-9 * std::sqrt(eu2 + ev2);
+    const bool bilinear = cutter.cv_count(0) == 2 && cutter.cv_count(1) == 2;
+    rectangle = eu2 > 1e-28 && ev2 > 1e-28 && bilinear && square && parallelogram;
+
+    if (rectangle)
+        return;
+
+    const std::vector<Point> boundary = cutter_boundary(cutter);
+    Vector normal;
+
+    for (size_t i = 1; i + 1 < boundary.size(); ++i)
+        normal += (boundary[i] - boundary[0]).cross(boundary[i + 1] - boundary[0]);
+
+    if (normal.magnitude() < 1e-14)
+        return;
+
+    frame = Plane::from_point_normal(boundary[0], normal);
+
+    for (const Point& p : boundary) {
+        const Vector d = p - frame.origin();
+        outline.add_point(Point(d.dot(frame.x_axis()), d.dot(frame.y_axis()), 0.0));
+    }
 }
 
 double CutterGap::gap(double t) const {
@@ -8361,8 +8416,16 @@ double CutterGap::gap(double t) const {
     Point uv = pc.point_at(t);
     Point p3 = target.point_at(uv[0], uv[1]);
 
-    if (!fast_planar)
+    if (rectangle)
+        return rectangle_gap(p3);
+
+    if (outline.point_count() == 0)
         return std::get<2>(Closest::surface_point(cutter, p3, 0.0, 0.0, 0.0, 0.0));
+
+    return outline_gap(p3);
+}
+
+double CutterGap::rectangle_gap(const Point& p3) const {
 
     double dx = p3[0] - q00[0];
     double dy = p3[1] - q00[1];
@@ -8376,6 +8439,36 @@ double CutterGap::gap(double t) const {
     double cz = q00[2] + a * eu[2] + b * ev[2];
 
     return std::sqrt((p3[0] - cx) * (p3[0] - cx) + (p3[1] - cy) * (p3[1] - cy) + (p3[2] - cz) * (p3[2] - cz));
+}
+
+double CutterGap::outline_gap(const Point& p3) const {
+
+    const Vector d = p3 - frame.origin();
+    const Point p(d.dot(frame.x_axis()), d.dot(frame.y_axis()), d.dot(frame.z_axis()));
+
+    if (outline.point_in_polygon_2d(p))
+        return std::abs(p[2]);
+
+    const size_t n = outline.point_count();
+    double d2 = std::numeric_limits<double>::max();
+
+    for (size_t i = 0; i < n; ++i) {
+        const Point a = outline[i];
+        const Point b = outline[(i + 1) % n];
+        const double ex = b[0] - a[0];
+        const double ey = b[1] - a[1];
+        const double len2 = ex * ex + ey * ey;
+        double s = 0.0;
+
+        if (len2 > 0.0)
+            s = std::clamp(((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / len2, 0.0, 1.0);
+
+        const double dx = p[0] - a[0] - s * ex;
+        const double dy = p[1] - a[1] - s * ey;
+        d2 = std::min(d2, dx * dx + dy * dy);
+    }
+
+    return std::sqrt(d2 + p[2] * p[2]);
 }
 
 /// Footprint edge between an inside and an outside parameter, by 24 bisections.

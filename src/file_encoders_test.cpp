@@ -3,6 +3,9 @@
 #include "point.h"
 #include "vector.h"
 #include "line.h"
+#include "mesh.h"
+#include "instance_ref.h"
+#include "xform.h"
 #include "tolerance.h"
 #include <filesystem>
 #include <map>
@@ -239,6 +242,29 @@ namespace session_cpp {
         const Vector loaded_vec = file_json_loads<Vector>(vec_json);
 
         MINI_CHECK(TOLERANCE.is_close(loaded_vec[0], 1.0));
+    }
+
+    MINI_TEST("FileEncoders", "Decode Mesh") {
+
+        const Mesh mesh = Mesh::from_vertices_and_faces(
+            {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0)},
+            {{0, 1, 2}}
+        );
+        const std::string json_str = file_json_dumps(mesh);
+        const Mesh loaded = file_json_loads<Mesh>(json_str);
+
+        MINI_CHECK(loaded.number_of_vertices() == 3);
+        MINI_CHECK(loaded.number_of_faces() == 1);
+    }
+
+    MINI_TEST("FileEncoders", "Decode Instance Ref") {
+
+        const InstanceRef instance("def-abc", Xform::translation(1.0, 2.0, 3.0));
+        const std::string json_str = file_json_dumps(instance);
+        const InstanceRef loaded = file_json_loads<InstanceRef>(json_str);
+
+        MINI_CHECK(loaded.definition_guid == "def-abc");
+        MINI_CHECK(TOLERANCE.is_close(loaded[12], 1.0));
     }
 
     MINI_TEST("FileEncoders", "List In List In List") {

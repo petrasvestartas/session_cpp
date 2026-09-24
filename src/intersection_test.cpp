@@ -133,6 +133,10 @@ static double distance_square(const Point& p) {
     return std::max(std::abs(p[2] - 0.5), std::max(std::max(0.0, std::abs(p[0]) - 1.6), std::max(0.0, std::abs(p[1]) - 1.6)));
 }
 
+static double distance_slanted(const Point& p) {
+    return std::abs(-2.0 * p[0] + p[1] + 10.0 * p[2] - 3.0) / std::sqrt(105.0);
+}
+
 MINI_TEST("Intersection", "Line Line") {
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -1395,6 +1399,22 @@ MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
 
     for (const NurbsCurve& pc : cuts)
         MINI_CHECK(lifted_distance(pc, torus, distance_wall) < 1e-5);
+}
+
+MINI_TEST("Intersection", "Cut Curves Slanted Cutter") {
+
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface slanted = bilinear(Point(-3.0, -3.0, 0.0), Point(-3.0, 3.0, -0.6), Point(3.0, -3.0, 1.2), Point(3.0, 3.0, 0.6));
+    std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(cone, slanted);
+
+    MINI_CHECK(cuts.size() == 2);
+
+    const std::pair<double, double> domain = cuts[0].domain();
+    Point uv = cuts[0].point_at((domain.first + domain.second) * 0.5);
+    Point p = cone.point_at(uv[0], uv[1]);
+
+    MINI_CHECK(distance_cone(p) < 1e-3);
+    MINI_CHECK(distance_slanted(p) < 1e-3);
 }
 
 MINI_TEST("Intersection", "Remap") {
