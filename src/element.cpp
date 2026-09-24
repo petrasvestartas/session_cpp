@@ -253,7 +253,9 @@ Element& Element::operator=(const Element& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 bool Element::has_geometry() const {
+
     ensure_geometry();
+
     return _geometry_mesh.has_value() || _geometry_brep.has_value();
 }
 
@@ -279,74 +281,96 @@ const BRep& Element::element_geometry_brep() const {
 }
 
 const Mesh& Element::model_geometry_mesh() const {
+
     if (!_model_mesh_cache)
         _model_mesh_cache = apply_geometry_ops(element_geometry_mesh());
+
     return *_model_mesh_cache;
 }
 
 const BRep& Element::model_geometry_brep() const {
+
     if (!_model_brep_cache)
         _model_brep_cache = element_geometry_brep();
+
     return *_model_brep_cache;
 }
 
 const Mesh& Element::geometry_mesh() const {
+
     const_cast<Element*>(this)->compute_geometry_mesh();
     static const Mesh empty;
+
     return _geometry_mesh ? *_geometry_mesh : empty;
 }
 
 void Element::compute_geometry_mesh() {
+
     if (_computing_geometry || (_geometry_synced && _geometry_mesh))
         return;
 
     _computing_geometry = true;
+
     try {
         compute_geometry_mesh_impl();
     } catch (...) {
         _computing_geometry = false;
         throw;
     }
+
     _computing_geometry = false;
     _geometry_synced = true;
 }
 
 Mesh Element::session_geometry_mesh(const Xform& xform) const {
+
     const Mesh& local = geometry_mesh();
+
     if (!_geometry_mesh)
         return Mesh();
+
     Mesh placed = apply_geometry_ops(local);
+
     if (!xform.is_identity())
         placed.transform(xform);
+
     return placed;
 }
 
 const BRep& Element::geometry_brep() const {
+
     const_cast<Element*>(this)->compute_geometry_brep();
     static const BRep empty;
+
     return _geometry_brep ? *_geometry_brep : empty;
 }
 
 void Element::compute_geometry_brep() {
+
     if (_computing_geometry || (_geometry_synced && _geometry_brep))
         return;
 
     _computing_geometry = true;
+
     try {
         compute_geometry_brep_impl();
     } catch (...) {
         _computing_geometry = false;
         throw;
     }
+
     _computing_geometry = false;
     _geometry_synced = true;
 }
 
 BRep Element::session_geometry_brep(const Xform& xform) const {
+
     const BRep& local = geometry_brep();
     BRep placed = local;
+
     if (!xform.is_identity())
         placed.transform(xform);
+
     return placed;
 }
 
@@ -443,8 +467,10 @@ void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
 void Element::place(const Xform& xform) {
 
     ensure_geometry();
+
     if (_geometry_mesh)
         _geometry_mesh = session_geometry_mesh(xform);
+
     if (_geometry_brep)
         _geometry_brep = session_geometry_brep(xform);
 
@@ -473,11 +499,13 @@ void Element::set_geometry(const BRep& geo) {
 }
 
 void Element::set_polylines(std::vector<Polyline> polys) {
+
     _polylines = std::move(polys);
     _is_dirty = false;
 }
 
 void Element::set_planes(std::vector<Plane> plns) {
+
     _planes = std::move(plns);
     _is_dirty = false;
 }
@@ -525,7 +553,9 @@ Element Element::duplicate() const {
 // ═══════════════════════════════════════════════════════════════════════════
 
 OBB Element::compute_aabb() {
+
     const std::vector<Point> points = geometry_points();
+
     return points.empty() ? OBB::from_point(Point(0, 0, 0), 0.0) : OBB::from_points(points, 0.0);
 }
 
@@ -534,7 +564,9 @@ OBB Element::compute_obb() {
 }
 
 Mesh Element::compute_collision_mesh() {
+
     ensure_geometry();
+
     return _geometry_mesh ? session_geometry_mesh(Xform::identity()) : Mesh();
 }
 
@@ -586,15 +618,19 @@ Mesh Element::apply_geometry_ops(Mesh geo) const {
 }
 
 std::vector<Point> Element::geometry_points() const {
+
     ensure_geometry();
     std::vector<Point> points;
+
     if (_geometry_mesh) {
         const Mesh mesh = session_geometry_mesh(Xform::identity());
+
         for (const auto& [key, vertex] : mesh.vertex)
             points.push_back(vertex.position());
     } else if (_geometry_brep) {
         points = _geometry_brep->vertex_points();
     }
+
     return points;
 }
 

@@ -239,44 +239,43 @@ MINI_TEST("Element", "Model Geometry Mesh") {
         geometry.transform(Xform::translation(10.0, 0.0, 0.0));
         return geometry;
     });
-    const Element& base = element;
-    const Mesh& model = base.model_geometry_mesh();
+    const Mesh& model = element.model_geometry_mesh();
     const std::string guid = model.guid();
 
     MINI_CHECK(TOLERANCE.is_close(model.vertex.at(0).position()[0], 10.0));
-    MINI_CHECK(TOLERANCE.is_close(base.element_geometry_mesh().vertex.at(0).position()[0], 0.0));
-    MINI_CHECK(base.model_geometry_mesh().guid() == guid);
-    MINI_CHECK(base.model_geometry_brep().face_count() == 0);
-    MINI_CHECK(base.model_geometry_mesh().guid() == guid);
+    MINI_CHECK(TOLERANCE.is_close(element.element_geometry_mesh().vertex.at(0).position()[0], 0.0));
+    MINI_CHECK(element.model_geometry_mesh().guid() == guid);
+    MINI_CHECK(element.model_geometry_brep().face_count() == 0);
+    MINI_CHECK(element.model_geometry_mesh().guid() == guid);
     MINI_CHECK(operations == 1);
 
     element.invalidate_geometry();
-    MINI_CHECK(base.model_geometry_mesh().guid() != guid);
+    MINI_CHECK(element.model_geometry_mesh().guid() != guid);
     MINI_CHECK(operations == 2);
 
     element.set_geometry(mesh.transformed(Xform::translation(5.0, 0.0, 0.0)));
-    MINI_CHECK(TOLERANCE.is_close(base.model_geometry_mesh().vertex.at(0).position()[0], 15.0));
+    MINI_CHECK(TOLERANCE.is_close(element.model_geometry_mesh().vertex.at(0).position()[0], 15.0));
     MINI_CHECK(operations == 3);
 }
 
 MINI_TEST("Element", "Model Geometry Brep") {
 
     Element element(BRep::create_box(1.0, 1.0, 1.0));
-    const Element& base = element;
-    const BRep& model = base.model_geometry_brep();
+    const BRep& model = element.model_geometry_brep();
     const std::string guid = model.guid();
     const std::vector<Point> points = model.vertex_points();
 
-    MINI_CHECK(points == base.element_geometry_brep().vertex_points());
-    MINI_CHECK(base.model_geometry_brep().guid() == guid);
-    MINI_CHECK(base.model_geometry_mesh().number_of_faces() == 0);
-    MINI_CHECK(base.model_geometry_brep().guid() == guid);
+    MINI_CHECK(points == element.element_geometry_brep().vertex_points());
+    MINI_CHECK(element.model_geometry_brep().guid() == guid);
+    MINI_CHECK(element.model_geometry_mesh().number_of_faces() == 0);
+    MINI_CHECK(element.model_geometry_brep().guid() == guid);
 
     element.invalidate_geometry();
-    MINI_CHECK(base.model_geometry_brep().guid() != guid);
+    MINI_CHECK(element.model_geometry_brep().guid() != guid);
+
     element.place(Xform::translation(10.0, 0.0, 0.0));
-    MINI_CHECK(base.model_geometry_brep().vertex_points() != points);
-    MINI_CHECK(base.model_geometry_brep().vertex_points() == base.element_geometry_brep().vertex_points());
+    MINI_CHECK(element.model_geometry_brep().vertex_points() != points);
+    MINI_CHECK(element.model_geometry_brep().vertex_points() == element.element_geometry_brep().vertex_points());
 }
 
 MINI_TEST("Element", "Geometry Mesh") {
@@ -318,70 +317,40 @@ MINI_TEST("Element", "Session Geometry Brep") {
     MINI_CHECK(Element().session_geometry_brep(xform).face_count() == 0);
 }
 
-namespace {
-
-class LazyGeometryElement : public Element {
-public:
-    int meshes = 0;
-    int breps = 0;
-    bool fail = false;
-
-protected:
-    void compute_geometry_mesh_impl() override {
-        if (fail)
-            throw std::runtime_error("test geometry failure");
-        ++meshes;
-        set_geometry(Mesh());
-    }
-
-    void compute_geometry_brep_impl() override {
-        ++breps;
-        set_geometry(BRep::create_box(1.0, 1.0, 1.0));
-    }
-};
-
-} // namespace
-
 MINI_TEST("Element", "Compute Geometry Mesh") {
 
-    LazyGeometryElement element;
+    const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
+    Element element(mesh);
+    const bool before = element.geometry_synced();
     element.compute_geometry_mesh();
     element.compute_geometry_mesh();
 
-    MINI_CHECK(element.meshes == 1);
-    MINI_CHECK(element.breps == 0);
+    MINI_CHECK(!before);
+    MINI_CHECK(element.geometry_synced());
     MINI_CHECK(element.geometry_type_name() == "Mesh");
 
     element.invalidate_geometry();
-    element.fail = true;
-    bool threw = false;
-    try {
-        element.compute_geometry_mesh();
-    } catch (const std::runtime_error&) {
-        threw = true;
-    }
-    element.fail = false;
-    element.compute_geometry_mesh();
+    const bool stale = element.geometry_synced();
+    const size_t faces = element.geometry_mesh().number_of_faces();
 
-    MINI_CHECK(threw);
-    MINI_CHECK(element.meshes == 2);
+    MINI_CHECK(!stale);
+    MINI_CHECK(faces == 1);
+    MINI_CHECK(element.geometry_synced());
 }
 
 MINI_TEST("Element", "Compute Geometry Brep") {
 
-    LazyGeometryElement element;
+    Element element(BRep::create_box(1.0, 1.0, 1.0));
     element.compute_geometry_brep();
     element.compute_geometry_brep();
 
-    MINI_CHECK(element.breps == 1);
-    MINI_CHECK(element.meshes == 0);
+    MINI_CHECK(element.geometry_synced());
     MINI_CHECK(element.geometry_type_name() == "BRep");
 
     element.invalidate_geometry();
-    element.compute_geometry_brep();
     const Element loaded = Element::pb_loads(element.pb_dumps());
 
-    MINI_CHECK(element.breps == 2);
+    MINI_CHECK(element.geometry_synced());
     MINI_CHECK(loaded.geometry_type_name() == "BRep");
     MINI_CHECK(loaded.geometry_brep().face_count() == 6);
 }

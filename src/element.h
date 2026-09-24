@@ -266,6 +266,7 @@ public:
 
     /// Mark the slot stale, so the next read computes it again; a domain type overrides this to drop its own caches too.
     virtual void invalidate_geometry() {
+
         _geometry_synced = false;
         _model_mesh_cache.reset();
         _model_brep_cache.reset();
@@ -330,6 +331,7 @@ public:
 
     /// Return the modifications carried by this element and written with it; add_geometry_op is the in-memory counterpart that is not.
     const std::vector<ElementFeature>& features() const {
+
         ensure_geometry();
 
         return _features;
@@ -340,6 +342,7 @@ public:
 
     /// Return the nominal extents in the element's own frame (plate: x/y outline, z thickness), authored intent rather than the measured obb; nullopt = never authored.
     const std::optional<Vector>& dimensions() const {
+
         ensure_geometry();
 
         return _dimensions;
