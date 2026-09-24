@@ -729,6 +729,12 @@ MINI_TEST("Intersection", "Curve Plane") {
         MINI_CHECK(std::fabs(p[0] - 1.0) < 1e-9);
         MINI_CHECK(std::fabs(std::fabs(p[1]) - std::sqrt(3.0)) < 1e-9);
     }
+
+    const double offset = 1.98 / std::sqrt(2.0);
+    Plane diagonal = Plane::from_point_normal(Point(offset, offset, 0.0), Vector(1.0, 1.0, 0.0));
+    std::vector<double> hidden = Intersection::curve_plane(circle, diagonal);
+
+    MINI_CHECK(hidden.size() == 2);
 }
 
 MINI_TEST("Intersection", "Curve Plane Bezier Clipping") {
@@ -743,6 +749,12 @@ MINI_TEST("Intersection", "Curve Plane Bezier Clipping") {
 
     for (double t : params)
         MINI_CHECK(std::fabs(circle.point_at(t)[0] - 1.0) < 1e-9);
+
+    NurbsCurve unit = Primitives::circle(0.0, 0.0, 0.0, 1.0);
+    Plane tilted = Plane::from_point_normal(Point(0.0, 0.0, 0.2), Vector(0.3, 0.1, 1.0));
+    std::vector<double> roots = Intersection::curve_plane_bezier_clipping(unit, tilted);
+
+    MINI_CHECK(roots.size() == 2);
 }
 
 MINI_TEST("Intersection", "Curve Plane Algebraic") {
@@ -766,6 +778,11 @@ MINI_TEST("Intersection", "Curve Plane Algebraic") {
     MINI_CHECK(params.size() == 1);
     MINI_CHECK(std::fabs(curve.point_at(params[0])[0] - 1.0) < 1e-9);
     MINI_CHECK(std::fabs(curve.point_at(params[0])[1] - 4.0 / 3.0) < 1e-9);
+
+    NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
+    std::vector<double> circle_params = Intersection::curve_plane_algebraic(circle, plane);
+
+    MINI_CHECK(circle_params.size() == 2);
 }
 
 MINI_TEST("Intersection", "Curve Plane Production") {
@@ -779,7 +796,7 @@ MINI_TEST("Intersection", "Curve Plane Production") {
     MINI_CHECK(params.size() == 2);
 
     for (double t : params)
-        MINI_CHECK(std::fabs(circle.point_at(t)[0] - 1.0) < 1e-4);
+        MINI_CHECK(std::fabs(circle.point_at(t)[0] - 1.0) < 1e-9);
 }
 
 MINI_TEST("Intersection", "Curve Closest Point") {
@@ -890,18 +907,21 @@ MINI_TEST("Intersection", "Surface Plane UV") {
     std::vector<std::pair<NurbsCurve, NurbsCurve>> pairs = Intersection::surface_plane_uv(cyl, plane);
 
     MINI_CHECK(pairs.size() == 1);
+
     NurbsCurve curve3 = pairs[0].first;
     NurbsCurve pcurve = pairs[0].second;
 
     MINI_CHECK(curve3.is_valid());
     MINI_CHECK(pcurve.is_valid());
     MINI_CHECK(curve3.is_closed());
+
     const std::pair<double, double> domain_u = cyl.domain(0);
     const double u0 = domain_u.first;
     const double u1 = domain_u.second;
 
     MINI_CHECK(std::fabs(pcurve.point_at(0.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(0.0)[0] - u0) < 1e-9);
     MINI_CHECK(std::fabs(pcurve.point_at(1.0)[0] - u1) < 1e-9 || std::fabs(pcurve.point_at(1.0)[0] - u0) < 1e-9);
+
     Vector pn = plane.z_axis();
     Point po = plane.origin();
     double max_off = 0.0;
@@ -922,6 +942,7 @@ MINI_TEST("Intersection", "Surface Plane UV") {
     std::vector<std::pair<NurbsCurve, NurbsCurve>> pairs2 = Intersection::surface_plane_uv(torus, plane2);
 
     MINI_CHECK(pairs2.size() == 2);
+
     const std::pair<double, double> domain_tu = torus.domain(0);
     const double tu0 = domain_tu.first;
     const double tu1 = domain_tu.second;
@@ -963,6 +984,7 @@ MINI_TEST("Intersection", "Surface Surface") {
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> flat_triples = Intersection::surface_surface(flat, cyl);
 
     MINI_CHECK(flat_triples.size() == 1);
+
     NurbsCurve c3 = std::get<0>(flat_triples[0]);
     NurbsCurve pa = std::get<1>(flat_triples[0]);
     NurbsCurve pb = std::get<2>(flat_triples[0]);
@@ -977,6 +999,7 @@ MINI_TEST("Intersection", "Surface Surface") {
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> triples = Intersection::surface_surface(sphere, cyl2);
 
     MINI_CHECK(triples.size() >= 2);
+
     int clean = 0;
 
     for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple : triples) {
@@ -1012,6 +1035,7 @@ MINI_TEST("Intersection", "Surface Surface") {
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ex_triples = Intersection::surface_surface(sphere2, flat04);
 
     MINI_CHECK(ex_triples.size() == 1);
+
     NurbsCurve ex_c3 = std::get<0>(ex_triples[0]);
     double expected_r = std::sqrt(3.84);
     double max_dev = 0.0;
@@ -1479,6 +1503,7 @@ MINI_TEST("Intersection", "Orthogonal Vector Between Two Plane Pairs") {
     bool ok = Intersection::orthogonal_vector_between_two_plane_pairs(pp00, pp10, pp11, out);
 
     MINI_CHECK(ok);
+
     double mag = std::sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
 
     MINI_CHECK(TOLERANCE.is_close(mag, 4.0));
@@ -1510,6 +1535,7 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
     MINI_CHECK(out.point_count() == 2);
     MINI_CHECK(TOLERANCE.is_close(out.get_point(0)[1], 5.0));
     MINI_CHECK(TOLERANCE.is_close(out.get_point(1)[1], 5.0));
+
     double t_lo = std::min(cp_pair.first, cp_pair.second);
     double t_hi = std::max(cp_pair.first, cp_pair.second);
 

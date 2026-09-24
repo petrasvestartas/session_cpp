@@ -140,28 +140,30 @@ public:
         Point& output
     );
 
-    /// Ray-mesh hits by brute force, sorted by t.
+    /// Ray-mesh hits by brute force sorted by t, only the nearest unless find_all.
     static bool ray_mesh(
         const Point& origin,
         const Vector& direction,
         const Mesh& mesh,
         std::vector<RayHit>& hits,
-        bool find_all = false
+        bool find_all = false,
+        double epsilon = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Ray-mesh hits through the mesh's triangle BVH, sorted by t.
+    /// Ray-mesh hits through the mesh's triangle BVH sorted by t, only the nearest unless find_all.
     static bool ray_mesh_bvh(
         const Point& origin,
         const Vector& direction,
         const Mesh& mesh,
         std::vector<RayHit>& hits,
-        bool find_all = false
+        bool find_all = false,
+        double epsilon = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Line-mesh hit points by brute force.
+    /// Line-mesh hit points by brute force sorted by t, only the nearest unless find_all.
     static std::vector<Point> ray_mesh(const Line& line, const Mesh& mesh, double epsilon, bool find_all = false);
 
-    /// Line-mesh hit points through the mesh's triangle BVH.
+    /// Line-mesh hit points through the mesh's triangle BVH sorted by t, only the nearest unless find_all.
     static std::vector<Point> ray_mesh_bvh(const Line& line, const Mesh& mesh, double epsilon, bool find_all = false);
 
     // ═══════════════════════════════════════════════════════════════════════════

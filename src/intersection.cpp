@@ -8,9 +8,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <functional>
 #include <limits>
+#include <string_view>
 #include <tuple>
 
 namespace session_cpp {
@@ -335,6 +335,38 @@ bool Intersection::line_line(const Line& line0, const Line& line1, Point& output
     return rc;
 }
 
+/// Parameters (0 or 1) of an exactly shared endpoint of two segments; false when none is shared.
+static bool shared_endpoint_parameters(const Line& line0, const Line& line1, double& t0, double& t1) {
+
+    const std::array<Point, 2> ends0 = {line0.start(), line0.end()};
+    const std::array<Point, 2> ends1 = {line1.start(), line1.end()};
+
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            if (ends0[i][0] == ends1[j][0] && ends0[i][1] == ends1[j][1] && ends0[i][2] == ends1[j][2]) {
+                t0 = i;
+                t1 = j;
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/// Clamp a parameter to [0, 1].
+static double clamp_unit(double t) {
+
+    if (t < 0.0)
+        return 0.0;
+
+    if (t > 1.0)
+        return 1.0;
+
+    return t;
+}
+
 bool Intersection::line_line_parameters(
     const Line& line0,
     const Line& line1,
@@ -345,106 +377,42 @@ bool Intersection::line_line_parameters(
     bool near_parallel_as_closest
 ) {
 
-    Point p0_start = line0.start();
-    Point p0_end = line0.end();
-    Point p1_start = line1.start();
-    Point p1_end = line1.end();
-
-    if (p0_start[0] == p1_start[0] && p0_start[1] == p1_start[1] && p0_start[2] == p1_start[2]) {
-        t0 = 0.0;
-        t1 = 0.0;
-
+    if (shared_endpoint_parameters(line0, line1, t0, t1))
         return true;
-    }
 
-    if (p0_start[0] == p1_end[0] && p0_start[1] == p1_end[1] && p0_start[2] == p1_end[2]) {
-        t0 = 0.0;
-        t1 = 1.0;
+    const Vector A = line0.to_vector();
+    const Vector B = line1.to_vector();
+    const Vector C = line1.start() - line0.start();
 
-        return true;
-    }
+    const double AA = A.dot(A);
+    const double BB = B.dot(B);
+    const double AB = A.dot(B);
+    const double AC = A.dot(C);
+    const double BC = B.dot(C);
 
-    if (p0_end[0] == p1_start[0] && p0_end[1] == p1_start[1] && p0_end[2] == p1_start[2]) {
-        t0 = 1.0;
-        t1 = 0.0;
+    const double det = AA * BB - AB * AB;
+    const double zero_tol = std::max(AA, BB) * std::numeric_limits<double>::epsilon();
+    const bool parallel = std::fabs(det) < zero_tol;
 
-        return true;
-    }
+    if (parallel && !near_parallel_as_closest)
+        return false;
 
-    if (p0_end[0] == p1_end[0] && p0_end[1] == p1_end[1] && p0_end[2] == p1_end[2]) {
-        t0 = 1.0;
-        t1 = 1.0;
-
-        return true;
-    }
-
-    Vector A = line0.to_vector();
-    Vector B = line1.to_vector();
-    Vector C = p1_start - p0_start;
-
-    double AA = A.dot(A);
-    double BB = B.dot(B);
-    double AB = A.dot(B);
-    double AC = A.dot(C);
-    double BC = B.dot(C);
-
-    double det = AA * BB - AB * AB;
-
-    double zero_tol = std::max(AA, BB) * std::numeric_limits<double>::epsilon();
-
-    if (std::fabs(det) < zero_tol) {
-        if (!near_parallel_as_closest)
-            return false;
-
+    if (parallel) {
         t0 = (AA > 0.0) ? (AC / AA) : 0.0;
         t1 = (BB > 0.0) ? ((BC + t0 * AB) / BB) : 0.0;
-
-        if (intersect_segments) {
-            if (t0 < 0.0)
-                t0 = 0.0;
-            else if (t0 > 1.0)
-                t0 = 1.0;
-
-            if (t1 < 0.0)
-                t1 = 0.0;
-            else if (t1 > 1.0)
-                t1 = 1.0;
-        }
-
-        if (tolerance > 0.0) {
-            Point pt0p = line0.point_at(t0);
-            Point pt1p = line1.point_at(t1);
-
-            return pt0p.distance(pt1p) <= tolerance;
-        }
-
-        return true;
+    } else {
+        const double inv_det = 1.0 / det;
+        t0 = (BB * AC - AB * BC) * inv_det;
+        t1 = (AB * AC - AA * BC) * inv_det;
     }
-
-    double inv_det = 1.0 / det;
-    t0 = (BB * AC - AB * BC) * inv_det;
-    t1 = (AB * AC - AA * BC) * inv_det;
 
     if (intersect_segments) {
-        if (t0 < 0.0)
-            t0 = 0.0;
-        else if (t0 > 1.0)
-            t0 = 1.0;
-
-        if (t1 < 0.0)
-            t1 = 0.0;
-        else if (t1 > 1.0)
-            t1 = 1.0;
+        t0 = clamp_unit(t0);
+        t1 = clamp_unit(t1);
     }
 
-    if (tolerance > 0.0) {
-        Point pt0 = line0.point_at(t0);
-        Point pt1 = line1.point_at(t1);
-        double dist = pt0.distance(pt1);
-
-        if (dist > tolerance)
-            return false;
-    }
+    if (tolerance > 0.0)
+        return line0.point_at(t0).distance(line1.point_at(t1)) <= tolerance;
 
     return true;
 }
@@ -662,32 +630,23 @@ int Intersection::ray_sphere(
     double& t1
 ) {
 
-    Vector o = origin - center;
-
-    double a = direction.dot(direction);
-    double b = 2.0 * direction.dot(o);
-    double c = o.dot(o) - (radius * radius);
-
-    double disc = b * b - 4.0 * a * c;
+    const Vector offset = origin - center;
+    const double a = direction.dot(direction);
+    const double b = 2.0 * direction.dot(offset);
+    const double c = offset.dot(offset) - (radius * radius);
+    const double disc = b * b - 4.0 * a * c;
 
     if (disc < 0.0)
         return 0;
 
-    double distSqrt = std::sqrt(disc);
-    double q;
-
-    if (b < 0.0)
-        q = (-b - distSqrt) / 2.0;
-    else
-        q = (-b + distSqrt) / 2.0;
+    const double root = std::sqrt(disc);
+    const double q = (b < 0.0) ? (-b - root) / 2.0 : (-b + root) / 2.0;
 
     t0 = q / a;
-    double _t1 = c / q;
+    t1 = c / q;
 
-    if (_t1 == t0)
+    if (t1 == t0)
         return 1;
-
-    t1 = _t1;
 
     if (t0 > t1)
         std::swap(t0, t1);
@@ -713,14 +672,10 @@ bool Intersection::ray_sphere(
         return false;
 
     intersection_points.clear();
+    intersection_points.push_back(origin + direction * t0);
 
-    Point p0(origin[0] + direction[0] * t0, origin[1] + direction[1] * t0, origin[2] + direction[2] * t0);
-    intersection_points.push_back(p0);
-
-    if (hits == 2) {
-        Point p1(origin[0] + direction[0] * t1, origin[1] + direction[1] * t1, origin[2] + direction[2] * t1);
-        intersection_points.push_back(p1);
-    }
+    if (hits == 2)
+        intersection_points.push_back(origin + direction * t1);
 
     return true;
 }
@@ -807,12 +762,27 @@ static bool ray_hit_before(const Intersection::RayHit& a, const Intersection::Ra
     return a.t < b.t;
 }
 
+/// Sorts hits by t and keeps only the nearest unless find_all; false when there is none.
+static bool sort_ray_hits(std::vector<Intersection::RayHit>& hits, bool find_all) {
+
+    if (hits.empty())
+        return false;
+
+    std::stable_sort(hits.begin(), hits.end(), ray_hit_before);
+
+    if (!find_all)
+        hits.resize(1);
+
+    return true;
+}
+
 bool Intersection::ray_mesh(
     const Point& origin,
     const Vector& direction,
     const Mesh& mesh,
     std::vector<RayHit>& hits,
-    bool find_all
+    bool find_all,
+    double epsilon
 ) {
 
     hits.clear();
@@ -837,42 +807,14 @@ bool Intersection::ray_mesh(
             double v;
             bool parallel;
 
-            if (ray_triangle(
-                    origin,
-                    direction,
-                    v0,
-                    v1,
-                    v2,
-                    static_cast<double>(Tolerance::ZERO_TOLERANCE),
-                    t,
-                    u,
-                    v,
-                    parallel
-                )) {
+            if (!ray_triangle(origin, direction, v0, v1, v2, epsilon, t, u, v, parallel) || t < 0.0)
+                continue;
 
-                if (t >= 0.0) {
-                    Point hit_point(
-                        origin[0] + t * direction[0],
-                        origin[1] + t * direction[1],
-                        origin[2] + t * direction[2]
-                    );
-
-                    hits.emplace_back(t, hit_point, u, v, static_cast<int>(i));
-
-                    if (!find_all)
-                        return true;
-                }
-            }
+            hits.emplace_back(t, origin + direction * t, u, v, static_cast<int>(i));
         }
     }
 
-    if (!hits.empty()) {
-        std::sort(hits.begin(), hits.end(), ray_hit_before);
-
-        return true;
-    }
-
-    return false;
+    return sort_ray_hits(hits, find_all);
 }
 
 bool Intersection::ray_mesh_bvh(
@@ -880,22 +822,18 @@ bool Intersection::ray_mesh_bvh(
     const Vector& direction,
     const Mesh& mesh,
     std::vector<RayHit>& hits,
-    bool find_all
+    bool find_all,
+    double epsilon
 ) {
 
     hits.clear();
 
-    std::vector<int> candidates_list;
+    std::vector<int> candidates;
 
-    if (!mesh.triangle_bvh_ray_cast(origin, direction, candidates_list, find_all))
+    if (!mesh.triangle_bvh_ray_cast(origin, direction, candidates, find_all))
         return false;
 
-    bool any_hit = false;
-    RayHit best_hit;
-    double best_t = std::numeric_limits<double>::infinity();
-    int best_face = std::numeric_limits<int>::max();
-
-    for (int tri_id : candidates_list) {
+    for (int tri_id : candidates) {
         size_t face_idx;
         size_t sub_idx;
         Point v0;
@@ -910,96 +848,39 @@ bool Intersection::ray_mesh_bvh(
         double v;
         bool parallel;
 
-        if (ray_triangle(
-                origin,
-                direction,
-                v0,
-                v1,
-                v2,
-                static_cast<double>(Tolerance::ZERO_TOLERANCE),
-                t,
-                u,
-                v,
-                parallel
-            )) {
-            if (t >= 0.0) {
-                Point hit_point(
-                    origin[0] + t * direction[0],
-                    origin[1] + t * direction[1],
-                    origin[2] + t * direction[2]
-                );
+        if (!ray_triangle(origin, direction, v0, v1, v2, epsilon, t, u, v, parallel) || t < 0.0)
+            continue;
 
-                if (find_all) {
-                    hits.emplace_back(t, hit_point, u, v, static_cast<int>(face_idx));
-                } else {
-                    const double eps = 1e-6;
-
-                    if (t < best_t - eps || (std::fabs(t - best_t) <= eps && static_cast<int>(face_idx) < best_face)) {
-                        best_t = t;
-                        best_face = static_cast<int>(face_idx);
-                        best_hit = RayHit(t, hit_point, u, v, static_cast<int>(face_idx));
-                        any_hit = true;
-                    }
-                }
-            }
-        }
+        hits.emplace_back(t, origin + direction * t, u, v, static_cast<int>(face_idx));
     }
 
-    if (find_all) {
-        if (!hits.empty()) {
-            std::sort(hits.begin(), hits.end(), ray_hit_before);
-
-            return true;
-        }
-
-        return false;
-    }
-
-    if (any_hit) {
-        hits.push_back(best_hit);
-
-        return true;
-    }
-
-    return false;
+    return sort_ray_hits(hits, find_all);
 }
 
 std::vector<Point> Intersection::ray_mesh(const Line& line, const Mesh& mesh, double epsilon, bool find_all) {
 
-    (void)epsilon;
-
-    Point origin = line.start();
-    Vector direction = line.to_vector();
-
     std::vector<RayHit> hits;
     std::vector<Point> result;
 
-    if (ray_mesh(origin, direction, mesh, hits, find_all)) {
-        result.reserve(hits.size());
+    if (!ray_mesh(line.start(), line.to_vector(), mesh, hits, find_all, epsilon))
+        return result;
 
-        for (const RayHit& hit : hits)
-            result.push_back(hit.point);
-    }
+    for (const RayHit& hit : hits)
+        result.push_back(hit.point);
 
     return result;
 }
 
 std::vector<Point> Intersection::ray_mesh_bvh(const Line& line, const Mesh& mesh, double epsilon, bool find_all) {
 
-    (void)epsilon;
-
-    Point origin = line.start();
-    Vector direction = line.to_vector();
-
     std::vector<RayHit> hits;
     std::vector<Point> result;
 
-    if (ray_mesh_bvh(origin, direction, mesh, hits, find_all)) {
-        result.reserve(hits.size());
+    if (!ray_mesh_bvh(line.start(), line.to_vector(), mesh, hits, find_all, epsilon))
+        return result;
 
-        for (const RayHit& hit : hits)
-            result.push_back(hit.point);
-    }
+    for (const RayHit& hit : hits)
+        result.push_back(hit.point);
 
     return result;
 }
@@ -1010,12 +891,89 @@ std::vector<Point> Intersection::ray_mesh_bvh(const Line& line, const Mesh& mesh
 
 namespace {
 
+/// Sorted values without neighbours closer than tolerance to the last kept one.
+std::vector<double> unique_sorted(const std::vector<double>& values, double tolerance) {
+
+    std::vector<double> unique;
+
+    for (double value : values)
+        if (unique.empty() || std::abs(unique.back() - value) >= tolerance)
+            unique.push_back(value);
+
+    return unique;
+}
+
 /// Signed distance of a point to the plane.
 double curve_signed_distance_to_plane(const Point& pt, const Plane& plane) {
 
     Vector v = pt - plane.origin();
 
     return v.dot(plane.z_axis());
+}
+
+/// Rate of change of the signed plane distance with the curve parameter.
+double curve_plane_slope(const NurbsCurve& curve, const Plane& plane, double t) {
+
+    const std::vector<Vector> derivs = curve.evaluate(t, 1);
+
+    return derivs[1].dot(plane.z_axis());
+}
+
+/// Appends t unless a value within tolerance is already present.
+void append_unique(std::vector<double>& values, double t, double tolerance) {
+
+    for (double existing : values)
+        if (std::abs(existing - t) < tolerance)
+            return;
+
+    values.push_back(t);
+}
+
+/// Newton for the plane crossing in [a, b] from the midpoint, bisecting whenever a step is flat or leaves the bracket.
+bool curve_plane_newton_bracket(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance,
+    double a,
+    double b,
+    double& t
+) {
+
+    double f_a = curve_signed_distance_to_plane(curve.point_at(a), plane);
+    t = (a + b) * 0.5;
+
+    for (int iter = 0; iter < 10; iter++) {
+        const double f = curve_signed_distance_to_plane(curve.point_at(t), plane);
+
+        if (std::abs(f) < tolerance)
+            return true;
+
+        const double df = curve_plane_slope(curve, plane, t);
+        const bool flat = std::abs(df) < 1e-14;
+        const double t_new = flat ? t : t - f / df;
+
+        if (flat || t_new < a || t_new > b) {
+            if (f * f_a < 0) {
+                b = t;
+            } else {
+                a = t;
+                f_a = f;
+            }
+
+            t = (a + b) * 0.5;
+            continue;
+        }
+
+        if (std::abs(t_new - t) < tolerance) {
+            t = t_new;
+
+            return true;
+        }
+
+        t = t_new;
+    }
+
+    return false;
 }
 
 /// Bisect the plane crossing between t0 and t1 down to tolerance.
@@ -1067,10 +1025,9 @@ bool curve_refine_intersection_newton(const NurbsCurve& curve, const Plane& plan
 
     for (int iter = 0; iter < max_iterations; iter++) {
         Point pt = curve.point_at(t);
-        Vector tangent = curve.tangent_at(t);
 
         double f = curve_signed_distance_to_plane(pt, plane);
-        double df = tangent.dot(plane.z_axis());
+        double df = curve_plane_slope(curve, plane, t);
 
         if (std::abs(f) < tolerance)
             return true;
@@ -1131,10 +1088,9 @@ void curve_plane_clip(
 
             for (int iter = 0; iter < 10; iter++) {
                 Point pt = curve.point_at(t);
-                Vector tangent = curve.tangent_at(t);
 
                 double f = curve_signed_distance_to_plane(pt, plane);
-                double df = tangent.dot(plane.z_axis());
+                double df = curve_plane_slope(curve, plane, t);
 
                 if (std::abs(df) < 1e-12)
                     break;
@@ -1250,53 +1206,10 @@ void curve_plane_subdivide_algebraic(
     double deviation = std::abs((p_mid - p_a).cross(line_dir).magnitude());
 
     if (deviation < tolerance * 10.0 || (b - a) < tolerance * 10.0) {
-        double t = mid_t;
-        bool converged = false;
+        double t;
 
-        for (int iter = 0; iter < 10; iter++) {
-            Point p = curve.point_at(t);
-            double f = normal.dot(p - plane.origin());
-
-            if (std::abs(f) < tolerance) {
-                converged = true;
-                break;
-            }
-
-            Vector tangent = curve.tangent_at(t);
-            double df = normal.dot(tangent);
-
-            if (std::abs(df) < 1e-14) {
-                t = (a + b) * 0.5;
-                break;
-            }
-
-            double t_new = t - f / df;
-
-            if (t_new < a || t_new > b)
-                t_new = (a + b) * 0.5;
-
-            if (std::abs(t_new - t) < tolerance) {
-                t = t_new;
-                converged = true;
-                break;
-            }
-
-            t = t_new;
-        }
-
-        if (converged && t >= a && t <= b) {
-            bool is_duplicate = false;
-
-            for (double existing : results) {
-                if (std::abs(existing - t) < tolerance * 10.0) {
-                    is_duplicate = true;
-                    break;
-                }
-            }
-
-            if (!is_duplicate)
-                results.push_back(t);
-        }
+        if (curve_plane_newton_bracket(curve, plane, tolerance, a, b, t) && t >= a && t <= b)
+            append_unique(results, t, tolerance * 10.0);
     } else {
         curve_plane_subdivide_algebraic(curve, plane, tolerance, a, mid_t, depth + 1, results);
         curve_plane_subdivide_algebraic(curve, plane, tolerance, mid_t, b, depth + 1, results);
@@ -1348,63 +1261,12 @@ void curve_plane_subdivide_production(
         return;
 
     if (curve_nearly_linear(curve, tolerance, a, b) || (b - a) < tolerance * 10.0) {
-        double t = (a + b) * 0.5;
-        bool converged = false;
+        double t;
 
-        for (int iter = 0; iter < 10; iter++) {
-            Point p = curve.point_at(t);
-            double f = normal.dot(p - plane.origin());
-
-            if (std::abs(f) < tolerance) {
-                converged = true;
-                break;
-            }
-
-            Vector tangent = curve.tangent_at(t);
-            double df = normal.dot(tangent);
-
-            if (std::abs(df) < 1e-14) {
-                if (f * f_a < 0) {
-                    b = t;
-                    f_b = f;
-                } else {
-                    a = t;
-                    f_a = f;
-                }
-
-                t = (a + b) * 0.5;
-                continue;
-            }
-
-            double t_new = t - f / df;
-
-            if (t_new < a || t_new > b)
-                t_new = (a + b) * 0.5;
-
-            if (std::abs(t_new - t) < tolerance) {
-                t = t_new;
-                converged = true;
-                break;
-            }
-
-            t = t_new;
-        }
-
-        if (converged && t >= a && t <= b) {
-            bool is_duplicate = false;
-
-            for (double existing : results) {
-                if (std::abs(existing - t) < tolerance * 10.0) {
-                    is_duplicate = true;
-                    break;
-                }
-            }
-
-            if (!is_duplicate)
-                results.push_back(t);
-        }
+        if (curve_plane_newton_bracket(curve, plane, tolerance, a, b, t) && t >= a && t <= b)
+            append_unique(results, t, tolerance * 10.0);
     } else {
-        double mid = (a + b) * 0.5;
+        const double mid = (a + b) * 0.5;
         curve_plane_subdivide_production(curve, plane, tolerance, a, mid, depth + 1, results);
         curve_plane_subdivide_production(curve, plane, tolerance, mid, b, depth + 1, results);
     }
@@ -1416,6 +1278,118 @@ void curve_plane_subdivide_production(
 // NURBS curves
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Appends t unless it lies within tolerance of the last parameter.
+static void append_parameter(std::vector<double>& params, double t, double tolerance) {
+
+    if (params.empty() || std::abs(params.back() - t) >= tolerance)
+        params.push_back(t);
+}
+
+/// Crossing pairs hidden inside a span whose ends lie on one side, found on degree * 2 sub-intervals.
+static void curve_plane_hidden_pairs(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance,
+    double t0,
+    double t1,
+    std::vector<double>& intersections
+) {
+
+    const int count = curve.degree() * 2;
+    const double dt = (t1 - t0) / count;
+
+    for (int i = 0; i < count; i++) {
+        const double s0 = t0 + i * dt;
+        const double s1 = t0 + (i + 1) * dt;
+        const double d0 = curve_signed_distance_to_plane(curve.point_at(s0), plane);
+        const double d1 = curve_signed_distance_to_plane(curve.point_at(s1), plane);
+        double t_intersection;
+
+        if (d0 * d1 < 0 && curve_find_root_bisection(curve, plane, s0, s1, tolerance, t_intersection)) {
+            curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
+            intersections.push_back(t_intersection);
+        }
+    }
+}
+
+/// Crossings inside each knot span, plus span starts and the curve end lying on the plane.
+static void curve_plane_spans(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance,
+    std::vector<double>& intersections
+) {
+
+    const std::vector<double> span_params = curve.get_span_vector();
+
+    for (size_t i = 0; i < span_params.size() - 1; i++) {
+        const double t0 = span_params[i];
+        const double t1 = span_params[i + 1];
+
+        if (std::abs(t1 - t0) < tolerance)
+            continue;
+
+        const double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
+        const double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
+        double t_intersection;
+
+        if (d0 * d1 < 0) {
+            if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
+                curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
+                intersections.push_back(t_intersection);
+            }
+        } else if (std::abs(d0) < tolerance) {
+            append_parameter(intersections, t0, tolerance);
+        } else if (curve.degree() > 1) {
+            curve_plane_hidden_pairs(curve, plane, tolerance, t0, t1, intersections);
+        }
+    }
+
+    const double t_end = curve.domain().second;
+
+    if (std::abs(curve_signed_distance_to_plane(curve.point_at(t_end), plane)) < tolerance)
+        append_parameter(intersections, t_end, tolerance);
+}
+
+/// Extra crossings of a high-degree curve found on degree * 4 uniform samples.
+static void curve_plane_samples(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance,
+    std::vector<double>& intersections
+) {
+
+    const std::pair<double, double> domain = curve.domain();
+    const int num_samples = curve.degree() * 4;
+    const double dt = (domain.second - domain.first) / num_samples;
+
+    for (int i = 0; i < num_samples; i++) {
+        const double t0 = domain.first + i * dt;
+        const double t1 = domain.first + (i + 1) * dt;
+        const double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
+        const double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
+        double t_intersection;
+        const bool crossing = d0 * d1 < 0 && curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection);
+
+        if (!crossing)
+            continue;
+
+        bool is_new = true;
+
+        for (double existing : intersections) {
+            if (std::abs(existing - t_intersection) < tolerance * 2.0) {
+                is_new = false;
+                break;
+            }
+        }
+
+        if (is_new) {
+            curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
+            intersections.push_back(t_intersection);
+        }
+    }
+}
+
 std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Plane& plane, double tolerance) {
 
     std::vector<double> intersections;
@@ -1426,99 +1400,14 @@ std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Pla
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    const std::pair<double, double> domain = curve.domain();
-    const double t_start = domain.first;
-    const double t_end = domain.second;
+    curve_plane_spans(curve, plane, tolerance, intersections);
 
-    std::vector<double> span_params = curve.get_span_vector();
-
-    for (size_t i = 0; i < span_params.size() - 1; i++) {
-        double t0 = span_params[i];
-        double t1 = span_params[i + 1];
-
-        if (std::abs(t1 - t0) < tolerance)
-            continue;
-
-        double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
-        double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
-
-        if (d0 * d1 < 0) {
-            double t_intersection;
-
-            if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
-                curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
-                intersections.push_back(t_intersection);
-            }
-        } else if (std::abs(d0) < tolerance) {
-            bool add = true;
-
-            if (!intersections.empty() && std::abs(intersections.back() - t0) < tolerance)
-                add = false;
-
-            if (add)
-                intersections.push_back(t0);
-        }
-    }
-
-    double d_end = curve_signed_distance_to_plane(curve.point_at(t_end), plane);
-
-    if (std::abs(d_end) < tolerance) {
-        bool add = true;
-
-        if (!intersections.empty() && std::abs(intersections.back() - t_end) < tolerance)
-            add = false;
-
-        if (add)
-            intersections.push_back(t_end);
-    }
-
-    if (curve.degree() > 3 && intersections.size() < static_cast<size_t>(curve.degree())) {
-        int num_samples = curve.degree() * 4;
-        double dt = (t_end - t_start) / num_samples;
-
-        for (int i = 0; i < num_samples; i++) {
-            double t0 = t_start + i * dt;
-            double t1 = t_start + (i + 1) * dt;
-
-            double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
-            double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
-
-            if (d0 * d1 < 0) {
-                double t_intersection;
-
-                if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
-                    bool is_new = true;
-
-                    for (double existing : intersections) {
-                        if (std::abs(existing - t_intersection) < tolerance * 2.0) {
-                            is_new = false;
-                            break;
-                        }
-                    }
-
-                    if (is_new) {
-                        curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
-                        intersections.push_back(t_intersection);
-                    }
-                }
-            }
-        }
-    }
+    if (curve.degree() > 3 && intersections.size() < static_cast<size_t>(curve.degree()))
+        curve_plane_samples(curve, plane, tolerance, intersections);
 
     std::sort(intersections.begin(), intersections.end());
 
-    intersections.erase(
-        std::unique(
-            intersections.begin(),
-            intersections.end(),
-            [tolerance](double a, double b) {
-                return std::abs(a - b) < tolerance * 2.0;
-            }
-        ),
-        intersections.end()
-    );
-
-    return intersections;
+    return unique_sorted(intersections, tolerance * 2.0);
 }
 
 std::vector<Point> Intersection::curve_plane_points(const NurbsCurve& curve, const Plane& plane, double tolerance) {
@@ -1555,13 +1444,7 @@ std::vector<double> Intersection::curve_plane_bezier_clipping(
 
     std::sort(results.begin(), results.end());
 
-    auto last = std::unique(results.begin(), results.end(), [tolerance](double a, double b) {
-        return std::abs(a - b) < tolerance * 2.0;
-    });
-
-    results.erase(last, results.end());
-
-    return results;
+    return unique_sorted(results, tolerance * 10.0);
 }
 
 std::vector<double> Intersection::curve_plane_algebraic(const NurbsCurve& curve, const Plane& plane, double tolerance) {
@@ -1588,18 +1471,7 @@ std::vector<double> Intersection::curve_plane_algebraic(const NurbsCurve& curve,
 
     std::sort(results.begin(), results.end());
 
-    results.erase(
-        std::unique(
-            results.begin(),
-            results.end(),
-            [tolerance](double a, double b) {
-                return std::abs(a - b) < tolerance * 10.0;
-            }
-        ),
-        results.end()
-    );
-
-    return results;
+    return unique_sorted(results, tolerance * 10.0);
 }
 
 std::vector<double> Intersection::curve_plane_production(
@@ -1630,18 +1502,7 @@ std::vector<double> Intersection::curve_plane_production(
 
     std::sort(results.begin(), results.end());
 
-    results.erase(
-        std::unique(
-            results.begin(),
-            results.end(),
-            [tolerance](double a, double b) {
-                return std::abs(a - b) < tolerance * 10.0;
-            }
-        ),
-        results.end()
-    );
-
-    return results;
+    return unique_sorted(results, tolerance * 10.0);
 }
 
 std::pair<double, double> Intersection::curve_closest_point(
@@ -1674,103 +1535,99 @@ struct SurfacePlaneTraceResult {
     double uv_to_3d_min; // Smallest uv-to-3D scale seen.
 };
 
-/// Seed and trace surface/plane intersection curves in UV space.
-SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const Plane& plane, double tolerance) {
+/// Grid crossing of the surface-plane distance, the start of one trace.
+struct SurfacePlaneSeed {
+    double u; // Seed u.
+    double v; // Seed v.
+    bool used; // Whether a trace already passed the seed.
+};
+
+/// Signed surface-plane distance over the surface's UV domain with the tracing scales.
+class SurfacePlaneField {
+public:
+    const NurbsSurface& surface; // Traced surface.
+    Vector pn; // Plane normal.
+    Point p0; // Plane origin.
+    double tolerance; // Newton tolerance.
+    double u0; // Domain start in u.
+    double u1; // Domain end in u.
+    double v0; // Domain start in v.
+    double v1; // Domain end in v.
+    double range_u; // Domain length in u.
+    double range_v; // Domain length in v.
+    bool closed_u; // Whether u wraps around a seam.
+    bool closed_v; // Whether v wraps around a seam.
+    int nu; // Grid cells in u.
+    int nv; // Grid cells in v.
+    double du; // Grid cell size in u.
+    double dv; // Grid cell size in v.
+    double uv_to_3d; // Largest uv-to-3D scale.
+    double uv_to_3d_min; // Smallest uv-to-3D scale.
+    double step; // Marching step in uv.
+    int max_steps; // Marching step cap per direction.
+    double close_tol_3d; // 3D distance that closes a loop.
+    double consume_tol_3d; // 3D distance that consumes a seed.
+    double join_tol; // 3D distance that joins two traces.
+
+    /// Sample the domain and derive the tracing scales.
+    SurfacePlaneField(const NurbsSurface& surface_, const Plane& plane, double tolerance_);
+
+    /// Wrap u across a closed seam or clamp it to the domain.
+    double wrap_u(double u) const;
+
+    /// Wrap v across a closed seam or clamp it to the domain.
+    double wrap_v(double v) const;
+
+    /// Signed plane distance at (u, v).
+    double value(double u, double v) const;
+
+    /// Signed plane distance and its uv gradient at (u, v).
+    void value_and_gradient(double u, double v, double& val, double& gu, double& gv) const;
+
+    /// Newton-project (u, v) onto the zero set; false when it does not converge.
+    bool newton_correct(double& u, double& v) const;
+
+    /// Unit uv tangent of the zero set at (u, v) in direction dir.
+    bool tangent(double u, double v, int dir, double& tu, double& tv) const;
+
+    /// Surface point at a uv sample.
+    Point point(const std::pair<double, double>& q) const;
+
+    /// Newton-slide (cu, cv) along one seam line, axis 0 moving v and axis 1 moving u.
+    std::pair<double, double> seam_newton(double cu, double cv, int axis) const;
+
+    /// Newton-project (u, v) onto the zero set to 1e-12; false on a flat gradient.
+    bool polish(double& u, double& v) const;
+};
+
+SurfacePlaneField::SurfacePlaneField(const NurbsSurface& surface_, const Plane& plane, double tolerance_)
+    : surface(surface_), pn(plane.z_axis()), p0(plane.origin()), tolerance(tolerance_) {
 
     const std::pair<double, double> domain_u = surface.domain(0);
-    const double u0 = domain_u.first;
-    const double u1 = domain_u.second;
+    u0 = domain_u.first;
+    u1 = domain_u.second;
     const std::pair<double, double> domain_v = surface.domain(1);
-    const double v0 = domain_v.first;
-    const double v1 = domain_v.second;
-    double range_u = u1 - u0;
-    double range_v = v1 - v0;
-    bool closed_u = surface.is_closed(0);
-    bool closed_v = surface.is_closed(1);
-
-    auto wrap_u = [&](double u) -> double {
-        if (closed_u) {
-            double t = std::fmod(u - u0, range_u);
-
-            if (t < 0)
-                t += range_u;
-
-            return u0 + t;
-        }
-
-        return std::max(u0, std::min(u, u1));
-    };
-
-    auto wrap_v = [&](double v) -> double {
-        if (closed_v) {
-            double t = std::fmod(v - v0, range_v);
-
-            if (t < 0)
-                t += range_v;
-
-            return v0 + t;
-        }
-
-        return std::max(v0, std::min(v, v1));
-    };
-
-    Vector pn = plane.z_axis();
-    Point p0 = plane.origin();
-
-    auto g = [&](double u, double v) -> double {
-        Point p = surface.point_at(wrap_u(u), wrap_v(v));
-
-        return (p[0] - p0[0]) * pn[0] + (p[1] - p0[1]) * pn[1] + (p[2] - p0[2]) * pn[2];
-    };
-
-    auto g_and_grad = [&](double u, double v, double& val, double& gu, double& gv) {
-        const std::vector<Vector> derivs = surface.evaluate(wrap_u(u), wrap_v(v), 1);
-        const Vector& S = derivs[0];
-        const Vector& Su = derivs[2];
-        const Vector& Sv = derivs[1];
-        val = (S[0] - p0[0]) * pn[0] + (S[1] - p0[1]) * pn[1] + (S[2] - p0[2]) * pn[2];
-        gu = Su[0] * pn[0] + Su[1] * pn[1] + Su[2] * pn[2];
-        gv = Sv[0] * pn[0] + Sv[1] * pn[1] + Sv[2] * pn[2];
-    };
-
-    auto newton_correct = [&](double& u, double& v) -> bool {
-        for (int iter = 0; iter < 10; iter++) {
-            double val;
-            double gu;
-            double gv;
-            g_and_grad(u, v, val, gu, gv);
-
-            if (std::abs(val) < tolerance)
-                return true;
-
-            double mag2 = gu * gu + gv * gv;
-
-            if (mag2 < 1e-28)
-                return false;
-
-            u -= val * gu / mag2;
-            v -= val * gv / mag2;
-            u = wrap_u(u);
-            v = wrap_v(v);
-        }
-
-        return std::abs(g(u, v)) < tolerance * 10.0;
-    };
+    v0 = domain_v.first;
+    v1 = domain_v.second;
+    range_u = u1 - u0;
+    range_v = v1 - v0;
+    closed_u = surface.is_closed(0);
+    closed_v = surface.is_closed(1);
 
     const std::vector<double> spans_u = surface.get_span_vector(0);
     const std::vector<double> spans_v = surface.get_span_vector(1);
-    int nu = std::max((int)spans_u.size() - 1, 1) * 4;
-    int nv = std::max((int)spans_v.size() - 1, 1) * 4;
-    double du = range_u / nu;
-    double dv = range_v / nv;
+    nu = std::max((int)spans_u.size() - 1, 1) * 4;
+    nv = std::max((int)spans_v.size() - 1, 1) * 4;
+    du = range_u / nu;
+    dv = range_v / nv;
 
-    double mu = (u0 + u1) * 0.5;
-    double mv = (v0 + v1) * 0.5;
-    Point pmid = surface.point_at(mu, mv);
-    double uv_to_3d_u = pmid.distance(surface.point_at(wrap_u(mu + du), mv)) / du;
-    double uv_to_3d_v = pmid.distance(surface.point_at(mu, wrap_v(mv + dv))) / dv;
-    double uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
-    double uv_to_3d_min = std::min(uv_to_3d_u, uv_to_3d_v);
+    const double mu = (u0 + u1) * 0.5;
+    const double mv = (v0 + v1) * 0.5;
+    const Point pmid = point({mu, mv});
+    const double uv_to_3d_u = pmid.distance(point({wrap_u(mu + du), mv})) / du;
+    const double uv_to_3d_v = pmid.distance(point({mu, wrap_v(mv + dv)})) / dv;
+    uv_to_3d = std::max(uv_to_3d_u, uv_to_3d_v);
+    uv_to_3d_min = std::min(uv_to_3d_u, uv_to_3d_v);
 
     if (uv_to_3d < 1e-10)
         uv_to_3d = 1.0;
@@ -1778,15 +1635,167 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
     if (uv_to_3d_min < 1e-10)
         uv_to_3d_min = 1.0;
 
-    int cols = nv + 1;
-    std::vector<double> dist((nu + 1) * cols);
+    step = std::min(du, dv) * 0.25;
+    max_steps = nu * nv * 32;
+    close_tol_3d = step * 4.0 * uv_to_3d_min;
+    consume_tol_3d = step * uv_to_3d * 2.0;
+    join_tol = std::max(du, dv) * uv_to_3d * 1.5;
+}
 
-    for (int i = 0; i <= nu; i++) {
-        double u = u0 + du * i;
+double SurfacePlaneField::wrap_u(double u) const {
 
-        for (int j = 0; j <= nv; j++) {
-            double v = v0 + dv * j;
-            double d = g(u, v);
+    if (closed_u) {
+        double t = std::fmod(u - u0, range_u);
+
+        if (t < 0)
+            t += range_u;
+
+        return u0 + t;
+    }
+
+    return std::max(u0, std::min(u, u1));
+}
+
+double SurfacePlaneField::wrap_v(double v) const {
+
+    if (closed_v) {
+        double t = std::fmod(v - v0, range_v);
+
+        if (t < 0)
+            t += range_v;
+
+        return v0 + t;
+    }
+
+    return std::max(v0, std::min(v, v1));
+}
+
+double SurfacePlaneField::value(double u, double v) const {
+
+    const Point p = point({wrap_u(u), wrap_v(v)});
+
+    return (p[0] - p0[0]) * pn[0] + (p[1] - p0[1]) * pn[1] + (p[2] - p0[2]) * pn[2];
+}
+
+void SurfacePlaneField::value_and_gradient(double u, double v, double& val, double& gu, double& gv) const {
+
+    const std::vector<Vector> derivs = surface.evaluate(wrap_u(u), wrap_v(v), 1);
+    const Vector& S = derivs[0];
+    const Vector& Su = derivs[2];
+    const Vector& Sv = derivs[1];
+    val = (S[0] - p0[0]) * pn[0] + (S[1] - p0[1]) * pn[1] + (S[2] - p0[2]) * pn[2];
+    gu = Su[0] * pn[0] + Su[1] * pn[1] + Su[2] * pn[2];
+    gv = Sv[0] * pn[0] + Sv[1] * pn[1] + Sv[2] * pn[2];
+}
+
+bool SurfacePlaneField::newton_correct(double& u, double& v) const {
+
+    for (int iter = 0; iter < 10; iter++) {
+        double val;
+        double gu;
+        double gv;
+        value_and_gradient(u, v, val, gu, gv);
+
+        if (std::abs(val) < tolerance)
+            return true;
+
+        const double mag2 = gu * gu + gv * gv;
+
+        if (mag2 < 1e-28)
+            return false;
+
+        u -= val * gu / mag2;
+        v -= val * gv / mag2;
+        u = wrap_u(u);
+        v = wrap_v(v);
+    }
+
+    return std::abs(value(u, v)) < tolerance * 10.0;
+}
+
+bool SurfacePlaneField::tangent(double u, double v, int dir, double& tu, double& tv) const {
+
+    double val;
+    double gu;
+    double gv;
+    value_and_gradient(u, v, val, gu, gv);
+    const double mag = std::hypot(gu, gv);
+
+    if (mag < 1e-14)
+        return false;
+
+    tu = -gv / mag * dir;
+    tv = gu / mag * dir;
+
+    return true;
+}
+
+Point SurfacePlaneField::point(const std::pair<double, double>& q) const {
+    return surface.point_at(q.first, q.second);
+}
+
+std::pair<double, double> SurfacePlaneField::seam_newton(double cu, double cv, int axis) const {
+
+    for (int iter = 0; iter < 10; iter++) {
+        double val;
+        double gu;
+        double gv;
+        value_and_gradient(cu, cv, val, gu, gv);
+
+        if (std::abs(val) < tolerance)
+            break;
+
+        if (axis == 0) {
+            if (std::abs(gv) < 1e-14)
+                break;
+
+            cv = cv - val / gv;
+        } else {
+            if (std::abs(gu) < 1e-14)
+                break;
+
+            cu = cu - val / gu;
+        }
+    }
+
+    return {cu, cv};
+}
+
+bool SurfacePlaneField::polish(double& u, double& v) const {
+
+    for (int iter = 0; iter < 8; iter++) {
+        double val;
+        double gu;
+        double gv;
+        value_and_gradient(u, v, val, gu, gv);
+
+        if (std::abs(val) < 1e-12)
+            return true;
+
+        const double mag2 = gu * gu + gv * gv;
+
+        if (mag2 < 1e-28)
+            return false;
+
+        u -= val * gu / mag2;
+        v -= val * gv / mag2;
+    }
+
+    return true;
+}
+
+/// Signed plane distance on the (nu + 1) x (nv + 1) grid, exact zeros nudged negative.
+std::vector<double> surface_plane_grid(const SurfacePlaneField& field) {
+
+    const int cols = field.nv + 1;
+    std::vector<double> dist((field.nu + 1) * cols);
+
+    for (int i = 0; i <= field.nu; i++) {
+        const double u = field.u0 + field.du * i;
+
+        for (int j = 0; j <= field.nv; j++) {
+            const double v = field.v0 + field.dv * j;
+            double d = field.value(u, v);
 
             if (d == 0.0)
                 d = -1e-14;
@@ -1795,284 +1804,326 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
         }
     }
 
-    {
-        double gmax = 0.0;
+    return dist;
+}
 
-        for (double d : dist)
-            gmax = std::max(gmax, std::abs(d));
+/// Newton-corrected sign changes along the grid edges, near duplicates marked used.
+std::vector<SurfacePlaneSeed> surface_plane_seeds(const SurfacePlaneField& field, const std::vector<double>& dist) {
 
-        if (gmax < std::max(tolerance, 1e-9) * 10.0)
-            return {{}, std::min(du, dv) * 0.25, uv_to_3d, uv_to_3d_min};
-    }
+    std::vector<SurfacePlaneSeed> seeds;
+    const int cols = field.nv + 1;
+    const int h_jmax = field.closed_v ? field.nv - 1 : field.nv;
 
-    struct Seed {
-        double u;
-        double v;
-        bool used;
-    };
-
-    std::vector<Seed> seeds;
-
-    int h_jmax = closed_v ? nv - 1 : nv;
-
-    for (int i = 0; i < nu; i++) {
+    for (int i = 0; i < field.nu; i++) {
         for (int j = 0; j <= h_jmax; j++) {
-            double d0 = dist[i * cols + j];
-            double d1 = dist[(i + 1) * cols + j];
+            const double d0 = dist[i * cols + j];
+            const double d1 = dist[(i + 1) * cols + j];
 
             if (d0 * d1 < 0) {
-                double t = d0 / (d0 - d1);
-                double su = u0 + du * (i + t);
-                double sv = v0 + dv * j;
+                const double t = d0 / (d0 - d1);
+                double su = field.u0 + field.du * (i + t);
+                double sv = field.v0 + field.dv * j;
 
-                if (newton_correct(su, sv))
+                if (field.newton_correct(su, sv))
                     seeds.push_back({su, sv, false});
             }
         }
     }
 
-    int v_imax = closed_u ? nu - 1 : nu;
+    const int v_imax = field.closed_u ? field.nu - 1 : field.nu;
 
     for (int i = 0; i <= v_imax; i++) {
-        for (int j = 0; j < nv; j++) {
-            double d0 = dist[i * cols + j];
-            double d1 = dist[i * cols + j + 1];
+        for (int j = 0; j < field.nv; j++) {
+            const double d0 = dist[i * cols + j];
+            const double d1 = dist[i * cols + j + 1];
 
             if (d0 * d1 < 0) {
-                double t = d0 / (d0 - d1);
-                double su = u0 + du * i;
-                double sv = v0 + dv * (j + t);
+                const double t = d0 / (d0 - d1);
+                double su = field.u0 + field.du * i;
+                double sv = field.v0 + field.dv * (j + t);
 
-                if (newton_correct(su, sv))
+                if (field.newton_correct(su, sv))
                     seeds.push_back({su, sv, false});
             }
         }
     }
 
-    double seed_tol_3d = std::max(du, dv) * uv_to_3d;
+    const double seed_tol_3d = std::max(field.du, field.dv) * field.uv_to_3d;
 
     for (size_t i = 0; i < seeds.size(); i++) {
         if (seeds[i].used)
             continue;
 
-        Point pi = surface.point_at(seeds[i].u, seeds[i].v);
+        const Point pi = field.point({seeds[i].u, seeds[i].v});
 
         for (size_t j = i + 1; j < seeds.size(); j++) {
             if (seeds[j].used)
                 continue;
 
-            if (pi.distance(surface.point_at(seeds[j].u, seeds[j].v)) < seed_tol_3d)
+            if (pi.distance(field.point({seeds[j].u, seeds[j].v})) < seed_tol_3d)
                 seeds[j].used = true;
         }
     }
 
-    double step = std::min(du, dv) * 0.25;
-    int max_steps = nu * nv * 32;
-    double close_tol_3d = step * 4.0 * uv_to_3d_min;
-    double consume_tol_3d = step * uv_to_3d * 2.0;
+    return seeds;
+}
 
-    std::vector<SurfacePlaneTrace> traces;
+/// Step (u, v) by local_step along (tu, tv), pulled back onto an open domain boundary; true when clamped.
+bool domain_step(
+    const SurfacePlaneField& field,
+    double u,
+    double v,
+    double local_step,
+    double tu,
+    double tv,
+    double& un,
+    double& vn
+) {
 
-    for (Seed& seed : seeds) {
-        if (seed.used)
-            continue;
+    un = u + local_step * tu;
+    vn = v + local_step * tv;
 
-        seed.used = true;
+    const bool out_u = !field.closed_u && (un < field.u0 || un > field.u1);
+    const bool out_v = !field.closed_v && (vn < field.v0 || vn > field.v1);
 
-        auto tangent_at_uv = [&](double u, double v, int dir, double& tu, double& tv) -> bool {
-            double val;
-            double gu;
-            double gv;
-            g_and_grad(u, v, val, gu, gv);
-            double mag = std::hypot(gu, gv);
+    if (!out_u && !out_v)
+        return false;
 
-            if (mag < 1e-14)
-                return false;
+    double tc = 1.0;
 
-            tu = -gv / mag * dir;
-            tv = gu / mag * dir;
+    if (!field.closed_u && tu > 0 && un > field.u1)
+        tc = std::min(tc, (field.u1 - u) / (local_step * tu));
 
+    if (!field.closed_u && tu < 0 && un < field.u0)
+        tc = std::min(tc, (field.u0 - u) / (local_step * tu));
+
+    if (!field.closed_v && tv > 0 && vn > field.v1)
+        tc = std::min(tc, (field.v1 - v) / (local_step * tv));
+
+    if (!field.closed_v && tv < 0 && vn < field.v0)
+        tc = std::min(tc, (field.v0 - v) / (local_step * tv));
+
+    un = u + tc * local_step * tu;
+    vn = v + tc * local_step * tv;
+
+    return true;
+}
+
+/// Retry a failed Newton projection with the step halved up to four times.
+bool newton_retry(
+    const SurfacePlaneField& field,
+    double u,
+    double v,
+    double local_step,
+    double tu,
+    double tv,
+    double& un,
+    double& vn
+) {
+
+    double ls = local_step;
+
+    for (int rh = 0; rh < 4; ++rh) {
+        ls *= 0.5;
+        un = field.wrap_u(u + ls * tu);
+        vn = field.wrap_v(v + ls * tv);
+
+        if (field.newton_correct(un, vn))
             return true;
-        };
-
-        auto trace_dir = [&](double su, double sv, int dir, std::vector<std::pair<double, double>>& out) -> bool {
-            double u = su;
-            double v = sv;
-            double prev_tu = 0;
-            double prev_tv = 0;
-            Point p_start = surface.point_at(su, sv);
-            Point p_prev = p_start;
-            double dist_traveled = 0;
-
-            for (int s = 0; s < max_steps; s++) {
-                double tu;
-                double tv;
-
-                if (!tangent_at_uv(u, v, dir, tu, tv)) {
-                    if (std::hypot(prev_tu, prev_tv) < 1e-14)
-                        break;
-
-                    tu = prev_tu;
-                    tv = prev_tv;
-                }
-
-                double local_step = step;
-
-                if (std::hypot(prev_tu, prev_tv) > 1e-14) {
-                    double dot = tu * prev_tu + tv * prev_tv;
-                    dot = std::max(-1.0, std::min(1.0, dot));
-
-                    if (dot < 0.95)
-                        local_step = step * 0.25;
-                    else if (dot < 0.985)
-                        local_step = step * 0.5;
-                }
-
-                double u_mid = u + local_step * 0.5 * tu;
-                double v_mid = v + local_step * 0.5 * tv;
-                double tu2;
-                double tv2;
-
-                if (tangent_at_uv(u_mid, v_mid, dir, tu2, tv2)) {
-                    tu = tu2;
-                    tv = tv2;
-                }
-
-                prev_tu = tu;
-                prev_tv = tv;
-
-                double un = u + local_step * tu;
-                double vn = v + local_step * tv;
-
-                bool hit_boundary = false;
-
-                if ((!closed_u && (un < u0 || un > u1)) || (!closed_v && (vn < v0 || vn > v1))) {
-                    double tc = 1.0;
-
-                    if (!closed_u && tu > 0 && un > u1)
-                        tc = std::min(tc, (u1 - u) / (local_step * tu));
-
-                    if (!closed_u && tu < 0 && un < u0)
-                        tc = std::min(tc, (u0 - u) / (local_step * tu));
-
-                    if (!closed_v && tv > 0 && vn > v1)
-                        tc = std::min(tc, (v1 - v) / (local_step * tv));
-
-                    if (!closed_v && tv < 0 && vn < v0)
-                        tc = std::min(tc, (v0 - v) / (local_step * tv));
-
-                    un = u + tc * local_step * tu;
-                    vn = v + tc * local_step * tv;
-                    hit_boundary = true;
-                }
-
-                un = wrap_u(un);
-                vn = wrap_v(vn);
-
-                if (!newton_correct(un, vn)) {
-                    bool ok_retry = false;
-                    double ls = local_step;
-
-                    for (int rh = 0; rh < 4 && !ok_retry; ++rh) {
-                        ls *= 0.5;
-                        un = wrap_u(u + ls * tu);
-                        vn = wrap_v(v + ls * tv);
-
-                        if (newton_correct(un, vn))
-                            ok_retry = true;
-                    }
-
-                    if (!ok_retry)
-                        break;
-                }
-
-                Point p_cur = surface.point_at(un, vn);
-                dist_traveled += p_prev.distance(p_cur);
-
-                if (dist_traveled > close_tol_3d * 3.0 && p_start.distance(p_cur) < close_tol_3d) {
-                    out.push_back({un, vn});
-
-                    return true;
-                }
-
-                out.push_back({un, vn});
-                u = un;
-                v = vn;
-                p_prev = p_cur;
-
-                if (hit_boundary)
-                    break;
-
-                for (Seed& other : seeds) {
-                    if (!other.used) {
-                        if (p_cur.distance(surface.point_at(other.u, other.v)) < consume_tol_3d)
-                            other.used = true;
-                    }
-                }
-            }
-
-            return false;
-        };
-
-        std::vector<std::pair<double, double>> fwd, bwd;
-        bool fwd_closed = trace_dir(seed.u, seed.v, +1, fwd);
-
-        if (!fwd_closed)
-            trace_dir(seed.u, seed.v, -1, bwd);
-
-        std::vector<std::pair<double, double>> uv_trace;
-        uv_trace.reserve(bwd.size() + 1 + fwd.size());
-
-        for (int i = (int)bwd.size() - 1; i >= 0; i--)
-            uv_trace.push_back(bwd[i]);
-
-        uv_trace.push_back({seed.u, seed.v});
-
-        for (std::pair<double, double>& p : fwd)
-            uv_trace.push_back(p);
-
-        if (uv_trace.size() < 4)
-            continue;
-
-        Point p_first = surface.point_at(uv_trace.front().first, uv_trace.front().second);
-        Point p_last = surface.point_at(uv_trace.back().first, uv_trace.back().second);
-        bool is_loop = fwd_closed || (uv_trace.size() >= 6 && p_first.distance(p_last) < close_tol_3d);
-
-        if (is_loop)
-            uv_trace.pop_back();
-
-        if (uv_trace.size() < 4)
-            continue;
-
-        std::vector<std::pair<double, double>> uv_unwrapped = uv_trace;
-
-        for (size_t i = 1; i < uv_unwrapped.size(); i++) {
-            double du_jump = uv_unwrapped[i].first - uv_unwrapped[i - 1].first;
-            double dv_jump = uv_unwrapped[i].second - uv_unwrapped[i - 1].second;
-
-            if (closed_u) {
-                if (du_jump > range_u * 0.5)
-                    uv_unwrapped[i].first -= range_u;
-                else if (du_jump < -range_u * 0.5)
-                    uv_unwrapped[i].first += range_u;
-            }
-
-            if (closed_v) {
-                if (dv_jump > range_v * 0.5)
-                    uv_unwrapped[i].second -= range_v;
-                else if (dv_jump < -range_v * 0.5)
-                    uv_unwrapped[i].second += range_v;
-            }
-        }
-
-        traces.push_back({std::move(uv_trace), std::move(uv_unwrapped), is_loop});
     }
 
-    double join_tol = std::max(du, dv) * uv_to_3d * 1.5;
+    return false;
+}
 
-    auto p3 = [&](const std::pair<double, double>& q) {
-        return surface.point_at(q.first, q.second);
-    };
+/// Mark every unused seed within the consume distance of p as used.
+void consume_seeds(const SurfacePlaneField& field, const Point& p, std::vector<SurfacePlaneSeed>& seeds) {
+
+    for (SurfacePlaneSeed& other : seeds)
+        if (!other.used && p.distance(field.point({other.u, other.v})) < field.consume_tol_3d)
+            other.used = true;
+}
+
+/// Step length for the turn between two unit tangents: a quarter or half step on sharp turns.
+double turn_step(const SurfacePlaneField& field, double tu, double tv, double prev_tu, double prev_tv) {
+
+    if (std::hypot(prev_tu, prev_tv) <= 1e-14)
+        return field.step;
+
+    double dot = tu * prev_tu + tv * prev_tv;
+    dot = std::max(-1.0, std::min(1.0, dot));
+
+    if (dot < 0.95)
+        return field.step * 0.25;
+
+    if (dot < 0.985)
+        return field.step * 0.5;
+
+    return field.step;
+}
+
+/// March the zero set from (su, sv) in direction dir; true when it closes on its start.
+bool surface_plane_march(
+    const SurfacePlaneField& field,
+    double su,
+    double sv,
+    int dir,
+    std::vector<SurfacePlaneSeed>& seeds,
+    std::vector<std::pair<double, double>>& out
+) {
+
+    double u = su;
+    double v = sv;
+    double prev_tu = 0;
+    double prev_tv = 0;
+    const Point p_start = field.point({su, sv});
+    Point p_prev = p_start;
+    double dist_traveled = 0;
+
+    for (int s = 0; s < field.max_steps; s++) {
+        double tu;
+        double tv;
+
+        if (!field.tangent(u, v, dir, tu, tv)) {
+            if (std::hypot(prev_tu, prev_tv) < 1e-14)
+                break;
+
+            tu = prev_tu;
+            tv = prev_tv;
+        }
+
+        const double local_step = turn_step(field, tu, tv, prev_tu, prev_tv);
+        double tu2;
+        double tv2;
+
+        if (field.tangent(u + local_step * 0.5 * tu, v + local_step * 0.5 * tv, dir, tu2, tv2)) {
+            tu = tu2;
+            tv = tv2;
+        }
+
+        prev_tu = tu;
+        prev_tv = tv;
+
+        double un;
+        double vn;
+        const bool hit_boundary = domain_step(field, u, v, local_step, tu, tv, un, vn);
+        un = field.wrap_u(un);
+        vn = field.wrap_v(vn);
+
+        if (!field.newton_correct(un, vn) && !newton_retry(field, u, v, local_step, tu, tv, un, vn))
+            break;
+
+        const Point p_cur = field.point({un, vn});
+        dist_traveled += p_prev.distance(p_cur);
+        out.push_back({un, vn});
+
+        if (dist_traveled > field.close_tol_3d * 3.0 && p_start.distance(p_cur) < field.close_tol_3d)
+            return true;
+
+        u = un;
+        v = vn;
+        p_prev = p_cur;
+
+        if (hit_boundary)
+            break;
+
+        consume_seeds(field, p_cur, seeds);
+    }
+
+    return false;
+}
+
+/// Undo the seam jumps of a closed domain in the unwrapped copy of a trace.
+void unwrap_trace(const SurfacePlaneField& field, std::vector<std::pair<double, double>>& uv) {
+
+    for (size_t i = 1; i < uv.size(); i++) {
+        const double du_jump = uv[i].first - uv[i - 1].first;
+        const double dv_jump = uv[i].second - uv[i - 1].second;
+
+        if (field.closed_u) {
+            if (du_jump > field.range_u * 0.5)
+                uv[i].first -= field.range_u;
+            else if (du_jump < -field.range_u * 0.5)
+                uv[i].first += field.range_u;
+        }
+
+        if (field.closed_v) {
+            if (dv_jump > field.range_v * 0.5)
+                uv[i].second -= field.range_v;
+            else if (dv_jump < -field.range_v * 0.5)
+                uv[i].second += field.range_v;
+        }
+    }
+}
+
+/// Trace one seed both ways into a trace; false when it is too short to keep.
+bool surface_plane_trace_seed(
+    const SurfacePlaneField& field,
+    std::vector<SurfacePlaneSeed>& seeds,
+    size_t index,
+    SurfacePlaneTrace& trace
+) {
+
+    const double seed_u = seeds[index].u;
+    const double seed_v = seeds[index].v;
+    std::vector<std::pair<double, double>> fwd;
+    std::vector<std::pair<double, double>> bwd;
+    const bool fwd_closed = surface_plane_march(field, seed_u, seed_v, +1, seeds, fwd);
+
+    if (!fwd_closed)
+        surface_plane_march(field, seed_u, seed_v, -1, seeds, bwd);
+
+    std::vector<std::pair<double, double>> uv_trace;
+    uv_trace.reserve(bwd.size() + 1 + fwd.size());
+
+    for (int i = (int)bwd.size() - 1; i >= 0; i--)
+        uv_trace.push_back(bwd[i]);
+
+    uv_trace.push_back({seed_u, seed_v});
+
+    for (const std::pair<double, double>& p : fwd)
+        uv_trace.push_back(p);
+
+    if (uv_trace.size() < 4)
+        return false;
+
+    const Point p_first = field.point(uv_trace.front());
+    const Point p_last = field.point(uv_trace.back());
+    const bool is_loop = fwd_closed || (uv_trace.size() >= 6 && p_first.distance(p_last) < field.close_tol_3d);
+
+    if (is_loop)
+        uv_trace.pop_back();
+
+    if (uv_trace.size() < 4)
+        return false;
+
+    std::vector<std::pair<double, double>> uv_unwrapped = uv_trace;
+    unwrap_trace(field, uv_unwrapped);
+    trace = {std::move(uv_trace), std::move(uv_unwrapped), is_loop};
+
+    return true;
+}
+
+/// Whether every eighth sample of trace a lies within the join distance of trace b.
+bool trace_covered_by(const SurfacePlaneField& field, const SurfacePlaneTrace& a, const SurfacePlaneTrace& b) {
+
+    const size_t stride = std::max<size_t>(1, a.uv_trace.size() / 8);
+
+    for (size_t k = 0; k < a.uv_trace.size(); k += stride) {
+        const Point q = field.point(a.uv_trace[k]);
+        double best = 1e300;
+
+        for (const std::pair<double, double>& r : b.uv_trace)
+            best = std::min(best, q.distance(field.point(r)));
+
+        if (best > field.join_tol)
+            return false;
+    }
+
+    return true;
+}
+
+/// Empty every open trace that a trace at least as long already covers.
+void drop_covered_traces(const SurfacePlaneField& field, std::vector<SurfacePlaneTrace>& traces) {
 
     for (size_t i = 0; i < traces.size(); ++i) {
         if (traces[i].uv_trace.empty() || traces[i].is_loop)
@@ -2085,157 +2136,332 @@ SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const 
             if (traces[j].uv_trace.size() < traces[i].uv_trace.size())
                 continue;
 
-            bool covered = true;
-
-            for (size_t k = 0; k < traces[i].uv_trace.size() && covered;
-                 k += std::max<size_t>(1, traces[i].uv_trace.size() / 8)) {
-
-                Point q = p3(traces[i].uv_trace[k]);
-                double best = 1e300;
-
-                for (std::pair<double, double>& r : traces[j].uv_trace)
-                    best = std::min(best, q.distance(p3(r)));
-
-                if (best > join_tol)
-                    covered = false;
-            }
-
-            if (covered) {
+            if (trace_covered_by(field, traces[i], traces[j])) {
                 traces[i].uv_trace.clear();
                 break;
             }
         }
     }
+}
 
-    bool joined = true;
+/// Append trace b to the end of trace a, reversed when requested, and close a when it meets itself.
+void append_trace(const SurfacePlaneField& field, SurfacePlaneTrace& a, SurfacePlaneTrace& b, bool reversed) {
 
-    for (size_t pass = 0; pass < traces.size() && joined; pass++) {
-        joined = false;
+    std::vector<std::pair<double, double>> add = b.uv_trace;
 
-        for (size_t i = 0; i < traces.size() && !joined; ++i) {
-            if (traces[i].uv_trace.size() < 2 || traces[i].is_loop)
+    if (reversed)
+        std::reverse(add.begin(), add.end());
+
+    a.uv_trace.insert(a.uv_trace.end(), add.begin(), add.end());
+    b.uv_trace.clear();
+
+    if (field.point(a.uv_trace.front()).distance(field.point(a.uv_trace.back())) < field.join_tol) {
+        a.is_loop = true;
+        a.uv_trace.pop_back();
+    }
+
+    a.uv_unwrapped = a.uv_trace;
+    unwrap_trace(field, a.uv_unwrapped);
+}
+
+/// Join the first open trace pair whose end meets a start or end; false when none does.
+bool join_one_trace_pair(const SurfacePlaneField& field, std::vector<SurfacePlaneTrace>& traces) {
+
+    for (size_t i = 0; i < traces.size(); ++i) {
+        if (traces[i].uv_trace.size() < 2 || traces[i].is_loop)
+            continue;
+
+        const Point ie = field.point(traces[i].uv_trace.back());
+
+        for (size_t j = 0; j < traces.size(); ++j) {
+            if (i == j || traces[j].uv_trace.size() < 2 || traces[j].is_loop)
                 continue;
 
-            Point ie = p3(traces[i].uv_trace.back());
+            const Point ja = field.point(traces[j].uv_trace.front());
+            const Point jb = field.point(traces[j].uv_trace.back());
+            const bool fwd2 = ie.distance(ja) < field.join_tol;
+            const bool rev2 = ie.distance(jb) < field.join_tol;
 
-            for (size_t j = 0; j < traces.size() && !joined; ++j) {
-                if (i == j || traces[j].uv_trace.size() < 2 || traces[j].is_loop)
-                    continue;
+            if (!fwd2 && !rev2)
+                continue;
 
-                Point ja = p3(traces[j].uv_trace.front());
-                Point jb = p3(traces[j].uv_trace.back());
-                bool fwd2 = ie.distance(ja) < join_tol;
-                bool rev2 = ie.distance(jb) < join_tol;
+            append_trace(field, traces[i], traces[j], rev2);
 
-                if (!fwd2 && !rev2)
-                    continue;
-
-                std::vector<std::pair<double, double>> add = traces[j].uv_trace;
-
-                if (rev2)
-                    std::reverse(add.begin(), add.end());
-
-                traces[i].uv_trace.insert(traces[i].uv_trace.end(), add.begin(), add.end());
-                traces[j].uv_trace.clear();
-
-                if (p3(traces[i].uv_trace.front()).distance(p3(traces[i].uv_trace.back())) < join_tol) {
-                    traces[i].is_loop = true;
-                    traces[i].uv_trace.pop_back();
-                }
-
-                traces[i].uv_unwrapped = traces[i].uv_trace;
-
-                for (size_t k = 1; k < traces[i].uv_unwrapped.size(); ++k) {
-                    double dj = traces[i].uv_unwrapped[k].first - traces[i].uv_unwrapped[k - 1].first;
-                    double dvj = traces[i].uv_unwrapped[k].second - traces[i].uv_unwrapped[k - 1].second;
-
-                    if (closed_u) {
-                        if (dj > range_u * 0.5)
-                            traces[i].uv_unwrapped[k].first -= range_u;
-                        else if (dj < -range_u * 0.5)
-                            traces[i].uv_unwrapped[k].first += range_u;
-                    }
-
-                    if (closed_v) {
-                        if (dvj > range_v * 0.5)
-                            traces[i].uv_unwrapped[k].second -= range_v;
-                        else if (dvj < -range_v * 0.5)
-                            traces[i].uv_unwrapped[k].second += range_v;
-                    }
-                }
-
-                joined = true;
-            }
+            return true;
         }
     }
 
-    traces.erase(
-        std::remove_if(
-            traces.begin(),
-            traces.end(),
-            [](const SurfacePlaneTrace& t) {
-                return t.uv_trace.size() < 4;
-            }
-        ),
-        traces.end()
-    );
+    return false;
+}
+
+/// Drop short traces and close the open ones whose ends meet.
+void close_traces(const SurfacePlaneField& field, std::vector<SurfacePlaneTrace>& traces) {
+
+    std::vector<SurfacePlaneTrace> kept;
+
+    for (SurfacePlaneTrace& t : traces)
+        if (t.uv_trace.size() >= 4)
+            kept.push_back(std::move(t));
+
+    traces = std::move(kept);
 
     for (SurfacePlaneTrace& t : traces) {
         if (t.is_loop || t.uv_trace.size() < 6)
             continue;
 
-        if (p3(t.uv_trace.front()).distance(p3(t.uv_trace.back())) < join_tol) {
+        if (field.point(t.uv_trace.front()).distance(field.point(t.uv_trace.back())) < field.join_tol) {
             t.is_loop = true;
             t.uv_trace.pop_back();
             t.uv_unwrapped.pop_back();
         }
     }
+}
+
+/// Snap one open trace end within a grid cell of the domain boundary onto it.
+void snap_trace_end(const SurfacePlaneField& field, std::pair<double, double>& q, std::pair<double, double>& qu) {
+
+    if (!field.closed_u) {
+        if (std::abs(q.first - field.u0) < field.du) {
+            q.first = field.u0;
+            qu.first = field.u0;
+        }
+
+        if (std::abs(q.first - field.u1) < field.du) {
+            q.first = field.u1;
+            qu.first = field.u1;
+        }
+    } else {
+        if (q.first - field.u0 < field.du)
+            q.first = field.u0;
+        else if (field.u1 - q.first < field.du)
+            q.first = field.u1;
+    }
+
+    if (!field.closed_v) {
+        if (std::abs(q.second - field.v0) < field.dv) {
+            q.second = field.v0;
+            qu.second = field.v0;
+        }
+
+        if (std::abs(q.second - field.v1) < field.dv) {
+            q.second = field.v1;
+            qu.second = field.v1;
+        }
+    } else {
+        if (q.second - field.v0 < field.dv)
+            q.second = field.v0;
+        else if (field.v1 - q.second < field.dv)
+            q.second = field.v1;
+    }
+}
+
+/// Seed and trace surface/plane intersection curves in UV space.
+SurfacePlaneTraceResult surface_plane_traces(const NurbsSurface& surface, const Plane& plane, double tolerance) {
+
+    const SurfacePlaneField field(surface, plane, tolerance);
+    const std::vector<double> dist = surface_plane_grid(field);
+
+    double gmax = 0.0;
+
+    for (double d : dist)
+        gmax = std::max(gmax, std::abs(d));
+
+    if (gmax < std::max(tolerance, 1e-9) * 10.0)
+        return {{}, field.step, field.uv_to_3d, field.uv_to_3d_min};
+
+    std::vector<SurfacePlaneSeed> seeds = surface_plane_seeds(field, dist);
+    std::vector<SurfacePlaneTrace> traces;
+
+    for (size_t i = 0; i < seeds.size(); ++i) {
+        if (seeds[i].used)
+            continue;
+
+        seeds[i].used = true;
+        SurfacePlaneTrace trace;
+
+        if (surface_plane_trace_seed(field, seeds, i, trace))
+            traces.push_back(std::move(trace));
+    }
+
+    drop_covered_traces(field, traces);
+
+    for (size_t pass = 0; pass < traces.size(); pass++)
+        if (!join_one_trace_pair(field, traces))
+            break;
+
+    close_traces(field, traces);
 
     for (SurfacePlaneTrace& t : traces) {
         if (t.is_loop || t.uv_trace.empty())
             continue;
 
-        for (int endk = 0; endk < 2; ++endk) {
-            std::pair<double, double>& q = endk ? t.uv_trace.back() : t.uv_trace.front();
-            std::pair<double, double>& qu = endk ? t.uv_unwrapped.back() : t.uv_unwrapped.front();
+        snap_trace_end(field, t.uv_trace.front(), t.uv_unwrapped.front());
+        snap_trace_end(field, t.uv_trace.back(), t.uv_unwrapped.back());
+    }
 
-            if (!closed_u) {
-                if (std::abs(q.first - u0) < du) {
-                    q.first = u0;
-                    qu.first = u0;
-                }
+    return {std::move(traces), field.step, field.uv_to_3d, field.uv_to_3d_min};
+}
 
-                if (std::abs(q.first - u1) < du) {
-                    q.first = u1;
-                    qu.first = u1;
-                }
-            } else {
-                if (q.first - u0 < du)
-                    q.first = u0;
-                else if (u1 - q.first < du)
-                    q.first = u1;
-            }
+/// Points projected into the plane's 2D frame, z = 0.
+std::vector<Point> plane_points_2d(const std::vector<Point>& pts, const Plane& plane) {
 
-            if (!closed_v) {
-                if (std::abs(q.second - v0) < dv) {
-                    q.second = v0;
-                    qu.second = v0;
-                }
+    const Vector ax = plane.x_axis();
+    const Vector ay = plane.y_axis();
+    const Point po = plane.origin();
+    std::vector<Point> pts_2d(pts.size());
 
-                if (std::abs(q.second - v1) < dv) {
-                    q.second = v1;
-                    qu.second = v1;
-                }
-            } else {
-                if (q.second - v0 < dv)
-                    q.second = v0;
-                else if (v1 - q.second < dv)
-                    q.second = v1;
-            }
+    for (size_t i = 0; i < pts.size(); i++) {
+        const double dx = pts[i][0] - po[0];
+        const double dy = pts[i][1] - po[1];
+        const double dz = pts[i][2] - po[2];
+        const double px = dx * ax[0] + dy * ax[1] + dz * ax[2];
+        const double py = dx * ay[0] + dy * ay[1] + dz * ay[2];
+        pts_2d[i] = Point(px, py, 0);
+    }
+
+    return pts_2d;
+}
+
+/// Normalized cumulative chord length of each point, the closing chord included for loops.
+std::vector<double> chord_parameters(const std::vector<Point>& pts, bool is_loop) {
+
+    const size_t m = pts.size();
+    std::vector<double> chords(m, 0.0);
+    double total_len = 0;
+
+    for (size_t i = 1; i < m; i++) {
+        total_len += pts[i].distance(pts[i - 1]);
+        chords[i] = total_len;
+    }
+
+    if (is_loop && m > 1)
+        total_len += pts[0].distance(pts[m - 1]);
+
+    if (total_len > 1e-14)
+        for (size_t i = 1; i < m; i++)
+            chords[i] /= total_len;
+
+    return chords;
+}
+
+/// Sum of the turning angles along a planar polyline.
+double total_turning(const std::vector<Point>& pts) {
+
+    double turning = 0;
+
+    for (size_t i = 1; i + 1 < pts.size(); i++) {
+        const double dx1 = pts[i][0] - pts[i - 1][0];
+        const double dy1 = pts[i][1] - pts[i - 1][1];
+        const double dx2 = pts[i + 1][0] - pts[i][0];
+        const double dy2 = pts[i + 1][1] - pts[i][1];
+        const double l1 = std::hypot(dx1, dy1);
+        const double l2 = std::hypot(dx2, dy2);
+
+        if (l1 > 1e-14 && l2 > 1e-14) {
+            double c = (dx1 * dx2 + dy1 * dy2) / (l1 * l2);
+            c = std::max(-1.0, std::min(1.0, c));
+            turning += std::acos(c);
         }
     }
 
-    return {std::move(traces), step, uv_to_3d, uv_to_3d_min};
+    return turning;
+}
+
+/// Largest distance from each point to the curve, found by ternary search around its chord parameter.
+double fitted_max_deviation(const NurbsCurve& cand, const std::vector<Point>& pts, const std::vector<double>& chords) {
+
+    const int m = (int)pts.size();
+    const std::pair<double, double> domain_ft = cand.domain();
+    const double ft0 = domain_ft.first;
+    const double ft1 = domain_ft.second;
+    double max_dev = 0;
+
+    for (int i = 0; i < m; i++) {
+        const double t = ft0 + (ft1 - ft0) * chords[i];
+        const double w2 = (ft1 - ft0) * 2.0 / std::max(m - 1, 1);
+        double lo = std::max(ft0, t - w2);
+        double hi = std::min(ft1, t + w2);
+
+        for (int it = 0; it < 20; ++it) {
+            const double m1 = lo + (hi - lo) / 3;
+            const double m2 = hi - (hi - lo) / 3;
+
+            if (cand.point_at(m1).distance(pts[i]) < cand.point_at(m2).distance(pts[i]))
+                hi = m2;
+            else
+                lo = m1;
+        }
+
+        max_dev = std::max(max_dev, cand.point_at(0.5 * (lo + hi)).distance(pts[i]));
+    }
+
+    return max_dev;
+}
+
+/// Cubic fitted to the points in the plane's frame, CVs doubled until within fit_tol, lifted back to 3D.
+NurbsCurve fit_planar_freeform(const std::vector<Point>& all_pts, bool is_loop, const Plane& plane, double fit_tol) {
+
+    const int m = (int)all_pts.size();
+
+    if (m < 4)
+        return NurbsCurve();
+
+    const std::vector<Point> pts_2d = plane_points_2d(all_pts, plane);
+    const std::vector<double> chords = chord_parameters(pts_2d, is_loop);
+    int target_cvs = std::max(8, (int)(total_turning(pts_2d) / 0.5) + 6);
+    const int max_cvs = std::min(m - 1, 128);
+    NurbsCurve crv_2d;
+    double best_dev = 1e300;
+
+    for (int attempt = 0; attempt < 6; attempt++) {
+        if (target_cvs > max_cvs)
+            break;
+
+        NurbsCurve cand = NurbsCurve::create_fitted(pts_2d, target_cvs, 3, is_loop);
+
+        if (!cand.is_valid())
+            break;
+
+        const double max_dev = fitted_max_deviation(cand, pts_2d, chords);
+
+        if (max_dev < best_dev) {
+            best_dev = max_dev;
+            crv_2d = cand;
+        }
+
+        if (max_dev < fit_tol)
+            break;
+
+        target_cvs = std::min(target_cvs * 2, max_cvs + 1);
+    }
+
+    if (!crv_2d.is_valid())
+        crv_2d = is_loop ? NurbsCurve::create_interpolated(pts_2d, CurveNurbsKnotStyle::ChordPeriodic)
+                         : NurbsCurve::create_interpolated(pts_2d);
+
+    if (!crv_2d.is_valid())
+        return NurbsCurve();
+
+    const Vector ax = plane.x_axis();
+    const Vector ay = plane.y_axis();
+    const Point po = plane.origin();
+
+    for (int i = 0; i < crv_2d.cv_count(); i++) {
+        const Point cv2 = crv_2d.get_cv(i);
+        const double cx = cv2[0];
+        const double cy = cv2[1];
+
+        crv_2d.set_cv(
+            i,
+            Point(
+                po[0] + cx * ax[0] + cy * ay[0],
+                po[1] + cx * ax[1] + cy * ay[1],
+                po[2] + cx * ax[2] + cy * ay[2]
+            )
+        );
+    }
+
+    return crv_2d;
 }
 
 /// Fit a 3D plane-constrained NurbsCurve to traced intersection points.
@@ -2494,133 +2720,458 @@ NurbsCurve surface_plane_fit_3d(
         }
     }
 
-    if (!crv.is_valid()) {
-        int m = (int)all_pts.size();
+    if (!crv.is_valid())
+        crv = fit_planar_freeform(all_pts, is_loop, plane, step * (uv_to_3d + uv_to_3d_min) * 0.5 * 5e-4);
 
-        if (m < 4)
-            return NurbsCurve();
+    return crv;
+}
 
-        Vector ax = plane.x_axis();
-        Vector ay = plane.y_axis();
-        Point po = plane.origin();
-        std::vector<Point> pts_2d(m);
+/// Seam-free run of uv samples cut from one trace.
+struct SurfacePlanePiece {
+    std::vector<std::pair<double, double>> uv; // Samples in parameter space.
+    bool is_loop; // Whether the piece still closes on itself.
+};
 
-        for (int i = 0; i < m; i++) {
-            double dx = all_pts[i][0] - po[0];
-            double dy = all_pts[i][1] - po[1];
-            double dz = all_pts[i][2] - po[2];
-            double px = dx * ax[0] + dy * ax[1] + dz * ax[2];
-            double py = dx * ay[0] + dy * ay[1] + dz * ay[2];
-            pts_2d[i] = Point(px, py, 0);
-        }
+/// Whether the quarter, half and three-quarter samples of a trace all lie within dup_tol of one kept trace.
+bool is_duplicate_trace(
+    const std::vector<Point>& trace_pts3,
+    const std::vector<std::vector<Point>>& kept_pts3,
+    double dup_tol
+) {
 
-        std::vector<double> chords(m, 0.0);
-        double total_len = 0;
+    const int m = (int)trace_pts3.size();
 
-        for (int i = 1; i < m; i++) {
-            total_len += pts_2d[i].distance(pts_2d[i - 1]);
-            chords[i] = total_len;
-        }
+    for (const std::vector<Point>& other : kept_pts3) {
+        bool all_close = true;
 
-        if (is_loop && m > 1)
-            total_len += pts_2d[0].distance(pts_2d[m - 1]);
+        for (double f : {0.25, 0.5, 0.75}) {
+            const Point& cp = trace_pts3[(int)((m - 1) * f)];
+            double dmin = dup_tol + 1.0;
 
-        if (total_len > 1e-14)
-            for (int i = 1; i < m; i++)
-                chords[i] /= total_len;
+            for (size_t k = 0; k < other.size(); k += 5)
+                dmin = std::min(dmin, cp.distance(other[k]));
 
-        double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5 * 5e-4;
-        double total_turning = 0;
-
-        for (int i = 1; i < m - 1; i++) {
-            double dx1 = pts_2d[i][0] - pts_2d[i - 1][0];
-            double dy1 = pts_2d[i][1] - pts_2d[i - 1][1];
-            double dx2 = pts_2d[i + 1][0] - pts_2d[i][0];
-            double dy2 = pts_2d[i + 1][1] - pts_2d[i][1];
-            double l1 = std::hypot(dx1, dy1);
-            double l2 = std::hypot(dx2, dy2);
-
-            if (l1 > 1e-14 && l2 > 1e-14) {
-                double c = (dx1 * dx2 + dy1 * dy2) / (l1 * l2);
-                c = std::max(-1.0, std::min(1.0, c));
-                total_turning += std::acos(c);
-            }
-        }
-
-        int target_cvs = std::max(8, (int)(total_turning / 0.5) + 6);
-        int max_cvs = std::min(m - 1, 128);
-        NurbsCurve crv_2d;
-        double best_dev = 1e300;
-
-        for (int attempt = 0; attempt < 6; attempt++) {
-            if (target_cvs > max_cvs)
+            if (dmin > dup_tol) {
+                all_close = false;
                 break;
-
-            NurbsCurve cand = NurbsCurve::create_fitted(pts_2d, target_cvs, 3, is_loop);
-
-            if (!cand.is_valid())
-                break;
-
-            const std::pair<double, double> domain_ft = cand.domain();
-            const double ft0 = domain_ft.first;
-            const double ft1 = domain_ft.second;
-            double max_dev = 0;
-
-            for (int i = 0; i < m; i++) {
-                double t = ft0 + (ft1 - ft0) * chords[i];
-                double w2 = (ft1 - ft0) * 2.0 / std::max(m - 1, 1);
-                double lo = std::max(ft0, t - w2);
-                double hi = std::min(ft1, t + w2);
-
-                for (int it = 0; it < 20; ++it) {
-                    double m1 = lo + (hi - lo) / 3;
-                    double m2 = hi - (hi - lo) / 3;
-
-                    if (cand.point_at(m1).distance(pts_2d[i]) < cand.point_at(m2).distance(pts_2d[i]))
-                        hi = m2;
-                    else
-                        lo = m1;
-                }
-
-                max_dev = std::max(max_dev, cand.point_at(0.5 * (lo + hi)).distance(pts_2d[i]));
             }
-
-            if (max_dev < best_dev) {
-                best_dev = max_dev;
-                crv_2d = cand;
-            }
-
-            if (max_dev < fit_tol)
-                break;
-
-            target_cvs = std::min(target_cvs * 2, max_cvs + 1);
         }
 
-        if (!crv_2d.is_valid())
-            crv_2d = is_loop ? NurbsCurve::create_interpolated(pts_2d, CurveNurbsKnotStyle::ChordPeriodic)
-                             : NurbsCurve::create_interpolated(pts_2d);
+        if (all_close)
+            return true;
+    }
 
-        if (crv_2d.is_valid()) {
-            crv = crv_2d;
+    return false;
+}
 
-            for (int i = 0; i < crv.cv_count(); i++) {
-                Point cv2 = crv.get_cv(i);
-                double cx = cv2[0];
-                double cy = cv2[1];
+/// Append the loop start shifted by whole periods after the end; the shift goes to closure_du and closure_dv.
+void close_unwrapped_loop(
+    const SurfacePlaneField& field,
+    std::vector<std::pair<double, double>>& pts,
+    double& closure_du,
+    double& closure_dv
+) {
 
-                crv.set_cv(
-                    i,
-                    Point(
-                        po[0] + cx * ax[0] + cy * ay[0],
-                        po[1] + cx * ax[1] + cy * ay[1],
-                        po[2] + cx * ax[2] + cy * ay[2]
-                    )
-                );
-            }
+    double du_j = pts[0].first - pts.back().first;
+    double dv_j = pts[0].second - pts.back().second;
+
+    if (field.closed_u) {
+        while (du_j > field.range_u * 0.5)
+            du_j -= field.range_u;
+
+        while (du_j < -field.range_u * 0.5)
+            du_j += field.range_u;
+    }
+
+    if (field.closed_v) {
+        while (dv_j > field.range_v * 0.5)
+            dv_j -= field.range_v;
+
+        while (dv_j < -field.range_v * 0.5)
+            dv_j += field.range_v;
+    }
+
+    closure_du = (pts.back().first + du_j) - pts[0].first;
+    closure_dv = (pts.back().second + dv_j) - pts[0].second;
+    pts.push_back({pts[0].first + closure_du, pts[0].second + closure_dv});
+}
+
+/// Seam crossings (t, axis, seam value) of the segment pa-pb, sorted by t.
+std::vector<std::tuple<double, int, double>> seam_crossings(
+    const SurfacePlaneField& field,
+    const std::pair<double, double>& pa,
+    const std::pair<double, double>& pb
+) {
+
+    std::vector<std::tuple<double, int, double>> crossings;
+
+    if (field.closed_u && std::abs(pb.first - pa.first) > 1e-15) {
+        const int k0 = (int)std::floor((pa.first - field.u0) / field.range_u);
+        const int k1 = (int)std::floor((pb.first - field.u0) / field.range_u);
+
+        for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
+            const double L = field.u0 + k * field.range_u;
+            const double t = (L - pa.first) / (pb.first - pa.first);
+
+            if (0.0 < t && t < 1.0)
+                crossings.push_back({t, 0, L});
         }
     }
 
-    return crv;
+    if (field.closed_v && std::abs(pb.second - pa.second) > 1e-15) {
+        const int k0 = (int)std::floor((pa.second - field.v0) / field.range_v);
+        const int k1 = (int)std::floor((pb.second - field.v0) / field.range_v);
+
+        for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
+            const double L = field.v0 + k * field.range_v;
+            const double t = (L - pa.second) / (pb.second - pa.second);
+
+            if (0.0 < t && t < 1.0)
+                crossings.push_back({t, 1, L});
+        }
+    }
+
+    std::sort(crossings.begin(), crossings.end());
+
+    return crossings;
+}
+
+/// Snap q onto a seam it lies on within 1e-9 of the period after a real move from pa; true when snapped.
+bool snap_to_seam(const SurfacePlaneField& field, const std::pair<double, double>& pa, std::pair<double, double>& q) {
+
+    bool on_seam = false;
+
+    if (field.closed_u) {
+        const double k = std::round((q.first - field.u0) / field.range_u);
+        const double L = field.u0 + k * field.range_u;
+
+        if (std::abs(q.first - L) < field.range_u * 1e-9 && std::abs(q.first - pa.first) > field.range_u * 1e-9) {
+            q.first = L;
+            on_seam = true;
+        }
+    }
+
+    if (field.closed_v) {
+        const double k = std::round((q.second - field.v0) / field.range_v);
+        const double L = field.v0 + k * field.range_v;
+
+        if (std::abs(q.second - L) < field.range_v * 1e-9 && std::abs(q.second - pa.second) > field.range_v * 1e-9) {
+            q.second = L;
+            on_seam = true;
+        }
+    }
+
+    return on_seam;
+}
+
+/// Samples with the seam crossings inserted into out_pts; returns the indices of the samples on a seam.
+std::vector<int> split_at_seams(
+    const SurfacePlaneField& field,
+    const std::vector<std::pair<double, double>>& pts,
+    std::vector<std::pair<double, double>>& out_pts
+) {
+
+    std::vector<int> cross_idx;
+    out_pts.push_back(pts[0]);
+
+    for (size_t i = 1; i < pts.size(); i++) {
+        const std::pair<double, double> pa = pts[i - 1];
+        const std::pair<double, double> pb = pts[i];
+
+        for (const std::tuple<double, int, double>& crossing : seam_crossings(field, pa, pb)) {
+            const double t = std::get<0>(crossing);
+            const double L = std::get<2>(crossing);
+            double cu = pa.first + (pb.first - pa.first) * t;
+            double cv_ = pa.second + (pb.second - pa.second) * t;
+
+            if (std::get<1>(crossing) == 0) {
+                cv_ = field.seam_newton(L, cv_, 0).second;
+                cu = L;
+            } else {
+                cu = field.seam_newton(cu, L, 1).first;
+                cv_ = L;
+            }
+
+            out_pts.push_back({cu, cv_});
+            cross_idx.push_back((int)out_pts.size() - 1);
+        }
+
+        out_pts.push_back({pb.first, pb.second});
+
+        if (i < pts.size() - 1 && snap_to_seam(field, pa, out_pts.back()))
+            cross_idx.push_back((int)out_pts.size() - 1);
+    }
+
+    return cross_idx;
+}
+
+/// Cut the samples at the seam indices; a loop's last piece wraps around to its first seam.
+std::vector<SurfacePlanePiece> seam_pieces(
+    const std::vector<std::pair<double, double>>& out_pts,
+    const std::vector<int>& cross_idx,
+    bool is_loop,
+    bool wrap_drift,
+    double closure_du,
+    double closure_dv
+) {
+
+    std::vector<SurfacePlanePiece> pieces;
+
+    if (cross_idx.empty()) {
+        pieces.push_back({out_pts, is_loop && !wrap_drift});
+
+        return pieces;
+    }
+
+    if (is_loop) {
+        for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++)
+            pieces.push_back({{out_pts.begin() + cross_idx[ci], out_pts.begin() + cross_idx[ci + 1] + 1}, false});
+
+        std::vector<std::pair<double, double>> wrap_piece(out_pts.begin() + cross_idx.back(), out_pts.end());
+
+        for (int pi = 1; pi <= cross_idx[0]; pi++)
+            wrap_piece.push_back({out_pts[pi].first + closure_du, out_pts[pi].second + closure_dv});
+
+        pieces.push_back({wrap_piece, false});
+
+        return pieces;
+    }
+
+    std::vector<int> bounds;
+    bounds.push_back(0);
+
+    for (int ci : cross_idx)
+        bounds.push_back(ci);
+
+    bounds.push_back((int)out_pts.size() - 1);
+
+    for (size_t bi = 0; bi + 1 < bounds.size(); bi++)
+        if (bounds[bi + 1] > bounds[bi])
+            pieces.push_back({{out_pts.begin() + bounds[bi], out_pts.begin() + bounds[bi + 1] + 1}, false});
+
+    return pieces;
+}
+
+/// Seam-free uv pieces of one trace.
+std::vector<SurfacePlanePiece> trace_pieces(const SurfacePlaneField& field, const SurfacePlaneTrace& trace) {
+
+    std::vector<std::pair<double, double>> pts = trace.uv_unwrapped;
+    double closure_du = 0.0;
+    double closure_dv = 0.0;
+
+    if (trace.is_loop && pts.size() >= 2)
+        close_unwrapped_loop(field, pts, closure_du, closure_dv);
+
+    std::vector<std::pair<double, double>> out_pts;
+    const std::vector<int> cross_idx = split_at_seams(field, pts, out_pts);
+    const bool wrap_drift = std::fabs(closure_du) > field.range_u * 0.5 || std::fabs(closure_dv) > field.range_v * 0.5;
+
+    return seam_pieces(out_pts, cross_idx, trace.is_loop, wrap_drift, closure_du, closure_dv);
+}
+
+/// Shift a piece by whole periods so its middle sample lies in the base domain.
+void shift_piece_to_domain(const SurfacePlaneField& field, std::vector<std::pair<double, double>>& piece_pts) {
+
+    const std::pair<double, double> mid = piece_pts[piece_pts.size() / 2];
+
+    if (field.closed_u) {
+        const int k_u = (int)std::floor((mid.first - field.u0) / field.range_u);
+
+        if (k_u != 0)
+            for (std::pair<double, double>& p : piece_pts)
+                p.first -= k_u * field.range_u;
+    }
+
+    if (field.closed_v) {
+        const int k_v = (int)std::floor((mid.second - field.v0) / field.range_v);
+
+        if (k_v != 0)
+            for (std::pair<double, double>& p : piece_pts)
+                p.second -= k_v * field.range_v;
+    }
+}
+
+/// Insert zero-set samples between a and b while the chord midpoint sags more than step * 1e-4, four levels deep.
+void densify_segment(
+    const SurfacePlaneField& field,
+    double au,
+    double av,
+    double bu,
+    double bv,
+    int depth,
+    std::vector<Point>& pts_uv
+) {
+
+    const double mu = 0.5 * (au + bu);
+    const double mv = 0.5 * (av + bv);
+    double cu = mu;
+    double cv2 = mv;
+
+    if (!field.polish(cu, cv2))
+        return;
+
+    const double sag = std::hypot(cu - mu, cv2 - mv);
+
+    if (sag > field.step * 1e-4 && depth < 4) {
+        densify_segment(field, au, av, cu, cv2, depth + 1, pts_uv);
+        pts_uv.push_back(Point(cu, cv2, 0.0));
+        densify_segment(field, cu, cv2, bu, bv, depth + 1, pts_uv);
+    } else {
+        pts_uv.push_back(Point(cu, cv2, 0.0));
+    }
+}
+
+/// Piece samples with zero-set samples inserted where a segment sags.
+std::vector<Point> densify_piece(const SurfacePlaneField& field, const std::vector<std::pair<double, double>>& piece_pts) {
+
+    std::vector<Point> pts_uv;
+    pts_uv.reserve(piece_pts.size() * 4);
+
+    for (size_t i = 1; i < piece_pts.size(); i++) {
+        pts_uv.push_back(Point(piece_pts[i - 1].first, piece_pts[i - 1].second, 0.0));
+
+        densify_segment(
+            field,
+            piece_pts[i - 1].first,
+            piece_pts[i - 1].second,
+            piece_pts[i].first,
+            piece_pts[i].second,
+            0,
+            pts_uv
+        );
+    }
+
+    pts_uv.push_back(Point(piece_pts.back().first, piece_pts.back().second, 0.0));
+
+    return pts_uv;
+}
+
+/// Largest distance from each point to the curve at its chord parameter.
+double chord_max_deviation(const NurbsCurve& cand, const std::vector<Point>& pts, const std::vector<double>& chords) {
+
+    const std::pair<double, double> domain_ft = cand.domain();
+    const double ft0 = domain_ft.first;
+    const double ft1 = domain_ft.second;
+    double max_dev = 0;
+
+    for (size_t i = 0; i < pts.size(); i++) {
+        const double t = ft0 + (ft1 - ft0) * chords[i];
+        max_dev = std::max(max_dev, cand.point_at(t).distance(pts[i]));
+    }
+
+    return max_dev;
+}
+
+/// Cubic pcurve through the uv samples, CVs doubled until within step * 2e-3; target_cvs keeps the last count.
+NurbsCurve fit_pcurve(const std::vector<Point>& pts_uv, bool piece_loop, double step, int& target_cvs) {
+
+    const int mp = (int)pts_uv.size();
+    const std::vector<double> chords = chord_parameters(pts_uv, piece_loop);
+    const int max_cvs = std::min(mp - 1, 96);
+    NurbsCurve pcurve;
+    double pcurve_dev = 1e300;
+    target_cvs = std::max(8, (int)(total_turning(pts_uv) / 0.5) + 6);
+
+    for (int attempt = 0; attempt < 6; attempt++) {
+        if (target_cvs > max_cvs)
+            break;
+
+        NurbsCurve cand = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
+
+        if (!cand.is_valid())
+            break;
+
+        const double max_dev = chord_max_deviation(cand, pts_uv, chords);
+
+        if (max_dev < pcurve_dev) {
+            pcurve_dev = max_dev;
+            pcurve = cand;
+        }
+
+        if (max_dev < step * 2e-3)
+            break;
+
+        target_cvs = std::min(target_cvs * 2, max_cvs + 1);
+    }
+
+    if (!pcurve.is_valid())
+        pcurve = piece_loop ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
+                            : NurbsCurve::create_interpolated(pts_uv);
+
+    return pcurve;
+}
+
+/// Refit the pcurve with twice the CVs when it strays from the zero set by more than vali_tol.
+void refit_pcurve(
+    const SurfacePlaneField& field,
+    const std::vector<Point>& pts_uv,
+    bool piece_loop,
+    int target_cvs,
+    double vali_tol,
+    NurbsCurve& pcurve
+) {
+
+    const int max_cvs = std::min((int)pts_uv.size() - 1, 96);
+    double max_off = 0;
+
+    for (int i = 0; i < 17; i++) {
+        const Point pc = pcurve.point_at(i / 16.0);
+        double val;
+        double gu;
+        double gv;
+        field.value_and_gradient(pc[0], pc[1], val, gu, gv);
+        max_off = std::max(max_off, std::abs(val));
+    }
+
+    if (max_off > vali_tol && target_cvs * 2 <= max_cvs) {
+        NurbsCurve refit = NurbsCurve::create_fitted(pts_uv, target_cvs * 2, 3, piece_loop);
+
+        if (refit.is_valid()) {
+            refit.set_domain(0.0, 1.0);
+            pcurve = refit;
+        }
+    }
+}
+
+/// 3D section curve and uv pcurve of one seam-free piece; false when a fit fails.
+bool piece_curves(
+    const SurfacePlaneField& field,
+    const Plane& plane,
+    SurfacePlanePiece& piece,
+    NurbsCurve& crv3,
+    NurbsCurve& pcurve
+) {
+
+    shift_piece_to_domain(field, piece.uv);
+
+    const std::vector<Point> pts_uv = densify_piece(field, piece.uv);
+    std::vector<Point> pts3(pts_uv.size());
+
+    for (size_t i = 0; i < pts_uv.size(); i++)
+        pts3[i] = field.point({field.wrap_u(pts_uv[i][0]), field.wrap_v(pts_uv[i][1])});
+
+    crv3 = surface_plane_fit_3d(pts3, piece.is_loop, plane, field.step, field.uv_to_3d, field.uv_to_3d_min, false);
+
+    if (!crv3.is_valid())
+        crv3 = piece.is_loop ? NurbsCurve::create_interpolated(pts3, CurveNurbsKnotStyle::ChordPeriodic)
+                             : NurbsCurve::create_interpolated(pts3);
+
+    if (!crv3.is_valid())
+        return false;
+
+    int target_cvs;
+    pcurve = fit_pcurve(pts_uv, piece.is_loop, field.step, target_cvs);
+
+    if (!pcurve.is_valid())
+        return false;
+
+    crv3.set_domain(0.0, 1.0);
+    pcurve.set_domain(0.0, 1.0);
+
+    const double fit_tol = field.step * (field.uv_to_3d + field.uv_to_3d_min) * 0.5;
+    refit_pcurve(field, pts_uv, piece.is_loop, target_cvs, std::max(10.0 * field.tolerance, fit_tol * 2.0), pcurve);
+
+    return true;
 }
 
 /// Solve an n x n linear system by Gaussian elimination with partial pivoting.
@@ -6472,492 +7023,33 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    const std::pair<double, double> domain_u = surface.domain(0);
-    const double u0 = domain_u.first;
-    const double u1 = domain_u.second;
-    const std::pair<double, double> domain_v = surface.domain(1);
-    const double v0 = domain_v.first;
-    const double v1 = domain_v.second;
-    double range_u = u1 - u0;
-    double range_v = v1 - v0;
-    bool closed_u = surface.is_closed(0);
-    bool closed_v = surface.is_closed(1);
-
-    auto wrap_u = [&](double u) -> double {
-        if (closed_u) {
-            double t = std::fmod(u - u0, range_u);
-
-            if (t < 0)
-                t += range_u;
-
-            return u0 + t;
-        }
-
-        return std::max(u0, std::min(u, u1));
-    };
-
-    auto wrap_v = [&](double v) -> double {
-        if (closed_v) {
-            double t = std::fmod(v - v0, range_v);
-
-            if (t < 0)
-                t += range_v;
-
-            return v0 + t;
-        }
-
-        return std::max(v0, std::min(v, v1));
-    };
-
-    Vector pn = plane.z_axis();
-    Point p0 = plane.origin();
-
-    auto g_and_grad = [&](double u, double v, double& val, double& gu, double& gv) {
-        const std::vector<Vector> derivs = surface.evaluate(wrap_u(u), wrap_v(v), 1);
-        const Vector& S = derivs[0];
-        const Vector& Su = derivs[2];
-        const Vector& Sv = derivs[1];
-        val = (S[0] - p0[0]) * pn[0] + (S[1] - p0[1]) * pn[1] + (S[2] - p0[2]) * pn[2];
-        gu = Su[0] * pn[0] + Su[1] * pn[1] + Su[2] * pn[2];
-        gv = Sv[0] * pn[0] + Sv[1] * pn[1] + Sv[2] * pn[2];
-    };
-
-    auto seam_newton = [&](double cu, double cv_, int axis) -> std::pair<double, double> {
-        for (int iter = 0; iter < 10; iter++) {
-            double val;
-            double gu;
-            double gv;
-            g_and_grad(cu, cv_, val, gu, gv);
-
-            if (std::abs(val) < tolerance)
-                break;
-
-            if (axis == 0) {
-                if (std::abs(gv) < 1e-14)
-                    break;
-
-                cv_ = cv_ - val / gv;
-            } else {
-                if (std::abs(gu) < 1e-14)
-                    break;
-
-                cu = cu - val / gu;
-            }
-        }
-
-        return {cu, cv_};
-    };
-
+    const SurfacePlaneField field(surface, plane, tolerance);
     const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
-    const double step = traced.step;
-    const double uv_to_3d = traced.uv_to_3d;
-    const double uv_to_3d_min = traced.uv_to_3d_min;
-
-    double fit_tol = step * (uv_to_3d + uv_to_3d_min) * 0.5;
-    double dup_tol = step * uv_to_3d * 3.0;
+    const double dup_tol = traced.step * traced.uv_to_3d * 3.0;
 
     std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
     std::vector<std::vector<Point>> kept_pts3;
 
     for (const SurfacePlaneTrace& trace : traced.traces) {
-        const std::vector<std::pair<double, double>>& uv_trace = trace.uv_trace;
-        const std::vector<std::pair<double, double>>& uv_unwrapped = trace.uv_unwrapped;
-        const bool is_loop = trace.is_loop;
-        int m = (int)uv_trace.size();
-        std::vector<Point> trace_pts3(m);
+        std::vector<Point> trace_pts3(trace.uv_trace.size());
 
-        for (int i = 0; i < m; i++)
-            trace_pts3[i] = surface.point_at(uv_trace[i].first, uv_trace[i].second);
+        for (size_t i = 0; i < trace.uv_trace.size(); i++)
+            trace_pts3[i] = field.point(trace.uv_trace[i]);
 
-        bool dup = false;
-
-        for (std::vector<Point>& other : kept_pts3) {
-            bool all_close = true;
-
-            for (double f : {0.25, 0.5, 0.75}) {
-                Point cp = trace_pts3[(int)((m - 1) * f)];
-                double dmin = dup_tol + 1.0;
-
-                for (size_t k = 0; k < other.size(); k += 5)
-                    dmin = std::min(dmin, cp.distance(other[k]));
-
-                if (dmin > dup_tol) {
-                    all_close = false;
-                    break;
-                }
-            }
-
-            if (all_close) {
-                dup = true;
-                break;
-            }
-        }
-
-        if (dup)
+        if (is_duplicate_trace(trace_pts3, kept_pts3, dup_tol))
             continue;
 
         kept_pts3.push_back(trace_pts3);
 
-        std::vector<std::pair<double, double>> pts = uv_unwrapped;
-        double closure_du = 0.0;
-        double closure_dv = 0.0;
-
-        if (is_loop && pts.size() >= 2) {
-            double du_j = pts[0].first - pts.back().first;
-            double dv_j = pts[0].second - pts.back().second;
-
-            if (closed_u) {
-                while (du_j > range_u * 0.5)
-                    du_j -= range_u;
-
-                while (du_j < -range_u * 0.5)
-                    du_j += range_u;
-            }
-
-            if (closed_v) {
-                while (dv_j > range_v * 0.5)
-                    dv_j -= range_v;
-
-                while (dv_j < -range_v * 0.5)
-                    dv_j += range_v;
-            }
-
-            closure_du = (pts.back().first + du_j) - pts[0].first;
-            closure_dv = (pts.back().second + dv_j) - pts[0].second;
-            pts.push_back({pts[0].first + closure_du, pts[0].second + closure_dv});
-        }
-
-        std::vector<std::pair<double, double>> out_pts;
-        out_pts.push_back(pts[0]);
-        std::vector<int> cross_idx;
-
-        for (size_t i = 1; i < pts.size(); i++) {
-            std::pair<double, double> pa = pts[i - 1];
-            std::pair<double, double> pb = pts[i];
-            std::vector<std::tuple<double, int, double>> crossings;
-
-            if (closed_u && std::abs(pb.first - pa.first) > 1e-15) {
-                int k0 = (int)std::floor((pa.first - u0) / range_u);
-                int k1 = (int)std::floor((pb.first - u0) / range_u);
-
-                for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
-                    double L = u0 + k * range_u;
-                    double t = (L - pa.first) / (pb.first - pa.first);
-
-                    if (0.0 < t && t < 1.0)
-                        crossings.push_back({t, 0, L});
-                }
-            }
-
-            if (closed_v && std::abs(pb.second - pa.second) > 1e-15) {
-                int k0 = (int)std::floor((pa.second - v0) / range_v);
-                int k1 = (int)std::floor((pb.second - v0) / range_v);
-
-                for (int k = std::min(k0, k1) + 1; k <= std::max(k0, k1); k++) {
-                    double L = v0 + k * range_v;
-                    double t = (L - pa.second) / (pb.second - pa.second);
-
-                    if (0.0 < t && t < 1.0)
-                        crossings.push_back({t, 1, L});
-                }
-            }
-
-            std::sort(crossings.begin(), crossings.end());
-
-            for (const std::tuple<double, int, double>& crossing : crossings) {
-                const double t = std::get<0>(crossing);
-                const int axis = std::get<1>(crossing);
-                const double L = std::get<2>(crossing);
-                double cu = pa.first + (pb.first - pa.first) * t;
-                double cv_ = pa.second + (pb.second - pa.second) * t;
-
-                if (axis == 0) {
-                    std::pair<double, double> r = seam_newton(L, cv_, 0);
-                    cu = L;
-                    cv_ = r.second;
-                } else {
-                    std::pair<double, double> r = seam_newton(cu, L, 1);
-                    cu = r.first;
-                    cv_ = L;
-                }
-
-                out_pts.push_back({cu, cv_});
-                cross_idx.push_back((int)out_pts.size() - 1);
-            }
-
-            out_pts.push_back({pb.first, pb.second});
-
-            if (i < pts.size() - 1) {
-                bool on_seam = false;
-
-                if (closed_u) {
-                    double k = std::round((pb.first - u0) / range_u);
-                    double L = u0 + k * range_u;
-
-                    if (std::abs(pb.first - L) < range_u * 1e-9 && std::abs(pb.first - pa.first) > range_u * 1e-9) {
-                        out_pts.back().first = L;
-                        on_seam = true;
-                    }
-                }
-
-                if (closed_v) {
-                    double k = std::round((pb.second - v0) / range_v);
-                    double L = v0 + k * range_v;
-
-                    if (std::abs(pb.second - L) < range_v * 1e-9 && std::abs(pb.second - pa.second) > range_v * 1e-9) {
-                        out_pts.back().second = L;
-                        on_seam = true;
-                    }
-                }
-
-                if (on_seam)
-                    cross_idx.push_back((int)out_pts.size() - 1);
-            }
-        }
-
-        bool wrap_drift = std::fabs(closure_du) > range_u * 0.5 || std::fabs(closure_dv) > range_v * 0.5;
-        std::vector<std::pair<std::vector<std::pair<double, double>>, bool>> pieces;
-
-        if (cross_idx.size() == 0) {
-            pieces.push_back({out_pts, is_loop && !wrap_drift});
-        } else if (is_loop) {
-            for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
-                int a = cross_idx[ci];
-                int b = cross_idx[ci + 1];
-
-                pieces.push_back(
-                    {std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false}
-                );
-            }
-
-            std::vector<std::pair<double, double>> wrap_piece(out_pts.begin() + cross_idx.back(), out_pts.end());
-
-            for (int pi = 1; pi <= cross_idx[0]; pi++)
-                wrap_piece.push_back({out_pts[pi].first + closure_du, out_pts[pi].second + closure_dv});
-
-            pieces.push_back({wrap_piece, false});
-        } else {
-            std::vector<int> bounds;
-            bounds.push_back(0);
-
-            for (int ci : cross_idx)
-                bounds.push_back(ci);
-
-            bounds.push_back((int)out_pts.size() - 1);
-
-            for (size_t bi = 0; bi + 1 < bounds.size(); bi++) {
-                int a = bounds[bi];
-                int b = bounds[bi + 1];
-
-                if (b > a)
-                    pieces.push_back(
-                        {std::vector<std::pair<double, double>>(out_pts.begin() + a, out_pts.begin() + b + 1), false}
-                    );
-            }
-        }
-
-        for (std::pair<std::vector<std::pair<double, double>>, bool>& piece : pieces) {
-            std::vector<std::pair<double, double>>& piece_pts = piece.first;
-            const bool piece_loop = piece.second;
-
-            if (piece_pts.size() < 2)
+        for (SurfacePlanePiece& piece : trace_pieces(field, trace)) {
+            if (piece.uv.size() < 2)
                 continue;
 
-            std::pair<double, double> mid = piece_pts[piece_pts.size() / 2];
-
-            if (closed_u) {
-                int k_u = (int)std::floor((mid.first - u0) / range_u);
-
-                if (k_u != 0)
-                    for (std::pair<double, double>& p : piece_pts)
-                        p.first -= k_u * range_u;
-            }
-
-            if (closed_v) {
-                int k_v = (int)std::floor((mid.second - v0) / range_v);
-
-                if (k_v != 0)
-                    for (std::pair<double, double>& p : piece_pts)
-                        p.second -= k_v * range_v;
-            }
-
-            std::vector<Point> pts_uv;
-            pts_uv.reserve(piece_pts.size() * 4);
-            {
-                auto polish_uv = [&](double& uu, double& vv) -> bool {
-                    for (int iter = 0; iter < 8; iter++) {
-                        double val;
-                        double gu;
-                        double gv;
-                        g_and_grad(uu, vv, val, gu, gv);
-
-                        if (std::abs(val) < 1e-12)
-                            return true;
-
-                        double mag2 = gu * gu + gv * gv;
-
-                        if (mag2 < 1e-28)
-                            return false;
-
-                        uu -= val * gu / mag2;
-                        vv -= val * gv / mag2;
-                    }
-
-                    return true;
-                };
-
-                std::function<void(double, double, double, double, int)> densify =
-                    [&](double au, double av, double bu, double bv, int depth) {
-                        double mu = 0.5 * (au + bu);
-                        double mv = 0.5 * (av + bv);
-                        double cu = mu;
-                        double cv2 = mv;
-
-                        if (!polish_uv(cu, cv2))
-                            return;
-
-                        double sag = std::hypot(cu - mu, cv2 - mv);
-
-                        if (sag > step * 1e-4 && depth < 4) {
-                            densify(au, av, cu, cv2, depth + 1);
-                            pts_uv.push_back(Point(cu, cv2, 0.0));
-                            densify(cu, cv2, bu, bv, depth + 1);
-                        } else {
-                            pts_uv.push_back(Point(cu, cv2, 0.0));
-                        }
-                    };
-
-                for (size_t i = 1; i < piece_pts.size(); i++) {
-                    pts_uv.push_back(Point(piece_pts[i - 1].first, piece_pts[i - 1].second, 0.0));
-
-                    densify(
-                        piece_pts[i - 1].first,
-                        piece_pts[i - 1].second,
-                        piece_pts[i].first,
-                        piece_pts[i].second,
-                        0
-                    );
-                }
-
-                pts_uv.push_back(Point(piece_pts.back().first, piece_pts.back().second, 0.0));
-            }
-
-            std::vector<Point> pts3(pts_uv.size());
-
-            for (size_t i = 0; i < pts_uv.size(); i++)
-                pts3[i] = surface.point_at(wrap_u(pts_uv[i][0]), wrap_v(pts_uv[i][1]));
-
-            NurbsCurve crv3 = surface_plane_fit_3d(pts3, piece_loop, plane, step, uv_to_3d, uv_to_3d_min, false);
-
-            if (!crv3.is_valid())
-                crv3 = piece_loop ? NurbsCurve::create_interpolated(pts3, CurveNurbsKnotStyle::ChordPeriodic)
-                                  : NurbsCurve::create_interpolated(pts3);
-
-            if (!crv3.is_valid())
-                continue;
-
-            int mp = (int)pts_uv.size();
-            double fit_tol_uv = step * 2e-3;
-            double total_turning = 0;
-
-            for (int i = 1; i < mp - 1; i++) {
-                double dx1 = pts_uv[i][0] - pts_uv[i - 1][0];
-                double dy1 = pts_uv[i][1] - pts_uv[i - 1][1];
-                double dx2 = pts_uv[i + 1][0] - pts_uv[i][0];
-                double dy2 = pts_uv[i + 1][1] - pts_uv[i][1];
-                double l1 = std::hypot(dx1, dy1);
-                double l2 = std::hypot(dx2, dy2);
-
-                if (l1 > 1e-14 && l2 > 1e-14) {
-                    double c = (dx1 * dx2 + dy1 * dy2) / (l1 * l2);
-                    c = std::max(-1.0, std::min(1.0, c));
-                    total_turning += std::acos(c);
-                }
-            }
-
-            std::vector<double> chords(mp, 0.0);
-            double total_len = 0;
-
-            for (int i = 1; i < mp; i++) {
-                total_len += pts_uv[i].distance(pts_uv[i - 1]);
-                chords[i] = total_len;
-            }
-
-            if (piece_loop && mp > 1)
-                total_len += pts_uv[0].distance(pts_uv[mp - 1]);
-
-            if (total_len > 1e-14)
-                for (int i = 1; i < mp; i++)
-                    chords[i] /= total_len;
-
-            int target_cvs = std::max(8, (int)(total_turning / 0.5) + 6);
-            int max_cvs = std::min(mp - 1, 96);
+            NurbsCurve crv3;
             NurbsCurve pcurve;
-            double pcurve_dev = 1e300;
 
-            for (int attempt = 0; attempt < 6; attempt++) {
-                if (target_cvs > max_cvs)
-                    break;
-
-                NurbsCurve cand = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
-
-                if (!cand.is_valid())
-                    break;
-
-                const std::pair<double, double> domain_ft = cand.domain();
-                const double ft0 = domain_ft.first;
-                const double ft1 = domain_ft.second;
-                double max_dev = 0;
-
-                for (int i = 0; i < mp; i++) {
-                    double t = ft0 + (ft1 - ft0) * chords[i];
-                    max_dev = std::max(max_dev, cand.point_at(t).distance(pts_uv[i]));
-                }
-
-                if (max_dev < pcurve_dev) {
-                    pcurve_dev = max_dev;
-                    pcurve = cand;
-                }
-
-                if (max_dev < fit_tol_uv)
-                    break;
-
-                target_cvs = std::min(target_cvs * 2, max_cvs + 1);
-            }
-
-            if (!pcurve.is_valid())
-                pcurve = piece_loop ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
-                                    : NurbsCurve::create_interpolated(pts_uv);
-
-            if (!pcurve.is_valid())
-                continue;
-
-            crv3.set_domain(0.0, 1.0);
-            pcurve.set_domain(0.0, 1.0);
-
-            double vali_tol = std::max(10.0 * tolerance, fit_tol * 2.0);
-            double max_off = 0;
-
-            for (int i = 0; i < 17; i++) {
-                double t = i / 16.0;
-                Point pc = pcurve.point_at(t);
-                double val;
-                double gu;
-                double gv;
-                g_and_grad(pc[0], pc[1], val, gu, gv);
-                max_off = std::max(max_off, std::abs(val));
-            }
-
-            if (max_off > vali_tol && target_cvs * 2 <= max_cvs) {
-                NurbsCurve refit = NurbsCurve::create_fitted(pts_uv, target_cvs * 2, 3, piece_loop);
-
-                if (refit.is_valid()) {
-                    refit.set_domain(0.0, 1.0);
-                    pcurve = refit;
-                }
-            }
-
-            result.push_back({std::move(crv3), std::move(pcurve)});
+            if (piece_curves(field, plane, piece, crv3, pcurve))
+                result.push_back({std::move(crv3), std::move(pcurve)});
         }
     }
 
@@ -6967,18 +7059,14 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 /// Drop near-zero-length section curves.
 static void drop_point_sections(std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& trs, double tolerance) {
 
-    double min_len = std::max(tolerance * 10.0, 1e-9);
+    const double min_len = std::max(tolerance * 10.0, 1e-9);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> kept;
 
-    trs.erase(
-        std::remove_if(
-            trs.begin(),
-            trs.end(),
-            [&](const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t) {
-                return std::get<0>(t).length() < min_len;
-            }
-        ),
-        trs.end()
-    );
+    for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : trs)
+        if (std::get<0>(t).length() >= min_len)
+            kept.push_back(std::move(t));
+
+    trs = std::move(kept);
 }
 
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
@@ -7418,7 +7506,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     auto trace_dir = [&](const std::array<double, 4>& x0,
                          double dir_sign,
                          std::vector<std::array<double, 4>>& out,
-                         const char** why_out = nullptr) -> bool {
+                         std::string_view* why_out = nullptr) -> bool {
         out.clear();
         std::array<double, 4> x = x0;
         bool have_prev_d = false;
@@ -7433,7 +7521,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         double h = h_init;
         int smooth = 0;
         int tang_reuse = 0;
-        const char* why = "maxsteps";
+        std::string_view why = "maxsteps";
 
         for (int step_i = 0; step_i < max_steps; step_i++) {
             std::array<double, 3> d;
@@ -7666,8 +7754,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             continue;
 
         std::vector<std::array<double, 4>> fwd, bwd;
-        const char* fwd_why = "?";
-        const char* bwd_why = "?";
+        std::string_view fwd_why = "?";
+        std::string_view bwd_why = "?";
         bool fwd_closed = trace_dir(x0, +1, fwd, &fwd_why);
 
         if (!fwd_closed)
@@ -7684,7 +7772,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             quad.push_back(p);
 
         int min_pts =
-            (!fwd_closed && std::strcmp(fwd_why, "boundary") == 0 && std::strcmp(bwd_why, "boundary") == 0) ? 2 : 4;
+            (!fwd_closed && fwd_why == "boundary" && bwd_why == "boundary") ? 2 : 4;
 
         if ((int)quad.size() < min_pts)
             continue;
@@ -8453,14 +8541,7 @@ bool Intersection::closest_point_on_segment(const Point& pt, const Line& seg, Po
     double vx = pt[0] - start[0];
     double vy = pt[1] - start[1];
     double vz = pt[2] - start[2];
-    t = (vx * dx + vy * dy + vz * dz) / len_sq;
-
-    if (t < 0.0)
-        t = 0.0;
-
-    if (t > 1.0)
-        t = 1.0;
-
+    t = clamp_unit((vx * dx + vy * dy + vz * dz) / len_sq);
     output = Point(start[0] + t * dx, start[1] + t * dy, start[2] + t * dz);
 
     return true;
