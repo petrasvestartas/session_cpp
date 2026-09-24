@@ -7,6 +7,7 @@
 #include "tolerance.h"
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -37,8 +38,8 @@ namespace session_cpp {
         MINI_CHECK(nc.degree() == 3);
         MINI_CHECK(nc.cv_count() == 4);
 
-        file_step::write_file_step_nurbscurves({nc}, path);
-
+        MINI_CHECK(file_step::write_file_step_nurbscurves({nc}, path));
+        MINI_CHECK(!file_step::write_file_step_nurbscurves({nc}, serialization_path("missing/test_step_nurbscurve.step")));
         MINI_CHECK(std::filesystem::exists(path));
 
         const std::vector<NurbsCurve> curves = file_step::read_file_step_nurbscurves(path);
@@ -97,8 +98,7 @@ namespace session_cpp {
         MINI_CHECK(nc.cv_count() == 3);
         MINI_CHECK(nc.m_is_rat == 1);
 
-        file_step::write_file_step_nurbscurves({nc}, path);
-
+        MINI_CHECK(file_step::write_file_step_nurbscurves({nc}, path));
         MINI_CHECK(std::filesystem::exists(path));
 
         const std::vector<NurbsCurve> curves = file_step::read_file_step_nurbscurves(path);
@@ -147,8 +147,7 @@ namespace session_cpp {
         MINI_CHECK(srf.cv_count(0) == 4);
         MINI_CHECK(srf.cv_count(1) == 4);
 
-        file_step::write_file_step_nurbssurfaces({srf}, path);
-
+        MINI_CHECK(file_step::write_file_step_nurbssurfaces({srf}, path));
         MINI_CHECK(std::filesystem::exists(path));
 
         const std::vector<NurbsSurface> surfaces = file_step::read_file_step_nurbssurfaces(path);
@@ -208,8 +207,7 @@ namespace session_cpp {
         MINI_CHECK(srf.is_valid());
         MINI_CHECK(srf.m_is_rat == 1);
 
-        file_step::write_file_step_nurbssurfaces({srf}, path);
-
+        MINI_CHECK(file_step::write_file_step_nurbssurfaces({srf}, path));
         MINI_CHECK(std::filesystem::exists(path));
 
         const std::vector<NurbsSurface> surfaces = file_step::read_file_step_nurbssurfaces(path);
@@ -281,8 +279,7 @@ namespace session_cpp {
 
         MINI_CHECK(trimmed.m_surface.is_valid());
 
-        file_step::write_file_step_nurbssurfaces_trimmed({trimmed}, path);
-
+        MINI_CHECK(file_step::write_file_step_nurbssurfaces_trimmed({trimmed}, path));
         MINI_CHECK(std::filesystem::exists(path));
 
         const std::vector<NurbsSurface> surfaces = file_step::read_file_step_nurbssurfaces(path);
@@ -300,6 +297,48 @@ namespace session_cpp {
         const std::vector<NurbsCurve> ncurves = file_step::read_file_step_nurbscurves(path);
 
         MINI_CHECK(ncurves.size() >= 1);
+
+        std::filesystem::remove(path);
+    }
+
+    MINI_TEST("FileStep", "NurbsSurfaceTrimmed Read Vertex") {
+
+        const std::string path = serialization_path("test_step_trimmed_vertex.step");
+        const std::string text =
+            "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+            "#1=CARTESIAN_POINT('',(0.,0.,0.));\n"
+            "#2=CARTESIAN_POINT('',(0.,1.,0.));\n"
+            "#3=CARTESIAN_POINT('',(1.,0.,0.));\n"
+            "#4=CARTESIAN_POINT('',(1.,1.,0.));\n"
+            "#5=B_SPLINE_SURFACE_WITH_KNOTS('',1,1,((#1,#2),(#3,#4)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);\n"
+            "#6=CARTESIAN_POINT('',(2.,3.,0.));\n"
+            "#7=CARTESIAN_POINT('',(4.,5.,0.));\n"
+            "#8=VERTEX_POINT('',#6);\n"
+            "#9=VERTEX_POINT('',#7);\n"
+            "#10=DIRECTION('',(1.,1.,0.));\n"
+            "#11=VECTOR('',#10,1.);\n"
+            "#12=LINE('',#6,#11);\n"
+            "#13=EDGE_CURVE('',#8,#9,#12,.T.);\n"
+            "#14=ORIENTED_EDGE('',*,*,#13,.T.);\n"
+            "#15=EDGE_LOOP('',(#14));\n"
+            "#16=FACE_OUTER_BOUND('',#15,.T.);\n"
+            "#17=ADVANCED_FACE('',(#16),#5,.T.);\n"
+            "ENDSEC;\nEND-ISO-10303-21;\n";
+
+        MINI_CHECK((std::ofstream(path) << text).good());
+
+        const std::vector<NurbsSurfaceTrimmed> trimmed = file_step::read_file_step_nurbssurfaces_trimmed(path);
+
+        MINI_CHECK(trimmed.size() == 1);
+        MINI_CHECK(trimmed[0].m_outer_loop.cv_count() == 2);
+
+        const Point start = trimmed[0].m_outer_loop.get_cv(0);
+        const Point end = trimmed[0].m_outer_loop.get_cv(1);
+
+        MINI_CHECK(std::abs(start[0] - 2.0) < 1e-10);
+        MINI_CHECK(std::abs(start[1] - 3.0) < 1e-10);
+        MINI_CHECK(std::abs(end[0] - 4.0) < 1e-10);
+        MINI_CHECK(std::abs(end[1] - 5.0) < 1e-10);
 
         std::filesystem::remove(path);
     }
@@ -351,7 +390,7 @@ namespace session_cpp {
         BRep cyl = BRep::create_cylinder(1.0, 2.0);
         cyl.name = "cylinder";
 
-        file_step::write_file_step_brep(cyl, path);
+        MINI_CHECK(file_step::write_file_step_brep(cyl, path));
 
         const std::vector<BRep> breps = file_step::read_file_step_breps(path);
 

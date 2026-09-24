@@ -10,6 +10,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -97,7 +98,7 @@ const int NS = 17; // Samples per side of a surface grid.
 
 /// Read position in a STEP text.
 struct Cursor {
-    const char* s; // Text being parsed.
+    std::string_view s; // Text being parsed.
     size_t p; // Current position.
     size_t end; // End of text.
 };
@@ -164,7 +165,7 @@ static double parse_number(Cursor& c) {
         }
     }
 
-    return std::strtod(std::string(c.s + start, c.p - start).c_str(), nullptr);
+    return std::strtod(std::string(c.s.substr(start, c.p - start)).c_str(), nullptr);
 }
 
 /// Read an identifier.
@@ -175,7 +176,7 @@ static std::string parse_ident(Cursor& c) {
     while (c.p < c.end && isident(c.s[c.p]))
         c.p++;
 
-    return std::string(c.s + start, c.p - start);
+    return std::string(c.s.substr(start, c.p - start));
 }
 
 /// Read a quoted string, unescaping doubled quotes.
@@ -209,7 +210,9 @@ static StepParam parse_param(Cursor& c, int depth);
 static std::vector<StepParam> parse_params(Cursor& c, int depth) {
 
     std::vector<StepParam> out;
-    consume(c, '(');
+
+    if (!consume(c, '('))
+        return out;
 
     while (c.p < c.end) {
         skip_ws(c);
@@ -224,7 +227,8 @@ static std::vector<StepParam> parse_params(Cursor& c, int depth) {
             c.p++;
     }
 
-    consume(c, ')');
+    if (c.p < c.end)
+        c.p++;
 
     return out;
 }
@@ -285,7 +289,7 @@ static StepParam parse_param(Cursor& c, int depth) {
             c.p++;
 
         r.tag = StepTag::Enum;
-        r.str = std::string(c.s + start, c.p - start);
+        r.str = std::string(c.s.substr(start, c.p - start));
 
         if (c.p < c.end)
             c.p++;
@@ -338,7 +342,7 @@ static void skip_statement(Cursor& c) {
 /// Fill sf from the DATA section of a STEP text.
 static void parse_step_string(const std::string& content, StepFile& sf) {
 
-    Cursor c{content.data(), 0, content.size()};
+    Cursor c{content, 0, content.size()};
 
     while (c.p < c.end) {
         skip_ws(c);
@@ -379,7 +383,10 @@ static void parse_step_string(const std::string& content, StepFile& sf) {
                 ent.parts.push_back(parse_sub_entity(c));
             }
 
-            consume(c, ')');
+            if (!consume(c, ')')) {
+                skip_statement(c);
+                continue;
+            }
         } else {
             ent.parts.push_back(parse_sub_entity(c));
         }
@@ -557,6 +564,111 @@ static bool last_flag(const std::vector<StepParam>& params, bool fallback) {
             out = p.str == "T";
 
     return out;
+}
+
+/// Degree, control point ids and knots of a B-spline curve entity.
+struct CurveParams {
+    int degree = 0; // Polynomial degree.
+    std::vector<int> pt_refs; // CARTESIAN_POINT ids.
+    std::vector<int> mults; // Knot multiplicities.
+    std::vector<double> knots; // Distinct knot values.
+};
+
+/// Degrees, control point id grid and knots of a B-spline surface entity.
+struct SurfaceParams {
+    int u_deg = 0; // Degree in u.
+    int v_deg = 0; // Degree in v.
+    std::vector<std::vector<int>> ctrl_pts; // CARTESIAN_POINT ids, rows along u.
+    std::vector<int> u_mults; // Knot multiplicities in u.
+    std::vector<int> v_mults; // Knot multiplicities in v.
+    std::vector<double> u_knots; // Distinct knot values in u.
+    std::vector<double> v_knots; // Distinct knot values in v.
+};
+
+/// B_SPLINE_CURVE_WITH_KNOTS parameters, simple or split across a complex instance; none when missing, short or empty.
+static std::optional<CurveParams> curve_params(const StepEntity& e) {
+
+    const StepSubEntity* bsc = e.find("B_SPLINE_CURVE_WITH_KNOTS");
+
+    if (!bsc)
+        return std::nullopt;
+
+    const StepSubEntity* base = e.find("B_SPLINE_CURVE");
+    CurveParams cp;
+
+    if (!base) {
+        const std::vector<StepParam>& pp = bsc->params;
+
+        if (pp.size() < 8)
+            return std::nullopt;
+
+        cp.degree = (int)pp[1].num;
+        cp.pt_refs = all_refs(pp[2].list);
+        cp.mults = int_list(pp[6]);
+        cp.knots = dbl_list(pp[7]);
+    } else {
+        const std::vector<StepParam>& bp = base->params;
+        const std::vector<StepParam>& kp = bsc->params;
+
+        if (bp.size() < 2 || kp.size() < 2)
+            return std::nullopt;
+
+        cp.degree = (int)bp[0].num;
+        cp.pt_refs = all_refs(bp[1].list);
+        cp.mults = int_list(kp[0]);
+        cp.knots = dbl_list(kp[1]);
+    }
+
+    if (cp.pt_refs.empty() || cp.mults.empty() || cp.knots.empty())
+        return std::nullopt;
+
+    return cp;
+}
+
+/// B_SPLINE_SURFACE_WITH_KNOTS parameters, simple or split across a complex instance; none when missing, short or empty.
+static std::optional<SurfaceParams> surface_params(const StepEntity& e) {
+
+    const StepSubEntity* bss = e.find("B_SPLINE_SURFACE_WITH_KNOTS");
+
+    if (!bss)
+        return std::nullopt;
+
+    const StepSubEntity* base = e.find("B_SPLINE_SURFACE");
+    SurfaceParams sp;
+
+    if (!base) {
+        const std::vector<StepParam>& pp = bss->params;
+
+        if (pp.size() < 12)
+            return std::nullopt;
+
+        sp.u_deg = (int)pp[1].num;
+        sp.v_deg = (int)pp[2].num;
+        sp.ctrl_pts = ref_list_list(pp[3]);
+        sp.u_mults = int_list(pp[8]);
+        sp.v_mults = int_list(pp[9]);
+        sp.u_knots = dbl_list(pp[10]);
+        sp.v_knots = dbl_list(pp[11]);
+    } else {
+        const std::vector<StepParam>& bp = base->params;
+        const std::vector<StepParam>& kp = bss->params;
+
+        if (bp.size() < 3 || kp.size() < 4)
+            return std::nullopt;
+
+        sp.u_deg = (int)bp[0].num;
+        sp.v_deg = (int)bp[1].num;
+        sp.ctrl_pts = ref_list_list(bp[2]);
+        sp.u_mults = int_list(kp[0]);
+        sp.v_mults = int_list(kp[1]);
+        sp.u_knots = dbl_list(kp[2]);
+        sp.v_knots = dbl_list(kp[3]);
+    }
+
+    if (sp.ctrl_pts.empty() || sp.ctrl_pts[0].empty() || sp.u_mults.empty() || sp.v_mults.empty())
+        return std::nullopt;
+
+    return sp;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1164,6 +1276,19 @@ public:
         return pt_cache[id] = pt;
     }
 
+    /// Read the CARTESIAN_POINT of a VERTEX_POINT, none when missing.
+    std::optional<Point> get_vertex_point(int id) {
+
+        const StepEntity* e = get(id);
+        const StepSubEntity* sub = e ? e->find("VERTEX_POINT") : nullptr;
+        const int ref = sub ? first_ref(sub->params) : -1;
+
+        if (ref < 0)
+            return std::nullopt;
+
+        return get_point(ref);
+    }
+
     /// Read a DIRECTION as a unit vector, caching by id.
     Vector get_direction(int id) {
 
@@ -1229,52 +1354,20 @@ public:
     NurbsCurve get_nurbs_curve(int id) {
 
         const StepEntity* e = get(id);
-        const StepSubEntity* bsc = e ? e->find("B_SPLINE_CURVE_WITH_KNOTS") : nullptr;
+        const std::optional<CurveParams> cp = e ? curve_params(*e) : std::nullopt;
 
-        if (!bsc)
+        if (!cp)
             return NurbsCurve();
 
-        const StepSubEntity* base = e->find("B_SPLINE_CURVE");
-        const StepSubEntity* rat = e->find("RATIONAL_B_SPLINE_CURVE");
-        int degree = 0;
-        std::vector<int> pt_refs;
-        std::vector<int> mults;
-        std::vector<double> knots;
-
-        if (!base) {
-            const std::vector<StepParam>& pp = bsc->params;
-
-            if (pp.size() < 8)
-                return NurbsCurve();
-
-            degree = (int)pp[1].num;
-            pt_refs = all_refs(pp[2].list);
-            mults = int_list(pp[6]);
-            knots = dbl_list(pp[7]);
-        } else {
-            const std::vector<StepParam>& bp = base->params;
-            const std::vector<StepParam>& kp = bsc->params;
-
-            if (bp.size() < 2 || kp.size() < 2)
-                return NurbsCurve();
-
-            degree = (int)bp[0].num;
-            pt_refs = all_refs(bp[1].list);
-            mults = int_list(kp[0]);
-            knots = dbl_list(kp[1]);
-        }
-
-        if (pt_refs.empty() || mults.empty() || knots.empty())
-            return NurbsCurve();
-
-        const int order = degree + 1;
-        const int cv_count = (int)pt_refs.size();
-        const std::vector<double> full = expand_knots(knots, mults);
+        const int order = cp->degree + 1;
+        const int cv_count = (int)cp->pt_refs.size();
+        const std::vector<double> full = expand_knots(cp->knots, cp->mults);
 
         if ((int)full.size() != cv_count + order)
             return NurbsCurve();
 
         const std::vector<double> internal = internal_from_full(full);
+        const StepSubEntity* rat = e->find("RATIONAL_B_SPLINE_CURVE");
         const bool is_rat = rat != nullptr;
         const std::vector<double> weights =
             is_rat && !rat->params.empty() ? dbl_list(rat->params[0]) : std::vector<double>();
@@ -1287,7 +1380,7 @@ public:
         nc.m_nurbsknot = internal;
 
         for (int i = 0; i < cv_count; i++) {
-            const Point pt = get_point(pt_refs[i]);
+            const Point pt = get_point(cp->pt_refs[i]);
             const double w = is_rat && i < (int)weights.size() ? weights[i] : 1.0;
 
             if (!nc.set_cv_4d(i, w * pt[0], w * pt[1], w * pt[2], w))
@@ -1301,72 +1394,31 @@ public:
     NurbsSurface get_nurbs_surface(int id) {
 
         const StepEntity* e = get(id);
-        const StepSubEntity* bss = e ? e->find("B_SPLINE_SURFACE_WITH_KNOTS") : nullptr;
+        const std::optional<SurfaceParams> sp = e ? surface_params(*e) : std::nullopt;
 
-        if (!bss)
+        if (!sp)
             return NurbsSurface();
 
-        const StepSubEntity* base = e->find("B_SPLINE_SURFACE");
+        const int cv_u = (int)sp->ctrl_pts.size();
+        const int cv_v = (int)sp->ctrl_pts[0].size();
+        const std::vector<double> full_u = expand_knots(sp->u_knots, sp->u_mults);
+        const std::vector<double> full_v = expand_knots(sp->v_knots, sp->v_mults);
+
+        if ((int)full_u.size() != cv_u + sp->u_deg + 1 || (int)full_v.size() != cv_v + sp->v_deg + 1)
+            return NurbsSurface();
+
         const StepSubEntity* rat = e->find("RATIONAL_B_SPLINE_SURFACE");
-        int u_deg = 0;
-        int v_deg = 0;
-        std::vector<std::vector<int>> ctrl_pts;
-        std::vector<int> u_mults;
-        std::vector<int> v_mults;
-        std::vector<double> u_knots;
-        std::vector<double> v_knots;
-
-        if (!base) {
-            const std::vector<StepParam>& pp = bss->params;
-
-            if (pp.size() < 12)
-                return NurbsSurface();
-
-            u_deg = (int)pp[1].num;
-            v_deg = (int)pp[2].num;
-            ctrl_pts = ref_list_list(pp[3]);
-            u_mults = int_list(pp[8]);
-            v_mults = int_list(pp[9]);
-            u_knots = dbl_list(pp[10]);
-            v_knots = dbl_list(pp[11]);
-        } else {
-            const std::vector<StepParam>& bp = base->params;
-            const std::vector<StepParam>& kp = bss->params;
-
-            if (bp.size() < 3 || kp.size() < 4)
-                return NurbsSurface();
-
-            u_deg = (int)bp[0].num;
-            v_deg = (int)bp[1].num;
-            ctrl_pts = ref_list_list(bp[2]);
-            u_mults = int_list(kp[0]);
-            v_mults = int_list(kp[1]);
-            u_knots = dbl_list(kp[2]);
-            v_knots = dbl_list(kp[3]);
-        }
-
-        if (ctrl_pts.empty() || ctrl_pts[0].empty() || u_mults.empty() || v_mults.empty())
-            return NurbsSurface();
-
-        const int cv_u = (int)ctrl_pts.size();
-        const int cv_v = (int)ctrl_pts[0].size();
-        const std::vector<double> full_u = expand_knots(u_knots, u_mults);
-        const std::vector<double> full_v = expand_knots(v_knots, v_mults);
-
-        if ((int)full_u.size() != cv_u + u_deg + 1 || (int)full_v.size() != cv_v + v_deg + 1)
-            return NurbsSurface();
-
         const bool is_rat = rat != nullptr;
         const std::vector<std::vector<double>> weights =
             is_rat && !rat->params.empty() ? dbl_list_list(rat->params[0]) : std::vector<std::vector<double>>();
 
-        NurbsSurface srf(3, is_rat, u_deg + 1, v_deg + 1, cv_u, cv_v);
+        NurbsSurface srf(3, is_rat, sp->u_deg + 1, sp->v_deg + 1, cv_u, cv_v);
         srf.m_nurbsknot[0] = internal_from_full(full_u);
         srf.m_nurbsknot[1] = internal_from_full(full_v);
 
         for (int u = 0; u < cv_u; u++)
-            for (int v = 0; v < cv_v && v < (int)ctrl_pts[u].size(); v++) {
-                const Point pt = get_point(ctrl_pts[u][v]);
+            for (int v = 0; v < cv_v && v < (int)sp->ctrl_pts[u].size(); v++) {
+                const Point pt = get_point(sp->ctrl_pts[u][v]);
                 const double w = is_rat && u < (int)weights.size() && v < (int)weights[u].size() ? weights[u][v] : 1.0;
 
                 if (!srf.set_cv_4d(u, v, w * pt[0], w * pt[1], w * pt[2], w))
@@ -2024,6 +2076,63 @@ static std::optional<Window> analytic_window(const std::vector<Loop>& loops, con
     return w;
 }
 
+/// Canonical (s, t) where the loop left off: the end of its last edge, else the first sample that projects; false when neither exists.
+static std::tuple<double, double, bool> st_start(const AnFace& an, const Loop& lp, const std::vector<Point>& ordered) {
+
+    if (!lp.edges.empty() && !lp.edges.back().uv.empty()) {
+        const LoopEdge& pe = lp.edges.back();
+        const Point q = pe.reversed ? pe.uv.front() : pe.uv.back();
+
+        return {q[0], q[1], true};
+    }
+
+    for (size_t k = 0; k < ordered.size(); k++) {
+        double s = 0.0;
+        double t = 0.0;
+        bool ok = false;
+        std::tie(s, t, ok) = an_st_of(an, ordered[k]);
+
+        if (ok)
+            return {s, t, true};
+    }
+
+    return {0.0, 0.0, false};
+}
+
+/// Canonical (s, t) of 3D samples, s (and t on a torus) shifted by whole turns next to the sample before, the first next to (ps, pt).
+static std::vector<Point> st_unwrapped(
+    const AnFace& an,
+    const std::vector<Point>& ordered,
+    double ps,
+    double pt,
+    bool have_prev
+) {
+
+    std::vector<Point> st;
+
+    for (size_t k = 0; k < ordered.size(); k++) {
+        double s = 0.0;
+        double t = 0.0;
+        bool ok = false;
+        std::tie(s, t, ok) = an_st_of(an, ordered[k]);
+
+        if (!ok && (k > 0 || have_prev))
+            s = k > 0 ? st.back()[0] : ps;
+
+        const double rs = k > 0 ? st.back()[0] : (have_prev ? ps : s);
+        s -= 2 * PI * std::round((s - rs) / (2 * PI));
+
+        if (an.kind == 5) {
+            const double rt = k > 0 ? st.back()[1] : (have_prev ? pt : t);
+            t -= 2 * PI * std::round((t - rt) / (2 * PI));
+        }
+
+        st.emplace_back(s, t, 0.0);
+    }
+
+    return st;
+}
+
 /// BRep of one STEP shell, built face by face.
 class BRepBuilder {
     StepReader& r; // Entity reader.
@@ -2100,12 +2209,7 @@ public:
         if (it != vmap.end())
             return it->second;
 
-        const StepEntity* e = r.get(vp_id);
-        const StepSubEntity* sub = e ? e->find("VERTEX_POINT") : nullptr;
-        const int ref = sub ? first_ref(sub->params) : -1;
-        const Point pt = ref >= 0 ? r.get_point(ref) : Point(0, 0, 0);
-
-        return vmap[vp_id] = brep.add_vertex(pt);
+        return vmap[vp_id] = brep.add_vertex(r.get_vertex_point(vp_id).value_or(Point(0, 0, 0)));
     }
 
     /// Exact 3D curve of an edge basis: the B-spline itself or a rational arc of a CIRCLE, invalid otherwise.
@@ -2177,50 +2281,9 @@ public:
         double ps = 0.0;
         double pt = 0.0;
         bool have_prev = false;
+        std::tie(ps, pt, have_prev) = st_start(an, lp, ordered);
 
-        if (!lp.edges.empty() && !lp.edges.back().uv.empty()) {
-            const LoopEdge& pe = lp.edges.back();
-            const Point q = pe.reversed ? pe.uv.front() : pe.uv.back();
-            ps = q[0];
-            pt = q[1];
-            have_prev = true;
-        }
-
-        for (size_t k = 0; k < ordered.size() && !have_prev; k++) {
-            double s2 = 0.0;
-            double t2 = 0.0;
-            bool ok2 = false;
-            std::tie(s2, t2, ok2) = an_st_of(an, ordered[k]);
-
-            if (!ok2)
-                continue;
-
-            ps = s2;
-            pt = t2;
-            have_prev = true;
-        }
-
-        std::vector<Point> st;
-
-        for (size_t k = 0; k < ordered.size(); k++) {
-            double s = 0.0;
-            double t = 0.0;
-            bool ok = false;
-            std::tie(s, t, ok) = an_st_of(an, ordered[k]);
-
-            if (!ok && (k > 0 || have_prev))
-                s = k > 0 ? st.back()[0] : ps;
-
-            const double rs = k > 0 ? st.back()[0] : (have_prev ? ps : s);
-            s -= 2 * PI * std::round((s - rs) / (2 * PI));
-
-            if (an.kind == 5) {
-                const double rt = k > 0 ? st.back()[1] : (have_prev ? pt : t);
-                t -= 2 * PI * std::round((t - rt) / (2 * PI));
-            }
-
-            st.emplace_back(s, t, 0.0);
-        }
+        std::vector<Point> st = st_unwrapped(an, ordered, ps, pt, have_prev);
 
         if (rev)
             std::reverse(st.begin(), st.end());
@@ -2380,12 +2443,7 @@ public:
 
     /// Point of a VERTEX_POINT, far away when missing.
     Point step_point_of(int vp_id) {
-
-        const StepEntity* e = r.get(vp_id);
-        const StepSubEntity* sub = e ? e->find("VERTEX_POINT") : nullptr;
-        const int ref = sub ? first_ref(sub->params) : -1;
-
-        return ref >= 0 ? r.get_point(ref) : Point(1e300, 1e300, 1e300);
+        return r.get_vertex_point(vp_id).value_or(Point(1e300, 1e300, 1e300));
     }
 
     /// The file vertex at q when one of the given VERTEX_POINTs sits there, else a new vertex.
@@ -2398,21 +2456,30 @@ public:
         return brep.add_vertex(q);
     }
 
-    /// Face bounded only by VERTEX_LOOPs: the whole surface, with seam and pole edges read off the surface (sphere-like or torus-like).
-    bool add_face_vertex_loop(const std::vector<int>& vl_vertex_ids, int surface_ref, bool same_sense) {
+    /// Kernel surface of a VERTEX_LOOP face: the whole sphere or torus, the B-spline itself, invalid otherwise.
+    NurbsSurface vertex_loop_surface(int surface_ref) {
 
         const AnFace an = r.get_analytic_srf(surface_ref);
-        NurbsSurface srf;
 
         if (an.kind == 4)
-            srf = build_analytic_nurbs(an, 0, 4, 0, 0, -1, 2);
-        else if (an.kind == 5)
-            srf = build_analytic_nurbs(an, 0, 4, 0, 0, 0, 4);
-        else if (an.kind == 0)
-            srf = r.get_nurbs_surface(surface_ref);
+            return build_analytic_nurbs(an, 0, 4, 0, 0, -1, 2);
 
-        if (!srf.is_valid())
-            return false;
+        if (an.kind == 5)
+            return build_analytic_nurbs(an, 0, 4, 0, 0, 0, 4);
+
+        if (an.kind == 0)
+            return r.get_nurbs_surface(surface_ref);
+
+        return NurbsSurface();
+    }
+
+    /// Wire of a sphere-like surface: a degenerated edge at each pole and the seam used both ways; empty when the seam is invalid.
+    std::vector<PendingEdge> pole_wire(
+        const NurbsSurface& srf,
+        const std::vector<Point>& grid,
+        const std::vector<int>& vl_vertex_ids,
+        double tol
+    ) {
 
         double u0 = 0.0;
         double u1 = 0.0;
@@ -2420,6 +2487,66 @@ public:
         double v1 = 0.0;
         std::tie(u0, u1) = srf.domain(0);
         std::tie(v0, v1) = srf.domain(1);
+
+        const int v_lo = topo_vertex_at(vl_vertex_ids, grid[0], tol);
+        const int v_hi = topo_vertex_at(vl_vertex_ids, grid[NS - 1], tol);
+        const NurbsCurve seam = srf.iso_curve(1, u0);
+
+        if (!seam.is_valid())
+            return {};
+
+        const int ei_seam = brep.add_edge(brep.add_curve_3d(seam), v_lo, v_hi);
+        const int ei_lo = brep.add_edge(-1, v_lo, v_lo);
+        const int ei_hi = brep.add_edge(-1, v_hi, v_hi);
+
+        return {
+            {ei_lo, false, uv_line(u0, v0, u1, v0)},
+            {ei_seam, false, uv_line(u1, v0, u1, v1)},
+            {ei_hi, false, uv_line(u1, v1, u0, v1)},
+            {ei_seam, true, uv_line(u0, v1, u0, v0)},
+        };
+    }
+
+    /// Wire of a torus-like surface: the u seam and the v seam each used both ways; empty when a seam is invalid.
+    std::vector<PendingEdge> seam_wire(
+        const NurbsSurface& srf,
+        const std::vector<Point>& grid,
+        const std::vector<int>& vl_vertex_ids,
+        double tol
+    ) {
+
+        double u0 = 0.0;
+        double u1 = 0.0;
+        double v0 = 0.0;
+        double v1 = 0.0;
+        std::tie(u0, u1) = srf.domain(0);
+        std::tie(v0, v1) = srf.domain(1);
+
+        const int vtx = topo_vertex_at(vl_vertex_ids, grid[0], tol);
+        const NurbsCurve c_u = srf.iso_curve(1, u0);
+        const NurbsCurve c_v = srf.iso_curve(0, v0);
+
+        if (!c_u.is_valid() || !c_v.is_valid())
+            return {};
+
+        const int ei_u = brep.add_edge(brep.add_curve_3d(c_u), vtx, vtx);
+        const int ei_v = brep.add_edge(brep.add_curve_3d(c_v), vtx, vtx);
+
+        return {
+            {ei_v, false, uv_line(u0, v0, u1, v0)},
+            {ei_u, false, uv_line(u1, v0, u1, v1)},
+            {ei_v, true, uv_line(u1, v1, u0, v1)},
+            {ei_u, true, uv_line(u0, v1, u0, v0)},
+        };
+    }
+
+    /// Face bounded only by VERTEX_LOOPs: the whole surface, with seam and pole edges read off the surface (sphere-like or torus-like).
+    bool add_face_vertex_loop(const std::vector<int>& vl_vertex_ids, int surface_ref, bool same_sense) {
+
+        const NurbsSurface srf = vertex_loop_surface(surface_ref);
+
+        if (!srf.is_valid())
+            return false;
 
         const std::vector<Point> grid = surface_grid(srf, NS);
         const double tol = grid_scale(grid) * 1e-7;
@@ -2436,38 +2563,11 @@ public:
             return false;
 
         const int si = brep.add_surface(srf);
-        std::vector<PendingEdge> wire;
+        const std::vector<PendingEdge> wire =
+            degen_v0 && degen_v1 ? pole_wire(srf, grid, vl_vertex_ids, tol) : seam_wire(srf, grid, vl_vertex_ids, tol);
 
-        if (degen_v0 && degen_v1) {
-            const int v_lo = topo_vertex_at(vl_vertex_ids, grid[0], tol);
-            const int v_hi = topo_vertex_at(vl_vertex_ids, grid[NS - 1], tol);
-            const NurbsCurve seam = srf.iso_curve(1, u0);
-
-            if (!seam.is_valid())
-                return false;
-
-            const int ei_seam = brep.add_edge(brep.add_curve_3d(seam), v_lo, v_hi);
-            const int ei_lo = brep.add_edge(-1, v_lo, v_lo);
-            const int ei_hi = brep.add_edge(-1, v_hi, v_hi);
-            wire.push_back({ei_lo, false, uv_line(u0, v0, u1, v0)});
-            wire.push_back({ei_seam, false, uv_line(u1, v0, u1, v1)});
-            wire.push_back({ei_hi, false, uv_line(u1, v1, u0, v1)});
-            wire.push_back({ei_seam, true, uv_line(u0, v1, u0, v0)});
-        } else {
-            const int vtx = topo_vertex_at(vl_vertex_ids, grid[0], tol);
-            const NurbsCurve c_u = srf.iso_curve(1, u0);
-            const NurbsCurve c_v = srf.iso_curve(0, v0);
-
-            if (!c_u.is_valid() || !c_v.is_valid())
-                return false;
-
-            const int ei_u = brep.add_edge(brep.add_curve_3d(c_u), vtx, vtx);
-            const int ei_v = brep.add_edge(brep.add_curve_3d(c_v), vtx, vtx);
-            wire.push_back({ei_v, false, uv_line(u0, v0, u1, v0)});
-            wire.push_back({ei_u, false, uv_line(u1, v0, u1, v1)});
-            wire.push_back({ei_v, true, uv_line(u1, v1, u0, v1)});
-            wire.push_back({ei_u, true, uv_line(u0, v1, u0, v0)});
-        }
+        if (wire.empty())
+            return false;
 
         finish_face(si, !same_sense, {wire});
 
@@ -2879,7 +2979,8 @@ public:
         if (crv3d < 0)
             return -1;
 
-        write_nurbs_curve(loop_2d);
+        if (write_nurbs_curve(loop_2d) < 0)
+            return -1;
 
         const int ec = write_raw(
             "EDGE_CURVE('',#" + std::to_string(v0) + ",#" + std::to_string(v0) + ",#" + std::to_string(crv3d) + ",.T.)"
@@ -3213,11 +3314,14 @@ static double vertex_diagonal(const BRep& brep) {
     return lo.distance(hi);
 }
 
-/// Write the STEP text to a file.
-static void write_step_string(const std::string& content, const std::string& filepath) {
+/// Write the STEP text to a file; false when it cannot be written.
+static bool write_step_string(const std::string& content, const std::string& filepath) {
 
     std::ofstream out(filepath);
     out << content;
+    out.close();
+
+    return !out.fail();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3285,8 +3389,8 @@ static NurbsCurve trimmed_outer_loop(StepReader& r, const std::vector<int>& boun
             if (ecr.size() < 3)
                 continue;
 
-            const Point vs = r.get_point(ecr[0]);
-            const Point ve = r.get_point(ecr[1]);
+            const Point vs = r.get_vertex_point(ecr[0]).value_or(Point(0, 0, 0));
+            const Point ve = r.get_vertex_point(ecr[1]).value_or(Point(0, 0, 0));
 
             for (const Point& s : r.sample_curve(ecr[2], vs, ve, 8))
                 uv_pts.emplace_back(s[0], s[1], 0.0);
@@ -3377,27 +3481,27 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
     return out;
 }
 
-void write_file_step_nurbscurves(const std::vector<NurbsCurve>& curves, const std::string& filepath) {
+bool write_file_step_nurbscurves(const std::vector<NurbsCurve>& curves, const std::string& filepath) {
 
     StepWriter w;
 
     for (const NurbsCurve& nc : curves)
         w.write_nurbs_curve(nc);
 
-    write_step_string(w.emit(), filepath);
+    return write_step_string(w.emit(), filepath);
 }
 
-void write_file_step_nurbssurfaces(const std::vector<NurbsSurface>& surfaces, const std::string& filepath) {
+bool write_file_step_nurbssurfaces(const std::vector<NurbsSurface>& surfaces, const std::string& filepath) {
 
     StepWriter w;
 
     for (const NurbsSurface& srf : surfaces)
         w.write_nurbs_surface(srf);
 
-    write_step_string(w.emit(), filepath);
+    return write_step_string(w.emit(), filepath);
 }
 
-void write_file_step_nurbssurfaces_trimmed(
+bool write_file_step_nurbssurfaces_trimmed(
     const std::vector<NurbsSurfaceTrimmed>& trimmed,
     const std::string& filepath
 ) {
@@ -3419,10 +3523,10 @@ void write_file_step_nurbssurfaces_trimmed(
         bodies.push_back(body);
 
     w.finish_product(bodies, false, "trimmed");
-    write_step_string(w.emit(), filepath);
+    return write_step_string(w.emit(), filepath);
 }
 
-void write_file_step_brep(const BRep& brep, const std::string& filepath) {
+bool write_file_step_brep(const BRep& brep, const std::string& filepath) {
 
     StepWriter w;
     std::vector<int> bodies;
@@ -3440,10 +3544,10 @@ void write_file_step_brep(const BRep& brep, const std::string& filepath) {
     }
 
     w.finish_product(bodies, any_closed, brep.name.empty() ? "brep" : brep.name, vertex_diagonal(brep) * 1e-4);
-    write_step_string(w.emit(), filepath);
+    return write_step_string(w.emit(), filepath);
 }
 
-void write_file_step_breps(
+bool write_file_step_breps(
     const std::vector<const BRep*>& breps,
     const std::string& name,
     const std::string& filepath
@@ -3482,7 +3586,7 @@ void write_file_step_breps(
     }
 
     w.finish_product(bodies, any_closed, name, diag * 1e-4, styled);
-    write_step_string(w.emit(), filepath);
+    return write_step_string(w.emit(), filepath);
 }
 
 } // namespace file_step
