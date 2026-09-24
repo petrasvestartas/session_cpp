@@ -2,6 +2,7 @@
 #include "intersection.h"
 #include "nurbssurface.h"
 #include "primitives.h"
+#include "xform.h"
 #include "tolerance.h"
 #include <cmath>
 
@@ -71,6 +72,65 @@ static double distance_torus(const Point& p) {
 
 static double distance_flat(const Point& p) {
     return std::abs(p[2]);
+}
+
+static NurbsSurface bilinear(const Point& p00, const Point& p01, const Point& p10, const Point& p11) {
+    return NurbsSurface::create(false, false, 1, 1, 2, 2, {p00, p01, p10, p11});
+}
+
+static double lifted_distance(const NurbsCurve& pcurve, const NurbsSurface& surface, double (*d)(const Point&)) {
+
+    const std::pair<double, double> domain = pcurve.domain();
+    double worst = 0.0;
+
+    for (int i = 0; i <= 32; i++) {
+        Point uv = pcurve.point_at(domain.first + (domain.second - domain.first) * i / 32.0);
+        worst = std::max(worst, d(surface.point_at(uv[0], uv[1])));
+    }
+
+    return worst;
+}
+
+static double distance_cone(const Point& p) {
+    return std::abs(std::sqrt(p[0] * p[0] + p[1] * p[1]) - (3.0 - p[2]) * 0.5);
+}
+
+static double distance_flat_half(const Point& p) {
+    return std::abs(p[2] - 0.5);
+}
+
+static double distance_wall(const Point& p) {
+    return std::abs(p[0] - 0.2);
+}
+
+static double distance_unit_cylinder(const Point& p) {
+    return std::abs(std::sqrt(p[0] * p[0] + p[1] * p[1]) - 1.0);
+}
+
+static double distance_x_cylinder(const Point& p) {
+    return std::abs(std::sqrt(p[1] * p[1] + p[2] * p[2]) - 1.0);
+}
+
+static double distance_wide_cylinder(const Point& p) {
+    return std::abs(std::sqrt(p[0] * p[0] + p[1] * p[1]) - 2.2);
+}
+
+static double distance_high_torus(const Point& p) {
+
+    double ring = std::sqrt(p[0] * p[0] + p[1] * p[1]) - 1.0;
+
+    return std::abs(std::sqrt(ring * ring + (p[2] - 1.0) * (p[2] - 1.0)) - 0.3);
+}
+
+static double distance_wide_torus(const Point& p) {
+
+    double ring = std::sqrt(p[0] * p[0] + p[1] * p[1]) - 2.3;
+
+    return std::abs(std::sqrt(ring * ring + (p[2] - 0.3) * (p[2] - 0.3)) - 0.5);
+}
+
+static double distance_square(const Point& p) {
+    return std::max(std::abs(p[2] - 0.5), std::max(std::max(0.0, std::abs(p[0]) - 1.6), std::max(0.0, std::abs(p[1]) - 1.6)));
 }
 
 MINI_TEST("Intersection", "Line Line") {
@@ -1089,6 +1149,180 @@ MINI_TEST("Intersection", "Surface Surface Accuracy") {
         MINI_CHECK(on_both(std::get<0>(t), distance_torus, distance_flat) < 1e-6);
 }
 
+MINI_TEST("Intersection", "Surface Surface Planes") {
+
+    NurbsSurface flat = bilinear(Point(-3.0, -3.0, 0.5), Point(-3.0, 3.0, 0.5), Point(3.0, -3.0, 0.5), Point(3.0, 3.0, 0.5));
+    NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    NurbsSurface far = bilinear(Point(5.0, -3.0, -3.0), Point(5.0, -3.0, 3.0), Point(5.0, 3.0, -3.0), Point(5.0, 3.0, 3.0));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(flat, wall);
+
+    MINI_CHECK(tr.size() == 1);
+
+    NurbsCurve c3 = std::get<0>(tr[0]);
+    Point start = c3.point_at_start();
+    Point end = c3.point_at_end();
+
+    MINI_CHECK(TOLERANCE.is_close(start[0], 0.2) && TOLERANCE.is_close(start[1], -3.0) && TOLERANCE.is_close(start[2], 0.5));
+    MINI_CHECK(TOLERANCE.is_close(end[0], 0.2) && TOLERANCE.is_close(end[1], 3.0) && TOLERANCE.is_close(end[2], 0.5));
+    MINI_CHECK(lies_on_curve(c3, std::get<1>(tr[0]), flat) < 1e-9);
+    MINI_CHECK(lies_on_curve(c3, std::get<2>(tr[0]), wall) < 1e-9);
+    MINI_CHECK(Intersection::surface_surface(flat, far).empty());
+}
+
+MINI_TEST("Intersection", "Surface Surface Plane Cone") {
+
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface flat = bilinear(Point(-3.0, -3.0, 0.5), Point(-3.0, 3.0, 0.5), Point(3.0, -3.0, 0.5), Point(3.0, 3.0, 0.5));
+    NurbsSurface steep = bilinear(Point(1.1, -3.0, -3.0), Point(1.1, 3.0, -3.0), Point(-0.3, -3.0, 4.0), Point(-0.3, 3.0, 4.0));
+    NurbsSurface slant = bilinear(Point(-3.0, -3.0, 8.5), Point(-3.0, 3.0, 8.5), Point(3.0, -3.0, -3.5), Point(3.0, 3.0, -3.5));
+    NurbsSurface axial = bilinear(Point(0.0, -3.0, -3.0), Point(0.0, -3.0, 4.0), Point(0.0, 3.0, -3.0), Point(0.0, 3.0, 4.0));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(cone, flat);
+
+    MINI_CHECK(circle.size() == 1);
+    MINI_CHECK(on_both(std::get<0>(circle[0]), distance_cone, distance_flat_half) < 1e-9);
+    MINI_CHECK(lies_on_curve(std::get<0>(circle[0]), std::get<1>(circle[0]), cone) < 1e-9);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> hyperbola = Intersection::surface_surface(cone, steep);
+
+    MINI_CHECK(hyperbola.size() == 1);
+    MINI_CHECK(std::get<0>(hyperbola[0]).degree() == 2);
+    MINI_CHECK(on_both(std::get<0>(hyperbola[0]), distance_cone, distance_cone) < 1e-9);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> parabola = Intersection::surface_surface(cone, slant);
+
+    MINI_CHECK(parabola.size() == 1);
+    MINI_CHECK(on_both(std::get<0>(parabola[0]), distance_cone, distance_cone) < 1e-6);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);
+
+    MINI_CHECK(lines.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& line : lines) {
+        Point apex = std::get<0>(line).point_at_start();
+
+        MINI_CHECK(TOLERANCE.is_close(apex[0], 0.0) && TOLERANCE.is_close(apex[1], 0.0) && TOLERANCE.is_close(apex[2], 3.0));
+        MINI_CHECK(on_both(std::get<0>(line), distance_cone, distance_cone) < 1e-9);
+    }
+}
+
+MINI_TEST("Intersection", "Surface Surface Plane Torus") {
+
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
+    NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(torus, wall);
+
+    MINI_CHECK(tr.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : tr) {
+        MINI_CHECK(std::get<0>(t).is_closed());
+        MINI_CHECK(on_both(std::get<0>(t), distance_torus, distance_wall) < 1e-4);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<2>(t), wall) < 1e-4);
+    }
+}
+
+MINI_TEST("Intersection", "Surface Surface Cylinders") {
+
+    NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
+    NurbsSurface beside = Primitives::cylinder_surface(1.5, 0.0, -2.0, 1.0, 4.0);
+    NurbsSurface across = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0).transformed(Xform::rotation(Vector(0.0, 1.0, 0.0), Tolerance::HALF_PI));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cyl, beside);
+
+    MINI_CHECK(lines.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& line : lines) {
+        Point start = std::get<0>(line).point_at_start();
+        Point end = std::get<0>(line).point_at_end();
+
+        MINI_CHECK(TOLERANCE.is_close(start[0], 0.75) && TOLERANCE.is_close(end[0], 0.75));
+        MINI_CHECK(TOLERANCE.is_close(std::abs(start[1]), std::sqrt(0.4375)) && TOLERANCE.is_close(start[1], end[1]));
+        MINI_CHECK(lies_on_curve(std::get<0>(line), std::get<1>(line), cyl) < 1e-9);
+    }
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ellipses = Intersection::surface_surface(cyl, across);
+
+    MINI_CHECK(ellipses.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& ellipse : ellipses) {
+        MINI_CHECK(std::get<0>(ellipse).is_closed());
+        MINI_CHECK(on_both(std::get<0>(ellipse), distance_unit_cylinder, distance_x_cylinder) < 1e-9);
+    }
+}
+
+MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
+
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sphere_cyl = Intersection::surface_surface(sphere, cyl);
+
+    MINI_CHECK(sphere_cyl.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : sphere_cyl) {
+        MINI_CHECK(TOLERANCE.is_close(std::abs(std::get<0>(t).point_at_start()[2]), std::sqrt(3.0)));
+        MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_unit_cylinder) < 1e-9);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<1>(t), sphere) < 1e-9);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<2>(t), cyl) < 1e-9);
+    }
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cyl_cone = Intersection::surface_surface(cyl, cone);
+
+    MINI_CHECK(cyl_cone.size() == 1);
+    MINI_CHECK(TOLERANCE.is_close(std::get<0>(cyl_cone[0]).point_at_start()[2], 1.0));
+    MINI_CHECK(on_both(std::get<0>(cyl_cone[0]), distance_unit_cylinder, distance_cone) < 1e-9);
+    MINI_CHECK(lies_on_curve(std::get<0>(cyl_cone[0]), std::get<2>(cyl_cone[0]), cone) < 1e-9);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cone_sphere = Intersection::surface_surface(cone, sphere);
+
+    MINI_CHECK(cone_sphere.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : cone_sphere)
+        MINI_CHECK(on_both(std::get<0>(t), distance_cone, distance_sphere) < 1e-9);
+}
+
+MINI_TEST("Intersection", "Surface Surface Coaxial Tori") {
+
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
+    NurbsSurface wide_cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 2.2, 4.0);
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface high_torus = Primitives::torus_surface(0.0, 0.0, 1.0, 1.0, 0.3);
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface wide_torus = Primitives::torus_surface(0.0, 0.0, 0.3, 2.3, 0.5);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cyl_torus = Intersection::surface_surface(wide_cyl, torus);
+
+    MINI_CHECK(cyl_torus.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : cyl_torus) {
+        MINI_CHECK(TOLERANCE.is_close(std::abs(std::get<0>(t).point_at_start()[2]), std::sqrt(0.21)));
+        MINI_CHECK(on_both(std::get<0>(t), distance_wide_cylinder, distance_torus) < 1e-9);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<2>(t), torus) < 1e-9);
+    }
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cone_torus = Intersection::surface_surface(cone, high_torus);
+
+    MINI_CHECK(cone_torus.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : cone_torus) {
+        MINI_CHECK(on_both(std::get<0>(t), distance_cone, distance_high_torus) < 1e-9);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<2>(t), high_torus) < 1e-9);
+    }
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sphere_torus = Intersection::surface_surface(sphere, torus);
+
+    MINI_CHECK(sphere_torus.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : sphere_torus)
+        MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_torus) < 1e-9);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> torus_torus = Intersection::surface_surface(torus, wide_torus);
+
+    MINI_CHECK(torus_torus.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : torus_torus) {
+        MINI_CHECK(on_both(std::get<0>(t), distance_torus, distance_wide_torus) < 1e-9);
+        MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<1>(t), torus) < 1e-9);
+    }
+}
+
 MINI_TEST("Intersection", "Cut Curves On Surface") {
 
     NurbsSurface flat = NurbsSurface::create(
@@ -1121,6 +1355,46 @@ MINI_TEST("Intersection", "Cut Curves On Surface") {
     }
 
     MINI_CHECK(max_off < 1e-3);
+}
+
+MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
+
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    NurbsSurface square = bilinear(Point(-1.6, -1.6, 0.5), Point(-1.6, 1.6, 0.5), Point(1.6, -1.6, 0.5), Point(1.6, 1.6, 0.5));
+    std::vector<NurbsCurve> sphere_cuts = Intersection::cut_curves_on_surface(sphere, wall);
+
+    MINI_CHECK(sphere_cuts.size() == 3);
+
+    for (const NurbsCurve& pc : sphere_cuts)
+        MINI_CHECK(lifted_distance(pc, sphere, distance_wall) < 5e-3);
+
+    std::vector<NurbsCurve> cone_cuts = Intersection::cut_curves_on_surface(cone, wall);
+
+    MINI_CHECK(cone_cuts.size() == 2);
+
+    for (const NurbsCurve& pc : cone_cuts)
+        MINI_CHECK(lifted_distance(pc, cone, distance_wall) < 1e-3);
+
+    std::vector<NurbsCurve> square_cuts = Intersection::cut_curves_on_surface(sphere, square);
+
+    MINI_CHECK(square_cuts.size() == 4);
+
+    for (const NurbsCurve& pc : square_cuts)
+        MINI_CHECK(lifted_distance(pc, sphere, distance_square) < 2e-3);
+}
+
+MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
+
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
+    NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(torus, wall);
+
+    MINI_CHECK(cuts.size() == 4);
+
+    for (const NurbsCurve& pc : cuts)
+        MINI_CHECK(lifted_distance(pc, torus, distance_wall) < 1e-5);
 }
 
 MINI_TEST("Intersection", "Remap") {
