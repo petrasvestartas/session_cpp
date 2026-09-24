@@ -341,7 +341,7 @@ public:
     /// Return the points where the infinite line pierces the surface (grid seed + Newton).
     std::vector<Point> intersections_with_line(const Line& line) const;
 
-    /// Return the point and partials up to num_derivs (max 2) in (k, l) loop order: [S, Sv, Svv, Su, Suv, Suu].
+    /// Return the point and partials up to num_derivs (max 2) in (k, m) loop order: [S, Sv, Svv, Su, Suv, Suu].
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
 
     /// Return the corner CV; u_end and v_end are 0 or 1.
@@ -488,7 +488,7 @@ private:
     /// Return the basis derivatives ders[k][j] of the order functions on the span (Piegl & Tiller A2.3).
     std::vector<std::vector<double>> basis_functions_derivatives(int dir, int span, double t, int deriv_order) const;
 
-    /// Apply the rational quotient rule to homogeneous partials in (k, l) loop order (Piegl & Tiller A4.4).
+    /// Apply the rational quotient rule to homogeneous partials in (k, m) loop order (Piegl & Tiller A4.4).
     std::vector<Vector> rational_derivatives(const std::vector<std::vector<double>>& skl, int num_derivs) const;
 
     /// Run Newton on (n1, n2) . (S - p0) = 0 from (u, v); false when it leaves the domain or stalls.

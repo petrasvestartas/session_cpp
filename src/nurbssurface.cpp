@@ -45,6 +45,104 @@ double binomial(int n, int k) {
     return r;
 }
 
+/// True when any weight differs from one.
+bool is_rational_weights(const std::vector<std::vector<double>>& weights) {
+
+    for (const std::vector<double>& row : weights)
+        for (double w : row)
+            if (std::abs(w - 1.0) > Tolerance::ZERO_TOLERANCE)
+                return true;
+
+    return false;
+}
+
+/// Triangular table of basis values and knot differences (Piegl & Tiller A2.3).
+std::vector<std::vector<double>> basis_table(const std::vector<double>& knot, int degree, int base, double t) {
+
+    const int order = degree + 1;
+    std::vector<std::vector<double>> ndu(order, std::vector<double>(order, 0.0));
+    ndu[0][0] = 1.0;
+    std::vector<double> left(order, 0.0);
+    std::vector<double> right(order, 0.0);
+
+    for (int j = 1; j <= degree; j++) {
+        left[j] = t - knot[base - j];
+        right[j] = knot[base + j - 1] - t;
+        double saved = 0.0;
+
+        for (int r = 0; r < j; r++) {
+            ndu[j][r] = right[r + 1] + left[j - r];
+            const double temp = ndu[r][j - 1] / ndu[j][r];
+            ndu[r][j] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+
+        ndu[j][j] = saved;
+    }
+
+    return ndu;
+}
+
+/// Basis derivatives ders[k][j] from the triangular table (Piegl & Tiller A2.3).
+std::vector<std::vector<double>> basis_table_derivatives(
+    const std::vector<std::vector<double>>& ndu,
+    int degree,
+    int deriv_order
+) {
+
+    const int order = degree + 1;
+    std::vector<std::vector<double>> ders(deriv_order + 1, std::vector<double>(order, 0.0));
+
+    for (int j = 0; j <= degree; j++)
+        ders[0][j] = ndu[j][degree];
+
+    std::vector<std::vector<double>> a(2, std::vector<double>(order, 0.0));
+
+    for (int r = 0; r <= degree; r++) {
+        int s1 = 0;
+        int s2 = 1;
+        a[0][0] = 1.0;
+
+        for (int k = 1; k <= deriv_order; k++) {
+            double d = 0.0;
+            const int rk = r - k;
+            const int pk = degree - k;
+
+            if (r >= k) {
+                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
+                d = a[s2][0] * ndu[rk][pk];
+            }
+
+            const int j1 = rk >= -1 ? 1 : -rk;
+            const int j2 = r - 1 <= pk ? k - 1 : degree - r;
+
+            for (int j = j1; j <= j2; j++) {
+                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
+                d += a[s2][j] * ndu[rk + j][pk];
+            }
+
+            if (r <= pk) {
+                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
+                d += a[s2][k] * ndu[r][pk];
+            }
+
+            ders[k][r] = d;
+            std::swap(s1, s2);
+        }
+    }
+
+    double factor = degree;
+
+    for (int k = 1; k <= deriv_order; k++) {
+        for (int j = 0; j <= degree; j++)
+            ders[k][j] *= factor;
+
+        factor *= degree - k;
+    }
+
+    return ders;
+}
+
 /// Bounding box of a 7 x 7 sample of the surface.
 std::pair<std::array<double, 3>, std::array<double, 3>> surface_aabb(const NurbsSurface& srf) {
 
@@ -102,7 +200,7 @@ nlohmann::ordered_json colors_to_json(const std::vector<Color>& colors) {
 }
 
 /// Read colors from a flat r, g, b, a list under key.
-std::vector<Color> colors_from_json(const nlohmann::json& data, const char* key) {
+std::vector<Color> colors_from_json(const nlohmann::json& data, const std::string& key) {
 
     std::vector<Color> colors;
 
@@ -253,13 +351,7 @@ NurbsSurface NurbsSurface::create_from_parameters(
     if (knots_u.size() != mults_u.size() || knots_v.size() != mults_v.size())
         return NurbsSurface();
 
-    bool rational = false;
-
-    for (const std::vector<double>& row : weights)
-        for (double w : row)
-            if (std::abs(w - 1.0) > Tolerance::ZERO_TOLERANCE)
-                rational = true;
-
+    const bool rational = is_rational_weights(weights);
     const std::vector<double> full_u = expand_nurbsknots(knots_u, mults_u);
     const std::vector<double> full_v = expand_nurbsknots(knots_v, mults_v);
     const int kc_u = order_u + nu - 2;
@@ -1128,12 +1220,12 @@ std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) c
     std::vector<std::vector<double>> skl;
 
     for (int k = 0; k <= n; k++)
-        for (int l = 0; l <= n - k; l++) {
+        for (int m = 0; m <= n - k; m++) {
             std::vector<double> sum(size, 0.0);
 
             for (int i = 0; i < m_order[0]; i++)
                 for (int j = 0; j < m_order[1]; j++) {
-                    const double c = ders_u[k][i] * ders_v[l][j];
+                    const double c = ders_u[k][i] * ders_v[m][j];
                     const double* cv_ptr = cv(span_u + i, span_v + j);
 
                     for (int d = 0; d < size; d++)
@@ -1500,7 +1592,7 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
         !data.contains("cv_count_u") || !data.contains("cv_count_v"))
         return surface;
 
-    surface.create_raw(
+    const bool created = surface.create_raw(
         data["dimension"],
         data.value("is_rational", false),
         data["order_u"],
@@ -1508,15 +1600,6 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
         data["cv_count_u"],
         data["cv_count_v"]
     );
-
-    if (data.contains("nurbsknots_u"))
-        surface.m_nurbsknot[0] = data["nurbsknots_u"].get<std::vector<double>>();
-
-    if (data.contains("nurbsknots_v"))
-        surface.m_nurbsknot[1] = data["nurbsknots_v"].get<std::vector<double>>();
-
-    if (data.contains("control_points"))
-        surface.m_cv = data["control_points"].get<std::vector<double>>();
 
     surface.guid() = data.value("guid", ::guid());
     surface.name = data.value("name", "my_nurbssurface");
@@ -1527,6 +1610,18 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
 
     if (data.contains("mesh") && !data["mesh"].is_null())
         surface.m_mesh = Mesh::jsonload(data["mesh"]);
+
+    if (!created)
+        return surface;
+
+    if (data.contains("nurbsknots_u"))
+        surface.m_nurbsknot[0] = data["nurbsknots_u"].get<std::vector<double>>();
+
+    if (data.contains("nurbsknots_v"))
+        surface.m_nurbsknot[1] = data["nurbsknots_v"].get<std::vector<double>>();
+
+    if (data.contains("control_points"))
+        surface.m_cv = data["control_points"].get<std::vector<double>>();
 
     return surface;
 }
@@ -1602,7 +1697,7 @@ session_proto::NurbsSurface NurbsSurface::to_proto() const {
 NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) {
 
     NurbsSurface surface;
-    surface.create_raw(
+    const bool created = surface.create_raw(
         proto.dimension(),
         proto.is_rational(),
         proto.order_u(),
@@ -1615,6 +1710,16 @@ NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) 
         surface.guid() = proto.guid();
 
     surface.name = proto.name();
+    surface.width = proto.width();
+    surface.pointcolors = colors_from_proto(proto.pointcolors());
+    surface.facecolors = colors_from_proto(proto.facecolors());
+    surface.linecolors = colors_from_proto(proto.linecolors());
+
+    if (proto.has_cached_mesh() && proto.cached_mesh().vertices_size() > 0)
+        surface.m_mesh = Mesh::from_proto(proto.cached_mesh());
+
+    if (!created)
+        return surface;
 
     for (int i = 0; i < proto.nurbsknots_u_size() && i < static_cast<int>(surface.m_nurbsknot[0].size()); i++)
         surface.m_nurbsknot[0][i] = proto.nurbsknots_u(i);
@@ -1634,14 +1739,6 @@ NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) 
             for (int d = 0; d < size && src + d < proto.cvs_size(); d++)
                 dst[d] = proto.cvs(src + d);
         }
-
-    surface.width = proto.width();
-    surface.pointcolors = colors_from_proto(proto.pointcolors());
-    surface.facecolors = colors_from_proto(proto.facecolors());
-    surface.linecolors = colors_from_proto(proto.linecolors());
-
-    if (proto.has_cached_mesh() && proto.cached_mesh().vertices_size() > 0)
-        surface.m_mesh = Mesh::from_proto(proto.cached_mesh());
 
     return surface;
 }
@@ -1799,79 +1896,11 @@ std::vector<std::vector<double>> NurbsSurface::basis_functions_derivatives(
     const int degree = order - 1;
     const std::vector<double>& knot = m_nurbsknot[dir];
     const int base = span + degree;
-    std::vector<std::vector<double>> ders(deriv_order + 1, std::vector<double>(order, 0.0));
 
     if (knot[base - 1] == knot[base])
-        return ders;
+        return std::vector<std::vector<double>>(deriv_order + 1, std::vector<double>(order, 0.0));
 
-    std::vector<std::vector<double>> ndu(order, std::vector<double>(order, 0.0));
-    ndu[0][0] = 1.0;
-    std::vector<double> left(order, 0.0);
-    std::vector<double> right(order, 0.0);
-
-    for (int j = 1; j <= degree; j++) {
-        left[j] = t - knot[base - j];
-        right[j] = knot[base + j - 1] - t;
-        double saved = 0.0;
-
-        for (int r = 0; r < j; r++) {
-            ndu[j][r] = right[r + 1] + left[j - r];
-            const double temp = ndu[r][j - 1] / ndu[j][r];
-            ndu[r][j] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-
-        ndu[j][j] = saved;
-    }
-
-    for (int j = 0; j <= degree; j++)
-        ders[0][j] = ndu[j][degree];
-
-    std::vector<std::vector<double>> a(2, std::vector<double>(order, 0.0));
-
-    for (int r = 0; r <= degree; r++) {
-        int s1 = 0;
-        int s2 = 1;
-        a[0][0] = 1.0;
-
-        for (int k = 1; k <= deriv_order; k++) {
-            double d = 0.0;
-            const int rk = r - k;
-            const int pk = degree - k;
-
-            if (r >= k) {
-                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
-                d = a[s2][0] * ndu[rk][pk];
-            }
-
-            const int j1 = rk >= -1 ? 1 : -rk;
-            const int j2 = r - 1 <= pk ? k - 1 : degree - r;
-
-            for (int j = j1; j <= j2; j++) {
-                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
-                d += a[s2][j] * ndu[rk + j][pk];
-            }
-
-            if (r <= pk) {
-                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
-                d += a[s2][k] * ndu[r][pk];
-            }
-
-            ders[k][r] = d;
-            std::swap(s1, s2);
-        }
-    }
-
-    double factor = degree;
-
-    for (int k = 1; k <= deriv_order; k++) {
-        for (int j = 0; j <= degree; j++)
-            ders[k][j] *= factor;
-
-        factor *= degree - k;
-    }
-
-    return ders;
+    return basis_table_derivatives(basis_table(knot, degree, base, t), degree, deriv_order);
 }
 
 std::vector<Vector> NurbsSurface::rational_derivatives(
@@ -1887,17 +1916,17 @@ std::vector<Vector> NurbsSurface::rational_derivatives(
         return std::vector<Vector>(skl.size(), Vector(0, 0, 0));
 
     for (int k = 0; k <= n; k++)
-        for (int l = 0; l <= n - k; l++) {
-            const std::vector<double>& s = skl[k * (n + 1) - k * (k - 1) / 2 + l];
+        for (int m = 0; m <= n - k; m++) {
+            const std::vector<double>& s = skl[k * (n + 1) - k * (k - 1) / 2 + m];
             Vector a(s[0], m_dim > 1 ? s[1] : 0.0, m_dim > 2 ? s[2] : 0.0);
 
             for (int i = 0; i <= k; i++)
-                for (int j = 0; j <= l; j++) {
+                for (int j = 0; j <= m; j++) {
                     if (i == 0 && j == 0)
                         continue;
 
-                    const double c = binomial(k, i) * binomial(l, j) * skl[i * (n + 1) - i * (i - 1) / 2 + j][m_dim];
-                    a -= result[(k - i) * (n + 1) - (k - i) * (k - i - 1) / 2 + (l - j)] * c;
+                    const double c = binomial(k, i) * binomial(m, j) * skl[i * (n + 1) - i * (i - 1) / 2 + j][m_dim];
+                    a -= result[(k - i) * (n + 1) - (k - i) * (k - i - 1) / 2 + (m - j)] * c;
                 }
 
             result.push_back(a / w00);
@@ -2054,11 +2083,12 @@ bool NurbsSurface::from_curve(const NurbsCurve& crv, int dir) {
         return false;
 
     NurbsSurface srf;
+    const bool created = dir == 0
+        ? srf.create_raw(m_dim, m_is_rat != 0, crv.m_order, m_order[1], crv.m_cv_count, m_cv_count[1])
+        : srf.create_raw(m_dim, m_is_rat != 0, m_order[0], crv.m_order, m_cv_count[0], crv.m_cv_count);
 
-    if (dir == 0)
-        srf.create_raw(m_dim, m_is_rat != 0, crv.m_order, m_order[1], crv.m_cv_count, m_cv_count[1]);
-    else
-        srf.create_raw(m_dim, m_is_rat != 0, m_order[0], crv.m_order, m_cv_count[0], crv.m_cv_count);
+    if (!created)
+        return false;
 
     srf.m_nurbsknot[dir] = crv.m_nurbsknot;
     srf.m_nurbsknot[other] = m_nurbsknot[other];

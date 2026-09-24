@@ -48,8 +48,6 @@ MINI_TEST("NurbsSurface", "Constructor") {
 
     const NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-    const Mesh m = s.mesh();
-
     std::vector<std::vector<Point>> p;
     std::vector<std::vector<Vector>> v;
     std::vector<std::vector<std::pair<double, double>>> uv;
@@ -61,7 +59,7 @@ MINI_TEST("NurbsSurface", "Constructor") {
     const NurbsSurface scopy = s;
     const NurbsSurface sother = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
 
-    MINI_CHECK(s.is_valid() == true);
+    MINI_CHECK(s.is_valid());
     MINI_CHECK(s.cv_count(0) == 4);
     MINI_CHECK(s.cv_count(1) == 4);
     MINI_CHECK(s.cv_count() == 16);
@@ -180,7 +178,7 @@ MINI_TEST("NurbsSurface", "Booleans Queries") {
 
     const bool is_rational = s.is_rational();
 
-    const bool is_closed = s.is_closed(0) == true && s.is_closed(1) == false;
+    const bool is_closed = s.is_closed(0) && !s.is_closed(1);
 
     const bool is_periodic = s.is_periodic(0) && s.is_periodic(1);
 
@@ -280,6 +278,7 @@ MINI_TEST("NurbsSurface", "Control Vertices Access") {
     const double* const_pointer_cv = s.cv(0, 0);
 
     MINI_CHECK(const_pointer_cv[2] == 0);
+
     double* pointer_cv = s.cv(0, 0);
     pointer_cv[2] = 10.0;
 
@@ -288,6 +287,7 @@ MINI_TEST("NurbsSurface", "Control Vertices Access") {
     const Point cv = s.get_cv(0, 0);
 
     MINI_CHECK(cv == Point(0, 0, 10));
+
     double x;
     double y;
     double z;
@@ -299,6 +299,7 @@ MINI_TEST("NurbsSurface", "Control Vertices Access") {
     s.set_cv(0, 0, Point(0, 0, 5));
 
     MINI_CHECK(s.get_cv(0, 0) == Point(0, 0, 5));
+
     s.set_cv_4d(0, 0, 0, 0, 4, 0.5);
 
     MINI_CHECK(s.get_cv(0, 0) == Point(0, 0, 8));
@@ -354,6 +355,7 @@ MINI_TEST("NurbsSurface", "NurbsKnot Access") {
 
     MINI_CHECK(is_set);
     MINI_CHECK(s.nurbsknot(0, 2) == 0.5);
+
     is_set = s.set_nurbsknot(0, 2, 0.0);
 
     MINI_CHECK(is_set);
@@ -844,6 +846,7 @@ MINI_TEST("NurbsSurface", "Modification") {
     s_rat.set_weight(2, 2, 3.0);
 
     MINI_CHECK(s.point_at(0.5, 0.5) != s_rat.point_at(0.5, 0.5));
+
     s_rat.make_non_rational();
 
     MINI_CHECK(s.point_at(0.5, 0.5) == s_rat.point_at(0.5, 0.5));
@@ -1026,9 +1029,9 @@ MINI_TEST("NurbsSurface", "Split By Plane") {
     MINI_CHECK(parts.size() == 2);
 
     for (const NurbsSurfaceTrimmed& ts : parts) {
-        MINI_CHECK(ts.is_trimmed());
         const Mesh m = ts.mesh_q(20.0, 0.005);
 
+        MINI_CHECK(ts.is_trimmed());
         MINI_CHECK(m.number_of_faces() > 0);
     }
 
@@ -1107,9 +1110,9 @@ MINI_TEST("NurbsSurface", "Split By Surface") {
     MINI_CHECK(parts.size() == 2);
 
     for (const NurbsSurfaceTrimmed& ts : parts) {
-        MINI_CHECK(ts.is_trimmed());
         const Mesh m = ts.mesh_q(20.0, 0.005);
 
+        MINI_CHECK(ts.is_trimmed());
         MINI_CHECK(m.number_of_faces() > 0);
     }
 }
@@ -1137,9 +1140,9 @@ MINI_TEST("NurbsSurface", "Split By Brep") {
     MINI_CHECK(parts.size() == 2);
 
     for (const NurbsSurfaceTrimmed& ts : parts) {
-        MINI_CHECK(ts.is_trimmed());
         const Mesh m = ts.mesh_q(20.0, 0.005);
 
+        MINI_CHECK(ts.is_trimmed());
         MINI_CHECK(m.number_of_faces() > 0);
     }
 }
