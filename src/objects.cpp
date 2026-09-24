@@ -1,5 +1,7 @@
 #include "objects.h"
 #include "objects.pb.h"
+#include <iterator>
+#include <stdexcept>
 
 namespace session_cpp {
 
@@ -40,8 +42,7 @@ std::shared_ptr<std::vector<std::shared_ptr<Element>>> clone_elements(
     const std::shared_ptr<std::vector<std::shared_ptr<Element>>>& source
 ) {
 
-    std::shared_ptr<std::vector<std::shared_ptr<Element>>> out =
-        std::make_shared<std::vector<std::shared_ptr<Element>>>();
+    std::shared_ptr<std::vector<std::shared_ptr<Element>>> out = std::make_shared<std::vector<std::shared_ptr<Element>>>();
 
     if (!source)
         return out;
@@ -66,7 +67,9 @@ std::shared_ptr<std::vector<std::shared_ptr<Element>>> clone_elements(
 }
 
 /// A load is not a duplicate: the loaded object is moved in, feature guids included, and its guid put back.
-template <class T> std::shared_ptr<T> keep_guid(T&& loaded) {
+template <class T>
+std::shared_ptr<T> keep_guid(T&& loaded) {
+
     const std::string guid = loaded.guid();
     std::shared_ptr<T> out = std::make_shared<T>(std::move(loaded));
     out->guid() = guid;
@@ -75,7 +78,8 @@ template <class T> std::shared_ptr<T> keep_guid(T&& loaded) {
 }
 
 /// Serialize every object of a list to JSON.
-template <class T> std::vector<nlohmann::ordered_json> dump_list(const std::vector<std::shared_ptr<T>>& list) {
+template <class T>
+std::vector<nlohmann::ordered_json> dump_list(const std::vector<std::shared_ptr<T>>& list) {
 
     std::vector<nlohmann::ordered_json> out;
     out.reserve(list.size());
@@ -87,7 +91,8 @@ template <class T> std::vector<nlohmann::ordered_json> dump_list(const std::vect
 }
 
 /// Load every object under key into the list, keeping guids.
-template <class T> void load_list(const nlohmann::json& data, const char* key, std::vector<std::shared_ptr<T>>& list) {
+template <class T>
+void load_list(const nlohmann::json& data, const std::string& key, std::vector<std::shared_ptr<T>>& list) {
 
     if (!data.contains(key))
         return;
@@ -98,30 +103,56 @@ template <class T> void load_list(const nlohmann::json& data, const char* key, s
         list.push_back(keep_guid(T::jsonload(item)));
 }
 
-/// Serialize every object of a list into a repeated proto field.
-template <class T, class R> void dump_pb_list(const std::vector<std::shared_ptr<T>>& list, R* repeated) {
+/// Convert every object of a list into a repeated proto field.
+template <class T, class R>
+void dump_pb_list(const std::vector<std::shared_ptr<T>>& list, R* repeated) {
+
+    repeated->Reserve(static_cast<int>(list.size()));
+
     for (const std::shared_ptr<T>& item : list)
-        repeated->Add()->ParseFromString(item->pb_dumps());
+        *repeated->Add() = item->to_proto();
 }
 
 /// Load every message of a repeated proto field into the list, keeping guids.
-template <class T, class R> void load_pb_list(const R& repeated, std::vector<std::shared_ptr<T>>& list) {
+template <class T, class R>
+void load_pb_list(const R& repeated, std::vector<std::shared_ptr<T>>& list) {
+
+    list.reserve(repeated.size());
+
     for (const typename R::value_type& item : repeated)
-        list.push_back(keep_guid(T::pb_loads(item.SerializeAsString())));
+        list.push_back(keep_guid(T::from_proto(item)));
 }
 
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Component
+// Component accessors
 // ═══════════════════════════════════════════════════════════════════════════
+const std::string& Component::guid() const {
 
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
+}
+
+std::string& Component::guid() {
+
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Component JSON
+// ═══════════════════════════════════════════════════════════════════════════
 nlohmann::ordered_json Component::jsondump() const {
 
-    nlohmann::ordered_json data = extra;
-    data["type"] = type_name;
+    nlohmann::json data = extra;
     data["guid"] = guid();
     data["name"] = name;
+    data["type"] = type_name;
 
     return data;
 }
@@ -129,18 +160,21 @@ nlohmann::ordered_json Component::jsondump() const {
 Component Component::jsonload(const nlohmann::json& data) {
 
     Component component;
-    component.type_name = data.value("type", "");
     component.guid() = data.value("guid", ::guid());
     component.name = data.value("name", "my_component");
+    component.type_name = data.value("type", "");
     component.extra = data;
-    component.extra.erase("type");
     component.extra.erase("guid");
     component.extra.erase("name");
+    component.extra.erase("type");
 
     return component;
 }
 
-std::string Component::pb_dumps() const {
+// ═══════════════════════════════════════════════════════════════════════════
+// Component protobuf
+// ═══════════════════════════════════════════════════════════════════════════
+session_proto::Component Component::to_proto() const {
 
     session_proto::Component proto;
     proto.set_type_name(type_name);
@@ -148,26 +182,41 @@ std::string Component::pb_dumps() const {
     proto.set_name(name);
     proto.set_json_data(extra.dump());
 
-    return proto.SerializeAsString();
+    return proto;
+}
+
+Component Component::from_proto(const session_proto::Component& proto) {
+
+    Component component;
+    component.type_name = proto.type_name();
+    component.guid() = proto.guid();
+    component.name = proto.name();
+
+    const nlohmann::ordered_json extra = nlohmann::ordered_json::parse(proto.json_data(), nullptr, false);
+
+    if (!extra.is_discarded())
+        component.extra = extra;
+
+    return component;
+}
+
+std::string Component::pb_dumps() const {
+    return to_proto().SerializeAsString();
 }
 
 Component Component::pb_loads(const std::string& data) {
 
     session_proto::Component proto;
-    proto.ParseFromString(data);
-    Component component;
-    component.type_name = proto.type_name();
-    component.guid() = proto.guid();
-    component.name = proto.name();
-    component.extra = nlohmann::ordered_json::parse(proto.json_data(), nullptr, false);
 
-    return component;
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Component protobuf data");
+
+    return from_proto(proto);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Objects
+// Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 Objects::Objects(std::string name) : name(std::move(name)) {
 
     points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
@@ -201,25 +250,43 @@ Objects::Objects(const Objects& other) : name(other.name) {
     nurbssurfaces = clone_list(other.nurbssurfaces);
     breps = clone_list(other.breps);
     elements = clone_elements(other.elements);
-    components =
-        std::make_shared<std::vector<Component>>(other.components ? *other.components : std::vector<Component>{});
+    components = std::make_shared<std::vector<Component>>(other.components ? *other.components : std::vector<Component>{});
     instances = clone_list(other.instances);
 }
 
 Objects& Objects::operator=(const Objects& other) {
 
-    if (this != &other) {
-        Objects copy(other);
-        *this = std::move(copy);
-    }
+    if (this == &other)
+        return *this;
+
+    Objects copy(other);
+    *this = std::move(copy);
 
     return *this;
 }
 
-std::string Objects::str() const {
-    return fmt::format("Objects(name={}, guid={}, points={})", name, guid(), points->size());
+// ═══════════════════════════════════════════════════════════════════════════
+// Accessors
+// ═══════════════════════════════════════════════════════════════════════════
+const std::string& Objects::guid() const {
+
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
 }
 
+std::string& Objects::guid() {
+
+    if (_guid.empty())
+        _guid = ::guid();
+
+    return _guid;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON
+// ═══════════════════════════════════════════════════════════════════════════
 nlohmann::ordered_json Objects::jsondump() const {
 
     std::vector<nlohmann::ordered_json> components_json;
@@ -228,24 +295,25 @@ nlohmann::ordered_json Objects::jsondump() const {
     for (const Component& component : *components)
         components_json.push_back(component.jsondump());
 
-    return nlohmann::ordered_json{
-        {"type", "Objects"},
-        {"guid", guid()},
-        {"name", name},
-        {"bboxes", dump_list(*bboxes)},
-        {"breps", dump_list(*breps)},
-        {"components", components_json},
-        {"elements", dump_list(*elements)},
-        {"instances", dump_list(*instances)},
-        {"lines", dump_list(*lines)},
-        {"meshes", dump_list(*meshes)},
-        {"nurbscurves", dump_list(*nurbscurves)},
-        {"nurbssurfaces", dump_list(*nurbssurfaces)},
-        {"planes", dump_list(*planes)},
-        {"pointclouds", dump_list(*pointclouds)},
-        {"points", dump_list(*points)},
-        {"polylines", dump_list(*polylines)}
-    };
+    nlohmann::ordered_json data;
+    data["bboxes"] = dump_list(*bboxes);
+    data["breps"] = dump_list(*breps);
+    data["components"] = components_json;
+    data["elements"] = dump_list(*elements);
+    data["guid"] = guid();
+    data["instances"] = dump_list(*instances);
+    data["lines"] = dump_list(*lines);
+    data["meshes"] = dump_list(*meshes);
+    data["name"] = name;
+    data["nurbscurves"] = dump_list(*nurbscurves);
+    data["nurbssurfaces"] = dump_list(*nurbssurfaces);
+    data["planes"] = dump_list(*planes);
+    data["pointclouds"] = dump_list(*pointclouds);
+    data["points"] = dump_list(*points);
+    data["polylines"] = dump_list(*polylines);
+    data["type"] = "Objects";
+
+    return data;
 }
 
 Objects Objects::jsonload(const nlohmann::json& data) {
@@ -265,9 +333,11 @@ Objects Objects::jsonload(const nlohmann::json& data) {
     load_list(data, "points", *objects.points);
     load_list(data, "polylines", *objects.polylines);
 
-    if (data.contains("components"))
-        for (const nlohmann::json& item : data["components"])
-            objects.components->push_back(Component::jsonload(item));
+    if (!data.contains("components"))
+        return objects;
+
+    for (const nlohmann::json& item : data["components"])
+        objects.components->push_back(Component::jsonload(item));
 
     return objects;
 }
@@ -281,17 +351,22 @@ Objects Objects::file_json_loads(const std::string& json_string) {
 }
 
 void Objects::file_json_dump(const std::string& filename) const {
+
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
 
 Objects Objects::file_json_load(const std::string& filename) {
+
     std::ifstream file(filename);
 
     return jsonload(nlohmann::json::parse(file));
 }
 
-std::string Objects::pb_dumps() const {
+// ═══════════════════════════════════════════════════════════════════════════
+// Protobuf
+// ═══════════════════════════════════════════════════════════════════════════
+session_proto::Objects Objects::to_proto() const {
 
     session_proto::Objects proto;
     proto.set_name(name);
@@ -312,17 +387,15 @@ std::string Objects::pb_dumps() const {
     dump_pb_list(*elements, proto.mutable_elements());
 
     for (const Component& component : *components)
-        proto.add_components()->ParseFromString(component.pb_dumps());
+        *proto.add_components() = component.to_proto();
 
     dump_pb_list(*instances, proto.mutable_instances());
 
-    return proto.SerializeAsString();
+    return proto;
 }
 
-Objects Objects::pb_loads(const std::string& data) {
+Objects Objects::from_proto(const session_proto::Objects& proto) {
 
-    session_proto::Objects proto;
-    proto.ParseFromString(data);
     Objects objects(proto.name());
 
     if (!proto.guid().empty())
@@ -343,27 +416,55 @@ Objects Objects::pb_loads(const std::string& data) {
         objects.elements->push_back(Element::pb_loads_polymorphic(element.SerializeAsString()));
 
     for (const session_proto::Component& component : proto.components())
-        objects.components->push_back(Component::pb_loads(component.SerializeAsString()));
+        objects.components->push_back(Component::from_proto(component));
 
     load_pb_list(proto.instances(), *objects.instances);
 
     return objects;
 }
 
+std::string Objects::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
+
+Objects Objects::pb_loads(const std::string& data) {
+
+    session_proto::Objects proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Objects protobuf data");
+
+    return from_proto(proto);
+}
+
 void Objects::pb_dump(const std::string& filename) const {
-    std::string data = pb_dumps();
+
+    const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
 Objects Objects::pb_load(const std::string& filename) {
+
     std::ifstream file(filename, std::ios::binary);
-    std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
     return pb_loads(data);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
+std::string Objects::str() const {
+    return fmt::format("Objects(name={}, guid={}, points={})", name, guid(), points->size());
+}
+
+std::string Objects::repr() const {
+    return str();
 }
 
 std::ostream& operator<<(std::ostream& os, const Objects& objects) {
     return os << objects.str();
 }
+
 } // namespace session_cpp
