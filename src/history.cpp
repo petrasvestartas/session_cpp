@@ -23,22 +23,32 @@ Item clone(const Item& obj) {
     return snapshot;
 }
 
+/// A deep copy of one geometry that keeps its guid.
+template <typename T>
+static Geometry snapshot(const std::shared_ptr<T>& live) {
+
+    std::shared_ptr<T> copy = std::make_shared<T>(*live);
+    copy->guid() = live->guid();
+
+    return copy;
+}
+
+/// A deep copy of one element that keeps its guid and its feature guids.
+static Geometry snapshot(const std::shared_ptr<Element>& live) {
+
+    std::vector<ElementFeature> features = clone(live->features());
+    std::shared_ptr<Element> copy = live->clone();
+    copy->set_features(std::move(features));
+    copy->guid() = live->guid();
+
+    return copy;
+}
+
 Geometry clone(const Geometry& obj) {
 
     return std::visit(
-        [](const auto& live) -> Geometry {
-            using P = typename std::decay_t<decltype(live)>::element_type;
-            if constexpr (std::is_same_v<P, Element>) {
-                std::vector<ElementFeature> features = clone(live->features());
-                std::shared_ptr<Element> snapshot = live->clone();
-                snapshot->set_features(std::move(features));
-                snapshot->guid() = live->guid();
-                return snapshot;
-            } else {
-                std::shared_ptr<P> snapshot = std::make_shared<P>(*live);
-                snapshot->guid() = live->guid();
-                return snapshot;
-            }
+        [](const auto& live) {
+            return snapshot(live);
         },
         obj
     );
@@ -58,7 +68,6 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
-
 Tombstone::Tombstone(
     const std::string& guid,
     const Item& obj,
@@ -127,6 +136,17 @@ std::string ReplaceOp::repr() const {
     return fmt::format("replace({})", guid);
 }
 
+XformOp::XformOp(const std::string& guid, const std::optional<Xform>& before, const std::optional<Xform>& after)
+    : guid(guid), before(before), after(after) {}
+
+std::string XformOp::str() const {
+    return fmt::format("xform({})", guid);
+}
+
+std::string XformOp::repr() const {
+    return fmt::format("xform({})", guid);
+}
+
 DefinitionOp::DefinitionOp(
     const std::string& guid,
     const std::optional<Geometry>& before,
@@ -142,17 +162,6 @@ std::string DefinitionOp::repr() const {
     return fmt::format("definition({})", guid);
 }
 
-XformOp::XformOp(const std::string& guid, const std::optional<Xform>& before, const std::optional<Xform>& after)
-    : guid(guid), before(before), after(after) {}
-
-std::string XformOp::str() const {
-    return fmt::format("xform({})", guid);
-}
-
-std::string XformOp::repr() const {
-    return fmt::format("xform({})", guid);
-}
-
 Transaction::Transaction(std::string label) : label(std::move(label)) {}
 
 std::string Transaction::str() const {
@@ -166,7 +175,6 @@ std::string Transaction::repr() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // History
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool History::can_undo() const {
     return !undo_stack.empty();
 }
@@ -180,6 +188,7 @@ int History::depth() const {
 }
 
 void History::begin(const std::string& label) {
+
     commit();
     current = Transaction(label);
 }
@@ -200,6 +209,7 @@ void History::commit() {
 }
 
 void History::record(const Op& op) {
+
     if (!current)
         return;
 
@@ -243,6 +253,7 @@ bool History::redo(Session& session) {
 }
 
 void History::clear() {
+
     undo_stack.clear();
     redo_stack.clear();
     current.reset();
@@ -250,42 +261,30 @@ void History::clear() {
 
 void History::_revert(const Op& op, Session& session) {
 
-    std::visit(
-        [&](const auto& record) {
-            using T = std::decay_t<decltype(record)>;
-            if constexpr (std::is_same_v<T, AddOp>)
-                session._detach(record.guid);
-            else if constexpr (std::is_same_v<T, RemoveOp>)
-                session._attach(record);
-            else if constexpr (std::is_same_v<T, ReplaceOp>)
-                session._swap(record.guid, clone(record.before));
-            else if constexpr (std::is_same_v<T, DefinitionOp>)
-                session._define(record.guid, record.before ? std::optional<Geometry>(clone(*record.before)) : std::nullopt);
-            else
-                session._place(record.guid, record.before);
-        },
-        op
-    );
+    if (const AddOp* add = std::get_if<AddOp>(&op))
+        session._detach(add->guid);
+    else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
+        session._attach(*remove);
+    else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
+        session._swap(replace->guid, clone(replace->before));
+    else if (const XformOp* xform = std::get_if<XformOp>(&op))
+        session._place(xform->guid, xform->before);
+    else if (const DefinitionOp* definition = std::get_if<DefinitionOp>(&op))
+        session._define(definition->guid, definition->before ? std::optional<Geometry>(clone(*definition->before)) : std::nullopt);
 }
 
 void History::_apply(const Op& op, Session& session) {
 
-    std::visit(
-        [&](const auto& record) {
-            using T = std::decay_t<decltype(record)>;
-            if constexpr (std::is_same_v<T, AddOp>)
-                session._attach(record);
-            else if constexpr (std::is_same_v<T, RemoveOp>)
-                session._detach(record.guid);
-            else if constexpr (std::is_same_v<T, ReplaceOp>)
-                session._swap(record.guid, clone(record.after));
-            else if constexpr (std::is_same_v<T, DefinitionOp>)
-                session._define(record.guid, record.after ? std::optional<Geometry>(clone(*record.after)) : std::nullopt);
-            else
-                session._place(record.guid, record.after);
-        },
-        op
-    );
+    if (const AddOp* add = std::get_if<AddOp>(&op))
+        session._attach(*add);
+    else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
+        session._detach(remove->guid);
+    else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
+        session._swap(replace->guid, clone(replace->after));
+    else if (const XformOp* xform = std::get_if<XformOp>(&op))
+        session._place(xform->guid, xform->after);
+    else if (const DefinitionOp* definition = std::get_if<DefinitionOp>(&op))
+        session._define(definition->guid, definition->after ? std::optional<Geometry>(clone(*definition->after)) : std::nullopt);
 }
 
 std::string History::str() const {

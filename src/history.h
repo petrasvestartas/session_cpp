@@ -27,7 +27,6 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features);
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Everything needed to put one object back into every live table of a session.
 class Tombstone {
 public:
@@ -139,10 +138,10 @@ public:
 /// A definition added (nullopt before), removed (nullopt after) or replaced.
 class DefinitionOp {
 public:
-    std::string kind = "definition";      // Always "definition".
-    std::string guid;                     // The definition's guid.
-    std::optional<Geometry> before;       // Snapshot before, nullopt when it was added.
-    std::optional<Geometry> after;        // Snapshot after, nullopt when it was removed.
+    std::string kind = "definition"; // Always "definition".
+    std::string guid;                // The definition's guid.
+    std::optional<Geometry> before;  // Snapshot before, nullopt when it was added.
+    std::optional<Geometry> after;   // Snapshot after, nullopt when it was removed.
 
     /// Construct from the guid and the before and after snapshots.
     DefinitionOp(const std::string& guid, const std::optional<Geometry>& before, const std::optional<Geometry>& after);
@@ -176,7 +175,6 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 // History
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// CAD-style undo/redo over a Session, in memory only: records exist between `begin` and `commit`, every save purges them.
 class History {
 public:
@@ -184,6 +182,9 @@ public:
     std::vector<Transaction> redo_stack; // Undone transactions, cleared the moment a new transaction commits.
     std::optional<Transaction> current;  // The open transaction, nullopt between commit and the next begin.
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether a committed transaction can be undone.
     bool can_undo() const;
 
@@ -193,6 +194,9 @@ public:
     /// Return the number of committed transactions.
     int depth() const;
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Transactions
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Open a transaction; an already open one is committed first so no op is lost.
     void begin(const std::string& label);
 
@@ -211,6 +215,9 @@ public:
     /// Drop every transaction, open or committed.
     void clear();
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
     /// Return a string representation of the history.
     std::string str() const;
 
