@@ -1248,7 +1248,7 @@ bool Session::replace(const std::string& guid, const Geometry& obj) {
 
     if (from == to.first) {
 
-        const Entry entry(false, get_node(guid), 0);
+        const Entry entry(false, get_node(guid), nullptr);
 
         if (history.current)
             history.record(ReplaceOp(guid, before, obj, entry), bytes);
@@ -1297,12 +1297,12 @@ bool Session::replace_definition(const std::string& guid, const Geometry& defini
 
     if (from == to) {
 
-        const std::optional<size_t> slot = slot_of(definitions, from, guid);
+        const std::shared_ptr<Tomb> tomb = _half(true, from, guid);
 
-        if (!slot)
+        if (!tomb)
             return false;
 
-        const Entry entry(true, nullptr, *slot);
+        const Entry entry(true, nullptr, tomb);
 
         if (history.current)
             history.record(ReplaceOp(guid, before, definition, entry), bytes);
@@ -2448,10 +2448,10 @@ void Session::_swap(const std::string& guid, const Item& obj, const Entry& entry
 
         const Geometry* geometry = std::get_if<Geometry>(&obj);
 
-        if (!geometry || _is_live(guid) || slot_of(definitions, target.first, guid) != entry.slot)
+        if (!geometry || _is_live(guid) || slot_of(definitions, target.first, guid) != entry.tomb->slot)
             return;
 
-        store(definitions, target.first, entry.slot, obj);
+        store(definitions, target.first, entry.tomb->slot, obj);
         definition_lookup[guid] = *geometry;
     } else {
 

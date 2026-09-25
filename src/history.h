@@ -107,15 +107,15 @@ public:
     );
 };
 
-/// The entry a replace was taken on: an object by its tree node at record time (nullptr outside the tree) or a definition by its slot.
+/// The entry a replace was taken on: an object by its tree node at record time (nullptr outside the tree) or a definition by the tomb pinning its slot.
 class Entry {
 public:
     bool definition;                // Whether the entry is a definition.
     std::shared_ptr<TreeNode> node; // An object's tree node at record time; nullptr outside the tree or for a definition.
-    size_t slot;                    // A definition's slot; 0 for an object.
+    std::shared_ptr<Tomb> tomb;     // A definition's slot-only tomb, moved with its slot by compaction; nullptr for an object.
 
-    /// Construct an object entry from its node or a definition entry from its slot.
-    Entry(bool definition, std::shared_ptr<TreeNode> node, size_t slot);
+    /// Construct an object entry from its node or a definition entry from its slot's tomb.
+    Entry(bool definition, std::shared_ptr<TreeNode> node, std::shared_ptr<Tomb> tomb);
 };
 
 /// The object or definition under `guid` was swapped: the stored pointers before and after, never copies.

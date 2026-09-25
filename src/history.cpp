@@ -185,8 +185,8 @@ RemoveOp::RemoveOp(
     kind = "remove";
 }
 
-Entry::Entry(bool definition, std::shared_ptr<TreeNode> node, size_t slot)
-    : definition(definition), node(std::move(node)), slot(slot) {}
+Entry::Entry(bool definition, std::shared_ptr<TreeNode> node, std::shared_ptr<Tomb> tomb)
+    : definition(definition), node(std::move(node)), tomb(std::move(tomb)) {}
 
 ReplaceOp::ReplaceOp(const std::string& guid, const Item& before, const Item& after, Entry entry)
     : guid(guid), before(before), after(after), entry(std::move(entry)) {}

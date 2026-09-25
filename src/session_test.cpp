@@ -2721,4 +2721,37 @@ MINI_TEST("Session", "Checkpoint Twin Xform") {
     MINI_CHECK(loaded.xform(instance->guid()) == session.xform(instance->guid()));
 }
 
+MINI_TEST("Session", "Checkpoint Keeps Replaced Definition") {
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    const std::shared_ptr<Point> c = std::make_shared<Point>(2.0, 0.0, 0.0);
+    const std::string guid = b->guid();
+    c->guid() = guid;
+    session.add_definition(a);
+    session.add_definition(b);
+    session.remove_definition(a->guid());
+    session.begin("swap");
+    session.replace_definition(guid, c);
+    session.commit();
+    std::optional<std::string> data = session.checkpoint(1);
+
+    while (!data)
+        data = session.checkpoint(1);
+
+    const bool moved = session.definitions.points->get_slot(guid) == 0;
+    const bool undone = session.undo();
+
+    MINI_CHECK(moved);
+    MINI_CHECK(undone);
+    MINI_CHECK(session.definition_lookup.at(guid) == Geometry(b));
+    MINI_CHECK(session.definitions.points->get_item(0) == b);
+
+    session.redo();
+
+    MINI_CHECK(session.definition_lookup.at(guid) == Geometry(c));
+    MINI_CHECK(session.definitions.points->get_item(0) == c);
+}
+
 } // namespace session_cpp
