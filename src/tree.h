@@ -29,6 +29,7 @@ private:
     size_t _at = 0; // Raw index in the parent's children.
     bool _queued = false; // Whether Session.sweep holds this parent.
     std::optional<std::pair<size_t, size_t>> _cursor; // (read, write) while a compaction is part way.
+    bool _kept = false; // Whether the last compaction kept a dead child.
 
 public:
     std::string name; // Object guid or group label.
@@ -99,6 +100,9 @@ public:
     /// Return whether Session.sweep holds this node.
     bool is_queued() const;
 
+    /// Return whether the last finished compaction kept a dead child a record still pins.
+    bool has_dead() const;
+
     /// Return whether a node is a child, dead or alive.
     bool has_child(const std::shared_ptr<TreeNode>& child) const;
 
@@ -165,6 +169,12 @@ public:
 private:
     /// Return the raw index of a child, O(1) through its _at, or nullopt when not a child.
     std::optional<size_t> _position(const std::shared_ptr<TreeNode>& child) const;
+
+    /// Return the protobuf bytes of this node before its children: guid and name.
+    std::string _head() const;
+
+    /// Return the protobuf bytes of this node after its children: its colour.
+    std::string _tail() const;
 };
 
 /// Write the node string to a stream.

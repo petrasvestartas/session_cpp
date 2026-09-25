@@ -19,6 +19,8 @@
 
 namespace session_proto {
 class Graph;
+class Vertex;
+class Edge;
 }
 
 namespace session_cpp {
@@ -165,6 +167,8 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 /// An undirected graph with string vertices, string labels and double attributes.
 class Graph {
+    friend class Session;
+
 private:
     mutable std::string _guid; // Lazily minted GUID.
     std::map<std::string, Vertex> vertices; // name -> Vertex.
@@ -392,6 +396,12 @@ private:
 
     /// Renumber edge indices 0, 1, 2, ... keeping their relative order.
     void _reassign_edge_indices();
+
+    /// Fill a protobuf vertex, its guid only when minted.
+    static void _to_proto(const Vertex& vertex, session_proto::Vertex& proto);
+
+    /// Fill a protobuf edge, its guid only when minted.
+    static void _to_proto(const Edge& edge, session_proto::Edge& proto);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

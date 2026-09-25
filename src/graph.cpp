@@ -284,6 +284,35 @@ void Graph::_reassign_edge_indices() {
     edge_count = static_cast<int>(list.size());
 }
 
+void Graph::_to_proto(const Vertex& vertex, session_proto::Vertex& proto) {
+
+    proto.set_name(vertex.name);
+
+    if (vertex.has_guid())
+        proto.set_guid(vertex.guid());
+
+    proto.set_attribute(vertex.attribute);
+    proto.set_index(vertex.index);
+
+    for (const std::pair<const std::string, double>& attribute : vertex.attributes)
+        (*proto.mutable_attributes())[attribute.first] = attribute.second;
+}
+
+void Graph::_to_proto(const Edge& edge, session_proto::Edge& proto) {
+
+    if (edge.has_guid())
+        proto.set_guid(edge.guid());
+
+    proto.set_name(edge.name);
+    proto.set_v0(edge.v0);
+    proto.set_v1(edge.v1);
+    proto.set_attribute(edge.attribute);
+    proto.set_index(edge.index);
+
+    for (const std::pair<const std::string, double>& attribute : edge.attributes)
+        (*proto.mutable_attributes())[attribute.first] = attribute.second;
+}
+
 std::vector<Vertex> Graph::get_vertices() const {
 
     std::vector<Vertex> result;
@@ -871,39 +900,15 @@ session_proto::Graph Graph::to_proto() const {
     for (const std::pair<const std::string, double>& attribute : default_edge_attributes)
         (*proto.mutable_default_edge_attributes())[attribute.first] = attribute.second;
 
-    for (const std::pair<const std::string, Vertex>& vertex : vertices) {
-        session_proto::Vertex& v = (*proto.mutable_vertices())[vertex.first];
-        v.set_name(vertex.second.name);
-
-        if (vertex.second.has_guid())
-            v.set_guid(vertex.second.guid());
-
-        v.set_attribute(vertex.second.attribute);
-        v.set_index(vertex.second.index);
-
-        for (const std::pair<const std::string, double>& attribute : vertex.second.attributes)
-            (*v.mutable_attributes())[attribute.first] = attribute.second;
-    }
+    for (const std::pair<const std::string, Vertex>& vertex : vertices)
+        _to_proto(vertex.second, (*proto.mutable_vertices())[vertex.first]);
 
     for (const std::pair<const std::string, std::map<std::string, Edge>>& adjacency : edges) {
         for (const std::pair<const std::string, Edge>& neighbor : adjacency.second) {
             if (adjacency.first > neighbor.first)
                 continue;
 
-            const Edge& edge = neighbor.second;
-            session_proto::Edge* e = proto.add_edges();
-
-            if (edge.has_guid())
-                e->set_guid(edge.guid());
-
-            e->set_name(edge.name);
-            e->set_v0(edge.v0);
-            e->set_v1(edge.v1);
-            e->set_attribute(edge.attribute);
-            e->set_index(edge.index);
-
-            for (const std::pair<const std::string, double>& attribute : edge.attributes)
-                (*e->mutable_attributes())[attribute.first] = attribute.second;
+            _to_proto(neighbor.second, *proto.add_edges());
         }
     }
 

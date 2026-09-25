@@ -12,6 +12,19 @@
 
 namespace session_cpp {
 
+namespace {
+
+/// Set the display colour of a protobuf node.
+void color_to_proto(const Color& color, session_proto::TreeNode& proto) {
+
+    proto.mutable_color()->set_r(color.r);
+    proto.mutable_color()->set_g(color.g);
+    proto.mutable_color()->set_b(color.b);
+    proto.mutable_color()->set_a(color.a);
+}
+
+} // namespace
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TreeNode
 // ═══════════════════════════════════════════════════════════════════════════
@@ -92,6 +105,10 @@ bool TreeNode::is_queued() const {
     return _queued;
 }
 
+bool TreeNode::has_dead() const {
+    return _kept;
+}
+
 bool TreeNode::has_child(const std::shared_ptr<TreeNode>& child) const {
     return _position(child).has_value();
 }
@@ -106,6 +123,25 @@ std::optional<size_t> TreeNode::_position(const std::shared_ptr<TreeNode>& child
             return i;
 
     return std::nullopt;
+}
+
+std::string TreeNode::_head() const {
+
+    session_proto::TreeNode proto;
+    proto.set_guid(guid());
+    proto.set_name(name);
+
+    return proto.SerializeAsString();
+}
+
+std::string TreeNode::_tail() const {
+
+    session_proto::TreeNode proto;
+
+    if (color)
+        color_to_proto(*color, proto);
+
+    return proto.SerializeAsString();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -211,6 +247,9 @@ size_t TreeNode::compact_step(size_t work) {
     if (work == 0)
         return 0;
 
+    if (!_cursor)
+        _kept = false;
+
     size_t r = _cursor ? _cursor->first : 0;
     size_t w = _cursor ? _cursor->second : 0;
     size_t examined = 0;
@@ -220,6 +259,8 @@ size_t TreeNode::compact_step(size_t work) {
         const std::shared_ptr<TreeNode>& child = _children[r];
 
         if (!child->_dead || !child->_tomb.expired()) {
+
+            _kept |= child->_dead;
 
             if (w != r) {
                 std::swap(_children[w], _children[r]);
@@ -399,12 +440,8 @@ session_proto::TreeNode node_to_proto(const TreeNode& node) {
     proto.set_name(node.name);
     proto.set_parent_guid("");
 
-    if (node.color) {
-        proto.mutable_color()->set_r(node.color->r);
-        proto.mutable_color()->set_g(node.color->g);
-        proto.mutable_color()->set_b(node.color->b);
-        proto.mutable_color()->set_a(node.color->a);
-    }
+    if (node.color)
+        color_to_proto(*node.color, proto);
 
     for (const TreeNode* child : node.children())
         *proto.add_children() = node_to_proto(*child);

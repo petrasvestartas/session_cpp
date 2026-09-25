@@ -100,15 +100,20 @@ MINI_TEST("History", "Clear") {
 
     session.undo();
     session.history.clear();
+    const size_t dropped = session.history.dropped;
+    const bool due = session.purge_due();
+    const size_t dead = session.number_of_dead();
+    session.purge();
 
     MINI_CHECK(!session.history.can_undo());
     MINI_CHECK(!session.history.can_redo());
     MINI_CHECK(session.history.depth() == 0);
     MINI_CHECK(session.history.bytes == 0);
-    MINI_CHECK(session.history.dropped == 2);
+    MINI_CHECK(dropped == 2);
     MINI_CHECK(session.objects.points->size() == 1);
-    MINI_CHECK(session.objects.points->number_of_dead() == 1);
-    MINI_CHECK(session.objects.points->number_of_slots() == 2);
+    MINI_CHECK(dead == 1);
+    MINI_CHECK(due);
+    MINI_CHECK(session.objects.points->number_of_slots() == 1);
 }
 
 MINI_TEST("History", "Undo Definition") {

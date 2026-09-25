@@ -2,6 +2,7 @@
 #include "session.h"
 #include "file_encoders.h"
 #include "session.pb.h"
+#include <google/protobuf/util/message_differencer.h>
 #include "tolerance.h"
 #include <algorithm>
 #include <filesystem>
@@ -1047,8 +1048,205 @@ MINI_TEST("Session", "History Purged On Save") {
     MINI_CHECK(after_pb == 0);
     MINI_CHECK(before_json == 1);
     MINI_CHECK(session.history.depth() == 0);
+    MINI_CHECK(session.number_of_dead() == 0);
     MINI_CHECK(!session.undo());
     MINI_CHECK(session.objects.points->size() == 2);
+}
+
+MINI_TEST("Session", "Purge On Save") {
+
+    Session session;
+    std::vector<std::string> guids;
+
+    for (int i = 0; i < 5; ++i)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0))->name);
+
+    for (int i : {1, 3}) {
+        session.begin("remove");
+        session.remove_object(guids[i]);
+        session.commit();
+    }
+
+    const std::string bytes = session.pb_dumps();
+    Session loaded = Session::pb_loads(bytes);
+    std::vector<int> indices;
+
+    for (const Vertex& vertex : session.graph.get_vertices())
+        indices.push_back(vertex.index);
+
+    std::sort(indices.begin(), indices.end());
+
+    MINI_CHECK(session.history.depth() == 0);
+    MINI_CHECK(session.number_of_dead() == 0);
+    MINI_CHECK(session.objects.points->number_of_slots() == 3);
+    MINI_CHECK(indices == std::vector<int>({0, 1, 2}));
+    MINI_CHECK(loaded.order() == std::vector<std::string>({guids[0], guids[2], guids[4]}));
+    MINI_CHECK(loaded.pb_dumps() == bytes);
+}
+
+MINI_TEST("Session", "Purge Unreachable") {
+
+    Session session;
+    std::vector<std::string> guids;
+
+    for (int i = 0; i < 70; ++i)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0))->name);
+
+    for (const std::string& guid : guids) {
+        session.begin("remove");
+        session.remove_object(guid);
+        session.commit();
+    }
+
+    const bool due = session.purge_due();
+
+    while (session.purge_step(PURGE_WORK)) {}
+
+    const size_t dead = session.number_of_dead();
+    int undone = 0;
+
+    while (session.undo())
+        undone++;
+
+    MINI_CHECK(due);
+    MINI_CHECK(dead == 64);
+    MINI_CHECK(undone == 64);
+    MINI_CHECK(session.objects.points->size() == 64);
+}
+
+MINI_TEST("Session", "Purge Step") {
+
+    Session session;
+    std::vector<std::string> guids;
+
+    for (int i = 0; i < 10000; ++i)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0))->name);
+
+    session.begin("remove");
+
+    for (size_t i = 0; i < guids.size(); i += 2)
+        session.remove_object(guids[i]);
+
+    session.commit();
+
+    for (int i = 0; i < 64; ++i) {
+        session.begin("move");
+        session.set_xform(guids[1], Xform::translation(static_cast<double>(i), 0.0, 0.0));
+        session.commit();
+    }
+
+    std::vector<std::string> odd;
+
+    for (size_t i = 1; i < guids.size(); i += 2)
+        odd.push_back(guids[i]);
+
+    std::vector<std::string> expected = odd;
+    const bool first = session.purge_step(64);
+    bool ordered = session.order() == expected;
+    int calls = 1;
+
+    while (session.purge_step(64)) {
+
+        calls++;
+
+        if (calls == 10) {
+            session.begin("remove");
+            session.remove_object(guids[3]);
+            session.commit();
+            expected.erase(std::find(expected.begin(), expected.end(), guids[3]));
+        }
+
+        if (calls == 20) {
+            session.undo();
+            expected = odd;
+        }
+
+        if (calls == 30)
+            expected.push_back(session.add_point(std::make_shared<Point>(0.0, 1.0, 0.0))->name);
+
+        ordered &= session.order() == expected;
+    }
+
+    MINI_CHECK(first);
+    MINI_CHECK(calls > 30);
+    MINI_CHECK(ordered);
+    MINI_CHECK(session.order() == expected);
+    MINI_CHECK(session.number_of_dead() == 0);
+    MINI_CHECK(session.objects.points->number_of_slots() == session.objects.points->size());
+    MINI_CHECK(session.tree.root()->children().size() == expected.size());
+}
+
+MINI_TEST("Session", "Checkpoint Keeps History") {
+
+    Session session;
+    const std::shared_ptr<TreeNode> group = session.add_group("group");
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    const std::shared_ptr<Point> c = std::make_shared<Point>(2.0, 0.0, 0.0);
+    const std::string a_guid = a->guid();
+    const std::string b_guid = b->guid();
+    const std::string c_guid = c->guid();
+    session.add_point(a, group);
+    session.add_point(b, group);
+    session.add_point(c);
+    session.set_node_color(group, Color(1.0, 0.0, 0.0, 1.0));
+    session.set_xform("group", Xform::translation(0.0, 0.0, 1.0));
+    session.set_xform(c_guid, Xform::translation(5.0, 0.0, 0.0));
+    session.add_edge(a_guid, c_guid, "touch");
+    const std::string whole = session.checkpoint(SIZE_MAX).value();
+    const std::string copy = Session(session).pb_dumps();
+
+    session.begin("remove");
+    session.remove_object(b_guid);
+    session.commit();
+    std::optional<std::string> bytes;
+    int calls = 0;
+
+    while (!bytes) {
+        bytes = session.checkpoint(16);
+        calls++;
+    }
+
+    const Session loaded = Session::pb_loads(*bytes);
+    session_proto::Session parsed;
+    parsed.ParseFromString(*bytes);
+
+    MINI_CHECK(whole == copy);
+    MINI_CHECK(calls > 1);
+    MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
+    MINI_CHECK(session.history.can_undo());
+    MINI_CHECK(loaded.lookup.count(b_guid) == 0);
+    MINI_CHECK(loaded.order() == session.order());
+    MINI_CHECK(session.undo());
+    MINI_CHECK(session.lookup.count(b_guid) == 1);
+}
+
+MINI_TEST("Session", "Checkpoint Restarts On Edit") {
+
+    Session session;
+    std::vector<std::string> guids;
+
+    for (int i = 0; i < 20; ++i)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0))->name);
+
+    const std::optional<std::string> first = session.checkpoint(10);
+    session.begin("remove");
+    session.remove_object(guids[5]);
+    session.commit();
+    std::optional<std::string> bytes;
+
+    while (!bytes)
+        bytes = session.checkpoint(10);
+
+    const Session loaded = Session::pb_loads(*bytes);
+    session_proto::Session parsed;
+    parsed.ParseFromString(*bytes);
+
+    MINI_CHECK(!first);
+    MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
+    MINI_CHECK(loaded.objects.points->size() == 19);
+    MINI_CHECK(loaded.lookup.count(guids[5]) == 0);
+    MINI_CHECK(session.history.can_undo());
 }
 
 MINI_TEST("Session", "History Capacity") {
@@ -1758,6 +1956,39 @@ MINI_TEST("Session", "Remove Twin Keeps Slot") {
     MINI_CHECK(session.objects.points->empty());
     MINI_CHECK(loaded.objects.points->empty());
     MINI_CHECK(loaded.lookup.count(x->guid()) == 0);
+}
+
+MINI_TEST("Session", "Purge Clears History") {
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    const std::shared_ptr<Point> c = std::make_shared<Point>(2.0, 0.0, 0.0);
+    const std::string a_guid = a->guid();
+    const std::string b_guid = b->guid();
+    const std::string c_guid = c->guid();
+    session.add_point(a);
+    session.add_point(b);
+    session.add_point(c);
+    session.begin("remove");
+    session.remove_object(b_guid);
+    session.commit();
+    session.purge();
+    const bool undone = session.undo();
+    std::vector<int> indices;
+
+    for (const Vertex& vertex : session.graph.get_vertices())
+        indices.push_back(vertex.index);
+
+    std::sort(indices.begin(), indices.end());
+
+    MINI_CHECK(!undone);
+    MINI_CHECK(session.history.depth() == 0);
+    MINI_CHECK(session.order() == std::vector<std::string>({a_guid, c_guid}));
+    MINI_CHECK(indices == std::vector<int>({0, 1}));
+    MINI_CHECK(session.objects.points->number_of_slots() == 2);
+    MINI_CHECK(session.number_of_dead() == 0);
+    MINI_CHECK(session.tree.nodes().size() == 3);
 }
 
 MINI_TEST("Session", "Tree Ops") {

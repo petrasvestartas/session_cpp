@@ -4,7 +4,10 @@
 #include "intersection.h"
 #include "tolerance.h"
 #include "session.pb.h"
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <map>
 #include <utility>
@@ -12,6 +15,112 @@
 namespace session_cpp {
 
 namespace {
+
+constexpr uint64_t LENGTH_DELIMITED = 2; // Protobuf wire type of a message or string field.
+constexpr size_t HEAD = 0;               // Checkpoint phase: the session name and guid.
+constexpr size_t OBJECTS = 1;            // Checkpoint phases 1..=13: the objects lists.
+constexpr size_t TREE = 14;              // Checkpoint phase: the tree, depth first.
+constexpr size_t VERTICES = 15;          // Checkpoint phase: the graph vertices.
+constexpr size_t EDGES = 16;             // Checkpoint phase: the graph edges.
+constexpr size_t ORDERED = 17;           // Checkpoint phases 17..=27: xforms in order() sequence.
+constexpr size_t REST = 28;              // Checkpoint phase: xforms outside order(), by guid.
+constexpr size_t DEFINITIONS = 29;       // Checkpoint phases 29..=41: the definitions lists.
+constexpr size_t INTERACTIONS = 42;      // Checkpoint phase: the interactions, by edge guid.
+constexpr size_t ASSEMBLY = 43;          // Checkpoint phase: the sections joined into one message.
+
+/// Objects field number per COLLECTIONS entry.
+constexpr std::array<int, 13> LISTS = {
+    session_proto::Objects::kPointsFieldNumber,
+    session_proto::Objects::kLinesFieldNumber,
+    session_proto::Objects::kPlanesFieldNumber,
+    session_proto::Objects::kBboxesFieldNumber,
+    session_proto::Objects::kPolylinesFieldNumber,
+    session_proto::Objects::kPointcloudsFieldNumber,
+    session_proto::Objects::kMeshesFieldNumber,
+    session_proto::Objects::kNurbscurvesFieldNumber,
+    session_proto::Objects::kNurbssurfacesFieldNumber,
+    session_proto::Objects::kBrepsFieldNumber,
+    session_proto::Objects::kElementsFieldNumber,
+    session_proto::Objects::kComponentsFieldNumber,
+    session_proto::Objects::kInstancesFieldNumber,
+};
+
+/// Session field number per checkpoint section, 0 for one whose entries carry their own key: head, objects, tree, graph, xforms, definitions, interactions.
+constexpr std::array<int, 7> SECTIONS = {
+    0,
+    session_proto::Session::kObjectsFieldNumber,
+    session_proto::Session::kTreeFieldNumber,
+    session_proto::Session::kGraphFieldNumber,
+    0,
+    session_proto::Session::kDefinitionsFieldNumber,
+    0,
+};
+
+/// Append the key and length of a length-delimited field.
+void frame(std::string& out, int tag, size_t length) {
+
+    for (uint64_t value : {static_cast<uint64_t>(tag) << 3 | LENGTH_DELIMITED, static_cast<uint64_t>(length)}) {
+
+        for (; value >= 0x80; value >>= 7)
+            out.push_back(static_cast<char>(value | 0x80));
+
+        out.push_back(static_cast<char>(value));
+    }
+}
+
+/// Append a message, framed under tag unless it is 0, map entries sorted by key so equal content gives equal bytes.
+void encode(std::string& out, const google::protobuf::MessageLite& message, int tag = 0) {
+
+    const size_t size = message.ByteSizeLong();
+
+    if (tag > 0)
+        frame(out, tag, size);
+
+    google::protobuf::io::StringOutputStream output(&out);
+    google::protobuf::io::CodedOutputStream stream(&output);
+    stream.SetSerializationDeterministic(true);
+    message.SerializeWithCachedSizes(&stream);
+}
+
+/// The name and guid fields of a Graph message.
+session_proto::Graph graph_head(const Graph& graph) {
+
+    session_proto::Graph proto;
+    proto.set_name(graph.name);
+
+    if (graph.has_guid())
+        proto.set_guid(graph.guid());
+
+    return proto;
+}
+
+/// The fields of a Graph message after its edges: the counters and the default attributes.
+session_proto::Graph graph_tail(const Graph& graph) {
+
+    session_proto::Graph proto;
+    proto.set_vertex_count(graph.vertex_count);
+    proto.set_edge_count(graph.edge_count);
+
+    for (const std::pair<const std::string, double>& attribute : graph.default_vertex_attributes)
+        (*proto.mutable_default_vertex_attributes())[attribute.first] = attribute.second;
+
+    for (const std::pair<const std::string, double>& attribute : graph.default_edge_attributes)
+        (*proto.mutable_default_edge_attributes())[attribute.first] = attribute.second;
+
+    return proto;
+}
+
+/// The name and guid fields of an Objects message.
+session_proto::Objects objects_head(const Objects& objects) {
+
+    session_proto::Objects proto;
+    proto.set_name(objects.name);
+
+    if (objects.has_guid())
+        proto.set_guid(objects.guid());
+
+    return proto;
+}
 
 /// Calls f on the Objects list of that name, the C++ spelling of getattr(objects, collection).
 template <typename F> void with_collection(const Objects& objects, const std::string& collection, F&& f) {
@@ -1468,6 +1577,85 @@ bool Session::abort() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Purge
+// ═══════════════════════════════════════════════════════════════════════════
+size_t Session::number_of_dead() const {
+
+    size_t count = 0;
+
+    for (const std::pair<std::string, std::string>& entry : COLLECTIONS) {
+        with_collection(objects, entry.first, [&](const auto& items) {
+            count += items.number_of_dead();
+        });
+        with_collection(definitions, entry.first, [&](const auto& items) {
+            count += items.number_of_dead();
+        });
+    }
+
+    return count;
+}
+
+bool Session::purge_due() const {
+    return history.dropped > 0 && (number_of_dead() > 0 || !_sweep.empty());
+}
+
+bool Session::is_purging() const {
+    return _purging.has_value();
+}
+
+bool Session::purge_step(size_t work) {
+
+    const bool fresh = _writer && _writer->revision == revision;
+
+    if (fresh || (!_purging && !purge_due()))
+        return false;
+
+    _purge(work);
+
+    return _purging.has_value();
+}
+
+void Session::purge() {
+
+    history.clear();
+    _writer.reset();
+
+    if (_purging)
+        _purge(SIZE_MAX);
+
+    _purge(SIZE_MAX);
+
+    for (const std::shared_ptr<TreeNode>& node : tree.nodes())
+        node->compact();
+
+    graph.renumber();
+    revision++;
+}
+
+std::optional<std::string> Session::checkpoint(size_t work) {
+
+    if (_writer && _writer->revision != revision)
+        _writer.reset();
+
+    if (!_writer && (_purging || purge_due()))
+        work = _purge(work);
+
+    if (_purging || work == 0)
+        return std::nullopt;
+
+    if (!_writer)
+        _writer = Checkpoint{revision};
+
+    if (!_write(*_writer, work))
+        return std::nullopt;
+
+    std::string bytes = std::move(_writer->out);
+    _writer.reset();
+
+    return bytes;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Collision detection and ray casting
 // ═══════════════════════════════════════════════════════════════════════════
 OBB Session::compute_bounding_box(const Geometry& geometry, const Xform& xform) {
@@ -1654,9 +1842,9 @@ Session Session::jsonload(const nlohmann::json& data) {
     return session;
 }
 
-std::string Session::file_json_dumps() const {
+std::string Session::file_json_dumps() {
 
-    history.clear();
+    purge();
 
     return jsondump().dump();
 }
@@ -1665,9 +1853,9 @@ Session Session::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
 }
 
-void Session::file_json_dump(const std::string& filename) const {
+void Session::file_json_dump(const std::string& filename) {
 
-    history.clear();
+    purge();
     std::ofstream file(filename);
     file << jsondump().dump(4);
 }
@@ -1747,11 +1935,13 @@ Session Session::from_proto(const session_proto::Session& proto) {
     return session;
 }
 
-std::string Session::pb_dumps() const {
+std::string Session::pb_dumps() {
 
-    history.clear();
+    purge();
+    std::string bytes;
+    encode(bytes, to_proto());
 
-    return to_proto().SerializeAsString();
+    return bytes;
 }
 
 Session Session::pb_loads(const std::string& data) {
@@ -1764,7 +1954,7 @@ Session Session::pb_loads(const std::string& data) {
     return from_proto(proto);
 }
 
-void Session::pb_dump(const std::string& filename) const {
+void Session::pb_dump(const std::string& filename) {
 
     const std::string data = pb_dumps();
     std::ofstream file(filename, std::ios::binary);
@@ -2287,6 +2477,409 @@ std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {
         ordered.emplace_back(entry.first, entry.second);
 
     return ordered;
+}
+
+size_t Session::_purge(size_t work) {
+
+    if (!_purging) {
+        _purging = 0;
+        history.dropped = 0;
+    }
+
+    while (work > 0 && _purging) {
+
+        const size_t phase = *_purging;
+
+        if (phase < 26) {
+
+            size_t spent = 0;
+            bool done = true;
+
+            with_collection(phase < 13 ? objects : definitions, COLLECTIONS[phase % 13].first, [&](auto& items) {
+                if (items.number_of_dead() > 0 || items.is_compacting()) {
+                    spent = items.compact_step(work);
+                    done = !items.is_compacting();
+                }
+            });
+            work -= std::min(spent, work);
+
+            if (done)
+                _purging = phase + 1;
+
+            continue;
+        }
+
+        if (_sweep.empty()) {
+            _sweep.swap(_pinned);
+            _purging.reset();
+            break;
+        }
+
+        const std::shared_ptr<TreeNode> parent = _sweep.back().lock();
+
+        if (!parent) {
+            _sweep.pop_back();
+            --work;
+            continue;
+        }
+
+        work -= std::clamp<size_t>(parent->compact_step(work), 1, work);
+
+        if (parent->is_compacting())
+            continue;
+
+        _sweep.pop_back();
+
+        if (parent->has_dead())
+            _pinned.push_back(parent);
+        else
+            parent->set_queued(false);
+    }
+
+    return work;
+}
+
+bool Session::_write(Checkpoint& writer, size_t work) const {
+
+    while (work > 0) {
+
+        size_t spent = 1;
+
+        if (writer.phase == HEAD) {
+            session_proto::Session head;
+            head.set_name(name);
+
+            if (has_guid())
+                head.set_guid(guid());
+
+            encode(writer.sections[0], head);
+            encode(writer.sections[1], objects_head(objects));
+            writer.phase = OBJECTS;
+        } else if (writer.phase < TREE) {
+            spent = _write_list(writer, false, work);
+        } else if (writer.phase == TREE) {
+            spent = _write_tree(writer, work);
+        } else if (writer.phase < ORDERED) {
+            spent = _write_graph(writer, work);
+        } else if (writer.phase < REST) {
+            spent = _write_ordered(writer, work);
+        } else if (writer.phase == REST) {
+            spent = _write_rest(writer, work);
+        } else if (writer.phase < INTERACTIONS) {
+            spent = _write_list(writer, true, work);
+        } else if (writer.phase == INTERACTIONS) {
+            spent = _write_interactions(writer, work);
+        } else {
+            return _assemble(writer, work);
+        }
+
+        work -= std::clamp<size_t>(spent, 1, work);
+    }
+
+    return false;
+}
+
+size_t Session::_write_list(Checkpoint& writer, bool definition, size_t work) const {
+
+    const size_t list = writer.phase - (definition ? DEFINITIONS : OBJECTS);
+    std::string& buffer = writer.sections[definition ? 5 : 1];
+    const size_t start = writer.cursor;
+    size_t end = start;
+    size_t total = 0;
+
+    with_collection(definition ? definitions : objects, COLLECTIONS[list].first, [&](const auto& items) {
+        using E = typename std::decay_t<decltype(items)>::value_type;
+        total = items.number_of_slots();
+        end = std::min(total, start + std::min(work, total));
+
+        for (size_t slot = start; slot < end; ++slot) {
+
+            if (items.is_dead(slot))
+                continue;
+
+            if constexpr (std::is_same_v<E, Component>)
+                encode(buffer, items.get_item(slot).to_proto(), LISTS[list]);
+            else
+                encode(buffer, items.get_item(slot)->to_proto(), LISTS[list]);
+        }
+    });
+    writer.cursor = end;
+
+    if (end >= total) {
+        writer.cursor = 0;
+        writer.phase++;
+    }
+
+    return end - start;
+}
+
+size_t Session::_write_tree(Checkpoint& writer, size_t work) const {
+
+    if (writer.cursor == 0) {
+
+        writer.cursor = 1;
+        session_proto::Tree head;
+
+        if (tree.has_guid())
+            head.set_guid(tree.guid());
+
+        head.set_name(tree.name);
+        encode(writer.sections[2], head);
+
+        if (const std::shared_ptr<TreeNode> root = tree.root())
+            writer.stack.push_back(Frame{root, 0, root->_head()});
+    }
+
+    size_t spent = 0;
+
+    while (spent < work && !writer.stack.empty()) {
+
+        Frame& top = writer.stack.back();
+        ++spent;
+
+        if (top.next < top.node->_children.size()) {
+
+            const std::shared_ptr<TreeNode> child = top.node->_children[top.next++];
+
+            if (!child->_dead)
+                writer.stack.push_back(Frame{child, 0, child->_head()});
+
+            continue;
+        }
+
+        Frame done = std::move(top);
+        writer.stack.pop_back();
+        done.bytes += done.node->_tail();
+        const bool root = writer.stack.empty();
+        std::string& parent = root ? writer.sections[2] : writer.stack.back().bytes;
+        frame(parent, root ? session_proto::Tree::kRootFieldNumber : session_proto::TreeNode::kChildrenFieldNumber, done.bytes.size());
+        parent += done.bytes;
+    }
+
+    if (writer.stack.empty()) {
+        writer.cursor = 0;
+        writer.phase = VERTICES;
+    }
+
+    return spent;
+}
+
+size_t Session::_write_graph(Checkpoint& writer, size_t work) const {
+
+    std::string& buffer = writer.sections[3];
+    const bool resumed = writer.cursor > 0;
+    size_t spent = 0;
+    bool more = false;
+
+    if (writer.phase == VERTICES) {
+
+        if (!resumed)
+            encode(buffer, graph_head(graph));
+
+        auto it = resumed ? graph.vertices.upper_bound(writer.key) : graph.vertices.begin();
+
+        for (; it != graph.vertices.end() && spent < work; ++it, ++spent) {
+            session_proto::Graph entry;
+            Graph::_to_proto(it->second, (*entry.mutable_vertices())[it->first]);
+            encode(buffer, entry);
+            writer.key = it->first;
+        }
+
+        more = it != graph.vertices.end();
+    } else {
+
+        auto it = resumed ? graph.edges.upper_bound(writer.key) : graph.edges.begin();
+
+        for (; it != graph.edges.end() && spent < work; ++it) {
+
+            for (const std::pair<const std::string, Edge>& neighbor : it->second) {
+
+                if (it->first > neighbor.first)
+                    continue;
+
+                session_proto::Graph entry;
+                Graph::_to_proto(neighbor.second, *entry.add_edges());
+                encode(buffer, entry);
+            }
+
+            writer.key = it->first;
+            spent += std::max<size_t>(it->second.size(), 1);
+        }
+
+        more = it != graph.edges.end();
+    }
+
+    if (more) {
+        writer.cursor++;
+        return spent;
+    }
+
+    if (writer.phase == EDGES)
+        encode(buffer, graph_tail(graph));
+
+    writer.key.clear();
+    writer.cursor = 0;
+    writer.phase++;
+
+    return spent;
+}
+
+size_t Session::_write_ordered(Checkpoint& writer, size_t work) const {
+
+    const size_t start = writer.cursor;
+    size_t end = start;
+    size_t total = 0;
+
+    with_collection(objects, COLLECTIONS[writer.phase - ORDERED].first, [&](const auto& items) {
+        total = items.number_of_slots();
+        end = std::min(total, start + std::min(work, total));
+
+        for (size_t slot = start; slot < end; ++slot) {
+
+            if (items.is_dead(slot))
+                continue;
+
+            const std::string& guid = guid_of(items.get_item(slot));
+            auto it = xforms.find(guid);
+
+            if (it == xforms.end() || !writer.seen.insert(guid).second || it->second.is_identity())
+                continue;
+
+            session_proto::Session entry;
+            session_proto::XformEntry* item = entry.add_xforms();
+            item->set_guid(guid);
+            *item->mutable_xform() = it->second.to_proto();
+            encode(writer.sections[4], entry);
+        }
+    });
+    writer.cursor = end;
+
+    if (end >= total) {
+        writer.cursor = 0;
+        writer.phase++;
+    }
+
+    return end - start;
+}
+
+size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
+
+    size_t spent = 0;
+
+    if (writer.cursor == 0 && writer.seen.size() < xforms.size()) {
+
+        for (const std::pair<const std::string, Xform>& entry : xforms)
+            if (!writer.seen.count(entry.first) && !entry.second.is_identity())
+                writer.rest.push_back(entry.first);
+
+        std::sort(writer.rest.begin(), writer.rest.end());
+        spent = xforms.size();
+    }
+
+    const size_t start = writer.cursor;
+    const size_t end = std::min(writer.rest.size(), start + std::min(work, writer.rest.size()));
+
+    for (size_t i = start; i < end; ++i) {
+        session_proto::Session entry;
+        session_proto::XformEntry* item = entry.add_xforms();
+        item->set_guid(writer.rest[i]);
+        *item->mutable_xform() = xforms.at(writer.rest[i]).to_proto();
+        encode(writer.sections[4], entry);
+    }
+
+    writer.cursor = end;
+
+    if (end < writer.rest.size())
+        return spent + end - start;
+
+    writer.cursor = 0;
+    writer.phase = INTERACTIONS;
+
+    if (!definition_lookup.empty()) {
+        encode(writer.sections[5], objects_head(definitions));
+        writer.phase = DEFINITIONS;
+    }
+
+    return spent + end - start;
+}
+
+size_t Session::_write_interactions(Checkpoint& writer, size_t work) const {
+
+    size_t spent = 0;
+    auto it = writer.cursor > 0 ? interactions.upper_bound(writer.key) : interactions.begin();
+
+    for (; it != interactions.end() && spent < work; ++it, ++spent) {
+
+        session_proto::Session entry;
+        session_proto::InteractionEntry* item = entry.add_interactions();
+        item->set_guid(it->first);
+
+        for (const std::shared_ptr<Interaction>& interaction : it->second)
+            *item->add_interactions() = interaction->to_proto();
+
+        encode(writer.sections[6], entry);
+        writer.key = it->first;
+    }
+
+    if (it != interactions.end()) {
+        writer.cursor++;
+        return spent;
+    }
+
+    writer.cursor = 0;
+    writer.phase = ASSEMBLY;
+
+    return spent;
+}
+
+bool Session::_assemble(Checkpoint& writer, size_t work) const {
+
+    if (writer.phase == ASSEMBLY) {
+
+        std::vector<std::string> pieces;
+        size_t total = 0;
+
+        for (size_t i = 0; i < writer.sections.size(); ++i) {
+
+            if (i == 5 && definition_lookup.empty())
+                continue;
+
+            if (SECTIONS[i] > 0) {
+                pieces.emplace_back();
+                frame(pieces.back(), SECTIONS[i], writer.sections[i].size());
+            }
+
+            pieces.push_back(std::move(writer.sections[i]));
+        }
+
+        for (const std::string& piece : pieces)
+            total += piece.size();
+
+        writer.out.reserve(total);
+        writer.sections = std::move(pieces);
+        writer.phase++;
+    }
+
+    size_t budget = work > SIZE_MAX / 1024 ? SIZE_MAX : work * 1024;
+    size_t skip = writer.out.size();
+    size_t total = 0;
+
+    for (const std::string& piece : writer.sections) {
+
+        total += piece.size();
+
+        if (skip >= piece.size()) {
+            skip -= piece.size();
+            continue;
+        }
+
+        const size_t take = std::min(piece.size() - skip, budget);
+        writer.out.append(piece, skip, take);
+        budget -= take;
+        skip = 0;
+    }
+
+    return writer.out.size() == total;
 }
 
 std::vector<OBB> Session::_compute_boxes(std::vector<std::string>& guids) const {

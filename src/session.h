@@ -29,6 +29,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 #include <memory>
@@ -56,6 +57,8 @@ inline const std::vector<std::pair<std::string, std::string>> COLLECTIONS = {
     {"instances", "instance"},
 };
 
+inline constexpr size_t PURGE_WORK = 16384; // Work units of one idle purge or checkpoint step, about 2 ms: one raw slot, child, vertex or entry each.
+
 /// A session containing geometry objects.
 class Session {
 public:
@@ -70,7 +73,7 @@ public:
     std::unordered_map<std::string, Geometry> definition_lookup; // Definitions by guid.
     std::unordered_map<std::string, std::shared_ptr<InstanceRef>> instance_lookup; // Instances by guid.
     std::map<std::string, std::vector<std::shared_ptr<Interaction>>> interactions; // Interactions per graph edge, by the edge's guid; a subclass keeps its type.
-    mutable History history;                                     // Undo/redo buffer, in memory only; every save purges it.
+    History history;                                             // Undo/redo buffer, in memory only; every save purges it.
     SpatialBVH bvh;                                              // Bounding volume hierarchy for collision detection.
     SpatialBVH cached_ray_bvh;                                   // Cached SpatialBVH for ray casting.
     std::vector<std::string> cached_guids;                       // GUID per leaf of cached_ray_bvh.
@@ -366,6 +369,27 @@ public:
     bool abort();
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Purge
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the dead slots not yet purged, over the objects and the definitions lists.
+    size_t number_of_dead() const;
+
+    /// Return whether dropped records left dead entries or swept parents a purge cycle can free.
+    bool purge_due() const;
+
+    /// Return whether a purge cycle is part way.
+    bool is_purging() const;
+
+    /// Purge what no record reaches for at most work slots or children, resuming the running cycle; true while it is unfinished.
+    bool purge_step(size_t work);
+
+    /// Drop the history, then purge everything in one call: a whole cycle, every live tree node, dense graph indices no record could revive into; O(n + N + V log V + E log E).
+    void purge();
+
+    /// Write the live session as protobuf bytes for at most work units, purging first when due; the bytes once done, history kept, restarted by any edit.
+    std::optional<std::string> checkpoint(size_t work);
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // Collision detection and ray casting
     // ═══════════════════════════════════════════════════════════════════════════
     /// Bounding box of an object in WORLD placement, inflated by tolerance.
@@ -393,14 +417,14 @@ public:
     /// Deserialize from a JSON object.
     static Session jsonload(const nlohmann::json& data);
 
-    /// Serialize to a JSON string.
-    std::string file_json_dumps() const;
+    /// Purge, then serialize to a JSON string.
+    std::string file_json_dumps();
 
     /// Deserialize from a JSON string.
     static Session file_json_loads(const std::string& json_string);
 
-    /// Write to a JSON file.
-    void file_json_dump(const std::string& filename) const;
+    /// Purge, then write to a JSON file.
+    void file_json_dump(const std::string& filename);
 
     /// Read from a JSON file.
     static Session file_json_load(const std::string& filename);
@@ -414,14 +438,14 @@ public:
     /// Construct from the protobuf message.
     static Session from_proto(const session_proto::Session& proto);
 
-    /// Serialize to protobuf bytes.
-    std::string pb_dumps() const;
+    /// Purge, then serialize to protobuf bytes, map entries sorted by key.
+    std::string pb_dumps();
 
     /// Deserialize from protobuf bytes.
     static Session pb_loads(const std::string& data);
 
-    /// Write to a protobuf file.
-    void pb_dump(const std::string& filename) const;
+    /// Purge, then write to a protobuf file.
+    void pb_dump(const std::string& filename);
 
     /// Read from a protobuf file.
     static Session pb_load(const std::string& filename);
@@ -437,11 +461,33 @@ public:
 
 private:
     friend class History;
+
+    /// A tree node being written.
+    struct Frame {
+        std::shared_ptr<TreeNode> node; // The node.
+        size_t next = 0; // Its next raw child.
+        std::string bytes; // Its bytes so far.
+    };
+
+    /// A resumable protobuf writer over the session: live entries only, the layout to_proto encodes.
+    struct Checkpoint {
+        uint64_t revision = 0; // The revision it writes.
+        size_t phase = 0; // The section being written.
+        size_t cursor = 0; // Slot or entry count in the phase.
+        std::string key; // The last key or guid written.
+        std::vector<Frame> stack; // Nodes being written, root first.
+        std::vector<std::string> sections = std::vector<std::string>(7); // The seven Session fields.
+        std::string out; // The joined message.
+        std::unordered_set<std::string> seen; // Xforms guids order() reached.
+        std::vector<std::string> rest; // Xforms guids outside order(), sorted.
+    };
+
     mutable std::string _guid; // Lazily minted guid.
     std::weak_ptr<TreeNode> _indexed; // Tree root at the last reindex, stale after a wholesale tree swap.
     std::vector<std::weak_ptr<TreeNode>> _sweep; // Parents whose children died, for the purge to compact.
     std::vector<std::weak_ptr<TreeNode>> _pinned; // Parents the purge left while a record pinned a child.
     std::optional<size_t> _purging; // The purge phase: 0..=12 objects lists, 13..=25 definitions lists, 26 the tree; nullopt between cycles.
+    std::optional<Checkpoint> _writer; // The checkpoint being written, stale once revision moves.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Details
@@ -506,6 +552,33 @@ private:
 
     /// The xforms in canonical order() sequence, identity entries omitted, the exact sequence jsondump and pb_dumps write.
     std::vector<std::pair<std::string, Xform>> _xforms_ordered() const;
+
+    /// Run the purge cycle for at most work units, starting one when idle; returns the work left.
+    size_t _purge(size_t work);
+
+    /// Advance a checkpoint writer for at most work units; true once its message is complete.
+    bool _write(Checkpoint& writer, size_t work) const;
+
+    /// Write the live entries of one objects or definitions list from the cursor slot; returns the slots examined.
+    size_t _write_list(Checkpoint& writer, bool definition, size_t work) const;
+
+    /// Write the live tree depth first from an explicit stack, a finished node appended to its parent; returns the children examined.
+    size_t _write_tree(Checkpoint& writer, size_t work) const;
+
+    /// Write the graph vertices, then its edges, each resuming after the last key written; returns the entries written.
+    size_t _write_graph(Checkpoint& writer, size_t work) const;
+
+    /// Write the non-identity xforms of the live objects of one order() list, each guid once; returns the slots examined.
+    size_t _write_ordered(Checkpoint& writer, size_t work) const;
+
+    /// Write the non-identity xforms of guids outside order(), sorted, after one scan of xforms that runs only when order() missed some; returns the entries examined.
+    size_t _write_rest(Checkpoint& writer, size_t work) const;
+
+    /// Write the interactions per edge guid, resuming after the last guid written; returns the entries written.
+    size_t _write_interactions(Checkpoint& writer, size_t work) const;
+
+    /// Join the sections into one Session message, copying at most work KiB; true once complete.
+    bool _assemble(Checkpoint& writer, size_t work) const;
 
     /// World bounding box of every object in order() sequence, then of every instance, with the guid of each.
     std::vector<OBB> _compute_boxes(std::vector<std::string>& guids) const;
