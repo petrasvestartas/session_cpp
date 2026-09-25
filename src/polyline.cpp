@@ -895,6 +895,41 @@ Polyline Polyline::cut_by_plane(const Plane& plane, std::optional<bool> flip) co
     return cut;
 }
 
+Polyline Polyline::offset_sides(const std::vector<double>& distances) const {
+
+    std::vector<Point> points = get_points();
+
+    if (is_closed())
+        points.pop_back();
+
+    const size_t count = points.size();
+    std::vector<Vector> outward;
+
+    for (size_t i = 0; i < count; i++) {
+        const Point& next = points[(i + 1) % count];
+        outward.push_back(Vector(next[1] - points[i][1], points[i][0] - next[0], 0.0).normalized());
+    }
+
+    std::vector<Point> result;
+
+    for (size_t i = 0; i < count; i++) {
+        const Vector& before = outward[(i + count - 1) % count];
+        const Vector& after = outward[i];
+        const double a = distances[(i + count - 1) % count];
+        const double b = distances[i];
+        const double cosine = before.dot(after);
+
+        if (1.0 - cosine * cosine < 1e-9)
+            result.push_back(points[i] + before * std::max(a, b));
+        else
+            result.push_back(points[i] + before * ((a - cosine * b) / (1.0 - cosine * cosine)) + after * ((b - cosine * a) / (1.0 - cosine * cosine)));
+    }
+
+    result.push_back(result.front());
+
+    return Polyline(result);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════

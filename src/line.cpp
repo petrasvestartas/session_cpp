@@ -4,6 +4,7 @@
 #include "line.pb.h"
 #include <algorithm>
 #include <iterator>
+#include <set>
 #include <stdexcept>
 
 namespace session_cpp {
@@ -540,6 +541,214 @@ void Line::scale(double dist) {
     _x1 = e[0];
     _y1 = e[1];
     _z1 = e[2];
+}
+
+/// A piece of an input line while the crossings are computed.
+struct SplitSegment {
+    Point a; // Start at z 0.
+    Point b; // End at z 0.
+    size_t source = 0; // Index of the input line, boundary lines after lines.
+    bool boundary = false; // True for a boundary line.
+    bool alive = true; // False once a stronger collinear segment took it.
+    std::vector<std::pair<double, size_t>> stops; // Distance along it and index of each of its stops.
+};
+
+/// A point every piece ends on: a segment end or a crossing.
+struct SplitStop {
+    Point point; // At z 0.
+    int order = 0; // Weld priority: 0 a boundary end, 1 a boundary crossing, 2 the rest.
+};
+
+/// Unit xy direction from a to b.
+static Vector split_direction(const Point& a, const Point& b) {
+    return Vector(b[0] - a[0], b[1] - a[1], 0.0).normalized();
+}
+
+/// Distance in xy from a to b.
+static double split_distance(const Point& a, const Point& b) {
+    return std::hypot(b[0] - a[0], b[1] - a[1]);
+}
+
+/// True when segment a takes a collinear overlap from b: the boundary first, then the earlier line.
+static bool split_is_stronger(const SplitSegment& a, const SplitSegment& b) {
+
+    if (a.boundary != b.boundary)
+        return a.boundary;
+
+    return a.source < b.source;
+}
+
+/// Distance along a segment from its start to the foot of a point.
+static double split_parameter(const SplitSegment& segment, const Point& point) {
+    return (point - segment.a).dot(split_direction(segment.a, segment.b));
+}
+
+/// Collinear overlaps resolved: the weaker segment loses the overlapped stretch and keeps the rest as new pieces.
+static void split_overlaps(std::vector<SplitSegment>& segments, double tolerance) {
+
+    for (size_t i = 0; i < segments.size(); i++)
+        for (size_t j = 0; j < segments.size(); j++) {
+            if (i == j || !segments[i].alive || !segments[j].alive || split_is_stronger(segments[j], segments[i]))
+                continue;
+
+            const Vector di = split_direction(segments[i].a, segments[i].b);
+            const Vector dj = split_direction(segments[j].a, segments[j].b);
+
+            if (std::abs(di.cross(dj)[2]) > 1e-6 || std::abs((segments[j].a - segments[i].a).cross(di)[2]) > tolerance)
+                continue;
+
+            const double length = split_distance(segments[j].a, segments[j].b);
+            const double low = std::max(0.0, std::min(split_parameter(segments[j], segments[i].a), split_parameter(segments[j], segments[i].b)));
+            const double high = std::min(length, std::max(split_parameter(segments[j], segments[i].a), split_parameter(segments[j], segments[i].b)));
+
+            if (high - low <= tolerance)
+                continue;
+
+            const SplitSegment loser = segments[j];
+            segments[j].alive = false;
+
+            if (low > tolerance)
+                segments.push_back({loser.a, loser.a + dj * low, loser.source, loser.boundary, true, {}});
+
+            if (length - high > tolerance)
+                segments.push_back({loser.a + dj * high, loser.b, loser.source, loser.boundary, true, {}});
+        }
+}
+
+/// The stops of every live segment: its ends, then every crossing with a later one.
+static std::vector<SplitStop> split_stops(std::vector<SplitSegment>& segments, double tolerance) {
+
+    std::vector<SplitStop> stops;
+
+    for (SplitSegment& segment : segments) {
+        if (!segment.alive)
+            continue;
+
+        segment.stops.emplace_back(0.0, stops.size());
+        stops.push_back({segment.a, segment.boundary ? 0 : 2});
+        segment.stops.emplace_back(split_distance(segment.a, segment.b), stops.size());
+        stops.push_back({segment.b, segment.boundary ? 0 : 2});
+    }
+
+    for (size_t i = 0; i < segments.size(); i++)
+        for (size_t j = i + 1; j < segments.size(); j++) {
+            if (!segments[i].alive || !segments[j].alive)
+                continue;
+
+            const Vector u = segments[i].b - segments[i].a;
+            const Vector v = segments[j].b - segments[j].a;
+            const double denominator = u.cross(v)[2];
+
+            if (std::abs(denominator) < 1e-9 * u.magnitude() * v.magnitude())
+                continue;
+
+            const Vector w = segments[j].a - segments[i].a;
+            const double t = w.cross(v)[2] / denominator;
+            const double s = w.cross(u)[2] / denominator;
+
+            if (t < -tolerance / u.magnitude() || t > 1.0 + tolerance / u.magnitude() || s < -tolerance / v.magnitude() || s > 1.0 + tolerance / v.magnitude())
+                continue;
+
+            segments[i].stops.emplace_back(std::clamp(t, 0.0, 1.0) * u.magnitude(), stops.size());
+            segments[j].stops.emplace_back(std::clamp(s, 0.0, 1.0) * v.magnitude(), stops.size());
+            stops.push_back({segments[i].a + u * std::clamp(t, 0.0, 1.0), segments[i].boundary || segments[j].boundary ? 1 : 2});
+        }
+
+    return stops;
+}
+
+/// Stops within merge of an earlier stop in priority order welded onto it: the kept points and the kept index of every stop.
+static std::pair<std::vector<Point>, std::vector<size_t>> split_welds(const std::vector<SplitStop>& stops, double merge) {
+
+    std::pair<std::vector<Point>, std::vector<size_t>> welds;
+    welds.second.resize(stops.size());
+
+    for (int order = 0; order < 3; order++)
+        for (size_t index = 0; index < stops.size(); index++) {
+            if (stops[index].order != order)
+                continue;
+
+            size_t found = welds.first.size();
+
+            for (size_t k = 0; k < welds.first.size() && found == welds.first.size(); k++)
+                if (split_distance(welds.first[k], stops[index].point) <= merge)
+                    found = k;
+
+            if (found == welds.first.size())
+                welds.first.push_back(stops[index].point);
+
+            welds.second[index] = found;
+        }
+
+    return welds;
+}
+
+/// Pieces of every live segment between consecutive stops as welded vertex pairs with their source, each pair once, then pieces with a dangling end removed until every end is shared.
+static std::pair<std::vector<std::pair<size_t, size_t>>, std::vector<size_t>> split_edges(std::vector<SplitSegment>& segments, const std::vector<size_t>& canonical, size_t vertices) {
+
+    std::set<std::pair<size_t, size_t>> seen;
+    std::pair<std::vector<std::pair<size_t, size_t>>, std::vector<size_t>> pieces;
+
+    for (SplitSegment& segment : segments) {
+        std::sort(segment.stops.begin(), segment.stops.end());
+
+        for (size_t k = 0; segment.alive && k + 1 < segment.stops.size(); k++) {
+            const std::pair<size_t, size_t> piece = std::minmax(canonical[segment.stops[k].second], canonical[segment.stops[k + 1].second]);
+
+            if (piece.first != piece.second && seen.insert(piece).second) {
+                pieces.first.push_back(piece);
+                pieces.second.push_back(segment.source);
+            }
+        }
+    }
+
+    for (size_t round = 0; round <= pieces.first.size(); round++) {
+        std::vector<int> degree(vertices, 0);
+
+        for (const std::pair<size_t, size_t>& piece : pieces.first) {
+            degree[piece.first]++;
+            degree[piece.second]++;
+        }
+
+        std::pair<std::vector<std::pair<size_t, size_t>>, std::vector<size_t>> kept;
+
+        for (size_t k = 0; k < pieces.first.size(); k++)
+            if (degree[pieces.first[k].first] >= 2 && degree[pieces.first[k].second] >= 2) {
+                kept.first.push_back(pieces.first[k]);
+                kept.second.push_back(pieces.second[k]);
+            }
+
+        const bool pruned = kept.first.size() != pieces.first.size();
+        pieces = kept;
+
+        if (!pruned)
+            break;
+    }
+
+    return pieces;
+}
+
+std::pair<std::vector<Line>, std::vector<size_t>> Line::split_at_crossings(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge) {
+
+    std::vector<SplitSegment> segments;
+
+    for (size_t i = 0; i < lines.size() + boundary.size(); i++) {
+        const Line& line = i < lines.size() ? lines[i] : boundary[i - lines.size()];
+        segments.push_back({Point(line.start()[0], line.start()[1], 0.0), Point(line.end()[0], line.end()[1], 0.0), i, i >= lines.size(), true, {}});
+    }
+
+    split_overlaps(segments, tolerance);
+    const std::pair<std::vector<Point>, std::vector<size_t>> welds = split_welds(split_stops(segments, tolerance), merge);
+    const std::pair<std::vector<std::pair<size_t, size_t>>, std::vector<size_t>> pieces = split_edges(segments, welds.second, welds.first.size());
+
+    std::pair<std::vector<Line>, std::vector<size_t>> result;
+
+    for (size_t k = 0; k < pieces.first.size(); k++) {
+        result.first.push_back(from_points(welds.first[pieces.first[k].first], welds.first[pieces.first[k].second]));
+        result.second.push_back(pieces.second[k]);
+    }
+
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

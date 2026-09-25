@@ -541,6 +541,50 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     return mesh;
 }
 
+/// Signed xy area of a face loop.
+static double arrangement_area(const std::vector<Point>& points) {
+
+    double area = 0.0;
+
+    for (size_t i = 0; i < points.size(); i++)
+        area += points[i][0] * points[(i + 1) % points.size()][1] - points[(i + 1) % points.size()][0] * points[i][1];
+
+    return area / 2.0;
+}
+
+/// Integer xy key of a point on the tolerance grid.
+static std::pair<int64_t, int64_t> arrangement_key(const Point& point, double tolerance) {
+    return {std::llround(point[0] / tolerance), std::llround(point[1] / tolerance)};
+}
+
+Mesh Mesh::from_arrangement(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge) {
+
+    const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, tolerance, merge);
+    Mesh mesh = from_lines(split.first, true, tolerance * 0.1);
+
+    for (const size_t face : mesh.faces()) {
+        std::vector<Point> points;
+
+        for (const size_t key : *mesh.face_vertices(face))
+            points.push_back(*mesh.vertex_point(key));
+
+        if (std::abs(arrangement_area(points)) < tolerance * tolerance)
+            mesh.remove_face(face);
+    }
+
+    std::map<std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>>, size_t> lookup;
+
+    for (size_t i = 0; i < split.first.size(); i++)
+        lookup[std::minmax(arrangement_key(split.first[i].start(), tolerance), arrangement_key(split.first[i].end(), tolerance))] = split.second[i];
+
+    for (const std::pair<size_t, size_t>& edge : mesh.edges()) {
+        const std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>> key = std::minmax(arrangement_key(*mesh.vertex_point(edge.first), tolerance), arrangement_key(*mesh.vertex_point(edge.second), tolerance));
+        mesh.set_edge_attribute(edge, "line", lookup.count(key) ? static_cast<double>(lookup.at(key)) : -1.0);
+    }
+
+    return mesh;
+}
+
 Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
 
     if (polylines.empty())
@@ -5088,6 +5132,42 @@ Mesh Mesh::cut_by_plane(const Plane& plane) const {
     result.objectcolor = objectcolor;
 
     return result;
+}
+
+std::vector<Polyline> Mesh::section_by_plane(const Plane& plane) const {
+
+    const Mesh below = cut_by_plane(Plane::from_point_normal(plane.origin(), plane.z_axis() * -1.0));
+    std::vector<Polyline> loops;
+
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : below.face) {
+        std::vector<std::vector<size_t>> rings = {entry.second};
+        bool flat = true;
+
+        if (below.face_holes.count(entry.first))
+            rings.insert(rings.end(), below.face_holes.at(entry.first).begin(), below.face_holes.at(entry.first).end());
+
+        for (const std::vector<size_t>& ring : rings)
+            for (const size_t key : ring)
+                flat = flat && std::abs((below.vertex.at(key).position() - plane.origin()).dot(plane.z_axis())) <= Tolerance::APPROXIMATION;
+
+        if (!flat)
+            continue;
+
+        for (size_t i = 0; i < rings.size(); i++) {
+            std::vector<Point> points;
+
+            for (const size_t key : rings[i])
+                points.push_back(below.vertex.at(key).position());
+
+            if ((newell_normal(points).dot(plane.z_axis()) > 0.0) != (i == 0))
+                std::reverse(points.begin(), points.end());
+
+            points.push_back(points.front());
+            loops.emplace_back(points);
+        }
+    }
+
+    return loops;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

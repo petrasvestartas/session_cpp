@@ -196,6 +196,9 @@ public:
     /// Return the part on one side of plane; flip picks the normal side, unset keeps the arc-length midpoint side.
     Polyline cut_by_plane(const Plane& plane, std::optional<bool> flip = std::nullopt) const;
 
+    /// Return the loop closed with side i moved right of its direction in xy by distances[i], outwards for a counter-clockwise loop; corners mitred, the larger distance where two sides are parallel.
+    Polyline offset_sides(const std::vector<double>& distances) const;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════

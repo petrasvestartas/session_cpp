@@ -188,6 +188,9 @@ public:
     /// Compute the extreme sub-segment of line spanned by the projected points.
     static bool from_projected_points(const Line& line, const std::vector<Point>& points, Line& out);
 
+    /// Split lines and boundary lines in xy at every crossing within tolerance, a collinear overlap kept by the boundary, else by the earlier line; split points within merge welded onto boundary ends, then boundary crossings, then the rest; dangling pieces dropped. Returns the pieces, a piece two lines share kept once, and the index of the line of each, boundary lines numbered after lines.
+    static std::pair<std::vector<Line>, std::vector<size_t>> split_at_crossings(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge);
+
     /// Compute the collinear overlap with other; false when none or a single point.
     bool overlap(const Line& other, Line& out) const;
 

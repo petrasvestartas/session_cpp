@@ -388,4 +388,34 @@ namespace session_cpp {
         MINI_CHECK(line.guid() == guid);
     }
 
+    MINI_TEST("Line", "Split At Crossings") {
+
+        const std::vector<Line> lines = {
+            Line::from_points(Point(-2.0, 5.0, 0.0), Point(12.0, 5.0, 0.0)),
+            Line::from_points(Point(5.0, 0.0, 0.0), Point(5.0, 10.0, 0.0)),
+            Line::from_points(Point(2.0, 0.0, 0.0), Point(8.0, 0.0, 0.0)),
+            Line::from_points(Point(0.3, 0.3, 0.0), Point(5.0, 5.0, 0.0)),
+        };
+        const std::vector<Line> boundary = {
+            Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)),
+            Line::from_points(Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0)),
+            Line::from_points(Point(10.0, 10.0, 0.0), Point(0.0, 10.0, 0.0)),
+            Line::from_points(Point(0.0, 10.0, 0.0), Point(0.0, 0.0, 0.0)),
+        };
+        const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, 0.01, 0.5);
+        int overlapped = 0;
+
+        for (size_t i = 0; i < split.second.size(); i++)
+            overlapped += split.second[i] == 2 ? 1 : 0;
+
+        MINI_CHECK(split.first.size() == 13);
+        MINI_CHECK(split.second[0] == 0);
+        MINI_CHECK(split.second[2] == 1);
+        MINI_CHECK(split.second[4] == 3);
+        MINI_CHECK(split.second[5] == 4);
+        MINI_CHECK(overlapped == 0);
+        MINI_CHECK(TOLERANCE.is_close(split.first[4].start()[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(split.first[4].start()[1], 0.0));
+    }
+
 }
