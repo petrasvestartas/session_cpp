@@ -171,10 +171,10 @@ private:
     std::optional<size_t> _position(const std::shared_ptr<TreeNode>& child) const;
 
     /// Return the protobuf bytes of this node before its children: guid and name.
-    std::string _head() const;
+    std::string _node_head() const;
 
     /// Return the protobuf bytes of this node after its children: its colour.
-    std::string _tail() const;
+    std::string _node_tail() const;
 };
 
 /// Write the node string to a stream.

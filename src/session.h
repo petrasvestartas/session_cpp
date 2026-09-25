@@ -518,6 +518,12 @@ private:
     /// Put an object, component or instance in its map under guid.
     void _hold(const std::string& guid, const Item& item);
 
+    /// Adopt slot-only components into component_lookup and map-only ones into the slots, sorted by guid; the map wins a shared guid.
+    void _reindex_components();
+
+    /// Adopt map-only instances into the slots, sorted by guid, the map winning a shared guid; a non-identity instance xform folds into xforms.
+    void _reindex_instances();
+
     /// The object tomb of a live guid, reused while a record still holds it, else made and pinned on its slot and node; nullptr for no live guid; O(1).
     std::shared_ptr<Tomb> _tomb(const std::string& guid);
 
@@ -550,6 +556,18 @@ private:
     /// Flip a tomb live again: the same slot and pointer, and for an object tomb the same node, transform, vertex, edges and interactions; a guid a live twin owns stays dead; O(1 + d log V).
     void _revive(const std::shared_ptr<Tomb>& tomb);
 
+    /// Flip a definition tomb dead: its slot, and its map entry when it owns the guid; O(1).
+    void _kill_definition(const std::shared_ptr<Tomb>& tomb);
+
+    /// Flip a definition tomb live again, unless a live twin owns its guid; O(1).
+    void _revive_definition(const std::shared_ptr<Tomb>& tomb);
+
+    /// Move the transform, graph vertex, incident edges and their interactions of guid into its tomb; O(d log V).
+    void _park(const std::shared_ptr<Tomb>& tomb, const std::string& guid);
+
+    /// Move a tomb's transform, vertex and edges back, with the interactions of every edge that returns; O(d log V).
+    void _unpark(const std::shared_ptr<Tomb>& tomb, const std::string& guid);
+
     /// Store obj under guid in the slot and map of the recorded entry, relabelling an object's vertex; a guid now live on the other side, or on the same side as another entry, is left alone; O(1).
     void _swap(const std::string& guid, const Item& obj, const Entry& entry);
 
@@ -574,14 +592,20 @@ private:
     /// Write the live tree depth first from an explicit stack, a finished node appended to its parent; returns the children examined.
     size_t _write_tree(Checkpoint& writer, size_t work) const;
 
-    /// Write the graph vertices, then its edges, each resuming after the last key written; returns the entries written.
-    size_t _write_graph(Checkpoint& writer, size_t work) const;
+    /// Write the graph head, then the vertices in name order after the last key written, at most work per call; returns the vertices written.
+    size_t _write_vertices(Checkpoint& writer, size_t work) const;
+
+    /// Write the graph edges in vertex order after the last key written, at most work entries per call, then the counts and defaults; returns the entries examined.
+    size_t _write_edges(Checkpoint& writer, size_t work) const;
 
     /// Write the non-identity xforms of the live objects of one order() list, each guid once; returns the slots examined.
     size_t _write_ordered(Checkpoint& writer, size_t work) const;
 
     /// Write the non-identity xforms of guids outside order(), sorted, after one scan of xforms that runs only when order() missed some; returns the entries examined.
     size_t _write_rest(Checkpoint& writer, size_t work) const;
+
+    /// Append one XformEntry to the xforms section.
+    void _write_xform(Checkpoint& writer, const std::string& guid, const Xform& xform) const;
 
     /// Write the interactions per edge guid, resuming after the last guid written; returns the entries written.
     size_t _write_interactions(Checkpoint& writer, size_t work) const;

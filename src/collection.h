@@ -368,6 +368,7 @@ public:
             _slots[key] = slot;
             ++_live;
             --_count;
+
             return;
         }
 
@@ -505,6 +506,7 @@ public:
 
         if (r < _items.size()) {
             _cursor = std::make_pair(r, w);
+
             return examined;
         }
 

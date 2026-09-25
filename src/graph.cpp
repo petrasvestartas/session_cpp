@@ -284,7 +284,7 @@ void Graph::_reassign_edge_indices() {
     edge_count = static_cast<int>(list.size());
 }
 
-void Graph::_to_proto(const Vertex& vertex, session_proto::Vertex& proto) {
+void Graph::_vertex_to_proto(const Vertex& vertex, session_proto::Vertex& proto) {
 
     proto.set_name(vertex.name);
 
@@ -298,7 +298,7 @@ void Graph::_to_proto(const Vertex& vertex, session_proto::Vertex& proto) {
         (*proto.mutable_attributes())[attribute.first] = attribute.second;
 }
 
-void Graph::_to_proto(const Edge& edge, session_proto::Edge& proto) {
+void Graph::_edge_to_proto(const Edge& edge, session_proto::Edge& proto) {
 
     if (edge.has_guid())
         proto.set_guid(edge.guid());
@@ -901,14 +901,14 @@ session_proto::Graph Graph::to_proto() const {
         (*proto.mutable_default_edge_attributes())[attribute.first] = attribute.second;
 
     for (const std::pair<const std::string, Vertex>& vertex : vertices)
-        _to_proto(vertex.second, (*proto.mutable_vertices())[vertex.first]);
+        _vertex_to_proto(vertex.second, (*proto.mutable_vertices())[vertex.first]);
 
     for (const std::pair<const std::string, std::map<std::string, Edge>>& adjacency : edges) {
         for (const std::pair<const std::string, Edge>& neighbor : adjacency.second) {
             if (adjacency.first > neighbor.first)
                 continue;
 
-            _to_proto(neighbor.second, *proto.add_edges());
+            _edge_to_proto(neighbor.second, *proto.add_edges());
         }
     }
 

@@ -398,10 +398,10 @@ private:
     void _reassign_edge_indices();
 
     /// Fill a protobuf vertex, its guid only when minted.
-    static void _to_proto(const Vertex& vertex, session_proto::Vertex& proto);
+    static void _vertex_to_proto(const Vertex& vertex, session_proto::Vertex& proto);
 
     /// Fill a protobuf edge, its guid only when minted.
-    static void _to_proto(const Edge& edge, session_proto::Edge& proto);
+    static void _edge_to_proto(const Edge& edge, session_proto::Edge& proto);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

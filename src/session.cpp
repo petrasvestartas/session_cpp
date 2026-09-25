@@ -1460,8 +1460,20 @@ void Session::reindex() {
     adopt(objects, lookup);
     repoint(definitions, definition_lookup);
     adopt(definitions, definition_lookup);
+    _reindex_components();
+    _reindex_instances();
+    node_lookup.clear();
+
+    for (const std::shared_ptr<TreeNode>& node : tree.nodes())
+        if (_is_live(node->name))
+            node_lookup.emplace(node->name, node);
+
+    _indexed = tree.root();
+}
+
+void Session::_reindex_components() {
+
     Collection<Component>& components = *objects.components;
-    Collection<std::shared_ptr<InstanceRef>>& instances = *objects.instances;
 
     for (size_t slot = 0; slot < components.number_of_slots(); ++slot) {
 
@@ -1485,7 +1497,11 @@ void Session::reindex() {
 
     for (const std::pair<const std::string, Component>& entry : loose_components)
         components.push_back(entry.second);
+}
 
+void Session::_reindex_instances() {
+
+    Collection<std::shared_ptr<InstanceRef>>& instances = *objects.instances;
     std::map<std::string, std::shared_ptr<InstanceRef>> loose_instances;
 
     for (const std::pair<const std::string, std::shared_ptr<InstanceRef>>& entry : instance_lookup)
@@ -1512,14 +1528,6 @@ void Session::reindex() {
         instances.set_item(slot, instance);
         instance_lookup[guid] = instance;
     }
-
-    node_lookup.clear();
-
-    for (const std::shared_ptr<TreeNode>& node : tree.nodes())
-        if (_is_live(node->name))
-            node_lookup.emplace(node->name, node);
-
-    _indexed = tree.root();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2255,23 +2263,7 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
     bvh_cache_dirty = true;
 
     if (tomb->definition) {
-
-        const std::optional<Item> stored = item_at(definitions, collection, slot);
-
-        if (!stored)
-            return;
-
-        const std::string guid = item_guid(*stored);
-        const bool owner = !_twin(true, collection, slot, guid);
-        auto held = definition_lookup.find(guid);
-
-        if (owner && held != definition_lookup.end() && !same(held->second, *stored))
-            store(definitions, collection, slot, held->second);
-
-        flag(definitions, collection, slot, true);
-
-        if (owner)
-            definition_lookup.erase(guid);
+        _kill_definition(tomb);
 
         return;
     }
@@ -2312,8 +2304,95 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
     if (parent)
         _queue(parent);
 
-    if (!owner)
+    if (owner)
+        _park(tomb, guid);
+}
+
+void Session::_revive(const std::shared_ptr<Tomb>& tomb) {
+
+    if (tomb->collection.empty())
         return;
+
+    const size_t slot = tomb->slot;
+    const std::string& collection = tomb->collection;
+    revision++;
+    bvh_cache_dirty = true;
+
+    if (tomb->definition) {
+        _revive_definition(tomb);
+
+        return;
+    }
+
+    const std::optional<Item> item = item_at(objects, collection, slot);
+
+    if (!item)
+        return;
+
+    const std::string guid = item_guid(*item);
+
+    if (_twin(false, collection, slot, guid))
+        return;
+
+    flag(objects, collection, slot, false);
+    _hold(guid, *item);
+    const std::shared_ptr<TreeNode>& node = tomb->node;
+
+    if (!node) {
+        _label(guid, prefix_of(collection) + "_" + item_name(*item));
+
+        return;
+    }
+
+    node->set_dead(false);
+
+    if (node->parent())
+        node_lookup[guid] = node;
+
+    _unpark(tomb, guid);
+}
+
+void Session::_kill_definition(const std::shared_ptr<Tomb>& tomb) {
+
+    const size_t slot = tomb->slot;
+    const std::string& collection = tomb->collection;
+    const std::optional<Item> stored = item_at(definitions, collection, slot);
+
+    if (!stored)
+        return;
+
+    const std::string guid = item_guid(*stored);
+    const bool owner = !_twin(true, collection, slot, guid);
+    auto held = definition_lookup.find(guid);
+
+    if (owner && held != definition_lookup.end() && !same(held->second, *stored))
+        store(definitions, collection, slot, held->second);
+
+    flag(definitions, collection, slot, true);
+
+    if (owner)
+        definition_lookup.erase(guid);
+}
+
+void Session::_revive_definition(const std::shared_ptr<Tomb>& tomb) {
+
+    const size_t slot = tomb->slot;
+    const std::string& collection = tomb->collection;
+    const std::optional<Item> item = item_at(definitions, collection, slot);
+
+    if (!item)
+        return;
+
+    const std::string guid = item_guid(*item);
+
+    if (_twin(true, collection, slot, guid))
+        return;
+
+    flag(definitions, collection, slot, false);
+    definition_lookup[guid] = std::get<Geometry>(*item);
+}
+
+void Session::_park(const std::shared_ptr<Tomb>& tomb, const std::string& guid) {
 
     tomb->xform.reset();
     auto placed = xforms.find(guid);
@@ -2346,57 +2425,7 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
     tomb->edges = std::move(taken->second);
 }
 
-void Session::_revive(const std::shared_ptr<Tomb>& tomb) {
-
-    if (tomb->collection.empty())
-        return;
-
-    const size_t slot = tomb->slot;
-    const std::string& collection = tomb->collection;
-    revision++;
-    bvh_cache_dirty = true;
-
-    if (tomb->definition) {
-
-        const std::optional<Item> item = item_at(definitions, collection, slot);
-
-        if (!item)
-            return;
-
-        const std::string guid = item_guid(*item);
-
-        if (!_twin(true, collection, slot, guid)) {
-            flag(definitions, collection, slot, false);
-            definition_lookup[guid] = std::get<Geometry>(*item);
-        }
-
-        return;
-    }
-
-    const std::optional<Item> item = item_at(objects, collection, slot);
-
-    if (!item)
-        return;
-
-    const std::string guid = item_guid(*item);
-
-    if (_twin(false, collection, slot, guid))
-        return;
-
-    flag(objects, collection, slot, false);
-    _hold(guid, *item);
-    const std::shared_ptr<TreeNode>& node = tomb->node;
-
-    if (!node) {
-        _label(guid, prefix_of(collection) + "_" + item_name(*item));
-
-        return;
-    }
-
-    node->set_dead(false);
-
-    if (node->parent())
-        node_lookup[guid] = node;
+void Session::_unpark(const std::shared_ptr<Tomb>& tomb, const std::string& guid) {
 
     if (tomb->xform) {
         xforms[guid] = *tomb->xform;
@@ -2649,8 +2678,10 @@ bool Session::_write(Checkpoint& writer, size_t work) const {
             spent = _write_list(writer, false, work);
         } else if (writer.phase == TREE) {
             spent = _write_tree(writer, work);
-        } else if (writer.phase < ORDERED) {
-            spent = _write_graph(writer, work);
+        } else if (writer.phase == VERTICES) {
+            spent = _write_vertices(writer, work);
+        } else if (writer.phase == EDGES) {
+            spent = _write_edges(writer, work);
         } else if (writer.phase < REST) {
             spent = _write_ordered(writer, work);
         } else if (writer.phase == REST) {
@@ -2717,7 +2748,7 @@ size_t Session::_write_tree(Checkpoint& writer, size_t work) const {
         encode(writer.sections[2], head);
 
         if (const std::shared_ptr<TreeNode> root = tree.root())
-            writer.stack.push_back(Frame{root, 0, root->_head()});
+            writer.stack.push_back(Frame{root, 0, root->_node_head()});
     }
 
     size_t spent = 0;
@@ -2732,14 +2763,14 @@ size_t Session::_write_tree(Checkpoint& writer, size_t work) const {
             const std::shared_ptr<TreeNode> child = top.node->_children[top.next++];
 
             if (!child->_dead)
-                writer.stack.push_back(Frame{child, 0, child->_head()});
+                writer.stack.push_back(Frame{child, 0, child->_node_head()});
 
             continue;
         }
 
         Frame done = std::move(top);
         writer.stack.pop_back();
-        done.bytes += done.node->_tail();
+        done.bytes += done.node->_node_tail();
         const bool root = writer.stack.empty();
         std::string& parent = root ? writer.sections[2] : writer.stack.back().bytes;
         frame(parent, root ? TAGS.root : TAGS.children, done.bytes.size());
@@ -2754,62 +2785,69 @@ size_t Session::_write_tree(Checkpoint& writer, size_t work) const {
     return spent;
 }
 
-size_t Session::_write_graph(Checkpoint& writer, size_t work) const {
+size_t Session::_write_vertices(Checkpoint& writer, size_t work) const {
 
     std::string& buffer = writer.sections[3];
     const bool resumed = writer.cursor > 0;
+
+    if (!resumed)
+        encode(buffer, graph_head(graph));
+
+    auto it = resumed ? graph.vertices.upper_bound(writer.key) : graph.vertices.begin();
     size_t spent = 0;
-    bool more = false;
 
-    if (writer.phase == VERTICES) {
-
-        if (!resumed)
-            encode(buffer, graph_head(graph));
-
-        auto it = resumed ? graph.vertices.upper_bound(writer.key) : graph.vertices.begin();
-
-        for (; it != graph.vertices.end() && spent < work; ++it, ++spent) {
-            session_proto::Graph entry;
-            Graph::_to_proto(it->second, (*entry.mutable_vertices())[it->first]);
-            encode(buffer, entry);
-            writer.key = it->first;
-        }
-
-        more = it != graph.vertices.end();
-    } else {
-
-        auto it = resumed ? graph.edges.upper_bound(writer.key) : graph.edges.begin();
-
-        for (; it != graph.edges.end() && spent < work; ++it) {
-
-            for (const std::pair<const std::string, Edge>& neighbor : it->second) {
-
-                if (it->first > neighbor.first)
-                    continue;
-
-                session_proto::Graph entry;
-                Graph::_to_proto(neighbor.second, *entry.add_edges());
-                encode(buffer, entry);
-            }
-
-            writer.key = it->first;
-            spent += std::max<size_t>(it->second.size(), 1);
-        }
-
-        more = it != graph.edges.end();
+    for (; it != graph.vertices.end() && spent < work; ++it, ++spent) {
+        session_proto::Graph entry;
+        Graph::_vertex_to_proto(it->second, (*entry.mutable_vertices())[it->first]);
+        encode(buffer, entry);
+        writer.key = it->first;
     }
 
-    if (more) {
+    if (it != graph.vertices.end()) {
         writer.cursor++;
+
         return spent;
     }
 
-    if (writer.phase == EDGES)
-        encode(buffer, graph_tail(graph));
-
     writer.key.clear();
     writer.cursor = 0;
-    writer.phase++;
+    writer.phase = EDGES;
+
+    return spent;
+}
+
+size_t Session::_write_edges(Checkpoint& writer, size_t work) const {
+
+    std::string& buffer = writer.sections[3];
+    auto it = writer.cursor > 0 ? graph.edges.upper_bound(writer.key) : graph.edges.begin();
+    size_t spent = 0;
+
+    for (; it != graph.edges.end() && spent < work; ++it) {
+
+        for (const std::pair<const std::string, Edge>& neighbor : it->second) {
+
+            if (it->first > neighbor.first)
+                continue;
+
+            session_proto::Graph entry;
+            Graph::_edge_to_proto(neighbor.second, *entry.add_edges());
+            encode(buffer, entry);
+        }
+
+        writer.key = it->first;
+        spent += std::max<size_t>(it->second.size(), 1);
+    }
+
+    if (it != graph.edges.end()) {
+        writer.cursor++;
+
+        return spent;
+    }
+
+    encode(buffer, graph_tail(graph));
+    writer.key.clear();
+    writer.cursor = 0;
+    writer.phase = ORDERED;
 
     return spent;
 }
@@ -2835,11 +2873,7 @@ size_t Session::_write_ordered(Checkpoint& writer, size_t work) const {
             if (it == xforms.end() || !writer.seen.insert(guid).second || it->second.is_identity())
                 continue;
 
-            session_proto::Session entry;
-            session_proto::XformEntry* item = entry.add_xforms();
-            item->set_guid(guid);
-            *item->mutable_xform() = it->second.to_proto();
-            encode(writer.sections[4], entry);
+            _write_xform(writer, guid, it->second);
         }
     });
     writer.cursor = end;
@@ -2869,13 +2903,8 @@ size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
     const size_t start = writer.cursor;
     const size_t end = std::min(writer.rest.size(), start + std::min(work, writer.rest.size()));
 
-    for (size_t i = start; i < end; ++i) {
-        session_proto::Session entry;
-        session_proto::XformEntry* item = entry.add_xforms();
-        item->set_guid(writer.rest[i]);
-        *item->mutable_xform() = xforms.at(writer.rest[i]).to_proto();
-        encode(writer.sections[4], entry);
-    }
+    for (size_t i = start; i < end; ++i)
+        _write_xform(writer, writer.rest[i], xforms.at(writer.rest[i]));
 
     writer.cursor = end;
 
@@ -2891,6 +2920,15 @@ size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
     }
 
     return spent + end - start;
+}
+
+void Session::_write_xform(Checkpoint& writer, const std::string& guid, const Xform& xform) const {
+
+    session_proto::Session entry;
+    session_proto::XformEntry* item = entry.add_xforms();
+    item->set_guid(guid);
+    *item->mutable_xform() = xform.to_proto();
+    encode(writer.sections[4], entry);
 }
 
 size_t Session::_write_interactions(Checkpoint& writer, size_t work) const {
@@ -2913,6 +2951,7 @@ size_t Session::_write_interactions(Checkpoint& writer, size_t work) const {
 
     if (it != interactions.end()) {
         writer.cursor++;
+
         return spent;
     }
 

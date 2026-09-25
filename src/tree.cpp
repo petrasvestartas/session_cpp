@@ -125,7 +125,7 @@ std::optional<size_t> TreeNode::_position(const std::shared_ptr<TreeNode>& child
     return std::nullopt;
 }
 
-std::string TreeNode::_head() const {
+std::string TreeNode::_node_head() const {
 
     session_proto::TreeNode proto;
     proto.set_guid(guid());
@@ -134,7 +134,7 @@ std::string TreeNode::_head() const {
     return proto.SerializeAsString();
 }
 
-std::string TreeNode::_tail() const {
+std::string TreeNode::_node_tail() const {
 
     session_proto::TreeNode proto;
 
