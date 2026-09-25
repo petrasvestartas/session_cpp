@@ -18,7 +18,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Primitives", "Mesh Arrow") {
 
     const Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
@@ -56,7 +55,6 @@ MINI_TEST("Primitives", "Mesh Edge Pipes") {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsCurve primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Primitives", "Nurbscurve Polyline") {
 
     const NurbsCurve curve =
@@ -134,7 +132,6 @@ MINI_TEST("Primitives", "Nurbscurve Spiral") {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsSurface primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Primitives", "Nurbssurface Cylinder") {
 
     const NurbsSurface surface = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 5.0);
@@ -327,7 +324,6 @@ MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsSurface factory methods
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Primitives", "Nurbssurface Ruled") {
 
     const std::vector<Point> pts_a = {
@@ -1303,7 +1299,6 @@ MINI_TEST("Primitives", "Nurbssurface Edge") {
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface-to-mesh subdivision
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Primitives", "Mesh Quad Mesh") {
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);

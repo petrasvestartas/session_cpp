@@ -67,7 +67,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const;
@@ -79,28 +81,44 @@ public:
     void refresh_guid();
 
     /// Return the origin.
-    const Point& origin() const { return _origin; }
+    const Point& origin() const {
+        return _origin;
+    }
 
     /// Return the unit x axis.
-    const Vector& x_axis() const { return _x_axis; }
+    const Vector& x_axis() const {
+        return _x_axis;
+    }
 
     /// Return the unit y axis.
-    const Vector& y_axis() const { return _y_axis; }
+    const Vector& y_axis() const {
+        return _y_axis;
+    }
 
     /// Return the unit z axis.
-    const Vector& z_axis() const { return _z_axis; }
+    const Vector& z_axis() const {
+        return _z_axis;
+    }
 
     /// Return plane equation coefficient a.
-    double a() const { return _a; }
+    double a() const {
+        return _a;
+    }
 
     /// Return plane equation coefficient b.
-    double b() const { return _b; }
+    double b() const {
+        return _b;
+    }
 
     /// Return plane equation coefficient c.
-    double c() const { return _c; }
+    double c() const {
+        return _c;
+    }
 
     /// Return plane equation coefficient d.
-    double d() const { return _d; }
+    double d() const {
+        return _d;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Static constructors
@@ -277,7 +295,9 @@ std::ostream& operator<<(std::ostream& os, const Plane& plane);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::Plane> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::Plane& plane, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", plane.str());

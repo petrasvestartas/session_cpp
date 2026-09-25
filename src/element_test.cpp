@@ -14,7 +14,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Geometry op that returns the mesh unchanged.
@@ -452,7 +451,6 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Polylines
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("Element", "Polylines") {
 
     const Mesh m = Mesh::from_vertices_and_faces(
@@ -509,7 +507,6 @@ MINI_TEST("Element", "Polylines Empty Without Mesh") {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Stand-in for a domain element: carries state the kernel knows nothing about.
@@ -767,7 +764,6 @@ MINI_TEST("Element", "Equality Compares Carried Fields") {
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature
 // ═══════════════════════════════════════════════════════════════════════════
-
 MINI_TEST("ElementFeature", "Constructor") {
 
     const Polyline outline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)});

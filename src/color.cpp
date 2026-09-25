@@ -94,56 +94,104 @@ bool Color::operator==(const Color& other) const {
     return name == other.name && r == other.r && g == other.g && b == other.b && a == other.a;
 }
 
-bool Color::operator!=(const Color& other) const { return !(*this == other); }
+bool Color::operator!=(const Color& other) const {
+    return !(*this == other);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Presets
 // ═══════════════════════════════════════════════════════════════════════════
-Color Color::white() { return Color(1.0f, 1.0f, 1.0f, 1.0f, "white"); }
+Color Color::white() {
+    return Color(1.0f, 1.0f, 1.0f, 1.0f, "white");
+}
 
-Color Color::black() { return Color(0.0f, 0.0f, 0.0f, 1.0f, "black"); }
+Color Color::black() {
+    return Color(0.0f, 0.0f, 0.0f, 1.0f, "black");
+}
 
-Color Color::grey() { return Color(0.5f, 0.5f, 0.5f, 1.0f, "grey"); }
+Color Color::grey() {
+    return Color(0.5f, 0.5f, 0.5f, 1.0f, "grey");
+}
 
-Color Color::red() { return Color(1.0f, 0.0f, 0.0f, 1.0f, "red"); }
+Color Color::red() {
+    return Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
+}
 
-Color Color::orange() { return Color(1.0f, 0.5f, 0.0f, 1.0f, "orange"); }
+Color Color::orange() {
+    return Color(1.0f, 0.5f, 0.0f, 1.0f, "orange");
+}
 
-Color Color::yellow() { return Color(1.0f, 1.0f, 0.0f, 1.0f, "yellow"); }
+Color Color::yellow() {
+    return Color(1.0f, 1.0f, 0.0f, 1.0f, "yellow");
+}
 
-Color Color::lime() { return Color(0.5f, 1.0f, 0.0f, 1.0f, "lime"); }
+Color Color::lime() {
+    return Color(0.5f, 1.0f, 0.0f, 1.0f, "lime");
+}
 
-Color Color::green() { return Color(0.0f, 1.0f, 0.0f, 1.0f, "green"); }
+Color Color::green() {
+    return Color(0.0f, 1.0f, 0.0f, 1.0f, "green");
+}
 
-Color Color::mint() { return Color(0.0f, 1.0f, 0.5f, 1.0f, "mint"); }
+Color Color::mint() {
+    return Color(0.0f, 1.0f, 0.5f, 1.0f, "mint");
+}
 
-Color Color::cyan() { return Color(0.0f, 1.0f, 1.0f, 1.0f, "cyan"); }
+Color Color::cyan() {
+    return Color(0.0f, 1.0f, 1.0f, 1.0f, "cyan");
+}
 
-Color Color::azure() { return Color(0.0f, 0.5f, 1.0f, 1.0f, "azure"); }
+Color Color::azure() {
+    return Color(0.0f, 0.5f, 1.0f, 1.0f, "azure");
+}
 
-Color Color::blue() { return Color(0.0f, 0.0f, 1.0f, 1.0f, "blue"); }
+Color Color::blue() {
+    return Color(0.0f, 0.0f, 1.0f, 1.0f, "blue");
+}
 
-Color Color::violet() { return Color(0.5f, 0.0f, 1.0f, 1.0f, "violet"); }
+Color Color::violet() {
+    return Color(0.5f, 0.0f, 1.0f, 1.0f, "violet");
+}
 
-Color Color::magenta() { return Color(1.0f, 0.0f, 1.0f, 1.0f, "magenta"); }
+Color Color::magenta() {
+    return Color(1.0f, 0.0f, 1.0f, 1.0f, "magenta");
+}
 
-Color Color::pink() { return Color(1.0f, 0.0f, 0.5f, 1.0f, "pink"); }
+Color Color::pink() {
+    return Color(1.0f, 0.0f, 0.5f, 1.0f, "pink");
+}
 
-Color Color::maroon() { return Color(0.5f, 0.0f, 0.0f, 1.0f, "maroon"); }
+Color Color::maroon() {
+    return Color(0.5f, 0.0f, 0.0f, 1.0f, "maroon");
+}
 
-Color Color::brown() { return Color(0.5f, 0.25f, 0.0f, 1.0f, "brown"); }
+Color Color::brown() {
+    return Color(0.5f, 0.25f, 0.0f, 1.0f, "brown");
+}
 
-Color Color::olive() { return Color(0.5f, 0.5f, 0.0f, 1.0f, "olive"); }
+Color Color::olive() {
+    return Color(0.5f, 0.5f, 0.0f, 1.0f, "olive");
+}
 
-Color Color::teal() { return Color(0.0f, 0.5f, 0.5f, 1.0f, "teal"); }
+Color Color::teal() {
+    return Color(0.0f, 0.5f, 0.5f, 1.0f, "teal");
+}
 
-Color Color::navy() { return Color(0.0f, 0.0f, 0.5f, 1.0f, "navy"); }
+Color Color::navy() {
+    return Color(0.0f, 0.0f, 0.5f, 1.0f, "navy");
+}
 
-Color Color::purple() { return Color(0.5f, 0.0f, 0.5f, 1.0f, "purple"); }
+Color Color::purple() {
+    return Color(0.5f, 0.0f, 0.5f, 1.0f, "purple");
+}
 
-Color Color::silver() { return Color(0.75f, 0.75f, 0.75f, 1.0f, "silver"); }
+Color Color::silver() {
+    return Color(0.75f, 0.75f, 0.75f, 1.0f, "silver");
+}
 
-Color Color::lightgrey() { return Color(0.94f, 0.94f, 0.94f, 1.0f, "lightgrey"); }
+Color Color::lightgrey() {
+    return Color(0.94f, 0.94f, 0.94f, 1.0f, "lightgrey");
+}
 
 std::vector<Color> Color::palette() {
     return {red(), orange(), yellow(), lime(), green(), mint(), cyan(), azure(), blue(), violet(), magenta(), pink()};
@@ -152,9 +200,13 @@ std::vector<Color> Color::palette() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Conversion
 // ═══════════════════════════════════════════════════════════════════════════
-std::array<float, 4> Color::to_unified_array() const { return {r, g, b, a}; }
+std::array<float, 4> Color::to_unified_array() const {
+    return {r, g, b, a};
+}
 
-Color Color::from_unified_array(std::array<float, 4> arr) { return Color(arr[0], arr[1], arr[2], arr[3]); }
+Color Color::from_unified_array(std::array<float, 4> arr) {
+    return Color(arr[0], arr[1], arr[2], arr[3]);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
@@ -187,9 +239,13 @@ Color Color::jsonload(const nlohmann::json& data) {
     return color;
 }
 
-std::string Color::file_json_dumps() const { return jsondump().dump(); }
+std::string Color::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Color Color::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Color Color::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Color::file_json_dump(const std::string& filename) const {
 
@@ -243,7 +299,9 @@ Color Color::from_proto(const session_proto::Color& proto) {
     return color;
 }
 
-std::string Color::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Color::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Color Color::pb_loads(const std::string& data) {
 
@@ -287,10 +345,16 @@ Color Color::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-std::string Color::str() const { return fmt::format("{:.1f}, {:.1f}, {:.1f}, {:.1f}", r, g, b, a); }
+std::string Color::str() const {
+    return fmt::format("{:.1f}, {:.1f}, {:.1f}, {:.1f}", r, g, b, a);
+}
 
-std::string Color::repr() const { return fmt::format("Color({}, {:.1f}, {:.1f}, {:.1f}, {:.1f})", name, r, g, b, a); }
+std::string Color::repr() const {
+    return fmt::format("Color({}, {:.1f}, {:.1f}, {:.1f}, {:.1f})", name, r, g, b, a);
+}
 
-std::ostream& operator<<(std::ostream& os, const Color& color) { return os << color.str(); }
+std::ostream& operator<<(std::ostream& os, const Color& color) {
+    return os << color.str();
+}
 
 } // namespace session_cpp

@@ -17,7 +17,6 @@ namespace session_cpp::simple_split {
 // ═══════════════════════════════════════════════════════════════════════════
 // Split
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Split a curve at isolated 3D intersections, retaining every piece and rejecting overlapping cutters.
 std::vector<NurbsCurve> split_curve_by_curves(
     const NurbsCurve& curve,

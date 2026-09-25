@@ -58,7 +58,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const;
@@ -154,7 +156,9 @@ std::ostream& operator<<(std::ostream& os, const InstanceRef& ref);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::InstanceRef> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::InstanceRef& ref, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", ref.str());

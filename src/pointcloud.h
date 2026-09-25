@@ -64,7 +64,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const;
@@ -115,13 +117,19 @@ public:
     // Points
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the number of points.
-    size_t point_count() const { return _coords.size() / 3; }
+    size_t point_count() const {
+        return _coords.size() / 3;
+    }
 
     /// Return the number of points.
-    size_t len() const { return point_count(); }
+    size_t len() const {
+        return point_count();
+    }
 
     /// Return whether the cloud has no points.
-    bool is_empty() const { return _coords.empty(); }
+    bool is_empty() const {
+        return _coords.empty();
+    }
 
     /// Return the point at index.
     Point get_point(size_t index) const;
@@ -136,13 +144,17 @@ public:
     std::vector<Point> get_points() const;
 
     /// Return the flat coordinate array itself; get_point builds a Point per call.
-    const std::vector<double>& coords() const { return _coords; }
+    const std::vector<double>& coords() const {
+        return _coords;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Colors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the number of colors.
-    size_t color_count() const { return _colors.size() / 4; }
+    size_t color_count() const {
+        return _colors.size() / 4;
+    }
 
     /// Return the color at index.
     Color get_color(size_t index) const;
@@ -157,13 +169,17 @@ public:
     std::vector<Color> get_colors() const;
 
     /// Return the flat 0-255 color array itself, the encoding the proto carries.
-    const std::vector<int>& colors() const { return _colors; }
+    const std::vector<int>& colors() const {
+        return _colors;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Normals
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the number of normals.
-    size_t normal_count() const { return _normals.size() / 3; }
+    size_t normal_count() const {
+        return _normals.size() / 3;
+    }
 
     /// Return the normal at index.
     Vector get_normal(size_t index) const;
@@ -178,7 +194,9 @@ public:
     std::vector<Vector> get_normals() const;
 
     /// Return the flat normal array itself; get_normal builds a Vector per call.
-    const std::vector<double>& normals() const { return _normals; }
+    const std::vector<double>& normals() const {
+        return _normals;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // LOD octree
@@ -187,22 +205,32 @@ public:
     void build_lod(double root_spacing, int leaf_capacity);
 
     /// Return whether an octree has been built.
-    bool has_lod() const { return !_lod_size.empty(); }
+    bool has_lod() const {
+        return !_lod_size.empty();
+    }
 
     /// Return the number of octree nodes.
-    size_t lod_node_count() const { return _lod_size.size(); }
+    size_t lod_node_count() const {
+        return _lod_size.size();
+    }
 
     /// Return the node cube center and edge length.
     std::pair<Point, double> lod_cube(int i) const;
 
     /// Return the grid-accept spacing of a node.
-    double lod_spacing(int i) const { return _lod_spacing[i]; }
+    double lod_spacing(int i) const {
+        return _lod_spacing[i];
+    }
 
     /// Return the node depth from the root.
-    int lod_level(int i) const { return _lod_level[i]; }
+    int lod_level(int i) const {
+        return _lod_level[i];
+    }
 
     /// Return the node point range as (first, count) into the reordered arrays.
-    std::pair<int, int> lod_range(int i) const { return {_lod_first[i], _lod_count[i]}; }
+    std::pair<int, int> lod_range(int i) const {
+        return {_lod_first[i], _lod_count[i]};
+    }
 
     /// Return the present child node indices compacted into 8 slots, -1 unused.
     std::vector<int> lod_children(int i) const;
@@ -211,10 +239,14 @@ public:
     // Point ids
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the stable ids parallel to the points, minted by the first build_lod; empty before that.
-    const std::vector<int>& point_ids() const { return _point_ids; }
+    const std::vector<int>& point_ids() const {
+        return _point_ids;
+    }
 
     /// Return the stable id of the point at index; the index itself before a tree is built.
-    int point_id(int index) const { return _point_ids.empty() ? index : _point_ids[index]; }
+    int point_id(int index) const {
+        return _point_ids.empty() ? index : _point_ids[index];
+    }
 
     /// Return the current index of a stable id, -1 when the cloud has no such point.
     int index_of_id(int id) const;

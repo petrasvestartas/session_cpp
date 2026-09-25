@@ -17,7 +17,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Lines and planes
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Largest absolute coefficient of a 3x3 system with its row and column, the first one on ties.
 static double max_pivot_3x3(const double row0[3], const double row1[3], const double row2[3], int& i, int& j) {
 
@@ -449,7 +448,6 @@ bool Intersection::plane_plane_plane(const Plane& plane0, const Plane& plane1, c
 // ═══════════════════════════════════════════════════════════════════════════
 // Rays
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool Intersection::ray_box(
     const Point& origin,
     const Vector& direction,
@@ -796,7 +794,6 @@ std::vector<Point> Intersection::ray_mesh_bvh(const Line& line, const Mesh& mesh
 // ═══════════════════════════════════════════════════════════════════════════
 // NURBS curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Sorted values without neighbours closer than tolerance to the last kept one.
@@ -1185,7 +1182,6 @@ void curve_plane_subdivide_production(
 // ═══════════════════════════════════════════════════════════════════════════
 // NURBS curves
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Appends t unless it lies within tolerance of the last parameter.
 static void append_parameter(std::vector<double>& params, double t, double tolerance) {
 
@@ -1425,7 +1421,6 @@ std::pair<double, double> Intersection::curve_closest_point(
 // ═══════════════════════════════════════════════════════════════════════════
 // NURBS surface helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// One traced surface-plane curve in parameter space.
@@ -3188,7 +3183,6 @@ bool solve_gauss(
 // ═══════════════════════════════════════════════════════════════════════════
 // Analytic quadric surface intersection
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Dot product of two triples.
 static double ssi_dot(const std::array<double, 3>& u, const std::array<double, 3>& v) {
     return u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
@@ -6246,7 +6240,6 @@ static std::vector<NurbsCurve> analytic_pullback(const NurbsSurface& srf, const 
 // ═══════════════════════════════════════════════════════════════════════════
 // Coaxial quadric pairs
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Distance of p from the axis through apt along adir.
 static double point_axis_dist(const std::array<double, 3>& apt, const std::array<double, 3>& adir, const std::array<double, 3>& p) {
 
@@ -7124,7 +7117,6 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
 // ═══════════════════════════════════════════════════════════════════════════
 // NURBS surfaces
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface, const Plane& plane, double tolerance) {
 
     if (!surface.is_valid())
@@ -8805,7 +8797,6 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(
 // ═══════════════════════════════════════════════════════════════════════════
 // Polylines and plane sets
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Whether two vectors are parallel within angle_tol.
 static bool vectors_nearly_parallel(const Vector& v0, const Vector& v1, double angle_tol) {
 
@@ -9105,7 +9096,6 @@ bool Intersection::scale_vector_to_distance_of_2planes(
 // ═══════════════════════════════════════════════════════════════════════════
 // Plane 2D helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Project a point into plane coordinates.
@@ -9487,7 +9477,6 @@ std::vector<std::array<double, 2>> offset_ring_2d(const std::vector<std::array<d
 // ═══════════════════════════════════════════════════════════════════════════
 // Polyline booleans
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<Polyline> Intersection::polyline_boolean(const Polyline& a, const Polyline& b, int clip_type) {
     return BooleanPolyline::compute(a, b, clip_type);
 }
@@ -9607,7 +9596,6 @@ bool Intersection::polyline_boolean_2d_in_plane(
 // ═══════════════════════════════════════════════════════════════════════════
 // Joints
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool Intersection::polyline_plane_to_line(
     const Polyline& poly,
     const Plane& plane,
@@ -9759,7 +9747,6 @@ bool Intersection::closed_and_open_paths_2d(
 // ═══════════════════════════════════════════════════════════════════════════
 // Elements
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to_face(
     const std::vector<int>& adjacency,
     const std::vector<std::vector<Polyline>>& polylines,

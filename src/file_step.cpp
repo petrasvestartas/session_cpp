@@ -21,7 +21,6 @@ namespace file_step {
 // ═══════════════════════════════════════════════════════════════════════════
 // ISO 10303-21 parser
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Kind of value a StepParam holds.
 enum class StepTag {
     Ref, // Entity reference.
@@ -456,7 +455,6 @@ static StepFile parse_step_file(const std::string& filepath) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Parameter access
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Return the first reference parameter, or -1.
 static int first_ref(const std::vector<StepParam>& params) {
 
@@ -674,7 +672,6 @@ static std::optional<SurfaceParams> surface_params(const StepEntity& e) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Knot utilities
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Repeat each knot value by its multiplicity.
 static std::vector<double> expand_knots(const std::vector<double>& vals, const std::vector<int>& mults) {
 
@@ -731,7 +728,6 @@ static std::vector<double> internal_from_full(const std::vector<double>& full) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Analytic geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Orthonormal frame of an AXIS2_PLACEMENT_3D.
 struct Axis2 {
     Point origin = Point(0, 0, 0); // Frame origin.
@@ -1048,7 +1044,6 @@ static Proj bilinear_projector(const NurbsSurface& srf) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// n points evenly spaced in parameter over the curve domain.
 static std::vector<Point> sample_nurbs(const NurbsCurve& nc, int n) {
 
@@ -1176,7 +1171,6 @@ static void unwrap_seam(std::vector<Point>& uv) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface grid
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// ns x ns surface points over the domain, row-major with u slowest.
 static std::vector<Point> surface_grid(const NurbsSurface& srf, int ns) {
 
@@ -1234,7 +1228,6 @@ static bool grid_degenerate(const std::vector<Point>& grid, int ns, double tol, 
 // ═══════════════════════════════════════════════════════════════════════════
 // StepReader
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Entity access over a parsed file with points, directions and frames cached by id.
 class StepReader {
     const StepFile& sf; // Parsed file.
@@ -1633,7 +1626,6 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 // Topology access
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// One face bound: outer flag, orientation and the ORIENTED_EDGE ids of its EDGE_LOOP.
 struct Bound {
     bool is_outer = false; // Whether the bound is FACE_OUTER_BOUND.
@@ -1701,7 +1693,6 @@ static int edge_geom_id(const StepReader& r, int ec_ref) {
 // ═══════════════════════════════════════════════════════════════════════════
 // BRep assembly from STEP
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// One edge use in loop-traversal order; c2d is flipped into the edge direction when stored.
 struct PendingEdge {
     int edge = -1; // Brep edge index.
@@ -2758,7 +2749,6 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 // StepWriter
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// ISO 10303-21 REAL: a decimal point in the mantissa and an uppercase E.
 static std::string fmt(double v) {
 
@@ -3327,7 +3317,6 @@ static bool write_step_string(const std::string& content, const std::string& fil
 // ═══════════════════════════════════════════════════════════════════════════
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<Point> read_file_step_points(const std::string& filepath) {
 
     const StepFile sf = parse_step_file(filepath);

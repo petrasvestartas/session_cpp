@@ -29,7 +29,9 @@ Quaternion& Quaternion::operator=(const Quaternion& other) {
     return *this;
 }
 
-Quaternion Quaternion::duplicate() const { return Quaternion(*this); }
+Quaternion Quaternion::duplicate() const {
+    return Quaternion(*this);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
@@ -50,14 +52,20 @@ std::string& Quaternion::guid() {
     return _guid;
 }
 
-void Quaternion::refresh_guid() { _guid.clear(); }
+void Quaternion::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-Quaternion Quaternion::identity() { return Quaternion(1.0, Vector(0.0, 0.0, 0.0)); }
+Quaternion Quaternion::identity() {
+    return Quaternion(1.0, Vector(0.0, 0.0, 0.0));
+}
 
-Quaternion Quaternion::from_components(double scalar, const Vector& vector) { return Quaternion(scalar, vector); }
+Quaternion Quaternion::from_components(double scalar, const Vector& vector) {
+    return Quaternion(scalar, vector);
+}
 
 Quaternion Quaternion::from_axis_angle(const Vector& axis, double angle) {
 
@@ -192,7 +200,9 @@ bool Quaternion::operator==(const Quaternion& other) const {
            std::round(vector[2] * 1000000.0) == std::round(other.vector[2] * 1000000.0);
 }
 
-bool Quaternion::operator!=(const Quaternion& other) const { return !(*this == other); }
+bool Quaternion::operator!=(const Quaternion& other) const {
+    return !(*this == other);
+}
 
 Quaternion Quaternion::operator*(const Quaternion& other) const {
 
@@ -202,13 +212,21 @@ Quaternion Quaternion::operator*(const Quaternion& other) const {
     );
 }
 
-Quaternion Quaternion::operator*(double amount) const { return Quaternion(scalar * amount, vector * amount); }
+Quaternion Quaternion::operator*(double amount) const {
+    return Quaternion(scalar * amount, vector * amount);
+}
 
-Quaternion Quaternion::operator+(const Quaternion& other) const { return Quaternion(scalar + other.scalar, vector + other.vector); }
+Quaternion Quaternion::operator+(const Quaternion& other) const {
+    return Quaternion(scalar + other.scalar, vector + other.vector);
+}
 
-Quaternion Quaternion::operator-(const Quaternion& other) const { return Quaternion(scalar - other.scalar, vector - other.vector); }
+Quaternion Quaternion::operator-(const Quaternion& other) const {
+    return Quaternion(scalar - other.scalar, vector - other.vector);
+}
 
-Quaternion Quaternion::operator-() const { return Quaternion(-scalar, -vector); }
+Quaternion Quaternion::operator-() const {
+    return Quaternion(-scalar, -vector);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry
@@ -247,9 +265,13 @@ Plane Quaternion::get_rotation() const {
     return Plane::from_frame(Point(0.0, 0.0, 0.0), xaxis, yaxis, zaxis);
 }
 
-double Quaternion::magnitude() const { return std::sqrt(magnitude_squared()); }
+double Quaternion::magnitude() const {
+    return std::sqrt(magnitude_squared());
+}
 
-double Quaternion::magnitude_squared() const { return scalar * scalar + vector.dot(vector); }
+double Quaternion::magnitude_squared() const {
+    return scalar * scalar + vector.dot(vector);
+}
 
 Quaternion Quaternion::normalized() const {
 
@@ -285,7 +307,9 @@ Quaternion Quaternion::invert() const {
     return q;
 }
 
-double Quaternion::dot(const Quaternion& other) const { return scalar * other.scalar + vector.dot(other.vector); }
+double Quaternion::dot(const Quaternion& other) const {
+    return scalar * other.scalar + vector.dot(other.vector);
+}
 
 Quaternion Quaternion::slerp(const Quaternion& other, double amount) const {
 
@@ -338,9 +362,13 @@ Quaternion Quaternion::jsonload(const nlohmann::json& data) {
     return q;
 }
 
-std::string Quaternion::file_json_dumps() const { return jsondump().dump(); }
+std::string Quaternion::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Quaternion Quaternion::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Quaternion Quaternion::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Quaternion::file_json_dump(const std::string& filename) const {
 
@@ -378,7 +406,9 @@ Quaternion Quaternion::from_proto(const session_proto::Quaternion& proto) {
     return q;
 }
 
-std::string Quaternion::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Quaternion::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Quaternion Quaternion::pb_loads(const std::string& data) {
 
@@ -435,6 +465,8 @@ std::string Quaternion::repr() const {
     );
 }
 
-std::ostream& operator<<(std::ostream& os, const Quaternion& quaternion) { return os << quaternion.str(); }
+std::ostream& operator<<(std::ostream& os, const Quaternion& quaternion) {
+    return os << quaternion.str();
+}
 
 } // namespace session_cpp

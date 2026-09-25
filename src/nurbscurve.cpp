@@ -12,7 +12,9 @@ constexpr double SQRT_EPSILON = 1.490116119385e-8;
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-NurbsCurve::NurbsCurve() { initialize(); }
+NurbsCurve::NurbsCurve() {
+    initialize();
+}
 
 NurbsCurve::NurbsCurve(int dimension, bool is_rational, int order, int cv_count) {
 
@@ -34,7 +36,9 @@ NurbsCurve& NurbsCurve::operator=(const NurbsCurve& other) {
     return *this;
 }
 
-NurbsCurve::~NurbsCurve() { destroy(); }
+NurbsCurve::~NurbsCurve() {
+    destroy();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -217,7 +221,9 @@ bool NurbsCurve::operator==(const NurbsCurve& other) const {
     return true;
 }
 
-bool NurbsCurve::operator!=(const NurbsCurve& other) const { return !(*this == other); }
+bool NurbsCurve::operator!=(const NurbsCurve& other) const {
+    return !(*this == other);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
@@ -733,9 +739,13 @@ bool NurbsCurve::is_clamped(int end) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-int NurbsCurve::cv_size() const { return (m_dim > 0) ? (m_is_rat ? (m_dim + 1) : m_dim) : 0; }
+int NurbsCurve::cv_size() const {
+    return (m_dim > 0) ? (m_is_rat ? (m_dim + 1) : m_dim) : 0;
+}
 
-int NurbsCurve::nurbsknot_count() const { return m_order + m_cv_count - 2; }
+int NurbsCurve::nurbsknot_count() const {
+    return m_order + m_cv_count - 2;
+}
 
 int NurbsCurve::span_count() const {
 
@@ -1226,7 +1236,9 @@ double NurbsCurve::length(double tolerance) const {
 }
 
 /// Order two (t, point) samples by parameter.
-static bool sample_before(const std::pair<double, Point>& a, const std::pair<double, Point>& b) { return a.first < b.first; }
+static bool sample_before(const std::pair<double, Point>& a, const std::pair<double, Point>& b) {
+    return a.first < b.first;
+}
 
 bool NurbsCurve::to_polyline_adaptive(std::vector<Point>& points, std::vector<double>* params, double angle_tolerance, double min_edge_length, double max_edge_length) const {
 
@@ -1518,9 +1530,13 @@ double NurbsCurve::curvature_at(double t) const {
     return d[1].cross(d[2]).magnitude() / (s * s * s);
 }
 
-double NurbsCurve::closest_parameter(const Point& test_point) const { return Closest::curve_point(*this, test_point).first; }
+double NurbsCurve::closest_parameter(const Point& test_point) const {
+    return Closest::curve_point(*this, test_point).first;
+}
 
-Point NurbsCurve::closest_point(const Point& test_point) const { return point_at(closest_parameter(test_point)); }
+Point NurbsCurve::closest_point(const Point& test_point) const {
+    return point_at(closest_parameter(test_point));
+}
 
 std::pair<double, double> NurbsCurve::closest_parameters_curve(const NurbsCurve& other) const {
 
@@ -1654,11 +1670,17 @@ std::vector<Plane> NurbsCurve::get_perpendicular_planes(int count) const {
     return frames;
 }
 
-Point NurbsCurve::point_at_start() const { return point_at(domain_start()); }
+Point NurbsCurve::point_at_start() const {
+    return point_at(domain_start());
+}
 
-Point NurbsCurve::point_at_middle() const { return point_at(domain_middle()); }
+Point NurbsCurve::point_at_middle() const {
+    return point_at(domain_middle());
+}
 
-Point NurbsCurve::point_at_end() const { return point_at(domain_end()); }
+Point NurbsCurve::point_at_end() const {
+    return point_at(domain_end());
+}
 
 bool NurbsCurve::set_start_point(const Point& start_point) {
 
@@ -2309,9 +2331,13 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     return curve;
 }
 
-std::string NurbsCurve::file_json_dumps() const { return jsondump().dump(); }
+std::string NurbsCurve::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-NurbsCurve NurbsCurve::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+NurbsCurve NurbsCurve::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void NurbsCurve::file_json_dump(const std::string& filename) const {
 
@@ -2404,7 +2430,9 @@ NurbsCurve NurbsCurve::from_proto(const session_proto::NurbsCurve& proto) {
     return curve;
 }
 
-std::string NurbsCurve::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string NurbsCurve::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 NurbsCurve NurbsCurve::pb_loads(const std::string& data) {
 
@@ -2434,7 +2462,9 @@ NurbsCurve NurbsCurve::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-std::string NurbsCurve::str() const { return fmt::format("NurbsCurve(name={}, degree={}, cvs={})", name, degree(), cv_count()); }
+std::string NurbsCurve::str() const {
+    return fmt::format("NurbsCurve(name={}, degree={}, cvs={})", name, degree(), cv_count());
+}
 
 std::string NurbsCurve::repr() const {
 

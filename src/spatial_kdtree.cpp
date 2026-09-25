@@ -93,7 +93,9 @@ std::vector<std::pair<int, double>> SpatialKDTree::nearest_k(const Point& query,
 }
 
 /// Order two hits by distance.
-static bool hit_before(const std::pair<int, double>& a, const std::pair<int, double>& b) { return a.second < b.second; }
+static bool hit_before(const std::pair<int, double>& a, const std::pair<int, double>& b) {
+    return a.second < b.second;
+}
 
 std::vector<std::pair<int, double>> SpatialKDTree::radius_search(const Point& query, double radius) const {
 

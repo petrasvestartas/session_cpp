@@ -52,7 +52,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {

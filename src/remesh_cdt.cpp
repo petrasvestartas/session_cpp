@@ -13,7 +13,6 @@ namespace {
 // ═══════════════════════════════════════════════════════════════════════════
 // Integer geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 constexpr size_t NULL_IDX = static_cast<size_t>(-1);
 constexpr double MAX_COORD64 = 9e17;
 constexpr int MAX_PRECISION = 6;
@@ -219,7 +218,6 @@ bool find_loc_min(const std::vector<std::array<int64_t, 2>>& path, size_t& i) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Sweep graph
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Boundary side of an edge, or loose for a diagonal.
 enum class EdgeKind {
     loose, // Diagonal between two boundary edges.
@@ -1159,7 +1157,6 @@ std::vector<std::array<std::array<int64_t, 2>, 3>> Delaunay::execute(const std::
 // ═══════════════════════════════════════════════════════════════════════════
 // Triangulation
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Power of ten keeping the largest coordinate inside int64 headroom.
 double cdt_scale(
     const std::vector<std::pair<double, double>>& border_2d,
@@ -1323,7 +1320,6 @@ std::vector<std::array<int, 3>> to_indices(
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh assembly
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Polyline points without the closing duplicate.
 std::vector<Point> strip_close(const Polyline& polyline) {
 

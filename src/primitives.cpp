@@ -11,7 +11,6 @@ namespace {
 // ═══════════════════════════════════════════════════════════════════════════
 // Rational quadratic circle pattern
 // ═══════════════════════════════════════════════════════════════════════════
-
 const double CIRCLE_W = 0.7071067811865476;
 const double CIRCLE_X[9] = {1, 1, 0, -1, -1, -1, 0, 1, 1};
 const double CIRCLE_Y[9] = {0, 1, 1, 1, 0, -1, -1, -1, 0};
@@ -32,7 +31,6 @@ void set_circle_row(NurbsSurface& srf, int j, double cx, double cy, double cz, d
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Appends n points of a circle of the given radius in the plane z.
 void add_ring(std::vector<Point>& vertices, size_t n, double radius, double z) {
 
@@ -117,7 +115,6 @@ std::vector<std::vector<size_t>> surface_mid_grid(
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve compatibility
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Sorted union of two nurbsknot vectors, equal values kept once.
 std::vector<double> merge_nurbsknot_vectors(const std::vector<double>& a, const std::vector<double>& b) {
 
@@ -224,7 +221,6 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Planar helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Bilinear patch: u runs p00 to p10, v runs p00 to p01.
 NurbsSurface bilinear_patch(const Point& p00, const Point& p10, const Point& p01, const Point& p11) {
 
@@ -294,7 +290,6 @@ NurbsSurface bounded_patch(
 // ═══════════════════════════════════════════════════════════════════════════
 // Loft helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Section parameters in [0, 1] from the mean CV distance between consecutive sections.
 std::vector<double> loft_section_params(const std::vector<NurbsCurve>& curves) {
 
@@ -430,7 +425,6 @@ std::vector<std::vector<double>> solve_linear(std::vector<std::vector<double>> a
 // ═══════════════════════════════════════════════════════════════════════════
 // Revolve helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Number of quarter arcs, at most 4, that cover the angle.
 int revolve_arc_count(double angle) {
 
@@ -482,7 +476,6 @@ void set_revolve_column(
 // ═══════════════════════════════════════════════════════════════════════════
 // Sweep helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Point at fraction s from a to b.
 Point lerp_point(const Point& a, const Point& b, double s) {
     return a + (b - a) * s;
@@ -597,7 +590,6 @@ Xform rail_xform(const Plane& source, double width, const Point& p1, const Point
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Curves ordered head to tail, reversed where needed; empty when they do not close a loop.
 std::vector<NurbsCurve> chain_curves(const std::vector<NurbsCurve>& input) {
 
@@ -693,7 +685,6 @@ void set_coons_cvs(
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 Mesh Primitives::arrow_mesh(const Line& line, double radius) {
 
     const Point start = line.start();
@@ -848,7 +839,6 @@ Mesh Primitives::icosahedron(double edge) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsCurve Primitives::circle(double cx, double cy, double cz, double radius) {
     return ellipse(cx, cy, cz, radius, radius);
 }
@@ -964,7 +954,6 @@ NurbsCurve Primitives::create_interpolated(
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface primitives
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsSurface Primitives::cylinder_surface(double cx, double cy, double cz, double radius, double height) {
 
     NurbsSurface srf(3, true, 3, 2, 9, 2);
@@ -1101,7 +1090,6 @@ NurbsSurface Primitives::wave_surface(double size, double amplitude) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface factories
 // ═══════════════════════════════════════════════════════════════════════════
-
 NurbsSurface Primitives::create_ruled(const NurbsCurve& curve_a, const NurbsCurve& curve_b) {
 
     if (!curve_a.is_valid() || !curve_b.is_valid())
@@ -1410,7 +1398,6 @@ NurbsSurface Primitives::create_edge(
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface to mesh
 // ═══════════════════════════════════════════════════════════════════════════
-
 Mesh Primitives::quad_mesh(const NurbsSurface& surface, int u_count, int v_count) {
 
     Mesh mesh;
@@ -1499,7 +1486,6 @@ Mesh Primitives::hex_mesh(const NurbsSurface& surface, int u_count, int v_count,
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh geometry
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> Primitives::unit_cylinder_geometry() {
 
     const size_t n = 10;

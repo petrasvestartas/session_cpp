@@ -74,7 +74,9 @@ std::string& Plane::guid() {
     return _guid;
 }
 
-void Plane::refresh_guid() { _guid.clear(); }
+void Plane::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -296,7 +298,9 @@ bool Plane::operator==(const Plane& other) const {
     return name == other.name && _origin == other._origin && _x_axis == other._x_axis && _y_axis == other._y_axis && _z_axis == other._z_axis && linecolor == other.linecolor;
 }
 
-bool Plane::operator!=(const Plane& other) const { return !(*this == other); }
+bool Plane::operator!=(const Plane& other) const {
+    return !(*this == other);
+}
 
 Plane& Plane::operator+=(const Vector& other) {
 
@@ -375,7 +379,9 @@ void Plane::rotate(double angles_in_radians) {
     _y_axis = new_y;
 }
 
-bool Plane::is_right_hand() const { return _x_axis.cross(_y_axis).dot(_z_axis) > 0.999; }
+bool Plane::is_right_hand() const {
+    return _x_axis.cross(_y_axis).dot(_z_axis) > 0.999;
+}
 
 bool Plane::is_same_direction(const Plane& plane0, const Plane& plane1, bool can_be_flipped) {
 
@@ -448,7 +454,9 @@ Point Plane::axis_point() const {
     return Point(0.0, 0.0, -d / n[2]);
 }
 
-bool Plane::has_on_negative_side(const Point& p) const { return _a * p[0] + _b * p[1] + _c * p[2] + _d < 0.0; }
+bool Plane::has_on_negative_side(const Point& p) const {
+    return _a * p[0] + _b * p[1] + _c * p[2] + _d < 0.0;
+}
 
 double Plane::squared_distance(const Point& p) const {
 
@@ -554,9 +562,13 @@ Plane Plane::jsonload(const nlohmann::json& data) {
     return plane;
 }
 
-std::string Plane::file_json_dumps() const { return jsondump().dump(); }
+std::string Plane::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Plane Plane::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Plane Plane::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Plane::file_json_dump(const std::string& filename) const {
 
@@ -626,7 +638,9 @@ Plane Plane::from_proto(const session_proto::Plane& proto) {
     return plane;
 }
 
-std::string Plane::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Plane::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Plane Plane::pb_loads(const std::string& data) {
 
@@ -656,7 +670,9 @@ Plane Plane::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-std::string Plane::str() const { return fmt::format("{}\n{}\n{}\n{}", _origin.str(), _x_axis.str(), _y_axis.str(), _z_axis.str()); }
+std::string Plane::str() const {
+    return fmt::format("{}\n{}\n{}\n{}", _origin.str(), _x_axis.str(), _y_axis.str(), _z_axis.str());
+}
 
 std::string Plane::repr() const {
 
@@ -675,6 +691,8 @@ std::string Plane::repr() const {
     );
 }
 
-std::ostream& operator<<(std::ostream& os, const Plane& plane) { return os << plane.str(); }
+std::ostream& operator<<(std::ostream& os, const Plane& plane) {
+    return os << plane.str();
+}
 
 } // namespace session_cpp

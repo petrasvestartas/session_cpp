@@ -168,7 +168,9 @@ std::ostream& operator<<(std::ostream& os, const AABB& aabb);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::AABB> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::AABB& aabb, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", aabb.str());

@@ -131,7 +131,6 @@ struct Piece {
 // ═══════════════════════════════════════════════════════════════════════════
 // Validation
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Throw std::invalid_argument when the condition fails.
 void require(bool condition, std::string_view message) {
 
@@ -178,7 +177,6 @@ void check_surface(const NurbsSurface& surface) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve parameters
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Copy of a curve trimmed to [a, b], clamped to its domain.
 NurbsCurve interval(const NurbsCurve& curve, double a, double b) {
 
@@ -280,7 +278,6 @@ std::vector<double> unique_parameters(std::vector<double> values, double lo, dou
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve intersection
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// True when every control point lies within tolerance of the chord.
 bool flat(const NurbsCurve& curve, double tolerance) {
 
@@ -479,7 +476,6 @@ std::vector<std::pair<double, double>> intersections(
 // ═══════════════════════════════════════════════════════════════════════════
 // Trim polygons
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Curves in surface parameter space, exact on a bilinear parallelogram patch.
 std::vector<NurbsCurve> pullback(const NurbsSurface& surface, const NurbsCurve& curve, double tolerance) {
 
@@ -598,7 +594,6 @@ bool inside_loops(const Point& p, const std::vector<std::vector<Point>>& loops) 
 // ═══════════════════════════════════════════════════════════════════════════
 // Trim arrangement
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Knot spans of every source, cut at their mutual intersections.
 std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance) {
 
@@ -859,7 +854,6 @@ std::vector<std::vector<std::vector<Run>>> arrange(
 // ═══════════════════════════════════════════════════════════════════════════
 // BRep assembly
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Index of the BRep vertex at a point, added when none lies within tolerance.
 int vertex(BRep& result, const Point& p, double tolerance) {
 
@@ -1225,7 +1219,6 @@ void validate(const BRep& result, const BRep& original, double tolerance) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Split
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<NurbsCurve> split_curve_by_curves(
     const NurbsCurve& curve,
     const std::vector<NurbsCurve>& cutters,

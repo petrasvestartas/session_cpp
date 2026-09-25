@@ -61,28 +61,44 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Current unit system
-    std::string unit() const { return _unit; }
+    std::string unit() const {
+        return _unit;
+    }
 
     /// Absolute tolerance value (or default ABSOLUTE)
-    double absolute() const { return _absolute.value_or(ABSOLUTE); }
+    double absolute() const {
+        return _absolute.value_or(ABSOLUTE);
+    }
 
     /// Relative tolerance value (or default RELATIVE)
-    double relative() const { return _relative.value_or(RELATIVE); }
+    double relative() const {
+        return _relative.value_or(RELATIVE);
+    }
 
     /// Angular tolerance value in radians (or default ANGULAR)
-    double angular() const { return _angular.value_or(ANGULAR); }
+    double angular() const {
+        return _angular.value_or(ANGULAR);
+    }
 
     /// Approximation tolerance (or default APPROXIMATION)
-    double approximation() const { return _approximation.value_or(APPROXIMATION); }
+    double approximation() const {
+        return _approximation.value_or(APPROXIMATION);
+    }
 
     /// Decimal precision used for formatting (or default PRECISION)
-    int precision() const { return _precision.value_or(PRECISION); }
+    int precision() const {
+        return _precision.value_or(PRECISION);
+    }
 
     /// Linear deflection value (or default LINEARDEFLECTION)
-    double lineardeflection() const { return _lineardeflection.value_or(LINEARDEFLECTION); }
+    double lineardeflection() const {
+        return _lineardeflection.value_or(LINEARDEFLECTION);
+    }
 
     /// Angular deflection value (or default ANGULARDEFLECTION)
-    double angulardeflection() const { return _angulardeflection.value_or(ANGULARDEFLECTION); }
+    double angulardeflection() const {
+        return _angulardeflection.value_or(ANGULARDEFLECTION);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators
@@ -175,10 +191,14 @@ public:
     // Numeric conversion
     // ═══════════════════════════════════════════════════════════════════════════
     /// Convert degrees to radians
-    static double to_radians(double degrees) { return degrees * TO_RADIANS; }
+    static double to_radians(double degrees) {
+        return degrees * TO_RADIANS;
+    }
 
     /// Convert radians to degrees
-    static double to_degrees(double radians) { return radians * TO_DEGREES; }
+    static double to_degrees(double radians) {
+        return radians * TO_DEGREES;
+    }
 
     /// Round a value to a given number of decimal places
     static double round_to(double value, int ndigits);
@@ -264,10 +284,14 @@ public:
     ToleranceGuard& operator=(ToleranceGuard&&) = delete;
 
     /// Access the guarded tolerance.
-    Tolerance& operator*() { return *_target; }
+    Tolerance& operator*() {
+        return *_target;
+    }
 
     /// Access the guarded tolerance.
-    Tolerance* operator->() { return _target; }
+    Tolerance* operator->() {
+        return _target;
+    }
 };
 
 extern Tolerance TOLERANCE; // Global tolerance instance.
@@ -275,7 +299,6 @@ extern Tolerance TOLERANCE; // Global tolerance instance.
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilities
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Check if a number is finite
 bool is_finite(double x);
 

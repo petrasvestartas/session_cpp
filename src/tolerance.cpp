@@ -279,7 +279,9 @@ Tolerance Tolerance::jsonload(const nlohmann::json& data) {
     return tolerance;
 }
 
-std::string Tolerance::file_json_dumps() const { return jsondump().dump(); }
+std::string Tolerance::file_json_dumps() const {
+    return jsondump().dump();
+}
 
 Tolerance Tolerance::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
@@ -337,7 +339,9 @@ Tolerance Tolerance::from_proto(const session_proto::Tolerance& proto) {
     return tolerance;
 }
 
-std::string Tolerance::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Tolerance::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Tolerance Tolerance::pb_loads(const std::string& data) {
 
@@ -381,7 +385,6 @@ Tolerance Tolerance::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string Tolerance::str() const {
     return fmt::format("Tolerance({})", unit());
 }
@@ -403,7 +406,6 @@ std::string Tolerance::repr() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilities
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool is_finite(double x) {
     return std::isfinite(x);
 }

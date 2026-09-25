@@ -133,25 +133,39 @@ public:
     }
 
     /// Return the first entry.
-    const_iterator begin() const { return map().begin(); }
+    const_iterator begin() const {
+        return map().begin();
+    }
 
     /// Return one past the last entry.
-    const_iterator end() const { return map().end(); }
+    const_iterator end() const {
+        return map().end();
+    }
 
     /// Return the entry named key, or end().
-    const_iterator find(const std::string& key) const { return map().find(key); }
+    const_iterator find(const std::string& key) const {
+        return map().find(key);
+    }
 
     /// Return 1 when key is stored, else 0.
-    size_t count(const std::string& key) const { return map().count(key); }
+    size_t count(const std::string& key) const {
+        return map().count(key);
+    }
 
     /// Return the value named key; throws when missing.
-    const double& at(const std::string& key) const { return map().at(key); }
+    const double& at(const std::string& key) const {
+        return map().at(key);
+    }
 
     /// Return the number of entries.
-    size_t size() const { return map().size(); }
+    size_t size() const {
+        return map().size();
+    }
 
     /// Return whether nothing is stored.
-    bool empty() const { return map().empty(); }
+    bool empty() const {
+        return map().empty();
+    }
 
     /// Return the mutable value named key; the only mutating entry point, and the only one that can allocate.
     double& operator[](const std::string& key) {
@@ -177,19 +191,29 @@ public:
     }
 
     /// Free the map.
-    void clear() { m_.reset(); }
+    void clear() {
+        m_.reset();
+    }
 
     /// Compare the stored maps.
-    bool operator==(const Attributes& other) const { return map() == other.map(); }
+    bool operator==(const Attributes& other) const {
+        return map() == other.map();
+    }
 
     /// Compare the stored maps.
-    bool operator!=(const Attributes& other) const { return !(*this == other); }
+    bool operator!=(const Attributes& other) const {
+        return !(*this == other);
+    }
 
     /// Compare the stored map with a map.
-    bool operator==(const std::map<std::string, double>& other) const { return map() == other; }
+    bool operator==(const std::map<std::string, double>& other) const {
+        return map() == other;
+    }
 
     /// Compare the stored map with a map.
-    bool operator!=(const std::map<std::string, double>& other) const { return !(*this == other); }
+    bool operator!=(const std::map<std::string, double>& other) const {
+        return !(*this == other);
+    }
 };
 
 /// Write the map to json; templated so both json and ordered_json pick it up.
@@ -221,10 +245,14 @@ struct VertexData {
     }
 
     /// Compare position and attributes exactly.
-    bool operator!=(const VertexData& other) const { return !(*this == other); }
+    bool operator!=(const VertexData& other) const {
+        return !(*this == other);
+    }
 
     /// Return the position as a Point.
-    Point position() const { return Point(x, y, z); }
+    Point position() const {
+        return Point(x, y, z);
+    }
 
     /// Set the position from a Point.
     void set_position(const Point& point) {
@@ -424,7 +452,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const;
@@ -433,7 +463,9 @@ public:
     std::string& guid();
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+        _guid.clear();
+    }
 
     /// Store vertex colors and render with them.
     void set_pointcolors(std::vector<Color> colors);
@@ -445,7 +477,9 @@ public:
     void set_linecolors(std::vector<Color> colors, std::vector<double> line_widths = {});
 
     /// Store the object color.
-    void set_objectcolor(Color color) { objectcolor = std::move(color); }
+    void set_objectcolor(Color color) {
+        objectcolor = std::move(color);
+    }
 
     /// Drop vertex colors, falling back to the object color when they were active.
     void clear_pointcolors();
@@ -457,22 +491,34 @@ public:
     void clear_linecolors();
 
     /// Return the vertex colors.
-    const std::vector<Color>& get_pointcolors() const { return pointcolors; }
+    const std::vector<Color>& get_pointcolors() const {
+        return pointcolors;
+    }
 
     /// Return the face colors.
-    const std::vector<Color>& get_facecolors() const { return facecolors; }
+    const std::vector<Color>& get_facecolors() const {
+        return facecolors;
+    }
 
     /// Return the edge colors.
-    const std::vector<Color>& get_linecolors() const { return linecolors; }
+    const std::vector<Color>& get_linecolors() const {
+        return linecolors;
+    }
 
     /// Return the edge widths.
-    const std::vector<double>& get_widths() const { return widths; }
+    const std::vector<double>& get_widths() const {
+        return widths;
+    }
 
     /// Return the object color.
-    const Color& get_objectcolor() const { return objectcolor; }
+    const Color& get_objectcolor() const {
+        return objectcolor;
+    }
 
     /// Return the cached triangulation per face.
-    const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const { return triangulation; }
+    const std::map<size_t, std::vector<std::array<size_t, 3>>>& get_triangulation() const {
+        return triangulation;
+    }
 
     /// Cache the triangles of face fk.
     void set_face_triangulation(size_t fk, std::vector<std::array<size_t, 3>> tris) {
@@ -480,10 +526,14 @@ public:
     }
 
     /// Return the hole rings per face.
-    const std::map<size_t, std::vector<std::vector<size_t>>>& get_face_holes() const { return face_holes; }
+    const std::map<size_t, std::vector<std::vector<size_t>>>& get_face_holes() const {
+        return face_holes;
+    }
 
     /// Store the hole rings of face fkey.
-    void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) { face_holes[fkey] = std::move(rings); }
+    void set_face_holes(size_t fkey, std::vector<std::vector<size_t>> rings) {
+        face_holes[fkey] = std::move(rings);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -498,7 +548,9 @@ public:
     // Boolean Queries
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the mesh has no vertices.
-    bool is_empty() const { return vertex.empty(); }
+    bool is_empty() const {
+        return vertex.empty();
+    }
 
     /// Return whether every face has at least three existing vertices.
     bool is_valid() const;
@@ -519,10 +571,14 @@ public:
     // Attributes
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the vertex count.
-    size_t number_of_vertices() const { return vertex.size(); }
+    size_t number_of_vertices() const {
+        return vertex.size();
+    }
 
     /// Return the face count.
-    size_t number_of_faces() const { return face.size(); }
+    size_t number_of_faces() const {
+        return face.size();
+    }
 
     /// Return the undirected edge count.
     size_t number_of_edges() const;
@@ -864,10 +920,14 @@ public:
     void build_triangle_aabb_tree(bool force = false) const;
 
     /// Return the cached triangle BVH, nullptr before build_triangle_bvh.
-    const SpatialBVH* get_cached_bvh() const { return triangle_bvh.get(); }
+    const SpatialBVH* get_cached_bvh() const {
+        return triangle_bvh.get();
+    }
 
     /// Return the cached triangle AABB tree, nullptr before build_triangle_aabb_tree.
-    const SpatialAABBTree* get_cached_aabb_tree() const { return triangle_aabb_tree.get(); }
+    const SpatialAABBTree* get_cached_aabb_tree() const {
+        return triangle_aabb_tree.get();
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Transformation

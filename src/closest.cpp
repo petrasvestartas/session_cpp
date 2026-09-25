@@ -19,7 +19,6 @@ const int STACK_SIZE = 64;
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Parameter of the closest sample on a dense grid over [t0, t1].
 static double curve_seed(const NurbsCurve& curve, const Point& test_point, double t0, double t1) {
 
@@ -129,7 +128,6 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
 // ═══════════════════════════════════════════════════════════════════════════
 // Surface helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Parameters of the closest sample on a grid whose resolution follows the window size.
 static std::pair<double, double> surface_seed(
     const NurbsSurface& surface,
@@ -239,7 +237,6 @@ static std::pair<double, double> surface_newton(
 // ═══════════════════════════════════════════════════════════════════════════
 // Pullback helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Surface domain, trace step and tolerances shared by the surface_curve steps.
 struct Pullback {
     double u0 = 0.0; // Surface domain start in u.
@@ -795,7 +792,6 @@ static NurbsCurve pullback_fit(
 // ═══════════════════════════════════════════════════════════════════════════
 // Mesh helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5).
 static Point closest_point_on_triangle(const Point& p, const Point& a, const Point& b, const Point& c) {
 
@@ -888,7 +884,6 @@ static std::vector<size_t> mesh_face_keys(const Mesh& mesh) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Curves
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Point& test_point, double t0, double t1) {
 
     if (!curve.is_valid())
@@ -1043,7 +1038,6 @@ std::tuple<Point, double, double> Closest::polyline_point(const Polyline& polyli
 // ═══════════════════════════════════════════════════════════════════════════
 // Surfaces
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::tuple<double, double, double> Closest::surface_point(
     const NurbsSurface& surface,
     const Point& test_point,
@@ -1137,7 +1131,6 @@ std::vector<NurbsCurve> Closest::surface_curve(
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshes and clouds
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Point& test_point) {
 
     Point best_point(0, 0, 0);
@@ -1328,7 +1321,6 @@ std::tuple<Point, size_t, double> Closest::pointcloud_point_kdtree(const PointCl
 // ═══════════════════════════════════════════════════════════════════════════
 // Collections
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<std::pair<size_t, size_t>> Closest::lines_closest(const std::vector<Line>& lines, double threshold) {
 
     std::vector<std::pair<size_t, size_t>> pairs;

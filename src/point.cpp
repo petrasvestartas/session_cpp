@@ -48,7 +48,9 @@ std::string& Point::guid() {
     return _guid;
 }
 
-void Point::refresh_guid() { _guid.clear(); }
+void Point::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
@@ -91,7 +93,9 @@ bool Point::operator==(const Point& other) const {
            pointcolor == other.pointcolor;
 }
 
-bool Point::operator!=(const Point& other) const { return !(*this == other); }
+bool Point::operator!=(const Point& other) const {
+    return !(*this == other);
+}
 
 Point& Point::operator*=(double factor) {
 
@@ -129,17 +133,29 @@ Point& Point::operator-=(const Vector& other) {
     return *this;
 }
 
-Point Point::operator*(double factor) const { return Point(_x * factor, _y * factor, _z * factor); }
+Point Point::operator*(double factor) const {
+    return Point(_x * factor, _y * factor, _z * factor);
+}
 
-Point Point::operator/(double factor) const { return Point(_x / factor, _y / factor, _z / factor); }
+Point Point::operator/(double factor) const {
+    return Point(_x / factor, _y / factor, _z / factor);
+}
 
-Point Point::operator+(const Vector& other) const { return Point(_x + other[0], _y + other[1], _z + other[2]); }
+Point Point::operator+(const Vector& other) const {
+    return Point(_x + other[0], _y + other[1], _z + other[2]);
+}
 
-Point Point::operator-(const Vector& other) const { return Point(_x - other[0], _y - other[1], _z - other[2]); }
+Point Point::operator-(const Vector& other) const {
+    return Point(_x - other[0], _y - other[1], _z - other[2]);
+}
 
-Vector Point::operator-(const Point& other) const { return Vector(_x - other._x, _y - other._y, _z - other._z); }
+Vector Point::operator-(const Point& other) const {
+    return Vector(_x - other._x, _y - other._y, _z - other._z);
+}
 
-Point Point::sum(const Point& p0, const Point& p1) { return Point(p0[0] + p1[0], p0[1] + p1[1], p0[2] + p1[2]); }
+Point Point::sum(const Point& p0, const Point& p1) {
+    return Point(p0[0] + p1[0], p0[1] + p1[1], p0[2] + p1[2]);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
@@ -173,9 +189,13 @@ bool Point::is_ccw(const Point& a, const Point& b, const Point& c) {
     return (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
 }
 
-Point Point::mid_point(const Point& p) const { return Point((_x + p[0]) / 2.0, (_y + p[1]) / 2.0, (_z + p[2]) / 2.0); }
+Point Point::mid_point(const Point& p) const {
+    return Point((_x + p[0]) / 2.0, (_y + p[1]) / 2.0, (_z + p[2]) / 2.0);
+}
 
-Point Point::mid_point(const Point& a, const Point& b) { return a.mid_point(b); }
+Point Point::mid_point(const Point& a, const Point& b) {
+    return a.mid_point(b);
+}
 
 double Point::distance(const Point& p, double double_min) const {
 
@@ -201,7 +221,9 @@ double Point::distance(const Point& p, double double_min) const {
     return 0.0;
 }
 
-double Point::distance(const Point& a, const Point& b, double double_min) { return a.distance(b, double_min); }
+double Point::distance(const Point& a, const Point& b, double double_min) {
+    return a.distance(b, double_min);
+}
 
 double Point::squared_distance(const Point& p, double double_min) const {
 
@@ -356,9 +378,13 @@ Point Point::jsonload(const nlohmann::json& data) {
     return point;
 }
 
-std::string Point::file_json_dumps() const { return jsondump().dump(); }
+std::string Point::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Point Point::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Point Point::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Point::file_json_dump(const std::string& filename) const {
 
@@ -407,7 +433,9 @@ Point Point::from_proto(const session_proto::Point& proto) {
     return point;
 }
 
-std::string Point::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Point::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Point Point::pb_loads(const std::string& data) {
 
@@ -459,6 +487,8 @@ std::string Point::repr() const {
     );
 }
 
-std::ostream& operator<<(std::ostream& os, const Point& point) { return os << point.str(); }
+std::ostream& operator<<(std::ostream& os, const Point& point) {
+    return os << point.str();
+}
 
 } // namespace session_cpp

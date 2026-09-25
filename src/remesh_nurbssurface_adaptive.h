@@ -25,16 +25,24 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the largest normal turn in degrees.
-    double get_max_angle() const { return m_max_angle; }
+    double get_max_angle() const {
+        return m_max_angle;
+    }
 
     /// Return the longest cell edge.
-    double get_max_edge_length() const { return m_max_edge_length; }
+    double get_max_edge_length() const {
+        return m_max_edge_length;
+    }
 
     /// Return the shortest cell edge still split.
-    double get_min_edge_length() const { return m_min_edge_length; }
+    double get_min_edge_length() const {
+        return m_min_edge_length;
+    }
 
     /// Return the largest chord height.
-    double get_max_chord_height() const { return m_max_chord_height; }
+    double get_max_chord_height() const {
+        return m_max_chord_height;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators

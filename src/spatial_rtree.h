@@ -41,7 +41,9 @@ private:
         Branch m_branch[MAXNODES + 1]; // Branch slots.
 
         /// Whether the node is a leaf.
-        bool is_leaf() const { return m_level == 0; }
+        bool is_leaf() const {
+            return m_level == 0;
+        }
     };
 
     /// Traversal stack entry.
@@ -99,7 +101,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Number of stored items.
-    int count() const { return m_size; }
+    int count() const {
+        return m_size;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators

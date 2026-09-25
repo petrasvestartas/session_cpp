@@ -8,7 +8,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Hex encoding
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Encode bytes as hex text, since element_data is opaque and JSON carries no bytes.
 static std::string to_hex(const std::string& bytes) {
 
@@ -39,7 +38,6 @@ static std::string from_hex(const std::string& hex) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature
 // ═══════════════════════════════════════════════════════════════════════════
-
 ElementFeature& ElementFeature::operator=(const ElementFeature& other) {
 
     if (this == &other)
@@ -63,7 +61,6 @@ bool ElementFeature::operator==(const ElementFeature& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature - JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json ElementFeature::jsondump() const {
 
     nlohmann::ordered_json outs = nlohmann::ordered_json::array();
@@ -127,7 +124,6 @@ ElementFeature ElementFeature::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature - Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
 session_proto::ElementFeature ElementFeature::to_proto() const {
 
     session_proto::ElementFeature proto;
@@ -199,7 +195,6 @@ ElementFeature ElementFeature::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature - String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string ElementFeature::str() const {
     return fmt::format("ElementFeature({}, face {}, {} outline(s))", feature_type, face_index, outlines.size());
 }
@@ -215,7 +210,6 @@ std::ostream& operator<<(std::ostream& os, const ElementFeature& f) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element
 // ═══════════════════════════════════════════════════════════════════════════
-
 Element::Element(const std::string& name) : name(name) {}
 
 Element::Element(const Mesh& geometry, const std::string& name) : _geometry_mesh(geometry), name(name) {}
@@ -251,7 +245,6 @@ Element& Element::operator=(const Element& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool Element::has_geometry() const {
 
     ensure_geometry();
@@ -457,7 +450,6 @@ std::optional<Line> Element::axis() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Mutators
 // ═══════════════════════════════════════════════════════════════════════════
-
 void Element::add_geometry_op(std::function<Mesh(Mesh)> f) {
 
     _geometry_ops.push_back(std::move(f));
@@ -528,7 +520,6 @@ void Element::reset() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Operators
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool Element::operator==(const Element& other) const {
     return name == other.name && geometry_type_name() == other.geometry_type_name() &&
         element_type_name() == other.element_type_name() && element_data_dumps() == other.element_data_dumps() &&
@@ -543,7 +534,6 @@ bool Element::operator!=(const Element& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Utilities
 // ═══════════════════════════════════════════════════════════════════════════
-
 Element Element::duplicate() const {
     return Element(*this);
 }
@@ -551,7 +541,6 @@ Element Element::duplicate() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Computation
 // ═══════════════════════════════════════════════════════════════════════════
-
 OBB Element::compute_aabb() {
 
     const std::vector<Point> points = geometry_points();
@@ -637,7 +626,6 @@ std::vector<Point> Element::geometry_points() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Element::jsondump() const {
 
     ensure_geometry();
@@ -737,7 +725,6 @@ Element Element::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
 session_proto::Element Element::to_proto() const {
 
     ensure_geometry();
@@ -843,7 +830,6 @@ Element Element::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// Function-local so a package registering from a static initializer finds it built.
 static std::map<std::string, Element::Factory>& element_registry() {
 
@@ -918,7 +904,6 @@ std::shared_ptr<Element> Element::file_json_loads_polymorphic(const std::string&
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string Element::str() const {
     return fmt::format("Element({}, {})", name, geometry_type_name());
 }

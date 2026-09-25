@@ -8,7 +8,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Vertex
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Vertex::jsondump() const {
 
     nlohmann::ordered_json data;
@@ -41,7 +40,6 @@ std::string Vertex::str() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::tuple<std::string, std::string> Edge::vertices() const {
     return std::make_tuple(v0, v1);
 }
@@ -96,7 +94,6 @@ std::string Edge::str() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Details
 // ═══════════════════════════════════════════════════════════════════════════
-
 bool Graph::has_node(const std::string& key) const {
     return vertices.find(key) != vertices.end();
 }
@@ -327,7 +324,6 @@ std::string Graph::edge_label(const std::string& u, const std::string& v, const 
 // ═══════════════════════════════════════════════════════════════════════════
 // Attribute API
 // ═══════════════════════════════════════════════════════════════════════════
-
 void Graph::update_default_vertex_attributes(const std::vector<std::pair<std::string, double>>& attrs) {
 
     for (const std::pair<std::string, double>& attr : attrs)
@@ -477,7 +473,6 @@ std::vector<std::tuple<std::string, std::string>> Graph::edges_where_predicate(
 // ═══════════════════════════════════════════════════════════════════════════
 // Algorithms
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<std::string> Graph::bfs(const std::string& start) const {
 
     std::vector<std::string> result;
@@ -713,7 +708,6 @@ std::vector<std::vector<std::string>> Graph::cycle_basis() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Graph::jsondump() const {
 
     nlohmann::ordered_json vertices_json = nlohmann::ordered_json::array();
@@ -793,7 +787,6 @@ Graph Graph::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
 session_proto::Graph Graph::to_proto() const {
 
     session_proto::Graph proto;
@@ -926,7 +919,6 @@ Graph Graph::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string Graph::str() const {
     return fmt::format("<Graph with {} vertices, {} edges: {}>", vertex_count, edge_count, name);
 }
@@ -938,7 +930,6 @@ std::string Graph::repr() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Stream operators
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::ostream& operator<<(std::ostream& os, const Vertex& vertex) {
     return os << vertex.str();
 }

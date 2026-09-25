@@ -84,7 +84,9 @@ std::string& PointCloud::guid() {
     return _guid;
 }
 
-void PointCloud::refresh_guid() { _guid.clear(); }
+void PointCloud::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -113,7 +115,9 @@ bool PointCloud::operator==(const PointCloud& other) const {
            _point_ids == other._point_ids;
 }
 
-bool PointCloud::operator!=(const PointCloud& other) const { return !(*this == other); }
+bool PointCloud::operator!=(const PointCloud& other) const {
+    return !(*this == other);
+}
 
 PointCloud& PointCloud::operator+=(const Vector& other) {
 
@@ -433,9 +437,13 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
     return cloud;
 }
 
-std::string PointCloud::file_json_dumps() const { return jsondump().dump(); }
+std::string PointCloud::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-PointCloud PointCloud::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+PointCloud PointCloud::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void PointCloud::file_json_dump(const std::string& filename) const {
 
@@ -505,7 +513,9 @@ PointCloud PointCloud::from_proto(const session_proto::PointCloud& proto) {
     return cloud;
 }
 
-std::string PointCloud::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string PointCloud::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 PointCloud PointCloud::pb_loads(const std::string& data) {
 
@@ -535,10 +545,16 @@ PointCloud PointCloud::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-std::string PointCloud::str() const { return fmt::format("{} points", point_count()); }
+std::string PointCloud::str() const {
+    return fmt::format("{} points", point_count());
+}
 
-std::string PointCloud::repr() const { return fmt::format("PointCloud({}, {} points, {} colors, {} normals)", name, point_count(), color_count(), normal_count()); }
+std::string PointCloud::repr() const {
+    return fmt::format("PointCloud({}, {} points, {} colors, {} normals)", name, point_count(), color_count(), normal_count());
+}
 
-std::ostream& operator<<(std::ostream& os, const PointCloud& cloud) { return os << cloud.str(); }
+std::ostream& operator<<(std::ostream& os, const PointCloud& cloud) {
+    return os << cloud.str();
+}
 
 } // namespace session_cpp

@@ -12,7 +12,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // TreeNode
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// A node of a tree; geometry nodes are named by their object's guid, group nodes by a label.
 class TreeNode : public std::enable_shared_from_this<TreeNode> {
     friend class Tree;
@@ -36,7 +35,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -123,7 +124,6 @@ std::ostream& operator<<(std::ostream& os, const TreeNode& node);
 // ═══════════════════════════════════════════════════════════════════════════
 // Tree
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// A hierarchy of TreeNodes under one root.
 class Tree {
 private:
@@ -155,7 +155,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {

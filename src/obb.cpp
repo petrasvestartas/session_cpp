@@ -77,7 +77,9 @@ std::string& OBB::guid() {
     return _guid;
 }
 
-void OBB::refresh_guid() { _guid.clear(); }
+void OBB::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -688,9 +690,13 @@ OBB OBB::jsonload(const nlohmann::json& data) {
     return obb;
 }
 
-std::string OBB::file_json_dumps() const { return jsondump().dump(); }
+std::string OBB::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-OBB OBB::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+OBB OBB::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void OBB::file_json_dump(const std::string& filename) const {
 
@@ -743,7 +749,9 @@ OBB OBB::from_proto(const session_proto::BoundingBox& proto) {
     return obb;
 }
 
-std::string OBB::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string OBB::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 OBB OBB::pb_loads(const std::string& data) {
 
@@ -772,7 +780,9 @@ OBB OBB::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-std::string OBB::str() const { return fmt::format("{}\n{}\n{}\n{}\n{}", center.str(), x_axis.str(), y_axis.str(), z_axis.str(), half_size.str()); }
+std::string OBB::str() const {
+    return fmt::format("{}\n{}\n{}\n{}\n{}", center.str(), x_axis.str(), y_axis.str(), z_axis.str(), half_size.str());
+}
 
 std::string OBB::repr() const {
 

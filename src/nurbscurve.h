@@ -127,7 +127,9 @@ public:
     bool is_valid() const;
 
     /// Return whether the CVs carry weights.
-    bool is_rational() const { return m_is_rat != 0; }
+    bool is_rational() const {
+        return m_is_rat != 0;
+    }
 
     /// Return whether the start point equals the end point.
     bool is_closed() const;
@@ -172,7 +174,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -193,19 +197,29 @@ public:
     }
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+        _guid.clear();
+    }
 
     /// Return the coordinate dimension.
-    int dimension() const { return m_dim; }
+    int dimension() const {
+        return m_dim;
+    }
 
     /// Return the order (degree + 1).
-    int order() const { return m_order; }
+    int order() const {
+        return m_order;
+    }
 
     /// Return the degree (order - 1).
-    int degree() const { return m_order - 1; }
+    int degree() const {
+        return m_order - 1;
+    }
 
     /// Return the number of control vertices.
-    int cv_count() const { return m_cv_count; }
+    int cv_count() const {
+        return m_cv_count;
+    }
 
     /// Return the doubles per CV: dimension + 1 when rational.
     int cv_size() const;
@@ -262,16 +276,24 @@ public:
     double superfluous_nurbsknot(int end) const;
 
     /// Return the nurbsknot array pointer.
-    const double* nurbsknot_array() const { return m_nurbsknot.data(); }
+    const double* nurbsknot_array() const {
+        return m_nurbsknot.data();
+    }
 
     /// Return the mutable CV array pointer.
-    double* cv_array() { return m_cv.data(); }
+    double* cv_array() {
+        return m_cv.data();
+    }
 
     /// Return the CV array pointer.
-    const double* cv_array() const { return m_cv.data(); }
+    const double* cv_array() const {
+        return m_cv.data();
+    }
 
     /// Return a copy of the nurbsknot vector.
-    std::vector<double> get_nurbsknots() const { return m_nurbsknot; }
+    std::vector<double> get_nurbsknots() const {
+        return m_nurbsknot;
+    }
 
     /// Insert a nurbsknot by Boehm to the given multiplicity.
     bool insert_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity = 1);
@@ -614,7 +636,9 @@ std::ostream& operator<<(std::ostream& os, const NurbsCurve& curve);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::NurbsCurve> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::NurbsCurve& curve, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", curve.str());

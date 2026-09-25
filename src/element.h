@@ -65,7 +65,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -86,7 +88,9 @@ public:
     }
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+        _guid.clear();
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -95,7 +99,9 @@ public:
     bool operator==(const ElementFeature& other) const;
 
     /// Compare name, type, face, outlines and visibility; guid ignored.
-    bool operator!=(const ElementFeature& other) const { return !(*this == other); }
+    bool operator!=(const ElementFeature& other) const {
+        return !(*this == other);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
@@ -214,7 +220,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -235,7 +243,9 @@ public:
     }
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+        _guid.clear();
+    }
 
     /// Return the element's mesh before modifications; empty when no mesh exists. Domain types override this with their lazy parametric mesh.
     virtual const Mesh& element_geometry_mesh() const;
@@ -262,7 +272,9 @@ public:
     void compute_geometry_brep();
 
     /// Return whether the slot already holds what compute_geometry_mesh() would write.
-    bool geometry_synced() const { return _geometry_synced; }
+    bool geometry_synced() const {
+        return _geometry_synced;
+    }
 
     /// Mark the slot stale, so the next read computes it again; a domain type overrides this to drop its own caches too.
     virtual void invalidate_geometry() {
@@ -309,25 +321,39 @@ public:
     std::optional<Line> axis();
 
     /// Return whether the caches must be recomputed.
-    bool is_dirty() const { return _is_dirty; }
+    bool is_dirty() const {
+        return _is_dirty;
+    }
 
     /// Return the cached axis-aligned box without computing it.
-    const std::optional<OBB>& cached_aabb() const { return _aabb; }
+    const std::optional<OBB>& cached_aabb() const {
+        return _aabb;
+    }
 
     /// Return the cached oriented box without computing it.
-    const std::optional<OBB>& cached_obb() const { return _obb; }
+    const std::optional<OBB>& cached_obb() const {
+        return _obb;
+    }
 
     /// Return the cached collision mesh without computing it.
-    const std::optional<Mesh>& cached_collision_mesh() const { return _collision_mesh; }
+    const std::optional<Mesh>& cached_collision_mesh() const {
+        return _collision_mesh;
+    }
 
     /// Return the cached centroid without computing it.
-    const std::optional<Point>& cached_point() const { return _point; }
+    const std::optional<Point>& cached_point() const {
+        return _point;
+    }
 
     /// Return the number of in-memory geometry operations.
-    size_t geometry_ops_count() const { return _geometry_ops.size(); }
+    size_t geometry_ops_count() const {
+        return _geometry_ops.size();
+    }
 
     /// Return the number of features.
-    size_t features_count() const { return _features.size(); }
+    size_t features_count() const {
+        return _features.size();
+    }
 
     /// Return the modifications carried by this element and written with it; add_geometry_op is the in-memory counterpart that is not.
     const std::vector<ElementFeature>& features() const {
@@ -338,7 +364,9 @@ public:
     }
 
     /// Return the directions the element is inserted along when the assembly is put together, one per jointed face.
-    const std::vector<Vector>& insertion_vectors() const { return _insertion_vectors; }
+    const std::vector<Vector>& insertion_vectors() const {
+        return _insertion_vectors;
+    }
 
     /// Return the nominal extents in the element's own frame (plate: x/y outline, z thickness), authored intent rather than the measured obb; nullopt = never authored.
     const std::optional<Vector>& dimensions() const {
@@ -349,10 +377,14 @@ public:
     }
 
     /// Return the derived type name this element was loaded with, written to element_type; a plain Element authored in memory returns "".
-    virtual std::string element_type_name() const { return _element_type; }
+    virtual std::string element_type_name() const {
+        return _element_type;
+    }
 
     /// Return the derived type's own state, opaque to the kernel and carried through untouched.
-    virtual std::string element_data_dumps() const { return _element_data; }
+    virtual std::string element_data_dumps() const {
+        return _element_data;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators
@@ -361,16 +393,24 @@ public:
     void add_geometry_op(std::function<Mesh(Mesh)> f);
 
     /// Replace the features.
-    void set_features(std::vector<ElementFeature> features) { _features = std::move(features); }
+    void set_features(std::vector<ElementFeature> features) {
+        _features = std::move(features);
+    }
 
     /// Append a feature.
-    void add_feature(ElementFeature feature) { _features.push_back(std::move(feature)); }
+    void add_feature(ElementFeature feature) {
+        _features.push_back(std::move(feature));
+    }
 
     /// Replace the insertion vectors.
-    void set_insertion_vectors(std::vector<Vector> v) { _insertion_vectors = std::move(v); }
+    void set_insertion_vectors(std::vector<Vector> v) {
+        _insertion_vectors = std::move(v);
+    }
 
     /// Set the nominal extents.
-    void set_dimensions(const Vector& d) { _dimensions = d; }
+    void set_dimensions(const Vector& d) {
+        _dimensions = d;
+    }
 
     /// Bake a placement into the geometry, the feature outlines and the insertion vectors, then drop the caches; a domain type overrides it to move its own members too.
     virtual void place(const Xform& xform);
@@ -406,7 +446,9 @@ public:
     Element duplicate() const;
 
     /// Return a polymorphic copy of the same derived type; a derived class overrides it with one line.
-    virtual std::shared_ptr<Element> clone() const { return std::make_shared<Element>(*this); }
+    virtual std::shared_ptr<Element> clone() const {
+        return std::make_shared<Element>(*this);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON

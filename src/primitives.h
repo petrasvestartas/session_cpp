@@ -20,7 +20,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Mesh primitives
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Arrow mesh along a line: cylinder body over 80% of the length, cone head of 1.5x radius over 20%.
     static Mesh arrow_mesh(const Line& line, double radius);
 
@@ -48,7 +47,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Curve primitives
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Full circle as a rational quadratic NURBS (9 CVs).
     static NurbsCurve circle(double cx, double cy, double cz, double radius);
 
@@ -77,7 +75,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Surface primitives
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Rational cylinder surface of degree 2x1 around the z axis through (cx, cy, cz).
     static NurbsSurface cylinder_surface(double cx, double cy, double cz, double radius, double height);
 
@@ -99,7 +96,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Surface factories
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Ruled surface between two curves.
     static NurbsSurface create_ruled(const NurbsCurve& curve_a, const NurbsCurve& curve_b);
 
@@ -141,7 +137,6 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Surface to mesh
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Quad mesh sampled on a u_count x v_count grid.
     static Mesh quad_mesh(const NurbsSurface& surface, int u_count, int v_count);
 
@@ -155,7 +150,6 @@ private:
     // ═══════════════════════════════════════════════════════════════════════════
     // Mesh geometry
     // ═══════════════════════════════════════════════════════════════════════════
-
     /// Ten-sided unit cylinder: radius 0.5, z from -0.5 to 0.5.
     static std::pair<std::vector<Point>, std::vector<std::array<size_t, 3>>> unit_cylinder_geometry();
 

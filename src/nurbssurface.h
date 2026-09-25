@@ -159,7 +159,9 @@ public:
     bool is_valid_nurbsknot_vector(int dir) const;
 
     /// Return whether the CVs carry weights.
-    bool is_rational() const { return m_is_rat != 0; }
+    bool is_rational() const {
+        return m_is_rat != 0;
+    }
 
     /// Return whether the first and last CV rows across dir coincide when clamped, else whether dir is periodic.
     bool is_closed(int dir) const;
@@ -187,7 +189,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy guid has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the guid, creating it on first access.
     const std::string& guid() const {
@@ -208,10 +212,14 @@ public:
     }
 
     /// Clear the guid so a fresh one mints lazily on the next read.
-    void refresh_guid() { _guid.clear(); }
+    void refresh_guid() {
+        _guid.clear();
+    }
 
     /// Return the coordinate dimension.
-    int dimension() const { return m_dim; }
+    int dimension() const {
+        return m_dim;
+    }
 
     /// Return the order (degree + 1) in dir.
     int order(int dir) const;

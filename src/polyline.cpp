@@ -20,7 +20,9 @@ namespace session_cpp {
 namespace {
 
 /// Return the cross product sign of (b - a) x (p - a).
-double ccw_2d(double ax, double ay, double bx, double by, double px, double py) { return (bx - ax) * (py - ay) - (by - ay) * (px - ax); }
+double ccw_2d(double ax, double ay, double bx, double by, double px, double py) {
+    return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+}
 
 /// Return the squared distance from (px, py) to the segment (a, b).
 double seg_dist_sq(double px, double py, double ax, double ay, double bx, double by) {
@@ -86,7 +88,9 @@ struct PCell {
         : cx(cx_), cy(cy_), h(h_), d(point_to_polygon_dist(cx_, cy_, polygon)), mx(d + h_ * std::sqrt(2.0)) {}
 
     /// Order by the upper bound so the priority queue pops the most promising cell.
-    bool operator<(const PCell& o) const { return mx < o.mx; }
+    bool operator<(const PCell& o) const {
+        return mx < o.mx;
+    }
 };
 
 /// Return the cell at the centroid of the outer ring.
@@ -292,13 +296,21 @@ std::string& Polyline::guid() {
     return _guid;
 }
 
-void Polyline::refresh_guid() { _guid.clear(); }
+void Polyline::refresh_guid() {
+    _guid.clear();
+}
 
-size_t Polyline::point_count() const { return _coords.size() / 3; }
+size_t Polyline::point_count() const {
+    return _coords.size() / 3;
+}
 
-size_t Polyline::len() const { return point_count(); }
+size_t Polyline::len() const {
+    return point_count();
+}
 
-bool Polyline::is_empty() const { return _coords.empty(); }
+bool Polyline::is_empty() const {
+    return _coords.empty();
+}
 
 size_t Polyline::segment_count() const {
 
@@ -679,7 +691,9 @@ void Polyline::shift(int times) {
     }
 }
 
-void Polyline::translate(const Vector& v) { *this += v; }
+void Polyline::translate(const Vector& v) {
+    *this += v;
+}
 
 Polyline Polyline::translated(const Vector& v) const {
 
@@ -835,7 +849,9 @@ void Polyline::remove_consecutive_duplicates(double tol) {
     recompute_plane_if_needed();
 }
 
-Polyline Polyline::simplify(double tolerance) const { return Polyline(simplify_points(get_points(), tolerance)); }
+Polyline Polyline::simplify(double tolerance) const {
+    return Polyline(simplify_points(get_points(), tolerance));
+}
 
 Polyline Polyline::cut_by_plane(const Plane& plane, std::optional<bool> flip) const {
 
@@ -901,7 +917,9 @@ bool Polyline::operator==(const Polyline& other) const {
     return linecolor == other.linecolor;
 }
 
-bool Polyline::operator!=(const Polyline& other) const { return !(*this == other); }
+bool Polyline::operator!=(const Polyline& other) const {
+    return !(*this == other);
+}
 
 Point Polyline::operator[](size_t index) const {
 
@@ -985,7 +1003,9 @@ Polyline Polyline::operator/(double factor) const {
     return result;
 }
 
-Polyline Polyline::operator-() const { return reversed(); }
+Polyline Polyline::operator-() const {
+    return reversed();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
@@ -1161,7 +1181,9 @@ Polyline Polyline::tween_two_polylines(const Polyline& polyline0, const Polyline
     return result;
 }
 
-std::vector<Point> Polyline::interpolate_points(const Point& from, const Point& to, int steps, int kind) { return Point::interpolate(from, to, steps, kind); }
+std::vector<Point> Polyline::interpolate_points(const Point& from, const Point& to, int steps, int kind) {
+    return Point::interpolate(from, to, steps, kind);
+}
 
 Polyline Polyline::quick_hull(const Polyline& polygon) {
 
@@ -1423,7 +1445,9 @@ std::vector<Point> Polyline::polylabel_circle_division_points(const Vector& divi
     return points;
 }
 
-std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) { return BooleanPolyline::compute(a, b, clip_type); }
+std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, int clip_type) {
+    return BooleanPolyline::compute(a, b, clip_type);
+}
 
 std::vector<Polyline> Polyline::boolean_op(const Polyline& a, const Polyline& b, const Plane& plane, int clip_type) {
 
@@ -1570,9 +1594,13 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     return polyline;
 }
 
-std::string Polyline::file_json_dumps() const { return jsondump().dump(); }
+std::string Polyline::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Polyline Polyline::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Polyline Polyline::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Polyline::file_json_dump(const std::string& filename) const {
 
@@ -1628,7 +1656,9 @@ Polyline Polyline::from_proto(const session_proto::Polyline& proto) {
     return polyline;
 }
 
-std::string Polyline::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Polyline::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Polyline Polyline::pb_loads(const std::string& data) {
 
@@ -1675,14 +1705,20 @@ std::string Polyline::str() const {
     return oss.str();
 }
 
-std::string Polyline::repr() const { return "Polyline(" + name + ", " + std::to_string(point_count()) + " points)"; }
+std::string Polyline::repr() const {
+    return "Polyline(" + name + ", " + std::to_string(point_count()) + " points)";
+}
 
-std::ostream& operator<<(std::ostream& os, const Polyline& polyline) { return os << polyline.repr(); }
+std::ostream& operator<<(std::ostream& os, const Polyline& polyline) {
+    return os << polyline.repr();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Private helpers
 // ═══════════════════════════════════════════════════════════════════════════
-void Polyline::recompute_plane_if_needed() { _plane_dirty = true; }
+void Polyline::recompute_plane_if_needed() {
+    _plane_dirty = true;
+}
 
 void Polyline::average_normal(Vector& avg_normal) const {
 
@@ -1738,7 +1774,9 @@ void Polyline::project_to_plane(const Point& origin, const Vector& x_axis, const
     }
 }
 
-Point Polyline::unproject(const Point& origin, const Vector& x_axis, const Vector& y_axis, double u, double v) { return origin + x_axis * u + y_axis * v; }
+Point Polyline::unproject(const Point& origin, const Vector& x_axis, const Vector& y_axis, double u, double v) {
+    return origin + x_axis * u + y_axis * v;
+}
 
 void Polyline::quick_hull_recurse(const std::vector<std::array<double, 2>>& pts, double ax, double ay, double bx, double by, std::vector<std::array<double, 2>>& hull) {
 

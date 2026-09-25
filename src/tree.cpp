@@ -18,12 +18,17 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
+bool TreeNode::is_root() const {
+    return _parent.expired();
+}
 
-bool TreeNode::is_root() const { return _parent.expired(); }
+bool TreeNode::is_leaf() const {
+    return _children.empty();
+}
 
-bool TreeNode::is_leaf() const { return _children.empty(); }
-
-std::shared_ptr<TreeNode> TreeNode::parent() const { return _parent.lock(); }
+std::shared_ptr<TreeNode> TreeNode::parent() const {
+    return _parent.lock();
+}
 
 std::vector<TreeNode*> TreeNode::ancestors() const {
 
@@ -59,7 +64,6 @@ std::vector<TreeNode*> TreeNode::children() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Mutators
 // ═══════════════════════════════════════════════════════════════════════════
-
 void TreeNode::add(std::shared_ptr<TreeNode> child) {
 
     if (!child)
@@ -95,15 +99,17 @@ std::shared_ptr<TreeNode> TreeNode::remove(std::shared_ptr<TreeNode> child) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
+bool TreeNode::operator==(const TreeNode& other) const {
+    return guid() == other.guid();
+}
 
-bool TreeNode::operator==(const TreeNode& other) const { return guid() == other.guid(); }
-
-bool TreeNode::operator!=(const TreeNode& other) const { return !(*this == other); }
+bool TreeNode::operator!=(const TreeNode& other) const {
+    return !(*this == other);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Traversal
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std::string& order) const {
 
     std::vector<TreeNode*> result;
@@ -151,7 +157,6 @@ std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json TreeNode::jsondump() const {
 
     nlohmann::ordered_json children = nlohmann::ordered_json::array();
@@ -189,7 +194,6 @@ std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json& data) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string TreeNode::str() const {
     return fmt::format("TreeNode({}, {} children)", name, _children.size());
 }
@@ -208,7 +212,6 @@ std::ostream& operator<<(std::ostream& os, const TreeNode& node) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Tree
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Duplicate one node and everything under it with the same names, guids and colours.
@@ -268,7 +271,6 @@ std::shared_ptr<TreeNode> proto_to_node(const session_proto::TreeNode& proto) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
-
 Tree::Tree(const Tree& other) : name(other.name) {
 
     if (other.has_guid())
@@ -291,8 +293,9 @@ Tree& Tree::operator=(const Tree& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
-
-std::shared_ptr<TreeNode> Tree::root() const { return _root; }
+std::shared_ptr<TreeNode> Tree::root() const {
+    return _root;
+}
 
 std::vector<std::shared_ptr<TreeNode>> Tree::nodes() const {
 
@@ -373,7 +376,6 @@ std::vector<std::string> Tree::get_children_guids(const std::string& node_guid) 
 // ═══════════════════════════════════════════════════════════════════════════
 // Mutators
 // ═══════════════════════════════════════════════════════════════════════════
-
 void Tree::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent) {
 
     if (!node)
@@ -439,7 +441,6 @@ bool Tree::add_child_by_guid(const std::string& parent_guid, const std::string& 
 // ═══════════════════════════════════════════════════════════════════════════
 // Traversal
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::vector<std::shared_ptr<TreeNode>> Tree::traverse(const std::string& strategy, const std::string& order) const {
 
     std::vector<std::shared_ptr<TreeNode>> result;
@@ -461,7 +462,6 @@ std::vector<std::shared_ptr<TreeNode>> Tree::traverse(const std::string& strateg
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
-
 nlohmann::ordered_json Tree::jsondump() const {
 
     nlohmann::ordered_json data;
@@ -484,7 +484,9 @@ Tree Tree::jsonload(const nlohmann::json& data) {
     return tree;
 }
 
-std::string Tree::file_json_dumps() const { return jsondump().dump(); }
+std::string Tree::file_json_dumps() const {
+    return jsondump().dump();
+}
 
 Tree Tree::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
@@ -506,7 +508,6 @@ Tree Tree::file_json_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
-
 std::string Tree::pb_dumps() const {
 
     session_proto::Tree proto;
@@ -555,7 +556,6 @@ Tree Tree::pb_load(const std::string& filename) {
 // ═══════════════════════════════════════════════════════════════════════════
 // String
 // ═══════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 /// Draw one node and its subtree, the last child of every level closing its branch.
@@ -582,7 +582,9 @@ std::string Tree::str() const {
     return os.str();
 }
 
-std::string Tree::repr() const { return fmt::format("Tree({}, {} nodes)", name, nodes().size()); }
+std::string Tree::repr() const {
+    return fmt::format("Tree({}, {} nodes)", name, nodes().size());
+}
 
 std::ostream& operator<<(std::ostream& os, const Tree& tree) {
 

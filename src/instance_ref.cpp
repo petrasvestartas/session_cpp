@@ -84,12 +84,16 @@ bool InstanceRef::operator==(const InstanceRef& other) const {
         features == other.features;
 }
 
-bool InstanceRef::operator!=(const InstanceRef& other) const { return !(*this == other); }
+bool InstanceRef::operator!=(const InstanceRef& other) const {
+    return !(*this == other);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
 // ═══════════════════════════════════════════════════════════════════════════
-void InstanceRef::transform(const Xform& t) { xform = t * xform; }
+void InstanceRef::transform(const Xform& t) {
+    xform = t * xform;
+}
 
 InstanceRef InstanceRef::transformed(const Xform& t) const {
 
@@ -136,9 +140,13 @@ InstanceRef InstanceRef::jsonload(const nlohmann::json& data) {
     return ref;
 }
 
-std::string InstanceRef::file_json_dumps() const { return jsondump().dump(); }
+std::string InstanceRef::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-InstanceRef InstanceRef::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+InstanceRef InstanceRef::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void InstanceRef::file_json_dump(const std::string& filename) const {
 
@@ -204,7 +212,9 @@ InstanceRef InstanceRef::from_proto(const session_proto::InstanceRef& proto) {
     return ref;
 }
 
-std::string InstanceRef::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string InstanceRef::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 InstanceRef InstanceRef::pb_loads(const std::string& data) {
 
@@ -247,8 +257,12 @@ std::string InstanceRef::str() const {
     );
 }
 
-std::string InstanceRef::repr() const { return fmt::format("InstanceRef({}, {}, {}, {})", name, definition_guid, color.repr(), flags); }
+std::string InstanceRef::repr() const {
+    return fmt::format("InstanceRef({}, {}, {}, {})", name, definition_guid, color.repr(), flags);
+}
 
-std::ostream& operator<<(std::ostream& os, const InstanceRef& ref) { return os << ref.str(); }
+std::ostream& operator<<(std::ostream& os, const InstanceRef& ref) {
+    return os << ref.str();
+}
 
 } // namespace session_cpp

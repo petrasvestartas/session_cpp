@@ -25,7 +25,6 @@ namespace session_cpp {
 // ═══════════════════════════════════════════════════════════════════════════
 // Vertex
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// A graph vertex with a name, attribute string and integer index.
 class Vertex {
 private:
@@ -48,7 +47,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy GUID has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the GUID, creating it on first access.
     const std::string& guid() const {
@@ -87,7 +88,6 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 // Edge
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// A graph edge connecting two vertices by name.
 class Edge {
 private:
@@ -112,7 +112,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy GUID has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the GUID, creating it on first access.
     const std::string& guid() const {
@@ -160,7 +162,6 @@ public:
 // ═══════════════════════════════════════════════════════════════════════════
 // Graph
 // ═══════════════════════════════════════════════════════════════════════════
-
 /// An undirected graph with string vertices, string labels and double attributes.
 class Graph {
 private:
@@ -185,7 +186,9 @@ public:
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return whether the lazy GUID has been created.
-    bool has_guid() const { return !_guid.empty(); }
+    bool has_guid() const {
+        return !_guid.empty();
+    }
 
     /// Return the GUID, creating it on first access.
     const std::string& guid() const {
@@ -396,7 +399,9 @@ std::ostream& operator<<(std::ostream& os, const Graph& graph);
 } // namespace session_cpp
 
 template <> struct fmt::formatter<session_cpp::Vertex> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::Vertex& vertex, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", vertex.str());
@@ -404,7 +409,9 @@ template <> struct fmt::formatter<session_cpp::Vertex> {
 };
 
 template <> struct fmt::formatter<session_cpp::Edge> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::Edge& edge, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", edge.str());
@@ -412,7 +419,9 @@ template <> struct fmt::formatter<session_cpp::Edge> {
 };
 
 template <> struct fmt::formatter<session_cpp::Graph> {
-    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
+    constexpr fmt::format_parse_context::iterator parse(fmt::format_parse_context& ctx) {
+        return ctx.begin();
+    }
 
     fmt::format_context::iterator format(const session_cpp::Graph& graph, fmt::format_context& ctx) const {
         return fmt::format_to(ctx.out(), "{}", graph.str());

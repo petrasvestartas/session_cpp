@@ -5390,7 +5390,9 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
     return mesh;
 }
 
-std::string Mesh::file_json_dumps() const { return jsondump().dump(); }
+std::string Mesh::file_json_dumps() const {
+    return jsondump().dump();
+}
 
 Mesh Mesh::file_json_loads(const std::string& json_string) {
     return jsonload(nlohmann::ordered_json::parse(json_string));
@@ -5657,7 +5659,9 @@ Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
     return mesh;
 }
 
-std::string Mesh::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Mesh::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Mesh Mesh::pb_loads(const std::string& data) {
 

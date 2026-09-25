@@ -30,15 +30,25 @@ Vector& Vector::operator=(const Vector& other) {
     return *this;
 }
 
-Vector Vector::zero() { return Vector(0.0, 0.0, 0.0); }
+Vector Vector::zero() {
+    return Vector(0.0, 0.0, 0.0);
+}
 
-Vector Vector::x_axis() { return Vector(1.0, 0.0, 0.0); }
+Vector Vector::x_axis() {
+    return Vector(1.0, 0.0, 0.0);
+}
 
-Vector Vector::y_axis() { return Vector(0.0, 1.0, 0.0); }
+Vector Vector::y_axis() {
+    return Vector(0.0, 1.0, 0.0);
+}
 
-Vector Vector::z_axis() { return Vector(0.0, 0.0, 1.0); }
+Vector Vector::z_axis() {
+    return Vector(0.0, 0.0, 1.0);
+}
 
-Vector Vector::from_points(const Point& p0, const Point& p1) { return p1 - p0; }
+Vector Vector::from_points(const Point& p0, const Point& p1) {
+    return p1 - p0;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
@@ -100,7 +110,9 @@ bool Vector::operator==(const Vector& other) const {
            std::round(_z * 1000000.0) == std::round(other._z * 1000000.0);
 }
 
-bool Vector::operator!=(const Vector& other) const { return !(*this == other); }
+bool Vector::operator!=(const Vector& other) const {
+    return !(*this == other);
+}
 
 Vector& Vector::operator*=(double factor) {
 
@@ -142,17 +154,29 @@ Vector& Vector::operator-=(const Vector& other) {
     return *this;
 }
 
-Vector Vector::operator*(double factor) const { return Vector(_x * factor, _y * factor, _z * factor); }
+Vector Vector::operator*(double factor) const {
+    return Vector(_x * factor, _y * factor, _z * factor);
+}
 
-Vector Vector::operator/(double factor) const { return Vector(_x / factor, _y / factor, _z / factor); }
+Vector Vector::operator/(double factor) const {
+    return Vector(_x / factor, _y / factor, _z / factor);
+}
 
-Vector Vector::operator+(const Vector& other) const { return Vector(_x + other[0], _y + other[1], _z + other[2]); }
+Vector Vector::operator+(const Vector& other) const {
+    return Vector(_x + other[0], _y + other[1], _z + other[2]);
+}
 
-Vector Vector::operator-(const Vector& other) const { return Vector(_x - other[0], _y - other[1], _z - other[2]); }
+Vector Vector::operator-(const Vector& other) const {
+    return Vector(_x - other[0], _y - other[1], _z - other[2]);
+}
 
-Vector Vector::operator-() const { return Vector(-_x, -_y, -_z); }
+Vector Vector::operator-() const {
+    return Vector(-_x, -_y, -_z);
+}
 
-Vector operator*(double factor, const Vector& vector) { return vector * factor; }
+Vector operator*(double factor, const Vector& vector) {
+    return vector * factor;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
@@ -236,7 +260,9 @@ double Vector::magnitude() const {
     return _magnitude;
 }
 
-double Vector::magnitude_squared() const { return _x * _x + _y * _y + _z * _z; }
+double Vector::magnitude_squared() const {
+    return _x * _x + _y * _y + _z * _z;
+}
 
 bool Vector::normalize_self() {
 
@@ -264,7 +290,9 @@ Vector Vector::normalized() const {
     return result;
 }
 
-double Vector::dot(const Vector& other) const { return _x * other[0] + _y * other[1] + _z * other[2]; }
+double Vector::dot(const Vector& other) const {
+    return _x * other[0] + _y * other[1] + _z * other[2];
+}
 
 Vector Vector::cross(const Vector& other) const {
     return Vector(_y * other[2] - _z * other[1], _z * other[0] - _x * other[2], _x * other[1] - _y * other[0]);
@@ -321,7 +349,9 @@ int Vector::is_parallel_to(const Vector& other) const {
     return 0;
 }
 
-bool Vector::is_perpendicular_to(const Vector& other) const { return std::abs(dot(other)) < Tolerance::ZERO_TOLERANCE; }
+bool Vector::is_perpendicular_to(const Vector& other) const {
+    return std::abs(dot(other)) < Tolerance::ZERO_TOLERANCE;
+}
 
 bool Vector::perpendicular_to(const Vector& v) {
 
@@ -377,7 +407,9 @@ bool Vector::perpendicular_to(const Vector& v) {
     return a != 0.0;
 }
 
-bool Vector::is_zero() const { return compute_magnitude() < Tolerance::ZERO_TOLERANCE; }
+bool Vector::is_zero() const {
+    return compute_magnitude() < Tolerance::ZERO_TOLERANCE;
+}
 
 Vector Vector::get_leveled_vector(double vertical_height) const {
 
@@ -424,7 +456,9 @@ std::array<double, 2> Vector::coordinate_direction_2angles(bool degrees) const {
     return {phi, theta};
 }
 
-double Vector::angle_between_vector_xy_components(const Vector& vector) { return std::atan2(vector[1], vector[0]) * Tolerance::TO_DEGREES; }
+double Vector::angle_between_vector_xy_components(const Vector& vector) {
+    return std::atan2(vector[1], vector[0]) * Tolerance::TO_DEGREES;
+}
 
 Vector Vector::sum_of_vectors(const std::vector<Vector>& vectors) {
 
@@ -444,9 +478,13 @@ Vector Vector::average(const std::vector<Vector>& vectors) {
     return sum_of_vectors(vectors) / static_cast<double>(vectors.size());
 }
 
-void Vector::scale_up() { *this *= SCALE; }
+void Vector::scale_up() {
+    *this *= SCALE;
+}
 
-void Vector::scale_down() { *this *= 1.0 / SCALE; }
+void Vector::scale_down() {
+    *this *= 1.0 / SCALE;
+}
 
 Vector Vector::reflect(const Vector& plane_normal) const {
 
@@ -478,9 +516,13 @@ Vector Vector::average_normal(const std::vector<Point>& points) {
     return normal;
 }
 
-Vector Vector::average_normal(const Polyline& polyline) { return average_normal_polyline(polyline); }
+Vector Vector::average_normal(const Polyline& polyline) {
+    return average_normal_polyline(polyline);
+}
 
-Vector Vector::average_normal_polyline(const Polyline& polyline) { return average_normal(polyline.get_points()); }
+Vector Vector::average_normal_polyline(const Polyline& polyline) {
+    return average_normal(polyline.get_points());
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Triangle laws
@@ -552,9 +594,13 @@ Vector Vector::jsonload(const nlohmann::json& data) {
     return vector;
 }
 
-std::string Vector::file_json_dumps() const { return jsondump().dump(); }
+std::string Vector::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Vector Vector::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Vector Vector::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Vector::file_json_dump(const std::string& filename) const {
 
@@ -591,7 +637,9 @@ Vector Vector::from_proto(const session_proto::Vector& proto) {
     return vector;
 }
 
-std::string Vector::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Vector::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Vector Vector::pb_loads(const std::string& data) {
 
@@ -642,6 +690,8 @@ std::string Vector::repr() const {
     );
 }
 
-std::ostream& operator<<(std::ostream& os, const Vector& vector) { return os << vector.str(); }
+std::ostream& operator<<(std::ostream& os, const Vector& vector) {
+    return os << vector.str();
+}
 
 } // namespace session_cpp

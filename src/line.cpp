@@ -57,14 +57,20 @@ std::string& Line::guid() {
     return _guid;
 }
 
-void Line::refresh_guid() { _guid.clear(); }
+void Line::refresh_guid() {
+    _guid.clear();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
 // ═══════════════════════════════════════════════════════════════════════════
-Line Line::from_points(const Point& p1, const Point& p2) { return Line(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]); }
+Line Line::from_points(const Point& p1, const Point& p2) {
+    return Line(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
+}
 
-Line Line::from_point_and_vector(const Point& point, const Vector& vector) { return from_points(point, point + vector); }
+Line Line::from_point_and_vector(const Point& point, const Vector& vector) {
+    return from_points(point, point + vector);
+}
 
 Line Line::from_point_direction_length(const Point& point, const Vector& direction, double length) {
     return from_points(point, point + direction.normalized() * length);
@@ -205,7 +211,9 @@ bool Line::operator==(const Line& other) const {
            linecolor == other.linecolor;
 }
 
-bool Line::operator!=(const Line& other) const { return !(*this == other); }
+bool Line::operator!=(const Line& other) const {
+    return !(*this == other);
+}
 
 Line& Line::operator+=(const Vector& other) {
 
@@ -287,7 +295,9 @@ Line Line::operator/(double factor) const {
     return result;
 }
 
-Line Line::operator-() const { return Line(_x1, _y1, _z1, _x0, _y0, _z0); }
+Line Line::operator-() const {
+    return Line(_x1, _y1, _z1, _x0, _y0, _z0);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transformation
@@ -316,19 +326,33 @@ Line Line::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Geometry
 // ═══════════════════════════════════════════════════════════════════════════
-double Line::length() const { return std::sqrt(squared_length()); }
+double Line::length() const {
+    return std::sqrt(squared_length());
+}
 
-double Line::squared_length() const { return to_vector().magnitude_squared(); }
+double Line::squared_length() const {
+    return to_vector().magnitude_squared();
+}
 
-Vector Line::to_vector() const { return Vector(_x1 - _x0, _y1 - _y0, _z1 - _z0); }
+Vector Line::to_vector() const {
+    return Vector(_x1 - _x0, _y1 - _y0, _z1 - _z0);
+}
 
-Vector Line::to_direction() const { return to_vector().normalized(); }
+Vector Line::to_direction() const {
+    return to_vector().normalized();
+}
 
-Point Line::start() const { return Point(_x0, _y0, _z0); }
+Point Line::start() const {
+    return Point(_x0, _y0, _z0);
+}
 
-Point Line::end() const { return Point(_x1, _y1, _z1); }
+Point Line::end() const {
+    return Point(_x1, _y1, _z1);
+}
 
-Point Line::center() const { return Point((_x0 + _x1) * 0.5, (_y0 + _y1) * 0.5, (_z0 + _z1) * 0.5); }
+Point Line::center() const {
+    return Point((_x0 + _x1) * 0.5, (_y0 + _y1) * 0.5, (_z0 + _z1) * 0.5);
+}
 
 Point Line::point_at(double t) const {
 
@@ -524,9 +548,13 @@ Line Line::jsonload(const nlohmann::json& data) {
     return line;
 }
 
-std::string Line::file_json_dumps() const { return jsondump().dump(); }
+std::string Line::file_json_dumps() const {
+    return jsondump().dump();
+}
 
-Line Line::file_json_loads(const std::string& json_string) { return jsonload(nlohmann::ordered_json::parse(json_string)); }
+Line Line::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
 
 void Line::file_json_dump(const std::string& filename) const {
 
@@ -599,7 +627,9 @@ Line Line::from_proto(const session_proto::Line& proto) {
     return line;
 }
 
-std::string Line::pb_dumps() const { return to_proto().SerializeAsString(); }
+std::string Line::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
 
 Line Line::pb_loads(const std::string& data) {
 
@@ -662,6 +692,8 @@ std::string Line::repr() const {
     );
 }
 
-std::ostream& operator<<(std::ostream& os, const Line& line) { return os << line.str(); }
+std::ostream& operator<<(std::ostream& os, const Line& line) {
+    return os << line.str();
+}
 
 } // namespace session_cpp
