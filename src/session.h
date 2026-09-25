@@ -21,10 +21,10 @@
 #include "history.h"
 #include "interaction.h"
 #include "spatial_bvh.h"
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>

@@ -188,11 +188,29 @@ public:
         return *this;
     }
 
-    /// Move every slot and pin as they are.
-    Collection(Collection&& other) noexcept = default;
+    /// Move every slot and pin as they are, leaving other empty.
+    Collection(Collection&& other) noexcept {
+        *this = std::move(other);
+    }
 
-    /// Move-assign every slot and pin as they are.
-    Collection& operator=(Collection&& other) noexcept = default;
+    /// Move-assign every slot and pin as they are, leaving other empty so its counts still match its slots.
+    Collection& operator=(Collection&& other) noexcept {
+
+        if (this != &other) {
+            _items = std::move(other._items);
+            _dead = std::move(other._dead);
+            _slots = std::move(other._slots);
+            _tombs = std::move(other._tombs);
+            _live = other._live;
+            _count = other._count;
+            _low = other._low;
+            _cursor = other._cursor;
+            _positions = std::move(other._positions);
+            other.clear();
+        }
+
+        return *this;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
