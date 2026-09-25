@@ -1,4 +1,5 @@
 #pragma once
+#include "collection.h"
 #include "guid.h"
 #include "json.h"
 #include "point.h"
@@ -85,19 +86,19 @@ private:
 
 public:
     std::string name = "my_objects"; // The name of the collection.
-    std::shared_ptr<std::vector<std::shared_ptr<Point>>> points; // Points.
-    std::shared_ptr<std::vector<std::shared_ptr<Line>>> lines; // Lines.
-    std::shared_ptr<std::vector<std::shared_ptr<Plane>>> planes; // Planes.
-    std::shared_ptr<std::vector<std::shared_ptr<OBB>>> bboxes; // Bounding boxes.
-    std::shared_ptr<std::vector<std::shared_ptr<Polyline>>> polylines; // Polylines.
-    std::shared_ptr<std::vector<std::shared_ptr<PointCloud>>> pointclouds; // Point clouds.
-    std::shared_ptr<std::vector<std::shared_ptr<Mesh>>> meshes; // Meshes.
-    std::shared_ptr<std::vector<std::shared_ptr<NurbsCurve>>> nurbscurves; // NURBS curves.
-    std::shared_ptr<std::vector<std::shared_ptr<NurbsSurface>>> nurbssurfaces; // NURBS surfaces.
-    std::shared_ptr<std::vector<std::shared_ptr<BRep>>> breps; // BReps.
-    std::shared_ptr<std::vector<std::shared_ptr<Element>>> elements; // Elements.
-    std::shared_ptr<std::vector<Component>> components; // Components.
-    std::shared_ptr<std::vector<std::shared_ptr<InstanceRef>>> instances; // Instances, each placing a definition of Session::definitions by guid.
+    std::shared_ptr<Collection<std::shared_ptr<Point>>> points; // Points.
+    std::shared_ptr<Collection<std::shared_ptr<Line>>> lines; // Lines.
+    std::shared_ptr<Collection<std::shared_ptr<Plane>>> planes; // Planes.
+    std::shared_ptr<Collection<std::shared_ptr<OBB>>> bboxes; // Bounding boxes.
+    std::shared_ptr<Collection<std::shared_ptr<Polyline>>> polylines; // Polylines.
+    std::shared_ptr<Collection<std::shared_ptr<PointCloud>>> pointclouds; // Point clouds.
+    std::shared_ptr<Collection<std::shared_ptr<Mesh>>> meshes; // Meshes.
+    std::shared_ptr<Collection<std::shared_ptr<NurbsCurve>>> nurbscurves; // NURBS curves.
+    std::shared_ptr<Collection<std::shared_ptr<NurbsSurface>>> nurbssurfaces; // NURBS surfaces.
+    std::shared_ptr<Collection<std::shared_ptr<BRep>>> breps; // BReps.
+    std::shared_ptr<Collection<std::shared_ptr<Element>>> elements; // Elements.
+    std::shared_ptr<Collection<Component>> components; // Components.
+    std::shared_ptr<Collection<std::shared_ptr<InstanceRef>>> instances; // Instances, each placing a definition of Session::definitions by guid.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors

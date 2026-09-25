@@ -24,6 +24,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -74,6 +75,8 @@ public:
     std::vector<std::string> cached_guids;                       // GUID per leaf of cached_ray_bvh.
     std::vector<OBB> cached_boxes;                               // Box per leaf of cached_ray_bvh.
     bool bvh_cache_dirty = true;                                 // Flag to rebuild cached_ray_bvh.
+    std::unordered_map<std::string, std::shared_ptr<TreeNode>> node_lookup; // Tree node per live object guid.
+    uint64_t revision = 0;                                       // Bumped by every Session mutation.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
@@ -168,6 +171,9 @@ public:
 
         return groups;
     }
+
+    /// The tree node of a live object in O(1) through node_lookup; a tree search when the index is stale, nullptr for a guid that is no live object.
+    std::shared_ptr<TreeNode> get_node(const std::string& guid) const;
 
     /// Find an existing group by name; throws std::runtime_error when there is none.
     std::shared_ptr<TreeNode> find_group(const std::string& group_name) const;
@@ -306,6 +312,9 @@ public:
     /// Removes an object's local transform, returning whether one was present.
     bool remove_xform(const std::string& guid);
 
+    /// Rebuild every index from the tables in O(n + N): the maps win over the slots, map-only and slot-only entries are adopted, a non-identity instance xform folds into xforms, node_lookup is refilled from the live tree.
+    void reindex();
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Session - Interactions
     // ═══════════════════════════════════════════════════════════════════════════
@@ -416,6 +425,7 @@ public:
 private:
     friend class History;
     mutable std::string _guid; // Lazily minted guid.
+    std::weak_ptr<TreeNode> _indexed; // Tree root at the last reindex, stale after a wholesale tree swap.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Details
@@ -431,6 +441,9 @@ private:
     /// Which Objects list holds a guid, and where; ("", -1) when none does.
     std::pair<std::string, int> _locate(const std::string& guid) const;
 
+    /// Whether guid names a live object, component or instance.
+    bool _is_live(const std::string& guid) const;
+
     /// Take an object out of every live table, unrecorded, returning its tombstone.
     std::optional<RemoveOp> _detach(const std::string& guid);
 
@@ -439,9 +452,6 @@ private:
 
     /// Store obj under guid in its typed list and lookup, unrecorded.
     void _swap(const std::string& guid, const Item& obj);
-
-    /// Point every lookup at the objects and definitions this session holds, folding a non-identity instance xform into xforms.
-    void _index_objects();
 
     /// Set or drop (nullopt) a definition under guid, unrecorded.
     void _define(const std::string& guid, const std::optional<Geometry>& definition);

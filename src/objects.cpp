@@ -7,24 +7,18 @@ namespace session_cpp {
 
 namespace {
 
-/// One list, duplicated: new vector, new objects, same guids.
+/// One list, duplicated: new list, new objects, same guids, live entries only.
 template <class T>
-std::shared_ptr<std::vector<std::shared_ptr<T>>> clone_list(
-    const std::shared_ptr<std::vector<std::shared_ptr<T>>>& source
+std::shared_ptr<Collection<std::shared_ptr<T>>> clone_list(
+    const std::shared_ptr<Collection<std::shared_ptr<T>>>& source
 ) {
 
-    std::shared_ptr<std::vector<std::shared_ptr<T>>> out = std::make_shared<std::vector<std::shared_ptr<T>>>();
+    std::shared_ptr<Collection<std::shared_ptr<T>>> out = std::make_shared<Collection<std::shared_ptr<T>>>();
 
     if (!source)
         return out;
 
-    out->reserve(source->size());
-
     for (const std::shared_ptr<T>& item : *source) {
-        if (!item) {
-            out->push_back(nullptr);
-            continue;
-        }
 
         std::shared_ptr<T> copy = std::make_shared<T>(*item);
 
@@ -38,22 +32,16 @@ std::shared_ptr<std::vector<std::shared_ptr<T>>> clone_list(
 }
 
 /// Elements are polymorphic, so the copy goes through the virtual clone.
-std::shared_ptr<std::vector<std::shared_ptr<Element>>> clone_elements(
-    const std::shared_ptr<std::vector<std::shared_ptr<Element>>>& source
+std::shared_ptr<Collection<std::shared_ptr<Element>>> clone_elements(
+    const std::shared_ptr<Collection<std::shared_ptr<Element>>>& source
 ) {
 
-    std::shared_ptr<std::vector<std::shared_ptr<Element>>> out = std::make_shared<std::vector<std::shared_ptr<Element>>>();
+    std::shared_ptr<Collection<std::shared_ptr<Element>>> out = std::make_shared<Collection<std::shared_ptr<Element>>>();
 
     if (!source)
         return out;
 
-    out->reserve(source->size());
-
     for (const std::shared_ptr<Element>& item : *source) {
-        if (!item) {
-            out->push_back(nullptr);
-            continue;
-        }
 
         std::shared_ptr<Element> copy = item->clone();
 
@@ -79,7 +67,7 @@ std::shared_ptr<T> keep_guid(T&& loaded) {
 
 /// Serialize every object of a list to JSON.
 template <class T>
-std::vector<nlohmann::ordered_json> dump_list(const std::vector<std::shared_ptr<T>>& list) {
+std::vector<nlohmann::ordered_json> dump_list(const Collection<std::shared_ptr<T>>& list) {
 
     std::vector<nlohmann::ordered_json> out;
     out.reserve(list.size());
@@ -92,12 +80,10 @@ std::vector<nlohmann::ordered_json> dump_list(const std::vector<std::shared_ptr<
 
 /// Load every object under key into the list, keeping guids.
 template <class T>
-void load_list(const nlohmann::json& data, const std::string& key, std::vector<std::shared_ptr<T>>& list) {
+void load_list(const nlohmann::json& data, const std::string& key, Collection<std::shared_ptr<T>>& list) {
 
     if (!data.contains(key))
         return;
-
-    list.reserve(data[key].size());
 
     for (const nlohmann::json& item : data[key])
         list.push_back(keep_guid(T::jsonload(item)));
@@ -105,7 +91,7 @@ void load_list(const nlohmann::json& data, const std::string& key, std::vector<s
 
 /// Convert every object of a list into a repeated proto field.
 template <class T, class R>
-void dump_pb_list(const std::vector<std::shared_ptr<T>>& list, R* repeated) {
+void dump_pb_list(const Collection<std::shared_ptr<T>>& list, R* repeated) {
 
     repeated->Reserve(static_cast<int>(list.size()));
 
@@ -115,9 +101,7 @@ void dump_pb_list(const std::vector<std::shared_ptr<T>>& list, R* repeated) {
 
 /// Load every message of a repeated proto field into the list, keeping guids.
 template <class T, class R>
-void load_pb_list(const R& repeated, std::vector<std::shared_ptr<T>>& list) {
-
-    list.reserve(repeated.size());
+void load_pb_list(const R& repeated, Collection<std::shared_ptr<T>>& list) {
 
     for (const typename R::value_type& item : repeated)
         list.push_back(keep_guid(T::from_proto(item)));
@@ -219,19 +203,19 @@ Component Component::pb_loads(const std::string& data) {
 // ═══════════════════════════════════════════════════════════════════════════
 Objects::Objects(std::string name) : name(std::move(name)) {
 
-    points = std::make_shared<std::vector<std::shared_ptr<Point>>>();
-    lines = std::make_shared<std::vector<std::shared_ptr<Line>>>();
-    planes = std::make_shared<std::vector<std::shared_ptr<Plane>>>();
-    bboxes = std::make_shared<std::vector<std::shared_ptr<OBB>>>();
-    polylines = std::make_shared<std::vector<std::shared_ptr<Polyline>>>();
-    pointclouds = std::make_shared<std::vector<std::shared_ptr<PointCloud>>>();
-    meshes = std::make_shared<std::vector<std::shared_ptr<Mesh>>>();
-    nurbscurves = std::make_shared<std::vector<std::shared_ptr<NurbsCurve>>>();
-    nurbssurfaces = std::make_shared<std::vector<std::shared_ptr<NurbsSurface>>>();
-    breps = std::make_shared<std::vector<std::shared_ptr<BRep>>>();
-    elements = std::make_shared<std::vector<std::shared_ptr<Element>>>();
-    components = std::make_shared<std::vector<Component>>();
-    instances = std::make_shared<std::vector<std::shared_ptr<InstanceRef>>>();
+    points = std::make_shared<Collection<std::shared_ptr<Point>>>();
+    lines = std::make_shared<Collection<std::shared_ptr<Line>>>();
+    planes = std::make_shared<Collection<std::shared_ptr<Plane>>>();
+    bboxes = std::make_shared<Collection<std::shared_ptr<OBB>>>();
+    polylines = std::make_shared<Collection<std::shared_ptr<Polyline>>>();
+    pointclouds = std::make_shared<Collection<std::shared_ptr<PointCloud>>>();
+    meshes = std::make_shared<Collection<std::shared_ptr<Mesh>>>();
+    nurbscurves = std::make_shared<Collection<std::shared_ptr<NurbsCurve>>>();
+    nurbssurfaces = std::make_shared<Collection<std::shared_ptr<NurbsSurface>>>();
+    breps = std::make_shared<Collection<std::shared_ptr<BRep>>>();
+    elements = std::make_shared<Collection<std::shared_ptr<Element>>>();
+    components = std::make_shared<Collection<Component>>();
+    instances = std::make_shared<Collection<std::shared_ptr<InstanceRef>>>();
 }
 
 Objects::Objects(const Objects& other) : name(other.name) {
@@ -250,7 +234,7 @@ Objects::Objects(const Objects& other) : name(other.name) {
     nurbssurfaces = clone_list(other.nurbssurfaces);
     breps = clone_list(other.breps);
     elements = clone_elements(other.elements);
-    components = std::make_shared<std::vector<Component>>(other.components ? *other.components : std::vector<Component>{});
+    components = std::make_shared<Collection<Component>>(other.components ? *other.components : Collection<Component>());
     instances = clone_list(other.instances);
 }
 

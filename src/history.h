@@ -1,4 +1,5 @@
 #pragma once
+#include "graph.h"
 #include "interaction.h"
 #include "objects.h"
 #include "tree.h"
@@ -29,6 +30,22 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features);
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
+/// One dead or revivable entity: where it lives and what it parked while dead; slots and nodes pin it weakly, records strongly.
+class Tomb {
+public:
+    std::string collection;          // The Objects list of its slot, "" for a node-only tomb.
+    bool definition = false;         // Whether the slot is in Session::definitions.
+    size_t slot = 0;                 // Its raw slot, moved by compaction.
+    std::shared_ptr<TreeNode> node;  // Its tree node, nullptr for a slot-only tomb.
+    std::optional<Vertex> vertex;    // Its graph vertex while dead.
+    std::vector<Edge> edges;         // Its incident edges while dead.
+    std::optional<Xform> xform;      // Its local transform while dead.
+    std::map<std::string, std::vector<std::shared_ptr<Interaction>>> interactions; // Its edges' interactions while dead, by edge guid.
+
+    /// Construct a tomb with nothing parked; always held through std::make_shared.
+    Tomb(const std::string& collection, bool definition, size_t slot, std::shared_ptr<TreeNode> node);
+};
+
 /// Everything needed to put one object back into every live table of a session.
 class Tombstone {
 public:

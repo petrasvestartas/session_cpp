@@ -68,6 +68,9 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
+Tomb::Tomb(const std::string& collection, bool definition, size_t slot, std::shared_ptr<TreeNode> node)
+    : collection(collection), definition(definition), slot(slot), node(std::move(node)) {}
+
 Tombstone::Tombstone(
     const std::string& guid,
     const Item& obj,

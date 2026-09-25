@@ -48,15 +48,6 @@ template <typename F> void with_collection(const Objects& objects, const std::st
 template <typename E>
 constexpr bool IS_GEOMETRY = !std::is_same_v<E, Component> && !std::is_same_v<E, std::shared_ptr<InstanceRef>>;
 
-/// The guid of an Objects list element, a shared_ptr or a Component.
-template <typename E> std::string guid_of(const E& element) {
-
-    if constexpr (std::is_same_v<E, Component>)
-        return element.guid();
-    else
-        return element->guid();
-}
-
 /// The guid of an item, geometry, component or instance.
 std::string item_guid(const Item& item) {
 
@@ -105,16 +96,14 @@ std::pair<std::string, int> locate(const Objects& objects, const std::string& gu
 
     for (const std::pair<std::string, std::string>& entry : COLLECTIONS) {
 
-        int found = -1;
+        std::optional<size_t> found;
 
         with_collection(objects, entry.first, [&](const auto& items) {
-            for (size_t i = 0; i < items.size(); ++i)
-                if (guid_of(items[i]) == guid)
-                    found = static_cast<int>(i);
+            found = items.get_slot(guid);
         });
 
-        if (found >= 0)
-            return {entry.first, found};
+        if (found)
+            return {entry.first, static_cast<int>(*found)};
     }
 
     return {"", -1};
@@ -140,16 +129,73 @@ std::pair<std::string, std::string> collection_of(const Objects& objects, const 
     return {"", ""};
 }
 
-/// Every geometry of objects under its guid.
-void index_geometry(const Objects& objects, std::unordered_map<std::string, Geometry>& lookup) {
+/// Point every live slot whose guid lookup holds with another value at the lookup value.
+void repoint(const Objects& objects, const std::unordered_map<std::string, Geometry>& lookup) {
+
+    for (const std::pair<const std::string, Geometry>& entry : lookup)
+        with_collection(objects, collection_of(objects, entry.second).first, [&](auto& items) {
+            using E = typename std::decay_t<decltype(items)>::value_type;
+            if constexpr (IS_GEOMETRY<E>) {
+
+                const std::optional<size_t> slot = items.get_slot(entry.first);
+
+                if (slot && items.get_item(*slot) != std::get<E>(entry.second))
+                    items.set_item(*slot, std::get<E>(entry.second));
+            }
+        });
+}
+
+/// Index every live slot lookup lacks, then push every geometry only lookup holds, in guid order.
+void adopt(const Objects& objects, std::unordered_map<std::string, Geometry>& lookup) {
 
     for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
         with_collection(objects, entry.first, [&](const auto& items) {
             using E = typename std::decay_t<decltype(items)>::value_type;
             if constexpr (IS_GEOMETRY<E>)
                 for (const E& item : items)
-                    lookup[item->guid()] = item;
+                    lookup.emplace(item->guid(), item);
         });
+
+    std::map<std::string, Geometry> orphans;
+
+    for (const std::pair<const std::string, Geometry>& entry : lookup) {
+
+        const std::string guid = item_guid(entry.second);
+        bool held = false;
+
+        with_collection(objects, collection_of(objects, entry.second).first, [&](const auto& items) {
+            held = items.get_slot(guid).has_value();
+        });
+
+        if (!held)
+            orphans.emplace(guid, entry.second);
+    }
+
+    for (const std::pair<const std::string, Geometry>& orphan : orphans)
+        with_collection(objects, collection_of(objects, orphan.second).first, [&](auto& items) {
+            items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(orphan.second));
+        });
+}
+
+/// Push item, or rebuild the list with it at index while index is inside, until removal marks slots dead.
+template <typename E> void put(Collection<E>& items, size_t index, E item) {
+
+    if (index >= items.size()) {
+        items.push_back(std::move(item));
+        return;
+    }
+
+    std::vector<E> kept = items.to_vector();
+    kept.insert(kept.begin() + index, std::move(item));
+    items = Collection<E>(std::move(kept));
+}
+
+/// Rebuild the list without the entry at index, until removal marks slots dead.
+template <typename E> void take(Collection<E>& items, size_t index) {
+
+    std::vector<E> kept = items.to_vector();
+    kept.erase(kept.begin() + index);
+    items = Collection<E>(std::move(kept));
 }
 
 /// Move geometry in place: an element is placed, anything else transformed; identity leaves it untouched.
@@ -195,7 +241,7 @@ Geometry resolve(const InstanceRef& instance, const Geometry& definition, const 
 
 /// Transforms every object of a list by its world placement, identity entries untouched.
 template <typename T>
-void bake(std::vector<std::shared_ptr<T>>& items, const std::unordered_map<std::string, Xform>& world) {
+void bake(Collection<std::shared_ptr<T>>& items, const std::unordered_map<std::string, Xform>& world) {
 
     for (std::shared_ptr<T>& item : items) {
 
@@ -382,6 +428,7 @@ Session::Session(std::string name)
     : name(std::move(name)), objects(), tree(this->name + "_tree"), graph(this->name + "_graph") {
 
     tree.add(std::make_shared<TreeNode>(this->name));
+    _indexed = tree.root();
 }
 
 Session::Session(const Session& other)
@@ -395,7 +442,7 @@ Session::Session(const Session& other)
         for (const std::shared_ptr<Interaction>& interaction : entry.second)
             interactions[entry.first].push_back(interaction->clone());
 
-    _index_objects();
+    reindex();
     bvh_cache_dirty = true;
 }
 
@@ -412,6 +459,21 @@ Session& Session::operator=(const Session& other) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
+std::shared_ptr<TreeNode> Session::get_node(const std::string& guid) const {
+
+    if (!_is_live(guid))
+        return nullptr;
+
+    const std::shared_ptr<TreeNode> root = tree.root();
+    auto it = node_lookup.find(guid);
+    const bool fresh = root && _indexed.lock() == root;
+
+    if (fresh && it != node_lookup.end() && it->second->name == guid && it->second->parent())
+        return it->second;
+
+    return tree.get_node_by_name(guid);
+}
+
 std::shared_ptr<TreeNode> Session::find_group(const std::string& group_name) const {
 
     std::shared_ptr<TreeNode> root = tree.root();
@@ -475,7 +537,7 @@ Xform Session::xform(const std::string& guid) const {
 Xform Session::world_xform(const std::string& guid) const {
 
     Xform acc = xform(guid);
-    std::shared_ptr<TreeNode> node = tree.get_node_by_name(guid);
+    std::shared_ptr<TreeNode> node = get_node(guid);
 
     if (!node)
         return acc;
@@ -778,6 +840,11 @@ void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> pare
     if (node == nullptr)
         return;
 
+    revision++;
+
+    if (_is_live(node->name))
+        node_lookup[node->name] = node;
+
     if (parent == nullptr)
         tree.add(node, tree.root());
     else
@@ -793,10 +860,15 @@ std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
 }
 
 void Session::add_edge(const std::string& guid1, const std::string& guid2, const std::string& attribute) {
+
+    revision++;
     graph.add_edge(guid1, guid2, attribute);
 }
 
 bool Session::add_hierarchy(const std::string& parent_guid, const std::string& child_guid) {
+
+    revision++;
+
     return tree.add_child_by_guid(parent_guid, child_guid);
 }
 
@@ -805,6 +877,8 @@ void Session::add_relationship(
     const std::string& to_guid,
     const std::string& relationship_type
 ) {
+
+    revision++;
     graph.add_edge(from_guid, to_guid, relationship_type);
 }
 
@@ -980,6 +1054,7 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
 
     xforms[guid] = xform;
     bvh_cache_dirty = true;
+    revision++;
 }
 
 bool Session::remove_xform(const std::string& guid) {
@@ -994,8 +1069,77 @@ bool Session::remove_xform(const std::string& guid) {
 
     xforms.erase(before);
     bvh_cache_dirty = true;
+    revision++;
 
     return true;
+}
+
+void Session::reindex() {
+
+    repoint(objects, lookup);
+    adopt(objects, lookup);
+    repoint(definitions, definition_lookup);
+    adopt(definitions, definition_lookup);
+    Collection<Component>& components = *objects.components;
+    Collection<std::shared_ptr<InstanceRef>>& instances = *objects.instances;
+
+    for (size_t slot = 0; slot < components.number_of_slots(); ++slot) {
+
+        if (components.is_dead(slot))
+            continue;
+
+        const std::string guid = components.get_item(slot).guid();
+        auto held = component_lookup.find(guid);
+
+        if (held == component_lookup.end())
+            component_lookup[guid] = components.get_item(slot);
+        else
+            components.set_item(slot, held->second);
+    }
+
+    std::map<std::string, Component> loose_components;
+
+    for (const std::pair<const std::string, Component>& entry : component_lookup)
+        if (!components.get_slot(entry.first))
+            loose_components.emplace(entry.second.guid(), entry.second);
+
+    for (const std::pair<const std::string, Component>& entry : loose_components)
+        components.push_back(entry.second);
+
+    std::map<std::string, std::shared_ptr<InstanceRef>> loose_instances;
+
+    for (const std::pair<const std::string, std::shared_ptr<InstanceRef>>& entry : instance_lookup)
+        if (!instances.get_slot(entry.first))
+            loose_instances.emplace(entry.second->guid(), entry.second);
+
+    for (const std::pair<const std::string, std::shared_ptr<InstanceRef>>& entry : loose_instances)
+        instances.push_back(entry.second);
+
+    for (size_t slot = 0; slot < instances.number_of_slots(); ++slot) {
+
+        if (instances.is_dead(slot))
+            continue;
+
+        const std::string guid = instances.get_item(slot)->guid();
+        auto held = instance_lookup.find(guid);
+        const std::shared_ptr<InstanceRef> instance = held == instance_lookup.end() ? instances.get_item(slot) : held->second;
+
+        if (!instance->xform.is_identity()) {
+            xforms[guid] = xform(guid) * instance->xform;
+            instance->xform = Xform::identity();
+        }
+
+        instances.set_item(slot, instance);
+        instance_lookup[guid] = instance;
+    }
+
+    node_lookup.clear();
+
+    for (const std::shared_ptr<TreeNode>& node : tree.nodes())
+        if (_is_live(node->name))
+            node_lookup.emplace(node->name, node);
+
+    _indexed = tree.root();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1016,6 +1160,7 @@ std::shared_ptr<Interaction> Session::add_interaction(
     if (!graph.has_edge({first, second}))
         graph.add_edge(first, second);
 
+    revision++;
     const std::string& id = graph.edges.at(first).at(second).guid();
     interactions[id].push_back(interaction);
 
@@ -1049,6 +1194,7 @@ void Session::remove_interaction(const std::shared_ptr<Element>& a, const std::s
         return;
 
     const std::string id = graph.edges.at(a->guid()).at(b->guid()).guid();
+    revision++;
     interactions.erase(id);
     graph.remove_edge({a->guid(), b->guid()});
 }
@@ -1065,10 +1211,16 @@ void Session::commit() {
 }
 
 bool Session::undo() {
+
+    revision++;
+
     return history.undo(*this);
 }
 
 bool Session::redo() {
+
+    revision++;
+
     return history.redo(*this);
 }
 
@@ -1254,7 +1406,7 @@ Session Session::jsonload(const nlohmann::json& data) {
             for (const nlohmann::json& item : entry["interactions"])
                 session.interactions[entry["guid"].get<std::string>()].push_back(Interaction::jsonload(item));
 
-    session._index_objects();
+    session.reindex();
 
     return session;
 }
@@ -1347,7 +1499,7 @@ Session Session::from_proto(const session_proto::Session& proto) {
         for (const session_proto::Interaction& item : entry.interactions())
             session.interactions[entry.guid()].push_back(Interaction::from_proto(item));
 
-    session._index_objects();
+    session.reindex();
 
     return session;
 }
@@ -1432,6 +1584,8 @@ std::shared_ptr<TreeNode> Session::_add_object(
     graph.add_node(guid, attribute);
     bvh_cache_dirty = true;
     std::shared_ptr<TreeNode> node = std::make_shared<TreeNode>(guid);
+    node_lookup[guid] = node;
+    revision++;
     const std::shared_ptr<TreeNode> host = parent ? parent : tree.root();
     std::optional<std::string> parent_guid;
     int index = 0;
@@ -1454,6 +1608,10 @@ std::pair<std::string, int> Session::_locate(const std::string& guid) const {
     return locate(objects, guid);
 }
 
+bool Session::_is_live(const std::string& guid) const {
+    return lookup.count(guid) || component_lookup.count(guid) || instance_lookup.count(guid);
+}
+
 std::optional<RemoveOp> Session::_detach(const std::string& guid) {
 
     std::optional<Item> obj;
@@ -1474,12 +1632,14 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
 
     if (obj_index >= 0)
         with_collection(objects, collection, [&](auto& items) {
-            items.erase(items.begin() + obj_index);
+            take(items, obj_index);
         });
 
+    std::shared_ptr<TreeNode> node = get_node(guid);
     lookup.erase(guid);
     component_lookup.erase(guid);
     instance_lookup.erase(guid);
+    node_lookup.erase(guid);
     std::optional<Xform> xform;
 
     if (auto it = xforms.find(guid); it != xforms.end()) {
@@ -1488,9 +1648,9 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
     }
 
     bvh_cache_dirty = true;
+    revision++;
     std::optional<std::string> parent_guid;
     int index = 0;
-    std::shared_ptr<TreeNode> node = tree.get_node_by_name(guid);
 
     if (node) {
 
@@ -1498,6 +1658,14 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
             parent_guid = parent->name;
             const std::vector<TreeNode*> children = parent->children();
             index = static_cast<int>(std::find(children.begin(), children.end(), node.get()) - children.begin());
+        }
+
+        for (TreeNode* child : node->descendants()) {
+
+            auto held = node_lookup.find(child->name);
+
+            if (held != node_lookup.end() && held->second.get() == child)
+                node_lookup.erase(held);
         }
 
         node = tree.remove(node);
@@ -1542,8 +1710,7 @@ void Session::_attach(const Tombstone& op) {
     const Item obj = clone(op.obj);
 
     with_collection(objects, op.collection, [&](auto& items) {
-        const size_t at = std::min<size_t>(op.obj_index, items.size());
-        items.insert(items.begin() + at, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
+        put(items, op.obj_index, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
     });
 
     if (const Geometry* geometry = std::get_if<Geometry>(&obj))
@@ -1561,6 +1728,13 @@ void Session::_attach(const Tombstone& op) {
 
     if (!node)
         node = std::make_shared<TreeNode>(op.guid);
+
+    node_lookup[op.guid] = node;
+    revision++;
+
+    for (TreeNode* child : node->descendants())
+        if (_is_live(child->name))
+            node_lookup[child->name] = child->shared_from_this();
 
     if (op.parent_guid) {
 
@@ -1617,7 +1791,7 @@ void Session::_swap(const std::string& guid, const Item& obj) {
         return;
 
     with_collection(objects, collection, [&](auto& items) {
-        items[obj_index] = element_of<typename std::decay_t<decltype(items)>::value_type>(obj);
+        items.set_item(obj_index, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
     });
 
     if (const Geometry* geometry = std::get_if<Geometry>(&obj))
@@ -1628,6 +1802,7 @@ void Session::_swap(const std::string& guid, const Item& obj) {
         instance_lookup[guid] = std::get<std::shared_ptr<InstanceRef>>(obj);
 
     bvh_cache_dirty = true;
+    revision++;
     std::string attribute;
 
     for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
@@ -1638,48 +1813,25 @@ void Session::_swap(const std::string& guid, const Item& obj) {
         graph.node_label(guid, attribute);
 }
 
-void Session::_index_objects() {
-
-    lookup.clear();
-    component_lookup.clear();
-    instance_lookup.clear();
-    definition_lookup.clear();
-    index_geometry(objects, lookup);
-    index_geometry(definitions, definition_lookup);
-
-    for (const Component& component : *objects.components)
-        component_lookup[component.guid()] = component;
-
-    for (const std::shared_ptr<InstanceRef>& instance : *objects.instances) {
-
-        instance_lookup[instance->guid()] = instance;
-
-        if (instance->xform.is_identity())
-            continue;
-
-        xforms[instance->guid()] = xform(instance->guid()) * instance->xform;
-        instance->xform = Xform::identity();
-    }
-}
-
 void Session::_define(const std::string& guid, const std::optional<Geometry>& definition) {
 
     const std::pair<std::string, int> location = locate(definitions, guid);
     const int position = location.second;
 
     with_collection(definitions, location.first, [&](auto& items) {
-        items.erase(items.begin() + position);
+        take(items, position);
     });
 
     definition_lookup.erase(guid);
     bvh_cache_dirty = true;
+    revision++;
 
     if (!definition)
         return;
 
     with_collection(definitions, collection_of(definitions, *definition).first, [&](auto& items) {
-        const size_t at = position < 0 ? items.size() : std::min<size_t>(position, items.size());
-        items.insert(items.begin() + at, element_of<typename std::decay_t<decltype(items)>::value_type>(*definition));
+        const size_t at = position < 0 ? items.size() : static_cast<size_t>(position);
+        put(items, at, element_of<typename std::decay_t<decltype(items)>::value_type>(*definition));
     });
 
     definition_lookup[guid] = *definition;
@@ -1693,6 +1845,7 @@ void Session::_place(const std::string& guid, const std::optional<Xform>& xform)
         xforms.erase(guid);
 
     bvh_cache_dirty = true;
+    revision++;
 }
 
 std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {

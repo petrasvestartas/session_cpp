@@ -368,6 +368,7 @@ set(MINITEST_SOURCES
     src/io_xyz_test.cpp
     src/file_step_test.cpp
     src/objects_test.cpp
+    src/collection_test.cpp
     src/quaternion_test.cpp
     src/session_test.cpp
     src/history_test.cpp

@@ -1428,4 +1428,39 @@ MINI_TEST("Session", "Ray Cast Instance") {
     MINI_CHECK(TOLERANCE.is_close(hits[0].hit_point[2], 1.0));
 }
 
+MINI_TEST("Session", "Get Node") {
+
+    Session session;
+    const std::shared_ptr<TreeNode> node = session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0));
+    const std::string guid = node->name;
+    const std::shared_ptr<TreeNode> child = session.add_point(std::make_shared<Point>(1.0, 0.0, 0.0), node);
+    const std::string child_guid = child->name;
+    const std::shared_ptr<TreeNode> found = session.get_node(guid);
+    session.begin("remove");
+    session.remove_object(guid);
+    session.commit();
+    const std::shared_ptr<TreeNode> removed = session.get_node(guid);
+    const std::shared_ptr<TreeNode> orphaned = session.get_node(child_guid);
+    session.undo();
+    const std::shared_ptr<TreeNode> restored = session.get_node(guid);
+    const std::shared_ptr<TreeNode> reattached = session.get_node(child_guid);
+    const bool indexed = session.node_lookup.count(child_guid) && session.node_lookup.at(child_guid) == child;
+    Tree tree("swapped");
+    tree.add(std::make_shared<TreeNode>("root"));
+    const std::shared_ptr<TreeNode> root = tree.root();
+    const std::shared_ptr<TreeNode> swapped = std::make_shared<TreeNode>(guid);
+    tree.add(swapped, root);
+    session.tree = std::move(tree);
+    const std::shared_ptr<TreeNode> searched = session.get_node(guid);
+    session.reindex();
+
+    MINI_CHECK(found == node);
+    MINI_CHECK(removed == nullptr && orphaned == nullptr);
+    MINI_CHECK(restored == node);
+    MINI_CHECK(reattached == child && indexed);
+    MINI_CHECK(searched == swapped);
+    MINI_CHECK(session.node_lookup.at(guid) == swapped);
+    MINI_CHECK(session.get_node("missing") == nullptr);
+}
+
 } // namespace session_cpp
