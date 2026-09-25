@@ -2113,17 +2113,16 @@ static std::vector<Point> miter_contour(const std::vector<Line>& corner_lines, c
     return contour;
 }
 
-std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>> Mesh::
-    miter_contours(
-        const Mesh& shell,
-        double thickness,
-        double chamfer_bot,
-        double chamfer_top,
-        bool,
-        double chamfer_angle_deg
-    ) {
-    std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>>
-        result;
+std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>> Mesh::miter_contours(
+    const Mesh& shell,
+    double thickness,
+    double chamfer_bot,
+    double chamfer_top,
+    [[maybe_unused]] bool flatter,
+    double chamfer_angle_deg
+) {
+
+    std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>> result;
 
     const std::map<std::pair<size_t, size_t>, size_t> efm = shell.edge_face_map();
 
@@ -2167,6 +2166,7 @@ std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point
         const std::vector<bool> bot_mask = fold_chamfer_mask(bot_contour, chamfer_angle_deg);
         const std::vector<Point> top_ch = fold_chamfer(top_contour, chamfer_bot, top_mask);
         const std::vector<Point> bot_ch = fold_chamfer(bot_contour, chamfer_top, bot_mask);
+
         result.push_back(std::make_tuple(top_ch, bot_ch, top_contour, bot_contour, fn));
     }
 
@@ -4365,12 +4365,13 @@ double Mesh::volume() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Triangle BVH
 // ═══════════════════════════════════════════════════════════════════════════
+/// One triangle to box: its vertex indices and where it came from.
 struct TriangleTask {
-    uint32_t i0;
-    uint32_t i1;
-    uint32_t i2;
-    size_t face_idx;
-    size_t sub_idx;
+    uint32_t i0;     // First vertex index.
+    uint32_t i1;     // Second vertex index.
+    uint32_t i2;     // Third vertex index.
+    size_t face_idx; // Face the triangle belongs to.
+    size_t sub_idx;  // Triangle index within the face.
 };
 
 /// Every triangle of the mesh: the stored triangulation of an n-gon, a fan from vertex 0 otherwise.
@@ -5092,6 +5093,36 @@ Mesh Mesh::cut_by_plane(const Plane& plane) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
+/// Return the lowercase name of a color mode.
+static std::string color_mode_to_string(ColorMode mode) {
+
+    switch (mode) {
+    case ColorMode::POINTCOLORS:
+        return "pointcolors";
+    case ColorMode::FACECOLORS:
+        return "facecolors";
+    case ColorMode::NONE:
+        return "none";
+    default:
+        return "objectcolor";
+    }
+}
+
+/// Return the color mode named name, objectcolor when unknown.
+static ColorMode color_mode_from_string(const std::string& name) {
+
+    if (name == "pointcolors")
+        return ColorMode::POINTCOLORS;
+
+    if (name == "facecolors")
+        return ColorMode::FACECOLORS;
+
+    if (name == "none")
+        return ColorMode::NONE;
+
+    return ColorMode::OBJECTCOLOR;
+}
+
 /// Colors as a flat [r, g, b, a, ...] array.
 static nlohmann::ordered_json colors_to_json(const std::vector<Color>& colors) {
 
@@ -5405,7 +5436,7 @@ Mesh Mesh::file_json_loads(const std::string& json_string) {
 void Mesh::file_json_dump(const std::string& filename) const {
 
     std::ofstream file(filename);
-    file << jsondump().dump(2);
+    file << jsondump().dump(4);
 }
 
 Mesh Mesh::file_json_load(const std::string& filename) {

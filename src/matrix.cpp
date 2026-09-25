@@ -760,7 +760,7 @@ void Matrix::file_json_dump(const std::string& filename) const {
     if (!file)
         throw std::runtime_error("Failed to open JSON file: " + filename);
 
-    file << jsondump().dump(2);
+    file << jsondump().dump(4);
 
     if (!file)
         throw std::runtime_error("Failed to write JSON file: " + filename);

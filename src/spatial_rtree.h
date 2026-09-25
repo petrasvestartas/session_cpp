@@ -112,7 +112,7 @@ public:
     void insert(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const DATATYPE& a_data) {
 
         Branch branch;
-        branch.m_rect = make_rect(a_min, a_max);
+        branch.m_rect = to_rect(a_min, a_max);
         branch.m_child = nullptr;
         branch.m_data = a_data;
 
@@ -123,7 +123,7 @@ public:
     /// Remove an item by its bounding box and data; false when not found.
     bool remove(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const DATATYPE& a_data) {
 
-        const Rect rect = make_rect(a_min, a_max);
+        const Rect rect = to_rect(a_min, a_max);
         std::vector<Node*> reinsert_list;
 
         if (!remove_rect_internal(rect, a_data, reinsert_list))
@@ -161,7 +161,7 @@ public:
     /// Visit every item overlapping the box until the callback returns false; returns the visit count.
     int search(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], const std::function<bool(const DATATYPE&)>& a_callback) const {
 
-        const Rect rect = make_rect(a_min, a_max);
+        const Rect rect = to_rect(a_min, a_max);
         Visit stack[STACK_SIZE];
         int top = 0;
         stack[top++] = {m_root, 0};
@@ -241,7 +241,7 @@ private:
     // Rect math
     // ═══════════════════════════════════════════════════════════════════════════
     /// Build a rect from min and max corners.
-    Rect make_rect(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS]) const {
+    Rect to_rect(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS]) const {
 
         Rect rect;
 
@@ -477,7 +477,7 @@ private:
     }
 
     /// Move partitioned branches into the two nodes.
-    void load_nodes(Node* node_a, Node* node_b, PartitionVars& part_vars) {
+    void distribute_branches(Node* node_a, Node* node_b, PartitionVars& part_vars) {
 
         for (int i = 0; i < part_vars.m_total; i++) {
             Node* target = (part_vars.m_partition[i] == 0) ? node_a : node_b;
@@ -495,7 +495,7 @@ private:
 
         Node* new_node = alloc_node();
         new_node->m_level = node->m_level;
-        load_nodes(node, new_node, part_vars);
+        distribute_branches(node, new_node, part_vars);
 
         return new_node;
     }

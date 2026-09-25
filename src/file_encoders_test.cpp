@@ -204,7 +204,7 @@ namespace session_cpp {
         json_str = flag.dump();
         loaded = nlohmann::json::parse(json_str);
 
-        MINI_CHECK(loaded.get<bool>() == true);
+        MINI_CHECK(loaded.get<bool>());
     }
 
     MINI_TEST("FileEncoders", "Decode List") {

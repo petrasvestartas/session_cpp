@@ -39,36 +39,6 @@ enum class ColorMode : int {
     NONE = 3,        // Render without colors.
 };
 
-/// Return the lowercase name of a color mode.
-inline std::string color_mode_to_string(ColorMode mode) {
-
-    switch (mode) {
-    case ColorMode::POINTCOLORS:
-        return "pointcolors";
-    case ColorMode::FACECOLORS:
-        return "facecolors";
-    case ColorMode::NONE:
-        return "none";
-    default:
-        return "objectcolor";
-    }
-}
-
-/// Return the color mode named name, objectcolor when unknown.
-inline ColorMode color_mode_from_string(const std::string& name) {
-
-    if (name == "pointcolors")
-        return ColorMode::POINTCOLORS;
-
-    if (name == "facecolors")
-        return ColorMode::FACECOLORS;
-
-    if (name == "none")
-        return ColorMode::NONE;
-
-    return ColorMode::OBJECTCOLOR;
-}
-
 /// Weighting scheme for vertex normals.
 enum class NormalWeighting {
     Area,    // Weight by face area.

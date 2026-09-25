@@ -1608,7 +1608,7 @@ Polyline Polyline::file_json_loads(const std::string& json_string) {
 void Polyline::file_json_dump(const std::string& filename) const {
 
     std::ofstream file(filename);
-    file << jsondump().dump(2);
+    file << jsondump().dump(4);
 }
 
 Polyline Polyline::file_json_load(const std::string& filename) {

@@ -18,7 +18,7 @@ inline std::string file_json_dumps(const T& data, bool pretty = true) {
 
     const nlohmann::ordered_json json = data.jsondump();
 
-    return pretty ? json.dump(2) : json.dump();
+    return pretty ? json.dump(4) : json.dump();
 }
 
 /// Deserialize an object from a JSON string.
@@ -41,7 +41,7 @@ inline void file_json_dump(const nlohmann::ordered_json& data, const std::string
     if (!file.is_open())
         throw std::runtime_error("Failed to open file for writing: " + filepath);
 
-    file << (pretty ? data.dump(2) : data.dump());
+    file << (pretty ? data.dump(4) : data.dump());
 
     if (!file.good())
         throw std::runtime_error("Failed to write file: " + filepath);

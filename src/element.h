@@ -495,11 +495,11 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Polymorphic registry
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Build one element from full serialized session_proto.Element bytes, so a factory reads the base fields as well as element_data.
-    using Factory = std::function<std::shared_ptr<Element>(const std::string& data)>;
-
-    /// Register factory for type_name; re-registering the same name replaces it.
-    static void register_type(const std::string& type_name, Factory factory);
+    /// Register factory for type_name, a factory building one element from full serialized session_proto.Element bytes; re-registering the same name replaces it.
+    static void register_type(
+        const std::string& type_name,
+        std::function<std::shared_ptr<Element>(const std::string& data)> factory
+    );
 
     /// Return whether a factory is registered for type_name.
     static bool is_registered(const std::string& type_name);

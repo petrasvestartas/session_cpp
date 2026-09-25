@@ -633,7 +633,9 @@ MINI_TEST("Element", "Registry Unknown Type Degrades") {
     MINI_CHECK(!Element::is_registered("NeverRegistered"));
 
     session_proto::Element proto;
-    proto.ParseFromString(Element(unit_quad(), "mystery").pb_dumps());
+
+    MINI_CHECK(proto.ParseFromString(Element(unit_quad(), "mystery").pb_dumps()));
+
     proto.set_element_type("NeverRegistered");
     proto.set_element_data("whatever this package meant");
 
@@ -686,7 +688,8 @@ MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
 
     const Element e(unit_quad(), "plain");
     session_proto::Element proto;
-    proto.ParseFromString(e.pb_dumps());
+
+    MINI_CHECK(proto.ParseFromString(e.pb_dumps()));
 
     MINI_CHECK(proto.element_type().empty());
     MINI_CHECK(proto.element_data().empty());
@@ -715,7 +718,9 @@ MINI_TEST("Element", "Throwing Factory Degrades To Base") {
     Element::register_type("Exploding", explode);
 
     session_proto::Element proto;
-    proto.ParseFromString(Element(unit_quad(), "victim").pb_dumps());
+
+    MINI_CHECK(proto.ParseFromString(Element(unit_quad(), "victim").pb_dumps()));
+
     proto.set_element_type("Exploding");
 
     const std::shared_ptr<Element> loaded = Element::pb_loads_polymorphic(proto.SerializeAsString());
@@ -728,7 +733,9 @@ MINI_TEST("Element", "Throwing Factory Degrades To Base") {
 MINI_TEST("Element", "Unknown Type Survives Resave") {
 
     session_proto::Element proto;
-    proto.ParseFromString(Element(unit_quad(), "plate").pb_dumps());
+
+    MINI_CHECK(proto.ParseFromString(Element(unit_quad(), "plate").pb_dumps()));
+
     proto.set_element_type("wood::Plate");
     proto.set_element_data("the package's own bytes");
     const std::string original = proto.SerializeAsString();
@@ -739,7 +746,8 @@ MINI_TEST("Element", "Unknown Type Survives Resave") {
     MINI_CHECK(loaded.element_data_dumps() == "the package's own bytes");
 
     session_proto::Element resaved;
-    resaved.ParseFromString(loaded.pb_dumps());
+
+    MINI_CHECK(resaved.ParseFromString(loaded.pb_dumps()));
 
     MINI_CHECK(resaved.element_type() == "wood::Plate");
     MINI_CHECK(resaved.element_data() == "the package's own bytes");

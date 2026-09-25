@@ -111,7 +111,7 @@ ElementFeature ElementFeature::file_json_loads(const std::string& json_string) {
 void ElementFeature::file_json_dump(const std::string& filename) const {
 
     std::ofstream file(filename);
-    file << jsondump().dump(2);
+    file << jsondump().dump(4);
 }
 
 ElementFeature ElementFeature::file_json_load(const std::string& filename) {
@@ -714,7 +714,7 @@ Element Element::file_json_loads(const std::string& s) {
 void Element::file_json_dump(const std::string& filename) const {
 
     std::ofstream file(filename);
-    file << jsondump().dump(2);
+    file << jsondump().dump(4);
 }
 
 Element Element::file_json_load(const std::string& filename) {
@@ -833,9 +833,9 @@ Element Element::pb_load(const std::string& filename) {
 // Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
 /// Function-local so a package registering from a static initializer finds it built.
-static std::map<std::string, Element::Factory>& element_registry() {
+static std::map<std::string, std::function<std::shared_ptr<Element>(const std::string& data)>>& element_registry() {
 
-    static std::map<std::string, Element::Factory> registry;
+    static std::map<std::string, std::function<std::shared_ptr<Element>(const std::string& data)>> registry;
 
     return registry;
 }
@@ -858,7 +858,10 @@ static std::shared_ptr<Element> build_registered(const std::string& type_name, c
     }
 }
 
-void Element::register_type(const std::string& type_name, Element::Factory factory) {
+void Element::register_type(
+    const std::string& type_name,
+    std::function<std::shared_ptr<Element>(const std::string& data)> factory
+) {
 
     if (type_name.empty() || !factory)
         return;
@@ -874,7 +877,7 @@ std::vector<std::string> Element::registered_types() {
 
     std::vector<std::string> names;
 
-    for (const std::pair<const std::string, Element::Factory>& entry : element_registry())
+    for (const std::pair<const std::string, std::function<std::shared_ptr<Element>(const std::string& data)>>& entry : element_registry())
         names.push_back(entry.first);
 
     return names;

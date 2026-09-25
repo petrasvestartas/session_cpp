@@ -41,7 +41,7 @@ static double max_pivot_3x3(const double row0[3], const double row1[3], const do
 }
 
 /// Rows of a 3x3 system in a 3x4 work array, row i swapped to the top.
-static void load_rows_3x3(
+static void to_work_array(
     double w[12],
     const double row0[3],
     const double row1[3],
@@ -187,7 +187,7 @@ int Intersection::solve_3x3(
     double minpiv = maxpiv;
     double w[12];
     int slot[3] = {0, 1, 2};
-    load_rows_3x3(w, row0, row1, row2, d0, d1, d2, i);
+    to_work_array(w, row0, row1, row2, d0, d1, d2, i);
 
     if (j != 0)
         swap_columns(w, slot, 0, j);

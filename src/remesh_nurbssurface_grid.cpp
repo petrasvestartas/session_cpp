@@ -240,7 +240,7 @@ int twist_subs(
 }
 
 /// One more subdivision on the largest span when the total is even, so a closed direction triangulates seamlessly.
-void make_odd(std::vector<int>& subs) {
+void set_odd_total(std::vector<int>& subs) {
 
     int total = 0;
 
@@ -346,7 +346,7 @@ std::vector<double> grid_params(
     const bool closed = s.is_closed(dir);
 
     if (closed && count == 0)
-        make_odd(subs);
+        set_odd_total(subs);
 
     std::vector<double> params = count > 0 ? arclen_params(s, dir, std::max(count, 2), sp, fixed) : span_params(sp, subs);
 

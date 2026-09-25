@@ -121,7 +121,7 @@ Corner sample(const NurbsSurface& s, double u, double v) {
 }
 
 /// Leaf cell over [u0, u1] x [v0, v1] from its sampled corners SW SE NE NW, centre sampled here.
-Node make_node(
+Node compute_node(
     const NurbsSurface& s,
     double u0,
     double v0,
@@ -269,16 +269,16 @@ void split_node(Quadtree& q, int idx, const std::array<Corner, 4>& mids, bool sp
     q.nodes[idx].leaf = false;
 
     if (split_u && split_v) {
-        q.nodes.push_back(make_node(q.s, p.u0, p.v0, um, vm, {p.c[0], mids[0], p.c[4], mids[3]}, depth));
-        q.nodes.push_back(make_node(q.s, um, p.v0, p.u1, vm, {mids[0], p.c[1], mids[1], p.c[4]}, depth));
-        q.nodes.push_back(make_node(q.s, um, vm, p.u1, p.v1, {p.c[4], mids[1], p.c[2], mids[2]}, depth));
-        q.nodes.push_back(make_node(q.s, p.u0, vm, um, p.v1, {mids[3], p.c[4], mids[2], p.c[3]}, depth));
+        q.nodes.push_back(compute_node(q.s, p.u0, p.v0, um, vm, {p.c[0], mids[0], p.c[4], mids[3]}, depth));
+        q.nodes.push_back(compute_node(q.s, um, p.v0, p.u1, vm, {mids[0], p.c[1], mids[1], p.c[4]}, depth));
+        q.nodes.push_back(compute_node(q.s, um, vm, p.u1, p.v1, {p.c[4], mids[1], p.c[2], mids[2]}, depth));
+        q.nodes.push_back(compute_node(q.s, p.u0, vm, um, p.v1, {mids[3], p.c[4], mids[2], p.c[3]}, depth));
     } else if (split_u) {
-        q.nodes.push_back(make_node(q.s, p.u0, p.v0, um, p.v1, {p.c[0], mids[0], mids[2], p.c[3]}, depth));
-        q.nodes.push_back(make_node(q.s, um, p.v0, p.u1, p.v1, {mids[0], p.c[1], p.c[2], mids[2]}, depth));
+        q.nodes.push_back(compute_node(q.s, p.u0, p.v0, um, p.v1, {p.c[0], mids[0], mids[2], p.c[3]}, depth));
+        q.nodes.push_back(compute_node(q.s, um, p.v0, p.u1, p.v1, {mids[0], p.c[1], p.c[2], mids[2]}, depth));
     } else {
-        q.nodes.push_back(make_node(q.s, p.u0, p.v0, p.u1, vm, {p.c[0], p.c[1], mids[1], mids[3]}, depth));
-        q.nodes.push_back(make_node(q.s, p.u0, vm, p.u1, p.v1, {mids[3], mids[1], p.c[2], p.c[3]}, depth));
+        q.nodes.push_back(compute_node(q.s, p.u0, p.v0, p.u1, vm, {p.c[0], p.c[1], mids[1], mids[3]}, depth));
+        q.nodes.push_back(compute_node(q.s, p.u0, vm, p.u1, p.v1, {mids[3], mids[1], p.c[2], p.c[3]}, depth));
     }
 }
 
@@ -332,7 +332,7 @@ void build(Quadtree& q) {
         for (int j = 0; j + 1 < nv; ++j) {
             const int root = (int)q.nodes.size();
 
-            q.nodes.push_back(make_node(
+            q.nodes.push_back(compute_node(
                 q.s,
                 q.usp[i],
                 q.vsp[j],
