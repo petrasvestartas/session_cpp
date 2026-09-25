@@ -598,11 +598,18 @@ MINI_TEST("Graph", "Take Node") {
     const std::pair<Vertex, std::vector<Edge>> taken = *g.take_node("b");
     const Vertex& vertex = taken.first;
     const std::vector<Edge>& edges = taken.second;
+    bool incident = true;
+    bool weighted = false;
+
+    for (const Edge& e : edges) {
+        incident = incident && (e.v0 == "b" || e.v1 == "b");
+        weighted = weighted || (e.attributes.count("weight") && e.attributes.at("weight") == 3.0);
+    }
 
     MINI_CHECK(before.find(vertex.guid()) != std::string::npos && vertex.index == 1 && vertex.attribute == "bee");
     MINI_CHECK(vertex.attributes.at("load") == 2.0);
-    MINI_CHECK(edges.size() == 2 && std::all_of(edges.begin(), edges.end(), [](const Edge& e) { return e.v0 == "b" || e.v1 == "b"; }));
-    MINI_CHECK(std::any_of(edges.begin(), edges.end(), [](const Edge& e) { return e.attributes.count("weight") && e.attributes.at("weight") == 3.0; }));
+    MINI_CHECK(edges.size() == 2 && incident);
+    MINI_CHECK(weighted);
     MINI_CHECK(!g.has_node("b") && !g.has_edge(std::make_tuple("a", "b")) && !g.has_edge(std::make_tuple("c", "b")));
     MINI_CHECK(g.vertex_count == 3 && g.edge_count == 2 && g.edges.empty());
     MINI_CHECK(g.get_vertices()[0].index == 0 && g.get_vertices()[1].index == 2);
