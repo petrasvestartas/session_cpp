@@ -342,6 +342,12 @@ if(ENABLE_PCH)
     target_precompile_headers(main_3 PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
 endif()
 
+# session_bench — undo/redo cost of the tombstone kernel, printed, never asserted.
+add_executable(session_bench examples/bench.cpp)
+target_compile_options(session_bench PRIVATE ${SESSION_COMPILE_OPTIONS})
+target_link_libraries(session_bench PRIVATE session_core)
+LINK_PROTOBUF(session_bench)
+
 #############################################################################################
 # TESTS
 #############################################################################################

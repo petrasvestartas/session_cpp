@@ -2542,6 +2542,125 @@ MINI_TEST("Session", "Purge Clears History") {
     MINI_CHECK(session.tree.nodes().size() == 3);
 }
 
+MINI_TEST("Session", "Checkpoint After Purge Steps") {
+
+    const size_t n = 40000;
+    const size_t bulk = 20000;
+    Session session;
+    const std::shared_ptr<TreeNode> group = session.add_group("flat");
+    std::vector<std::string> guids;
+
+    for (size_t i = 0; i < n; i++)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0), group)->name);
+
+    session.begin("remove");
+
+    for (size_t i = 0; i < bulk; i++)
+        session.remove_object(guids[i]);
+
+    session.commit();
+
+    for (int step = 0; step < CAPACITY; step++) {
+        session.begin("move");
+        session.set_xform(guids[n - 1], Xform::translation(static_cast<double>(step), 0.0, 0.0));
+        session.commit();
+    }
+
+    int steps = 0;
+
+    while (session.purge_step(PURGE_WORK))
+        steps++;
+
+    std::optional<std::string> bytes;
+
+    while (!bytes)
+        bytes = session.checkpoint(PURGE_WORK);
+
+    const Session loaded = Session::pb_loads(*bytes);
+    session_proto::Session parsed;
+    parsed.ParseFromString(*bytes);
+
+    MINI_CHECK(steps > 1);
+    MINI_CHECK(loaded.objects.points->size() == n - bulk);
+    MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
+    MINI_CHECK(session.number_of_dead() == 0);
+    MINI_CHECK(session.history.depth() == CAPACITY);
+}
+
+MINI_TEST("Session", "Steady State Bounds") {
+
+    const size_t n = 2000;
+    const size_t cycles = 1000;
+    Session session;
+    const std::shared_ptr<TreeNode> group = session.add_group("flat");
+    std::vector<std::string> guids;
+
+    for (size_t i = 0; i < n; i++)
+        guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0), group)->name);
+
+    for (size_t i = 0; i < cycles; i++) {
+        session.begin("remove");
+        session.remove_object(guids[i]);
+        session.commit();
+        session.undo();
+        session.redo();
+        const double x = static_cast<double>(session.objects.points->size());
+        session.begin("add");
+        session.add_point(std::make_shared<Point>(x, 1.0, 0.0), group);
+        session.commit();
+        session.purge_step(PURGE_WORK);
+    }
+
+    const size_t bound = 2 * CAPACITY + 2 * (n / PURGE_WORK + 1);
+    const Collection<std::shared_ptr<Point>>& points = *session.objects.points;
+
+    MINI_CHECK(points.size() == n);
+    MINI_CHECK(session.history.bytes <= session.history.budget);
+    MINI_CHECK(session.number_of_dead() <= bound);
+    MINI_CHECK(points.number_of_slots() <= points.size() + bound);
+    MINI_CHECK(group->children().size() <= points.size() + bound);
+}
+
+MINI_TEST("Session", "History Budget Bounds") {
+
+    const size_t side = 30;
+    std::vector<Point> vertices;
+    std::vector<std::vector<size_t>> faces;
+
+    for (size_t at = 0; at < side * side; at++)
+        vertices.push_back(Point(static_cast<double>(at / side), static_cast<double>(at % side), 0.0));
+
+    for (size_t cell = 0; cell < (side - 1) * (side - 1); cell++) {
+        const size_t at = cell / (side - 1) * side + cell % (side - 1);
+        faces.push_back({at, at + side, at + side + 1, at + 1});
+    }
+
+    Session session;
+    session.history.budget = 1 << 20;
+    std::vector<std::string> guids;
+
+    for (int i = 0; i < 200; i++) {
+        const std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>(Mesh::from_vertices_and_faces(vertices, faces));
+        guids.push_back(mesh->guid());
+        session.add_mesh(mesh);
+    }
+
+    bool bounded = true;
+
+    for (const std::string& guid : guids) {
+        session.begin("remove");
+        session.remove_object(guid);
+        session.commit();
+        const size_t newest = session.history.undo_stack[session.history.depth() - 1].bytes;
+        bounded &= session.history.bytes <= session.history.budget + newest;
+    }
+
+    MINI_CHECK(bounded);
+    MINI_CHECK(session.history.depth() < CAPACITY);
+    MINI_CHECK(session.history.depth() > 1);
+    MINI_CHECK(session.objects.meshes->empty());
+}
+
 MINI_TEST("Session", "Purge Keeps Replaced Tomb") {
 
     Session session;
