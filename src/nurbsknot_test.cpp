@@ -24,7 +24,7 @@ MINI_TEST("NurbsKnot", "Domain Tolerance") {
     MINI_CHECK(nurbsknot::domain_tolerance(0.0, std::numeric_limits<double>::denorm_min()) == std::numeric_limits<double>::epsilon());
 }
 
-MINI_TEST("NurbsKnot", "Make Clamped Uniform") {
+MINI_TEST("NurbsKnot", "Compute Clamped Uniform") {
 
     const int order = 4;
     const int cv_count = 5;
@@ -36,7 +36,7 @@ MINI_TEST("NurbsKnot", "Make Clamped Uniform") {
     MINI_CHECK(nurbsknot::compute_clamped_uniform(std::numeric_limits<int>::max(), std::numeric_limits<int>::max()).empty());
 }
 
-MINI_TEST("NurbsKnot", "Make Periodic Uniform") {
+MINI_TEST("NurbsKnot", "Compute Periodic Uniform") {
 
     const int order = 4;
     const int cv_count = 5;

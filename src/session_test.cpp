@@ -323,21 +323,55 @@ MINI_TEST("Session", "Add Relationship") {
     MINI_CHECK(session.graph.has_edge({p1->guid(), p2->guid()}));
 }
 
+namespace {
+
+/// A test-only subclass: a named interaction with no state of its own.
+class NamedInteraction : public Interaction {
+public:
+    /// Construct from a name.
+    NamedInteraction(const std::string& name = "")
+        : Interaction(name) {}
+
+    /// Return the registered type name.
+    std::string interaction_type_name() const override {
+        return "NamedInteraction";
+    }
+
+    /// Return no state.
+    std::string interaction_data_dumps() const override {
+        return "";
+    }
+
+    /// Return a copy with the same guid.
+    std::shared_ptr<Interaction> clone() const override {
+        return std::make_shared<NamedInteraction>(*this);
+    }
+};
+
+/// Build a NamedInteraction from its data.
+std::shared_ptr<Interaction> named_interaction(const std::string&) {
+    return std::make_shared<NamedInteraction>();
+}
+
+} // namespace
+
 MINI_TEST("Session", "Add Interaction") {
 
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
     const std::shared_ptr<Element> b = std::make_shared<Element>("b");
-    const Element absent("absent");
+    const std::shared_ptr<Element> absent = std::make_shared<Element>("absent");
     session.add_element(a);
     session.add_element(b);
     session.add_edge(a->guid(), b->guid(), "authored");
-    const std::pair<std::string, std::string> ends = session.add_interaction(*a, *b);
+    const std::shared_ptr<Interaction> glue = session.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
     const std::string id = session.graph.edges.at(a->guid()).at(b->guid()).guid();
-    const std::pair<std::string, std::string> reversed = session.add_interaction(*b, *a);
+    const std::shared_ptr<Interaction> screw = session.add_interaction(b, a, std::make_shared<NamedInteraction>("screw"));
 
-    MINI_CHECK(ends == reversed);
-    MINI_CHECK(ends.first == a->guid());
+    MINI_CHECK(session.interactions.size() == 1);
+    MINI_CHECK(session.interactions.at(id).size() == 2);
+    MINI_CHECK(session.interactions.at(id)[0]->guid() == glue->guid());
+    MINI_CHECK(session.interactions.at(id)[1]->guid() == screw->guid());
     MINI_CHECK(session.graph.number_of_edges() == 1);
     MINI_CHECK(session.graph.edges.at(b->guid()).at(a->guid()).guid() == id);
     MINI_CHECK(session.graph.edges.at(a->guid()).at(b->guid()).attribute == "authored");
@@ -346,13 +380,13 @@ MINI_TEST("Session", "Add Interaction") {
     bool self_rejected = false;
 
     try {
-        session.add_interaction(*a, absent);
+        session.add_interaction(a, absent, std::make_shared<NamedInteraction>());
     } catch (const std::invalid_argument&) {
         missing_rejected = true;
     }
 
     try {
-        session.add_interaction(*a, *a);
+        session.add_interaction(a, a, std::make_shared<NamedInteraction>());
     } catch (const std::invalid_argument&) {
         self_rejected = true;
     }
@@ -362,22 +396,56 @@ MINI_TEST("Session", "Add Interaction") {
     MINI_CHECK(session.graph.number_of_edges() == 1);
 }
 
-MINI_TEST("Session", "Has Interaction") {
+MINI_TEST("Session", "Get Interaction") {
 
+    Interaction::register_type("NamedInteraction", named_interaction);
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
     const std::shared_ptr<Element> b = std::make_shared<Element>("b");
+    const std::shared_ptr<Element> c = std::make_shared<Element>("c");
     session.add_element(a);
     session.add_element(b);
-    const bool before = session.has_interaction(*a, *b);
-    session.add_interaction(*a, *b);
+    session.add_element(c);
+    session.add_edge(a->guid(), c->guid(), "authored");
+    const std::vector<std::shared_ptr<Interaction>> before = session.get_interaction(a, b);
+    const std::vector<std::shared_ptr<Interaction>> bare = session.get_interaction(a, c);
+    const std::shared_ptr<Interaction> glue = session.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
+    const std::string id = session.graph.edges.at(a->guid()).at(b->guid()).guid();
+    Session duplicate = session;
+    duplicate.interactions.at(id)[0]->name = "screw";
+    const Session loaded_b = Session::pb_loads(session.pb_dumps());
+    const Session loaded_j = Session::file_json_loads(session.file_json_dumps());
+
+    MINI_CHECK(before.empty());
+    MINI_CHECK(bare.empty());
+    MINI_CHECK(session.get_interaction(a, b)[0]->guid() == glue->guid());
+    MINI_CHECK(session.get_interaction(b, a)[0]->guid() == glue->guid());
+    MINI_CHECK(session.get_interaction(a, b)[0]->name == "glue");
+    MINI_CHECK(duplicate.get_interaction(b, a)[0]->name == "screw");
+    MINI_CHECK(duplicate.get_interaction(b, a)[0]->guid() == glue->guid());
+    MINI_CHECK(*loaded_b.get_interaction(b, a)[0] == *glue);
+    MINI_CHECK(loaded_b.get_interaction(b, a)[0]->guid() == glue->guid());
+    MINI_CHECK(*loaded_j.get_interaction(b, a)[0] == *glue);
+}
+
+MINI_TEST("Session", "Has Interaction") {
+
+    Interaction::register_type("NamedInteraction", named_interaction);
+    Session session;
+    const std::shared_ptr<Element> a = std::make_shared<Element>("a");
+    const std::shared_ptr<Element> b = std::make_shared<Element>("b");
+    const std::shared_ptr<Element> absent = std::make_shared<Element>("absent");
+    session.add_element(a);
+    session.add_element(b);
+    const bool before = session.has_interaction(a, b);
+    session.add_interaction(a, b, std::make_shared<NamedInteraction>());
     const Session loaded = Session::pb_loads(session.pb_dumps());
 
     MINI_CHECK(!before);
-    MINI_CHECK(session.has_interaction(*a, *b));
-    MINI_CHECK(session.has_interaction(*b, *a));
-    MINI_CHECK(!session.has_interaction(a->guid(), "missing"));
-    MINI_CHECK(loaded.has_interaction(*b, *a));
+    MINI_CHECK(session.has_interaction(a, b));
+    MINI_CHECK(session.has_interaction(b, a));
+    MINI_CHECK(!session.has_interaction(a, absent));
+    MINI_CHECK(loaded.has_interaction(b, a));
 }
 
 MINI_TEST("Session", "Remove Interaction") {
@@ -389,15 +457,43 @@ MINI_TEST("Session", "Remove Interaction") {
     session.add_element(a);
     session.add_element(b);
     session.add_element(c);
-    session.add_interaction(*a, *b);
-    session.add_interaction(*a, *c);
-    session.remove_interaction(*b, *a);
-    session.remove_interaction(*b, *a);
+    session.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
+    session.add_interaction(a, c, std::make_shared<NamedInteraction>());
+    session.remove_interaction(b, a);
+    session.remove_interaction(b, a);
 
-    MINI_CHECK(!session.has_interaction(*a, *b));
-    MINI_CHECK(session.has_interaction(*a, *c));
+    MINI_CHECK(!session.has_interaction(a, b));
+    MINI_CHECK(session.has_interaction(a, c));
+    MINI_CHECK(session.get_interaction(a, b).empty());
+    MINI_CHECK(session.interactions.size() == 1);
     MINI_CHECK(session.graph.number_of_edges() == 1);
     MINI_CHECK(session.graph.has_node(b->guid()));
+}
+
+MINI_TEST("Session", "Undo Remove Interaction") {
+
+    Session session;
+    const std::shared_ptr<Element> a = std::make_shared<Element>("a");
+    const std::shared_ptr<Element> b = std::make_shared<Element>("b");
+    session.add_element(a);
+    session.add_element(b);
+    const std::shared_ptr<Interaction> glue = session.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
+    const std::string id = session.graph.edges.at(a->guid()).at(b->guid()).guid();
+
+    session.begin("remove");
+    session.remove_object(b->guid());
+    session.commit();
+    const bool dropped = session.interactions.count(id) == 0;
+    session.undo();
+
+    MINI_CHECK(dropped);
+    MINI_CHECK(session.get_interaction(a, b).size() == 1);
+    MINI_CHECK(session.get_interaction(a, b)[0]->guid() == glue->guid());
+    MINI_CHECK(session.get_interaction(a, b)[0]->name == "glue");
+
+    session.redo();
+
+    MINI_CHECK(session.interactions.count(id) == 0);
 }
 
 MINI_TEST("Session", "Get Neighbours") {

@@ -19,9 +19,11 @@
 #include "brep.h"
 #include "tree.h"
 #include "history.h"
+#include "interaction.h"
 #include "spatial_bvh.h"
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -65,6 +67,7 @@ public:
     Objects definitions;                                         // Shared geometry instances place, each in its own frame; never in order(), the tree, the graph or xforms.
     std::unordered_map<std::string, Geometry> definition_lookup; // Definitions by guid.
     std::unordered_map<std::string, std::shared_ptr<InstanceRef>> instance_lookup; // Instances by guid.
+    std::map<std::string, std::vector<std::shared_ptr<Interaction>>> interactions; // Interactions per graph edge, by the edge's guid; a subclass keeps its type.
     mutable History history;                                     // Undo/redo buffer, in memory only; every save purges it.
     SpatialBVH bvh;                                              // Bounding volume hierarchy for collision detection.
     SpatialBVH cached_ray_bvh;                                   // Cached SpatialBVH for ray casting.
@@ -269,30 +272,6 @@ public:
     /// Add an edge between two geometry objects in the graph.
     void add_edge(const std::string& guid1, const std::string& guid2, const std::string& attribute = "");
 
-    /// Add or reuse an undirected interaction edge between registered objects; returns its stored endpoint order. Throws std::invalid_argument for missing objects or a self-pair. Preserves an existing edge's attributes and guid.
-    std::pair<std::string, std::string> add_interaction(const std::string& a, const std::string& b);
-
-    /// True when the pair has an interaction edge in either order.
-    bool has_interaction(const std::string& a, const std::string& b) const;
-
-    /// Remove the pair's edge in either order; a missing pair is a no-op.
-    void remove_interaction(const std::string& a, const std::string& b);
-
-    /// add_interaction using element identities.
-    std::pair<std::string, std::string> add_interaction(const Element& a, const Element& b) {
-        return add_interaction(a.guid(), b.guid());
-    }
-
-    /// has_interaction using element identities.
-    bool has_interaction(const Element& a, const Element& b) const {
-        return has_interaction(a.guid(), b.guid());
-    }
-
-    /// remove_interaction using element identities.
-    void remove_interaction(const Element& a, const Element& b) {
-        remove_interaction(a.guid(), b.guid());
-    }
-
     /// Add a parent-child relationship in the tree.
     bool add_hierarchy(const std::string& parent_guid, const std::string& child_guid);
 
@@ -326,6 +305,28 @@ public:
 
     /// Removes an object's local transform, returning whether one was present.
     bool remove_xform(const std::string& guid);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Session - Interactions
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Make or reuse the pair's undirected edge, an existing edge keeping its attributes, and append interaction to its list; returns the stored interaction. Throws std::invalid_argument unless both elements are in the session and distinct.
+    std::shared_ptr<Interaction> add_interaction(
+        const std::shared_ptr<Element>& a,
+        const std::shared_ptr<Element>& b,
+        std::shared_ptr<Interaction> interaction
+    );
+
+    /// The pair's interactions in either order, empty when there are none.
+    std::vector<std::shared_ptr<Interaction>> get_interaction(
+        const std::shared_ptr<Element>& a,
+        const std::shared_ptr<Element>& b
+    ) const;
+
+    /// True when the pair has an edge in either order.
+    bool has_interaction(const std::shared_ptr<Element>& a, const std::shared_ptr<Element>& b) const;
+
+    /// Remove the pair's edge and all of its interactions in either order; a missing pair is a no-op.
+    void remove_interaction(const std::shared_ptr<Element>& a, const std::shared_ptr<Element>& b);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // History

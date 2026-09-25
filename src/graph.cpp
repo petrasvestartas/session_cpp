@@ -142,6 +142,7 @@ std::tuple<std::string, std::string> Graph::add_edge(const std::string& u, const
 
     Edge edge(u, v, attribute);
     edge.index = edge_count;
+    edge.guid() = ::guid();
 
     edges[u][v] = edge;
     edges[v][u] = edge;

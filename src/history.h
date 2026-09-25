@@ -1,7 +1,9 @@
 #pragma once
+#include "interaction.h"
 #include "objects.h"
 #include "tree.h"
 #include "xform.h"
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +43,7 @@ public:
     std::shared_ptr<TreeNode> node;         // The detached tree node with its whole subtree, nullptr for an add.
     std::string attribute;                  // Its graph node attribute.
     std::vector<std::tuple<std::string, std::string, bool, std::string>> edges; // Incident edges as (other guid, attribute, forward, edge guid or "").
+    std::map<std::string, std::vector<std::shared_ptr<Interaction>>> interactions; // Those edges' interactions by edge guid.
 
     /// Construct from every field of the kit.
     Tombstone(

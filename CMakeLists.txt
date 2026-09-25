@@ -337,6 +337,7 @@ set(MINITEST_SOURCES
     # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
     src/mesh_offset_test.cpp
     src/instance_ref_test.cpp
+    src/interaction_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_compile_options(point_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})

@@ -54,11 +54,40 @@ struct XformEntryDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 XformEntryDefaultTypeInternal _XformEntry_default_instance_;
 
+inline constexpr InteractionEntry::Impl_::Impl_(
+    ::_pbi::ConstantInitialized) noexcept
+      : _cached_size_{0},
+        interactions_{},
+        guid_(
+            &::google::protobuf::internal::fixed_address_empty_string,
+            ::_pbi::ConstantInitialized()) {}
+
+template <typename>
+PROTOBUF_CONSTEXPR InteractionEntry::InteractionEntry(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(InteractionEntry_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(::_pbi::ConstantInitialized()) {
+}
+struct InteractionEntryDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR InteractionEntryDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~InteractionEntryDefaultTypeInternal() {}
+  union {
+    InteractionEntry _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 InteractionEntryDefaultTypeInternal _InteractionEntry_default_instance_;
+
 inline constexpr Session::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : _cached_size_{0},
         bvh_boxes_{},
         xforms_{},
+        interactions_{},
         name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
@@ -105,8 +134,15 @@ const ::uint32_t
         0,
         1,
         0x081, // bitmap
+        PROTOBUF_FIELD_OFFSET(::session_proto::InteractionEntry, _impl_._has_bits_),
+        5, // hasbit index offset
+        PROTOBUF_FIELD_OFFSET(::session_proto::InteractionEntry, _impl_.guid_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::InteractionEntry, _impl_.interactions_),
+        1,
+        0,
+        0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_._has_bits_),
-        11, // hasbit index offset
+        12, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.objects_),
@@ -115,44 +151,53 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.bvh_boxes_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.xforms_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.definitions_),
-        2,
+        PROTOBUF_FIELD_OFFSET(::session_proto::Session, _impl_.interactions_),
         3,
         4,
         5,
         6,
+        7,
         0,
         1,
-        7,
+        8,
+        2,
 };
 
 static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, sizeof(::session_proto::XformEntry)},
-        {7, sizeof(::session_proto::Session)},
+        {7, sizeof(::session_proto::InteractionEntry)},
+        {14, sizeof(::session_proto::Session)},
 };
 static const ::_pb::Message* PROTOBUF_NONNULL const file_default_instances[] = {
     &::session_proto::_XformEntry_default_instance_._instance,
+    &::session_proto::_InteractionEntry_default_instance_._instance,
     &::session_proto::_Session_default_instance_._instance,
 };
 const char descriptor_table_protodef_session_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\rsession.proto\022\rsession_proto\032\robjects."
     "proto\032\ntree.proto\032\013graph.proto\032\021bounding"
-    "box.proto\032\013xform.proto\"\?\n\nXformEntry\022\014\n\004"
-    "guid\030\001 \001(\t\022#\n\005xform\030\002 \001(\0132\024.session_prot"
-    "o.Xform\"\235\002\n\007Session\022\014\n\004name\030\001 \001(\t\022\014\n\004gui"
-    "d\030\002 \001(\t\022\'\n\007objects\030\003 \001(\0132\026.session_proto"
-    ".Objects\022!\n\004tree\030\004 \001(\0132\023.session_proto.T"
-    "ree\022#\n\005graph\030\005 \001(\0132\024.session_proto.Graph"
-    "\022-\n\tbvh_boxes\030\006 \003(\0132\032.session_proto.Boun"
-    "dingBox\022)\n\006xforms\030\007 \003(\0132\031.session_proto."
-    "XformEntry\022+\n\013definitions\030\010 \001(\0132\026.sessio"
-    "n_proto.Objectsb\006proto3"
+    "box.proto\032\013xform.proto\032\021interaction.prot"
+    "o\"\?\n\nXformEntry\022\014\n\004guid\030\001 \001(\t\022#\n\005xform\030\002"
+    " \001(\0132\024.session_proto.Xform\"R\n\020Interactio"
+    "nEntry\022\014\n\004guid\030\001 \001(\t\0220\n\014interactions\030\002 \003"
+    "(\0132\032.session_proto.Interaction\"\324\002\n\007Sessi"
+    "on\022\014\n\004name\030\001 \001(\t\022\014\n\004guid\030\002 \001(\t\022\'\n\007object"
+    "s\030\003 \001(\0132\026.session_proto.Objects\022!\n\004tree\030"
+    "\004 \001(\0132\023.session_proto.Tree\022#\n\005graph\030\005 \001("
+    "\0132\024.session_proto.Graph\022-\n\tbvh_boxes\030\006 \003"
+    "(\0132\032.session_proto.BoundingBox\022)\n\006xforms"
+    "\030\007 \003(\0132\031.session_proto.XformEntry\022+\n\013def"
+    "initions\030\010 \001(\0132\026.session_proto.Objects\0225"
+    "\n\014interactions\030\t \003(\0132\037.session_proto.Int"
+    "eractionEntryb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
-    descriptor_table_session_2eproto_deps[5] = {
+    descriptor_table_session_2eproto_deps[6] = {
         &::descriptor_table_boundingbox_2eproto,
         &::descriptor_table_graph_2eproto,
+        &::descriptor_table_interaction_2eproto,
         &::descriptor_table_objects_2eproto,
         &::descriptor_table_tree_2eproto,
         &::descriptor_table_xform_2eproto,
@@ -161,13 +206,13 @@ static ::absl::once_flag descriptor_table_session_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_session_2eproto = {
     false,
     false,
-    463,
+    621,
     descriptor_table_protodef_session_2eproto,
     "session.proto",
     &descriptor_table_session_2eproto_once,
     descriptor_table_session_2eproto_deps,
-    5,
-    2,
+    6,
+    3,
     schemas,
     file_default_instances,
     TableStruct_session_2eproto::offsets,
@@ -503,6 +548,344 @@ void XformEntry::InternalSwap(XformEntry* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
 }
 // ===================================================================
 
+class InteractionEntry::_Internal {
+ public:
+  using HasBits =
+      decltype(::std::declval<InteractionEntry>()._impl_._has_bits_);
+  static constexpr ::int32_t kHasBitsOffset =
+      8 * PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_._has_bits_);
+};
+
+void InteractionEntry::clear_interactions() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.interactions_.Clear();
+  ClearHasBitForRepeated(_impl_._has_bits_[0],
+                  0x00000001U);
+}
+InteractionEntry::InteractionEntry(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, InteractionEntry_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:session_proto.InteractionEntry)
+}
+PROTOBUF_NDEBUG_INLINE InteractionEntry::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+    [[maybe_unused]] const ::session_proto::InteractionEntry& from_msg)
+      : _has_bits_{from._has_bits_},
+        _cached_size_{0},
+        interactions_{visibility, arena, from.interactions_},
+        guid_(arena, from.guid_) {}
+
+InteractionEntry::InteractionEntry(
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena,
+    const InteractionEntry& from)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, InteractionEntry_class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  InteractionEntry* const _this = this;
+  (void)_this;
+  _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+  new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+
+  // @@protoc_insertion_point(copy_constructor:session_proto.InteractionEntry)
+}
+PROTOBUF_NDEBUG_INLINE InteractionEntry::Impl_::Impl_(
+    [[maybe_unused]] ::google::protobuf::internal::InternalVisibility visibility,
+    [[maybe_unused]] ::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
+      : _cached_size_{0},
+        interactions_{visibility, arena},
+        guid_(arena) {}
+
+inline void InteractionEntry::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+}
+InteractionEntry::~InteractionEntry() {
+  // @@protoc_insertion_point(destructor:session_proto.InteractionEntry)
+  SharedDtor(*this);
+}
+inline void InteractionEntry::SharedDtor(MessageLite& self) {
+  InteractionEntry& this_ = static_cast<InteractionEntry&>(self);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.guid_.Destroy();
+  this_._impl_.~Impl_();
+}
+
+inline void* PROTOBUF_NONNULL InteractionEntry::PlacementNew_(
+    const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+    ::google::protobuf::Arena* PROTOBUF_NULLABLE arena) {
+  return ::new (mem) InteractionEntry(arena);
+}
+constexpr auto InteractionEntry::InternalNewImpl_() {
+  constexpr auto arena_bits = ::google::protobuf::internal::EncodePlacementArenaOffsets({
+      PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_.interactions_) +
+          decltype(InteractionEntry::_impl_.interactions_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
+  });
+  if (arena_bits.has_value()) {
+    return ::google::protobuf::internal::MessageCreator::CopyInit(
+        sizeof(InteractionEntry), alignof(InteractionEntry), *arena_bits);
+  } else {
+    return ::google::protobuf::internal::MessageCreator(&InteractionEntry::PlacementNew_,
+                                 sizeof(InteractionEntry),
+                                 alignof(InteractionEntry));
+  }
+}
+constexpr auto InteractionEntry::InternalGenerateClassData_() {
+  return ::google::protobuf::internal::ClassDataFull{
+      ::google::protobuf::internal::ClassData{
+          &_InteractionEntry_default_instance_._instance,
+          &_table_.header,
+          nullptr,  // OnDemandRegisterArenaDtor
+          nullptr,  // IsInitialized
+          &InteractionEntry::MergeImpl,
+          ::google::protobuf::Message::GetNewImpl<InteractionEntry>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+          &InteractionEntry::SharedDtor,
+          ::google::protobuf::Message::GetClearImpl<InteractionEntry>(), &InteractionEntry::ByteSizeLong,
+              &InteractionEntry::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_._cached_size_),
+          false,
+      },
+      &InteractionEntry::kDescriptorMethods,
+      &descriptor_table_session_2eproto,
+      nullptr,  // tracker
+  };
+}
+
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 const
+    ::google::protobuf::internal::ClassDataFull InteractionEntry_class_data_ =
+        InteractionEntry::InternalGenerateClassData_();
+
+PROTOBUF_ATTRIBUTE_WEAK const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL
+InteractionEntry::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&InteractionEntry_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(InteractionEntry_class_data_.tc_table);
+  return InteractionEntry_class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<1, 2, 1, 43, 2>
+InteractionEntry::_table_ = {
+  {
+    PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_._has_bits_),
+    0, // no _extensions_
+    2, 8,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967292,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    2,  // num_field_entries
+    1,  // num_aux_entries
+    offsetof(decltype(_table_), aux_entries),
+    InteractionEntry_class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::session_proto::InteractionEntry>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // repeated .session_proto.Interaction interactions = 2;
+    {::_pbi::TcParser::FastMtR1,
+     {18, 0, 0,
+      PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_.interactions_)}},
+    // string guid = 1;
+    {::_pbi::TcParser::FastUS1,
+     {10, 1, 0,
+      PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_.guid_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // string guid = 1;
+    {PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_.guid_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    // repeated .session_proto.Interaction interactions = 2;
+    {PROTOBUF_FIELD_OFFSET(InteractionEntry, _impl_.interactions_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+  }},
+  {{
+      {::_pbi::TcParser::GetTable<::session_proto::Interaction>()},
+  }},
+  {{
+    "\36\4\0\0\0\0\0\0"
+    "session_proto.InteractionEntry"
+    "guid"
+  }},
+};
+PROTOBUF_NOINLINE void InteractionEntry::Clear() {
+// @@protoc_insertion_point(message_clear_start:session_proto.InteractionEntry)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  cached_has_bits = _impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _impl_.interactions_.Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      _impl_.guid_.ClearNonDefaultToEmpty();
+    }
+  }
+  _impl_._has_bits_.Clear();
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::uint8_t* PROTOBUF_NONNULL InteractionEntry::_InternalSerialize(
+    const ::google::protobuf::MessageLite& base, ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) {
+  const InteractionEntry& this_ = static_cast<const InteractionEntry&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::uint8_t* PROTOBUF_NONNULL InteractionEntry::_InternalSerialize(
+    ::uint8_t* PROTOBUF_NONNULL target,
+    ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+  const InteractionEntry& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    this_.CheckHasBitConsistency();
+  }
+  // @@protoc_insertion_point(serialize_to_array_start:session_proto.InteractionEntry)
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = this_._impl_._has_bits_[0];
+  // string guid = 1;
+  if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+    if (!this_._internal_guid().empty()) {
+      const ::std::string& _s = this_._internal_guid();
+      ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+          _s.data(), static_cast<int>(_s.length()), ::google::protobuf::internal::WireFormatLite::SERIALIZE, "session_proto.InteractionEntry.guid");
+      target = stream->WriteStringMaybeAliased(1, _s, target);
+    }
+  }
+
+  // repeated .session_proto.Interaction interactions = 2;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_interactions_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_interactions().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              2, repfield, repfield.GetCachedSize(),
+              target, stream);
+    }
+  }
+
+  if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+    target =
+        ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+            this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:session_proto.InteractionEntry)
+  return target;
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+::size_t InteractionEntry::ByteSizeLong(const MessageLite& base) {
+  const InteractionEntry& this_ = static_cast<const InteractionEntry&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+::size_t InteractionEntry::ByteSizeLong() const {
+  const InteractionEntry& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  // @@protoc_insertion_point(message_byte_size_start:session_proto.InteractionEntry)
+  ::size_t total_size = 0;
+
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void)cached_has_bits;
+
+  ::_pbi::Prefetch5LinesFrom7Lines(&this_);
+  cached_has_bits = this_._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    // repeated .session_proto.Interaction interactions = 2;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      total_size += 1UL * this_._internal_interactions_size();
+      for (const auto& msg : this_._internal_interactions()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
+      }
+    }
+    // string guid = 1;
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!this_._internal_guid().empty()) {
+        total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
+                                        this_._internal_guid());
+      }
+    }
+  }
+  return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                             &this_._impl_._cached_size_);
+}
+
+void InteractionEntry::MergeImpl(::google::protobuf::MessageLite& to_msg,
+                            const ::google::protobuf::MessageLite& from_msg) {
+   auto* const _this =
+      static_cast<InteractionEntry*>(&to_msg);
+  auto& from = static_cast<const InteractionEntry&>(from_msg);
+  if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
+    from.CheckHasBitConsistency();
+  }
+  ::google::protobuf::Arena* arena = _this->GetArena();
+  // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.InteractionEntry)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void)cached_has_bits;
+
+  cached_has_bits = from._impl_._has_bits_[0];
+  if (BatchCheckHasBit(cached_has_bits, 0x00000003U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000001U)) {
+      _this->_internal_mutable_interactions()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_interactions());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000002U)) {
+      if (!from._internal_guid().empty()) {
+        _this->_internal_set_guid(from._internal_guid());
+      } else {
+        if (_this->_impl_.guid_.IsDefault()) {
+          _this->_internal_set_guid("");
+        }
+      }
+    }
+  }
+  _this->_impl_._has_bits_[0] |= cached_has_bits;
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
+      from._internal_metadata_);
+}
+
+void InteractionEntry::CopyFrom(const InteractionEntry& from) {
+  // @@protoc_insertion_point(class_specific_copy_from_start:session_proto.InteractionEntry)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void InteractionEntry::InternalSwap(InteractionEntry* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
+  using ::std::swap;
+  auto* arena = GetArena();
+  ABSL_DCHECK_EQ(arena, other->GetArena());
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+  swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
+  _impl_.interactions_.InternalSwap(&other->_impl_.interactions_);
+  ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
+}
+
+::google::protobuf::Metadata InteractionEntry::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
 class Session::_Internal {
  public:
   using HasBits =
@@ -515,19 +898,19 @@ void Session::clear_objects() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.objects_ != nullptr) _impl_.objects_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000010U);
+                  0x00000020U);
 }
 void Session::clear_tree() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.tree_ != nullptr) _impl_.tree_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000020U);
+                  0x00000040U);
 }
 void Session::clear_graph() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.graph_ != nullptr) _impl_.graph_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000040U);
+                  0x00000080U);
 }
 void Session::clear_bvh_boxes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
@@ -539,7 +922,7 @@ void Session::clear_definitions() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.definitions_ != nullptr) _impl_.definitions_->Clear();
   ClearHasBit(_impl_._has_bits_[0],
-                  0x00000080U);
+                  0x00000100U);
 }
 Session::Session(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
@@ -558,6 +941,7 @@ PROTOBUF_NDEBUG_INLINE Session::Impl_::Impl_(
         _cached_size_{0},
         bvh_boxes_{visibility, arena, from.bvh_boxes_},
         xforms_{visibility, arena, from.xforms_},
+        interactions_{visibility, arena, from.interactions_},
         name_(arena, from.name_),
         guid_(arena, from.guid_) {}
 
@@ -575,16 +959,16 @@ Session::Session(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
   ::uint32_t cached_has_bits = _impl_._has_bits_[0];
-  _impl_.objects_ = (CheckHasBit(cached_has_bits, 0x00000010U))
+  _impl_.objects_ = (CheckHasBit(cached_has_bits, 0x00000020U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.objects_)
                 : nullptr;
-  _impl_.tree_ = (CheckHasBit(cached_has_bits, 0x00000020U))
+  _impl_.tree_ = (CheckHasBit(cached_has_bits, 0x00000040U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.tree_)
                 : nullptr;
-  _impl_.graph_ = (CheckHasBit(cached_has_bits, 0x00000040U))
+  _impl_.graph_ = (CheckHasBit(cached_has_bits, 0x00000080U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.graph_)
                 : nullptr;
-  _impl_.definitions_ = (CheckHasBit(cached_has_bits, 0x00000080U))
+  _impl_.definitions_ = (CheckHasBit(cached_has_bits, 0x00000100U))
                 ? ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.definitions_)
                 : nullptr;
 
@@ -596,6 +980,7 @@ PROTOBUF_NDEBUG_INLINE Session::Impl_::Impl_(
       : _cached_size_{0},
         bvh_boxes_{visibility, arena},
         xforms_{visibility, arena},
+        interactions_{visibility, arena},
         name_(arena),
         guid_(arena) {}
 
@@ -643,6 +1028,10 @@ constexpr auto Session::InternalNewImpl_() {
           decltype(Session::_impl_.xforms_)::
               InternalGetArenaOffset(
                   ::google::protobuf::Message::internal_visibility()),
+      PROTOBUF_FIELD_OFFSET(Session, _impl_.interactions_) +
+          decltype(Session::_impl_.interactions_)::
+              InternalGetArenaOffset(
+                  ::google::protobuf::Message::internal_visibility()),
   });
   if (arena_bits.has_value()) {
     return ::google::protobuf::internal::MessageCreator::CopyInit(
@@ -687,17 +1076,17 @@ Session::GetClassData() const {
   return Session_class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<3, 8, 6, 46, 2>
+const ::_pbi::TcParseTable<4, 9, 7, 46, 2>
 Session::_table_ = {
   {
     PROTOBUF_FIELD_OFFSET(Session, _impl_._has_bits_),
     0, // no _extensions_
-    8, 56,  // max_field_number, fast_idx_mask
+    9, 120,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
-    4294967040,  // skipmap
+    4294966784,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    8,  // num_field_entries
-    6,  // num_aux_entries
+    9,  // num_field_entries
+    7,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     Session_class_data_.base(),
     nullptr,  // post_loop_handler
@@ -706,29 +1095,26 @@ Session::_table_ = {
     ::_pbi::TcParser::GetTable<::session_proto::Session>(),  // to_prefetch
     #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
   }, {{
-    // .session_proto.Objects definitions = 8;
-    {::_pbi::TcParser::FastMtS1,
-     {66, 7, 5,
-      PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_)}},
+    {::_pbi::TcParser::MiniParse, {}},
     // string name = 1;
     {::_pbi::TcParser::FastUS1,
-     {10, 2, 0,
+     {10, 3, 0,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.name_)}},
     // string guid = 2;
     {::_pbi::TcParser::FastUS1,
-     {18, 3, 0,
+     {18, 4, 0,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.guid_)}},
     // .session_proto.Objects objects = 3;
     {::_pbi::TcParser::FastMtS1,
-     {26, 4, 0,
+     {26, 5, 0,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.objects_)}},
     // .session_proto.Tree tree = 4;
     {::_pbi::TcParser::FastMtS1,
-     {34, 5, 1,
+     {34, 6, 1,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.tree_)}},
     // .session_proto.Graph graph = 5;
     {::_pbi::TcParser::FastMtS1,
-     {42, 6, 2,
+     {42, 7, 2,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.graph_)}},
     // repeated .session_proto.BoundingBox bvh_boxes = 6;
     {::_pbi::TcParser::FastMtR1,
@@ -738,25 +1124,41 @@ Session::_table_ = {
     {::_pbi::TcParser::FastMtR1,
      {58, 1, 4,
       PROTOBUF_FIELD_OFFSET(Session, _impl_.xforms_)}},
+    // .session_proto.Objects definitions = 8;
+    {::_pbi::TcParser::FastMtS1,
+     {66, 8, 5,
+      PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_)}},
+    // repeated .session_proto.InteractionEntry interactions = 9;
+    {::_pbi::TcParser::FastMtR1,
+     {74, 2, 6,
+      PROTOBUF_FIELD_OFFSET(Session, _impl_.interactions_)}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
+    {::_pbi::TcParser::MiniParse, {}},
   }}, {{
     65535, 65535
   }}, {{
     // string name = 1;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.name_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.name_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // string guid = 2;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.guid_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.guid_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
     // .session_proto.Objects objects = 3;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.objects_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.objects_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // .session_proto.Tree tree = 4;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.tree_), _Internal::kHasBitsOffset + 5, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.tree_), _Internal::kHasBitsOffset + 6, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // .session_proto.Graph graph = 5;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.graph_), _Internal::kHasBitsOffset + 6, 2, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.graph_), _Internal::kHasBitsOffset + 7, 2, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated .session_proto.BoundingBox bvh_boxes = 6;
     {PROTOBUF_FIELD_OFFSET(Session, _impl_.bvh_boxes_), _Internal::kHasBitsOffset + 0, 3, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // repeated .session_proto.XformEntry xforms = 7;
     {PROTOBUF_FIELD_OFFSET(Session, _impl_.xforms_), _Internal::kHasBitsOffset + 1, 4, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
     // .session_proto.Objects definitions = 8;
-    {PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_), _Internal::kHasBitsOffset + 7, 5, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.definitions_), _Internal::kHasBitsOffset + 8, 5, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+    // repeated .session_proto.InteractionEntry interactions = 9;
+    {PROTOBUF_FIELD_OFFSET(Session, _impl_.interactions_), _Internal::kHasBitsOffset + 2, 6, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
   }},
   {{
       {::_pbi::TcParser::GetTable<::session_proto::Objects>()},
@@ -765,6 +1167,7 @@ Session::_table_ = {
       {::_pbi::TcParser::GetTable<::session_proto::BoundingBox>()},
       {::_pbi::TcParser::GetTable<::session_proto::XformEntry>()},
       {::_pbi::TcParser::GetTable<::session_proto::Objects>()},
+      {::_pbi::TcParser::GetTable<::session_proto::InteractionEntry>()},
   }},
   {{
     "\25\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -788,28 +1191,31 @@ PROTOBUF_NOINLINE void Session::Clear() {
     if (CheckHasBitForRepeated(cached_has_bits, 0x00000002U)) {
       _impl_.xforms_.Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
-      _impl_.name_.ClearNonDefaultToEmpty();
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _impl_.interactions_.Clear();
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
-      _impl_.guid_.ClearNonDefaultToEmpty();
+      _impl_.name_.ClearNonDefaultToEmpty();
     }
     if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      _impl_.guid_.ClearNonDefaultToEmpty();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       ABSL_DCHECK(_impl_.objects_ != nullptr);
       _impl_.objects_->Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(_impl_.tree_ != nullptr);
       _impl_.tree_->Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       ABSL_DCHECK(_impl_.graph_ != nullptr);
       _impl_.graph_->Clear();
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(_impl_.definitions_ != nullptr);
-      _impl_.definitions_->Clear();
-    }
+  }
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    ABSL_DCHECK(_impl_.definitions_ != nullptr);
+    _impl_.definitions_->Clear();
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -835,7 +1241,7 @@ PROTOBUF_NOINLINE void Session::Clear() {
 
   cached_has_bits = this_._impl_._has_bits_[0];
   // string name = 1;
-  if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
     if (!this_._internal_name().empty()) {
       const ::std::string& _s = this_._internal_name();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -845,7 +1251,7 @@ PROTOBUF_NOINLINE void Session::Clear() {
   }
 
   // string guid = 2;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
     if (!this_._internal_guid().empty()) {
       const ::std::string& _s = this_._internal_guid();
       ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
@@ -855,21 +1261,21 @@ PROTOBUF_NOINLINE void Session::Clear() {
   }
 
   // .session_proto.Objects objects = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         3, *this_._impl_.objects_, this_._impl_.objects_->GetCachedSize(), target,
         stream);
   }
 
   // .session_proto.Tree tree = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         4, *this_._impl_.tree_, this_._impl_.tree_->GetCachedSize(), target,
         stream);
   }
 
   // .session_proto.Graph graph = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         5, *this_._impl_.graph_, this_._impl_.graph_->GetCachedSize(), target,
         stream);
@@ -902,10 +1308,23 @@ PROTOBUF_NOINLINE void Session::Clear() {
   }
 
   // .session_proto.Objects definitions = 8;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
     target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
         8, *this_._impl_.definitions_, this_._impl_.definitions_->GetCachedSize(), target,
         stream);
+  }
+
+  // repeated .session_proto.InteractionEntry interactions = 9;
+  if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+    for (unsigned i = 0, n = static_cast<unsigned>(
+                             this_._internal_interactions_size());
+         i < n; i++) {
+      const auto& repfield = this_._internal_interactions().Get(i);
+      target =
+          ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+              9, repfield, repfield.GetCachedSize(),
+              target, stream);
+    }
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -948,37 +1367,46 @@ PROTOBUF_NOINLINE void Session::Clear() {
         total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
       }
     }
+    // repeated .session_proto.InteractionEntry interactions = 9;
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      total_size += 1UL * this_._internal_interactions_size();
+      for (const auto& msg : this_._internal_interactions()) {
+        total_size += ::google::protobuf::internal::WireFormatLite::MessageSize(msg);
+      }
+    }
     // string name = 1;
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!this_._internal_name().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_name());
       }
     }
     // string guid = 2;
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!this_._internal_guid().empty()) {
         total_size += 1 + ::google::protobuf::internal::WireFormatLite::StringSize(
                                         this_._internal_guid());
       }
     }
     // .session_proto.Objects objects = 3;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.objects_);
     }
     // .session_proto.Tree tree = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.tree_);
     }
     // .session_proto.Graph graph = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.graph_);
     }
+  }
+   {
     // .session_proto.Objects definitions = 8;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       total_size += 1 +
                     ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.definitions_);
     }
@@ -1013,7 +1441,12 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
           ::google::protobuf::MessageLite::internal_visibility(), arena,
           from._internal_xforms());
     }
-    if (CheckHasBit(cached_has_bits, 0x00000004U)) {
+    if (CheckHasBitForRepeated(cached_has_bits, 0x00000004U)) {
+      _this->_internal_mutable_interactions()->InternalMergeFromWithArena(
+          ::google::protobuf::MessageLite::internal_visibility(), arena,
+          from._internal_interactions());
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
       if (!from._internal_name().empty()) {
         _this->_internal_set_name(from._internal_name());
       } else {
@@ -1022,7 +1455,7 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
       if (!from._internal_guid().empty()) {
         _this->_internal_set_guid(from._internal_guid());
       } else {
@@ -1031,7 +1464,7 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         }
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       ABSL_DCHECK(from._impl_.objects_ != nullptr);
       if (_this->_impl_.objects_ == nullptr) {
         _this->_impl_.objects_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.objects_);
@@ -1039,7 +1472,7 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.objects_->MergeFrom(*from._impl_.objects_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
       ABSL_DCHECK(from._impl_.tree_ != nullptr);
       if (_this->_impl_.tree_ == nullptr) {
         _this->_impl_.tree_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.tree_);
@@ -1047,7 +1480,7 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.tree_->MergeFrom(*from._impl_.tree_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       ABSL_DCHECK(from._impl_.graph_ != nullptr);
       if (_this->_impl_.graph_ == nullptr) {
         _this->_impl_.graph_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.graph_);
@@ -1055,13 +1488,13 @@ void Session::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.graph_->MergeFrom(*from._impl_.graph_);
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      ABSL_DCHECK(from._impl_.definitions_ != nullptr);
-      if (_this->_impl_.definitions_ == nullptr) {
-        _this->_impl_.definitions_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.definitions_);
-      } else {
-        _this->_impl_.definitions_->MergeFrom(*from._impl_.definitions_);
-      }
+  }
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    ABSL_DCHECK(from._impl_.definitions_ != nullptr);
+    if (_this->_impl_.definitions_ == nullptr) {
+      _this->_impl_.definitions_ = ::google::protobuf::Message::CopyConstruct(arena, *from._impl_.definitions_);
+    } else {
+      _this->_impl_.definitions_->MergeFrom(*from._impl_.definitions_);
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -1085,6 +1518,7 @@ void Session::InternalSwap(Session* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   swap(_impl_._has_bits_[0], other->_impl_._has_bits_[0]);
   _impl_.bvh_boxes_.InternalSwap(&other->_impl_.bvh_boxes_);
   _impl_.xforms_.InternalSwap(&other->_impl_.xforms_);
+  _impl_.interactions_.InternalSwap(&other->_impl_.interactions_);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::google::protobuf::internal::memswap<

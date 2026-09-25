@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <utility>
 
 namespace session_cpp {
 
@@ -389,6 +390,10 @@ Session::Session(const Session& other)
 
     if (other.has_guid())
         guid() = other.guid();
+
+    for (const std::pair<const std::string, std::vector<std::shared_ptr<Interaction>>>& entry : other.interactions)
+        for (const std::shared_ptr<Interaction>& interaction : entry.second)
+            interactions[entry.first].push_back(interaction->clone());
 
     _index_objects();
     bvh_cache_dirty = true;
@@ -791,32 +796,6 @@ void Session::add_edge(const std::string& guid1, const std::string& guid2, const
     graph.add_edge(guid1, guid2, attribute);
 }
 
-std::pair<std::string, std::string> Session::add_interaction(const std::string& a, const std::string& b) {
-
-    if (a == b || !registered(*this, a) || !registered(*this, b))
-        throw std::invalid_argument("Session::add_interaction: add two distinct objects to the session first");
-
-    if (!has_interaction(a, b))
-        graph.add_edge(a, b);
-
-    const Edge& edge = graph.edges.at(a).at(b);
-    graph.edges.at(b).at(a).guid() = edge.guid();
-
-    return {edge.v0, edge.v1};
-}
-
-bool Session::has_interaction(const std::string& a, const std::string& b) const {
-    return graph.has_edge({a, b}) || graph.has_edge({b, a});
-}
-
-void Session::remove_interaction(const std::string& a, const std::string& b) {
-
-    if (graph.has_edge({a, b}))
-        graph.remove_edge({a, b});
-    else if (graph.has_edge({b, a}))
-        graph.remove_edge({b, a});
-}
-
 bool Session::add_hierarchy(const std::string& parent_guid, const std::string& child_guid) {
     return tree.add_child_by_guid(parent_guid, child_guid);
 }
@@ -917,7 +896,7 @@ bool Session::to_instance(const std::string& guid, const std::string& definition
         return false;
 
     const RemoveOp removed = *detached;
-    const AddOp added(
+    AddOp added(
         guid,
         instance,
         "instances",
@@ -929,6 +908,7 @@ bool Session::to_instance(const std::string& guid, const std::string& definition
         "instance_" + instance->name,
         removed.edges
     );
+    added.interactions = removed.interactions;
 
     history.record(removed);
     history.record(added);
@@ -961,7 +941,7 @@ bool Session::explode(const std::string& instance_guid) {
         return false;
 
     const RemoveOp removed = *detached;
-    const AddOp added(
+    AddOp added(
         instance_guid,
         copy,
         collection,
@@ -973,6 +953,7 @@ bool Session::explode(const std::string& instance_guid) {
         prefix + "_" + instance->name,
         removed.edges
     );
+    added.interactions = removed.interactions;
 
     history.record(removed);
     history.record(added);
@@ -1015,6 +996,61 @@ bool Session::remove_xform(const std::string& guid) {
     bvh_cache_dirty = true;
 
     return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Session - Interactions
+// ═══════════════════════════════════════════════════════════════════════════
+std::shared_ptr<Interaction> Session::add_interaction(
+    const std::shared_ptr<Element>& a,
+    const std::shared_ptr<Element>& b,
+    std::shared_ptr<Interaction> interaction
+) {
+
+    const std::string& first = a->guid();
+    const std::string& second = b->guid();
+
+    if (first == second || !registered(*this, first) || !registered(*this, second))
+        throw std::invalid_argument("Session::add_interaction: add two distinct elements to the session first");
+
+    if (!graph.has_edge({first, second}))
+        graph.add_edge(first, second);
+
+    const std::string& id = graph.edges.at(first).at(second).guid();
+    interactions[id].push_back(interaction);
+
+    return interaction;
+}
+
+std::vector<std::shared_ptr<Interaction>> Session::get_interaction(
+    const std::shared_ptr<Element>& a,
+    const std::shared_ptr<Element>& b
+) const {
+
+    if (!graph.has_edge({a->guid(), b->guid()}))
+        return {};
+
+    const std::string& id = graph.edges.at(a->guid()).at(b->guid()).guid();
+    const std::map<std::string, std::vector<std::shared_ptr<Interaction>>>::const_iterator found = interactions.find(id);
+
+    if (found == interactions.end())
+        return {};
+
+    return found->second;
+}
+
+bool Session::has_interaction(const std::shared_ptr<Element>& a, const std::shared_ptr<Element>& b) const {
+    return graph.has_edge({a->guid(), b->guid()});
+}
+
+void Session::remove_interaction(const std::shared_ptr<Element>& a, const std::shared_ptr<Element>& b) {
+
+    if (!graph.has_edge({a->guid(), b->guid()}))
+        return;
+
+    const std::string id = graph.edges.at(a->guid()).at(b->guid()).guid();
+    interactions.erase(id);
+    graph.remove_edge({a->guid(), b->guid()});
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1161,6 +1197,18 @@ nlohmann::ordered_json Session::jsondump() const {
         xforms_json.push_back(item);
     }
 
+    nlohmann::ordered_json interactions_json = nlohmann::ordered_json::array();
+
+    for (const std::pair<const std::string, std::vector<std::shared_ptr<Interaction>>>& entry : interactions) {
+
+        nlohmann::ordered_json items = nlohmann::ordered_json::array();
+
+        for (const std::shared_ptr<Interaction>& interaction : entry.second)
+            items.push_back(interaction->jsondump());
+
+        interactions_json.push_back({{"guid", entry.first}, {"interactions", items}});
+    }
+
     nlohmann::ordered_json data;
 
     if (!definition_lookup.empty())
@@ -1168,6 +1216,7 @@ nlohmann::ordered_json Session::jsondump() const {
 
     data["graph"] = graph.jsondump();
     data["guid"] = guid();
+    data["interactions"] = interactions_json;
     data["name"] = name;
     data["objects"] = objects.jsondump();
     data["tree"] = tree.jsondump();
@@ -1199,6 +1248,11 @@ Session Session::jsonload(const nlohmann::json& data) {
     if (data.contains("xforms"))
         for (const nlohmann::json& entry : data["xforms"])
             session.xforms[entry["guid"].get<std::string>()] = Xform::jsonload(entry["xform"]);
+
+    if (data.contains("interactions"))
+        for (const nlohmann::json& entry : data["interactions"])
+            for (const nlohmann::json& item : entry["interactions"])
+                session.interactions[entry["guid"].get<std::string>()].push_back(Interaction::jsonload(item));
 
     session._index_objects();
 
@@ -1255,6 +1309,15 @@ session_proto::Session Session::to_proto() const {
     if (!definition_lookup.empty())
         *proto.mutable_definitions() = definitions.to_proto();
 
+    for (const std::pair<const std::string, std::vector<std::shared_ptr<Interaction>>>& entry : interactions) {
+
+        session_proto::InteractionEntry* item = proto.add_interactions();
+        item->set_guid(entry.first);
+
+        for (const std::shared_ptr<Interaction>& interaction : entry.second)
+            *item->add_interactions() = interaction->to_proto();
+    }
+
     return proto;
 }
 
@@ -1279,6 +1342,10 @@ Session Session::from_proto(const session_proto::Session& proto) {
 
     for (const session_proto::XformEntry& entry : proto.xforms())
         session.xforms[entry.guid()] = Xform::from_proto(entry.xform());
+
+    for (const session_proto::InteractionEntry& entry : proto.interactions())
+        for (const session_proto::Interaction& item : entry.interactions())
+            session.interactions[entry.guid()].push_back(Interaction::from_proto(item));
 
     session._index_objects();
 
@@ -1454,7 +1521,20 @@ std::optional<RemoveOp> Session::_detach(const std::string& guid) {
         graph.remove_node(guid);
     }
 
-    return RemoveOp(guid, clone(*obj), collection, obj_index, xform, parent_guid, index, node, attribute, edges);
+    RemoveOp op(guid, clone(*obj), collection, obj_index, xform, parent_guid, index, node, attribute, edges);
+
+    for (const std::tuple<std::string, std::string, bool, std::string>& edge : edges) {
+
+        const std::map<std::string, std::vector<std::shared_ptr<Interaction>>>::iterator found = interactions.find(std::get<3>(edge));
+
+        if (found == interactions.end())
+            continue;
+
+        op.interactions[found->first] = found->second;
+        interactions.erase(found);
+    }
+
+    return op;
 }
 
 void Session::_attach(const Tombstone& op) {
@@ -1518,6 +1598,12 @@ void Session::_attach(const Tombstone& op) {
 
         graph.edges[op.guid][other].guid() = id;
         graph.edges[other][op.guid].guid() = id;
+
+        if (!op.interactions.count(id))
+            continue;
+
+        for (const std::shared_ptr<Interaction>& interaction : op.interactions.at(id))
+            interactions[id].push_back(interaction->clone());
     }
 }
 

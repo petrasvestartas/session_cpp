@@ -232,6 +232,7 @@ MINI_TEST("Graph", "Add Edge") {
     MINI_CHECK(g.number_of_edges() == 1);
     MINI_CHECK(g.edge_count == 1);
     MINI_CHECK(g.edge_label("a", "b") == "updated");
+    MINI_CHECK(g.edges.at("a").at("b").guid() == g.edges.at("b").at("a").guid());
 }
 
 MINI_TEST("Graph", "Remove Node") {
