@@ -13,6 +13,9 @@ public:
     /// Compute the Vatti boolean of two closed planar polylines with clip_type 0 intersection, 1 union, 2 a minus b.
     static std::vector<Polyline> compute(const Polyline& a, const Polyline& b, int clip_type);
 
+    /// Compute the nonzero Vatti boolean of two sets of closed rings in xy, holes clockwise, with clip_type 0 intersection, 1 union, 2 a minus b; closed rings, outer counter-clockwise, holes clockwise.
+    static std::vector<Polyline> compute_regions(const std::vector<Polyline>& a, const std::vector<Polyline>& b, int clip_type);
+
     /// Return the number of output points of compute without building polylines.
     static int compute_count(const Polyline& a, const Polyline& b, int clip_type);
 

@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "boolean_polyline.h"
+#include "plane.h"
 #include "point.h"
 #include "polyline.h"
 #include <cmath>
@@ -355,6 +356,30 @@ MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
     MINI_CHECK(uni[0].point_count() > 0);
     MINI_CHECK(diff.size() >= 1);
     MINI_CHECK(diff[0].point_count() > 0);
+}
+
+MINI_TEST("Boolean Polyline", "Regions") {
+
+    const Plane plane = Plane::xy_plane();
+    const Polyline outer = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 10.0, 10.0);
+    const Polyline inner = Polyline::rectangle(Point(3.0, 3.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 4.0, 4.0);
+    const Polyline left = Polyline::rectangle(Point(0.0, -1.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 5.0, 12.0);
+    const Polyline apart = Polyline::rectangle(Point(20.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 10.0, 10.0);
+    const std::vector<Polyline> frame = BooleanPolyline::compute_regions({outer}, {inner}, 2);
+    const std::vector<Polyline> half = BooleanPolyline::compute_regions(frame, {left}, 0);
+    const std::vector<Polyline> both = BooleanPolyline::compute_regions({outer}, {apart}, 1);
+    int clockwise = 0;
+
+    for (const Polyline& ring : frame)
+        clockwise += ring.is_clockwise(plane) ? 1 : 0;
+
+    MINI_CHECK(frame.size() == 2);
+    MINI_CHECK(frame[0].is_closed());
+    MINI_CHECK(clockwise == 1);
+    MINI_CHECK(half.size() == 1);
+    MINI_CHECK(half[0].point_count() == 9);
+    MINI_CHECK(!half[0].is_clockwise(plane));
+    MINI_CHECK(both.size() == 2);
 }
 
 MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
