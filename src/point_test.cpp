@@ -53,6 +53,10 @@ namespace session_cpp {
         const Point psum = Point::sum(p1, p2);
         const Vector pdif = p2 - p1;
 
+        Point pguid(1.0, 2.0, 3.0);
+        const std::string minted = pguid.guid();
+        pguid.guid() = "custom_guid";
+
         MINI_CHECK(p.name == "my_point");
         MINI_CHECK(p[0] == 10.0 && p[1] == 20.0 && p[2] == 30.0);
         MINI_CHECK(p.width == 1.0);
@@ -74,6 +78,7 @@ namespace session_cpp {
         MINI_CHECK(result_diff[0] == 9.0 && result_diff[1] == 18.0 && result_diff[2] == 27.0);
         MINI_CHECK(psum[0] == 5.0 && psum[1] == 7.0 && psum[2] == 9.0);
         MINI_CHECK(pdif[0] == 3.0 && pdif[1] == 3.0 && pdif[2] == 3.0);
+        MINI_CHECK(pguid.guid() != minted && pguid.guid() == "custom_guid");
     }
 
     MINI_TEST("Point", "Transformation") {
