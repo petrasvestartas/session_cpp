@@ -84,6 +84,18 @@ bool TreeNode::is_compacting() const {
     return _cursor.has_value();
 }
 
+size_t TreeNode::at() const {
+    return _at;
+}
+
+bool TreeNode::is_queued() const {
+    return _queued;
+}
+
+bool TreeNode::has_child(const std::shared_ptr<TreeNode>& child) const {
+    return _position(child).has_value();
+}
+
 std::optional<size_t> TreeNode::_position(const std::shared_ptr<TreeNode>& child) const {
 
     if (child->_at < _children.size() && _children[child->_at] == child)
@@ -165,6 +177,33 @@ void TreeNode::set_dead(bool dead) {
 
 void TreeNode::set_tomb(const std::shared_ptr<Tomb>& tomb) {
     _tomb = tomb;
+}
+
+void TreeNode::set_queued(bool queued) {
+    _queued = queued;
+}
+
+void TreeNode::swap(const std::shared_ptr<TreeNode>& a, const std::shared_ptr<TreeNode>& b) {
+
+    const std::shared_ptr<TreeNode> parent_a = a->_parent.lock();
+    const std::shared_ptr<TreeNode> parent_b = b->_parent.lock();
+    const size_t at_a = a->_at;
+    const size_t at_b = b->_at;
+
+    if (parent_a) {
+        parent_a->_children[at_a] = b;
+        parent_a->_cursor.reset();
+    }
+
+    if (parent_b) {
+        parent_b->_children[at_b] = a;
+        parent_b->_cursor.reset();
+    }
+
+    a->_parent = parent_b;
+    a->_at = at_b;
+    b->_parent = parent_a;
+    b->_at = at_a;
 }
 
 size_t TreeNode::compact_step(size_t work) {

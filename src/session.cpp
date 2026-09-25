@@ -91,22 +91,13 @@ template <typename E> E element_of(const Item& item) {
         return std::get<E>(item);
 }
 
-/// Which list of objects holds a guid, and where; ("", -1) when none does.
-std::pair<std::string, int> locate(const Objects& objects, const std::string& guid) {
+/// The item an Objects list of value type E stores, as the stored pointer.
+template <typename E> Item item_of(const E& stored) {
 
-    for (const std::pair<std::string, std::string>& entry : COLLECTIONS) {
-
-        std::optional<size_t> found;
-
-        with_collection(objects, entry.first, [&](const auto& items) {
-            found = items.get_slot(guid);
-        });
-
-        if (found)
-            return {entry.first, static_cast<int>(*found)};
-    }
-
-    return {"", -1};
+    if constexpr (IS_GEOMETRY<E>)
+        return Geometry(stored);
+    else
+        return stored;
 }
 
 /// The COLLECTIONS entry whose list holds the type of geometry.
@@ -177,25 +168,119 @@ void adopt(const Objects& objects, std::unordered_map<std::string, Geometry>& lo
         });
 }
 
-/// Push item, or rebuild the list with it at index while index is inside, until removal marks slots dead.
-template <typename E> void put(Collection<E>& items, size_t index, E item) {
+/// The COLLECTIONS entry whose list holds an item.
+std::pair<std::string, std::string> collection_for(const Objects& objects, const Item& item) {
 
-    if (index >= items.size()) {
-        items.push_back(std::move(item));
-        return;
-    }
+    if (const Geometry* geometry = std::get_if<Geometry>(&item))
+        return collection_of(objects, *geometry);
 
-    std::vector<E> kept = items.to_vector();
-    kept.insert(kept.begin() + index, std::move(item));
-    items = Collection<E>(std::move(kept));
+    if (std::holds_alternative<Component>(item))
+        return {"components", "component"};
+
+    return {"instances", "instance"};
 }
 
-/// Rebuild the list without the entry at index, until removal marks slots dead.
-template <typename E> void take(Collection<E>& items, size_t index) {
+/// The graph attribute prefix of the list of that name.
+std::string prefix_of(const std::string& collection) {
 
-    std::vector<E> kept = items.to_vector();
-    kept.erase(kept.begin() + index);
-    items = Collection<E>(std::move(kept));
+    for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
+        if (entry.first == collection)
+            return entry.second;
+
+    return "";
+}
+
+/// The live slot of a guid in the list of that name.
+std::optional<size_t> slot_of(const Objects& objects, const std::string& collection, const std::string& guid) {
+
+    std::optional<size_t> slot;
+
+    with_collection(objects, collection, [&](const auto& items) {
+        slot = items.get_slot(guid);
+    });
+
+    return slot;
+}
+
+/// The item in a slot of the list of that name, dead or alive, as the stored pointer.
+std::optional<Item> item_at(const Objects& objects, const std::string& collection, size_t slot) {
+
+    std::optional<Item> item;
+
+    with_collection(objects, collection, [&](const auto& items) {
+        item = item_of(items.get_item(slot));
+    });
+
+    return item;
+}
+
+/// Append an item to the list of that name and return its slot.
+size_t push(const Objects& objects, const std::string& collection, const Item& item) {
+
+    size_t slot = 0;
+
+    with_collection(objects, collection, [&](auto& items) {
+        items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(item));
+        slot = items.number_of_slots() - 1;
+    });
+
+    return slot;
+}
+
+/// Put an item in a slot of the list of that name.
+void store(const Objects& objects, const std::string& collection, size_t slot, const Item& item) {
+
+    with_collection(objects, collection, [&](auto& items) {
+        items.set_item(slot, element_of<typename std::decay_t<decltype(items)>::value_type>(item));
+    });
+}
+
+/// Kill or revive a slot of the list of that name.
+void flag(const Objects& objects, const std::string& collection, size_t slot, bool dead) {
+
+    with_collection(objects, collection, [&](auto& items) {
+        items.set_dead(slot, dead);
+    });
+}
+
+/// The tomb pinning a slot of the list of that name, while a record still holds it.
+std::shared_ptr<Tomb> tomb_at(const Objects& objects, const std::string& collection, size_t slot) {
+
+    std::shared_ptr<Tomb> tomb;
+
+    with_collection(objects, collection, [&](const auto& items) {
+        tomb = items.get_tomb(slot);
+    });
+
+    return tomb;
+}
+
+/// Pin a slot of the list of that name to a tomb.
+void pin(const Objects& objects, const std::string& collection, size_t slot, const std::shared_ptr<Tomb>& tomb) {
+
+    with_collection(objects, collection, [&](auto& items) {
+        items.set_tomb(slot, tomb);
+    });
+}
+
+/// Whether two items are the same stored pointer; a component is never, so the map value is stored back.
+bool same(const Item& a, const Item& b) {
+
+    if (const Geometry* x = std::get_if<Geometry>(&a)) {
+
+        const Geometry* y = std::get_if<Geometry>(&b);
+
+        return y && *x == *y;
+    }
+
+    if (const std::shared_ptr<InstanceRef>* x = std::get_if<std::shared_ptr<InstanceRef>>(&a)) {
+
+        const std::shared_ptr<InstanceRef>* y = std::get_if<std::shared_ptr<InstanceRef>>(&b);
+
+        return y && *x == *y;
+    }
+
+    return false;
 }
 
 /// Move geometry in place: an element is placed, anything else transformed; identity leaves it untouched.
@@ -267,18 +352,6 @@ OBB placed_box(const std::vector<Point>& points, const Xform& xform, double infl
         placed.push_back(xform.transform_point(point));
 
     return OBB::from_points(placed, inflate);
-}
-
-/// The guid of the edge between a and b, from whichever stored copy has one; "" when neither was minted.
-std::string edge_guid(const Graph& graph, const std::string& a, const std::string& b) {
-
-    const Edge& forward = graph.edges.at(a).at(b);
-    const Edge& backward = graph.edges.at(b).at(a);
-
-    if (forward.has_guid())
-        return forward.guid();
-
-    return backward.has_guid() ? backward.guid() : "";
 }
 
 /// The point on the ray closest to point when it lies ahead and within tolerance.
@@ -442,6 +515,7 @@ Session::Session(const Session& other)
         for (const std::shared_ptr<Interaction>& interaction : entry.second)
             interactions[entry.first].push_back(interaction->clone());
 
+    graph.renumber();
     reindex();
     bvh_cache_dirty = true;
 }
@@ -805,13 +879,21 @@ std::string Session::add_definition(const Geometry& definition) {
     if (definition_lookup.count(guid))
         return guid;
 
-    if (lookup.count(guid) || instance_lookup.count(guid) || component_lookup.count(guid))
+    if (_is_live(guid))
         return "";
 
-    if (history.current)
-        history.record(DefinitionOp(guid, std::nullopt, clone(definition)));
+    const std::string collection = collection_of(definitions, definition).first;
+    const size_t slot = push(definitions, collection, definition);
+    definition_lookup[guid] = definition;
+    bvh_cache_dirty = true;
+    revision++;
 
-    _define(guid, definition);
+    if (history.current) {
+
+        const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>(collection, true, slot, nullptr);
+        pin(definitions, collection, slot, tomb);
+        history.record(AddOp(guid, "definitions", std::nullopt, 0, nullptr, tomb), RECORD);
+    }
 
     return guid;
 }
@@ -837,18 +919,45 @@ std::shared_ptr<TreeNode> Session::add_instance(
 
 void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent) {
 
-    if (node == nullptr)
+    const std::shared_ptr<TreeNode> host = parent ? parent : tree.root();
+
+    if (!node || !host || node == host || node->parent() == host)
         return;
 
+    const std::string name = node->name;
+    const bool was_dead = node->is_dead();
+    const std::shared_ptr<TreeNode> old = node->parent();
+    const std::shared_ptr<TreeNode> ghost = host->add(node);
+
+    if (!host->has_child(node))
+        return;
+
+    node->set_dead(false);
     revision++;
 
-    if (_is_live(node->name))
-        node_lookup[node->name] = node;
+    if (old && ghost)
+        _queue(old);
 
-    if (parent == nullptr)
-        tree.add(node, tree.root());
-    else
-        tree.add(node, parent);
+    // a group comes back with its transform; an object's stays with its own tomb
+    const std::shared_ptr<Tomb> held = node->get_tomb();
+
+    if (was_dead && held && held->collection.empty() && held->xform) {
+        xforms[name] = *held->xform;
+        held->xform.reset();
+    }
+
+    if (_is_live(name))
+        node_lookup[name] = node;
+
+    if (!history.current) {
+        history.dropped += ghost ? 1 : 0;
+
+        return;
+    }
+
+    const std::shared_ptr<Tomb> tomb = _node_tomb(ghost ? ghost : node);
+    const bool dead_before = was_dead || !ghost;
+    history.record(TreeOp(name, node, tomb, ghost, name, name, node->color, node->color, dead_before, false), RECORD);
 }
 
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
@@ -857,6 +966,76 @@ std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
     add(node);
 
     return node;
+}
+
+bool Session::rename_node(std::shared_ptr<TreeNode> node, const std::string& name) {
+
+    const std::string before = node->name;
+
+    if (_is_live(before) || node->is_dead() || before == name)
+        return false;
+
+    node->name = name;
+    revision++;
+
+    if (history.current) {
+
+        const std::shared_ptr<Tomb> tomb = _node_tomb(node);
+        history.record(TreeOp(before, node, tomb, nullptr, before, name, node->color, node->color, false, false), RECORD);
+    }
+
+    return true;
+}
+
+bool Session::set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color) {
+
+    if (node->is_dead())
+        return false;
+
+    const std::optional<Color> before = node->color;
+    node->color = color;
+    revision++;
+
+    if (history.current) {
+
+        const std::string name = node->name;
+        const std::shared_ptr<Tomb> tomb = _node_tomb(node);
+        history.record(TreeOp(name, node, tomb, nullptr, name, name, before, color, false, false), RECORD);
+    }
+
+    return true;
+}
+
+bool Session::remove_group(std::shared_ptr<TreeNode> node) {
+
+    const std::string name = node->name;
+    const std::shared_ptr<TreeNode> parent = node->parent();
+
+    if (!parent || _is_live(name))
+        return false;
+
+    const std::shared_ptr<Tomb> tomb = _node_tomb(node);
+    node->set_dead(true);
+    tomb->xform.reset();
+    auto placed = xforms.find(name);
+
+    if (placed != xforms.end()) {
+        tomb->xform = placed->second;
+        xforms.erase(placed);
+    }
+
+    _queue(parent);
+    revision++;
+
+    if (!history.current) {
+        history.dropped += 1;
+
+        return true;
+    }
+
+    history.record(TreeOp(name, node, tomb, nullptr, name, name, node->color, node->color, false, true), RECORD);
+
+    return true;
 }
 
 void Session::add_edge(const std::string& guid1, const std::string& guid2, const std::string& attribute) {
@@ -884,22 +1063,43 @@ void Session::add_relationship(
 
 bool Session::remove_object(const std::string& obj_guid) {
 
-    std::optional<RemoveOp> op = _detach(obj_guid);
+    const std::optional<Item> obj = _item(obj_guid);
 
-    if (!op)
+    if (!obj)
         return false;
 
-    history.record(*op);
+    const std::shared_ptr<Tomb> tomb = _tomb(obj_guid);
+    auto incident = graph.edges.find(obj_guid);
+    const size_t degree = incident == graph.edges.end() ? 0 : incident->second.size();
+    const std::shared_ptr<TreeNode> node = tomb->node && tomb->node->parent() ? tomb->node : nullptr;
+    const int index = node ? static_cast<int>(node->at()) : 0;
+    std::optional<std::string> parent_guid;
+
+    if (node)
+        parent_guid = node->parent()->name;
+
+    _kill(tomb);
+
+    if (!history.current) {
+        history.dropped += 1;
+
+        return true;
+    }
+
+    const size_t bytes = RECORD + weight(*obj) + 128 * degree;
+    history.record(RemoveOp(obj_guid, tomb->collection, parent_guid, index, node, tomb), bytes);
 
     return true;
 }
 
 bool Session::replace(const std::string& guid, const Geometry& obj) {
 
-    auto before = lookup.find(guid);
+    auto found = lookup.find(guid);
 
-    if (before == lookup.end())
+    if (found == lookup.end())
         return false;
+
+    const Geometry before = found->second;
 
     std::visit(
         [&](const auto& live) {
@@ -908,20 +1108,45 @@ bool Session::replace(const std::string& guid, const Geometry& obj) {
         obj
     );
 
-    if (history.current)
-        history.record(ReplaceOp(guid, clone(before->second), clone(obj)));
+    const std::string from = collection_of(objects, before).first;
+    const std::pair<std::string, std::string> to = collection_of(objects, obj);
+    const size_t bytes = RECORD + weight(before);
 
-    _swap(guid, obj);
+    if (from == to.first) {
+
+        if (history.current)
+            history.record(ReplaceOp(guid, before, obj), bytes);
+
+        _swap(guid, obj);
+
+        return true;
+    }
+
+    const std::shared_ptr<TreeNode> node = get_node(guid);
+    const std::shared_ptr<Tomb> removed = _half(false, from, guid);
+
+    if (!removed)
+        return false;
+
+    _kill(removed);
+    const size_t slot = push(objects, to.first, obj);
+    const std::shared_ptr<Tomb> added = std::make_shared<Tomb>(to.first, false, slot, nullptr);
+    pin(objects, to.first, slot, added);
+    lookup[guid] = obj;
+    _label(guid, to.second + "_" + item_name(obj));
+    _pair(guid, from, to.first, node, removed, added, bytes);
 
     return true;
 }
 
 bool Session::replace_definition(const std::string& guid, const Geometry& definition) {
 
-    auto before = definition_lookup.find(guid);
+    auto found = definition_lookup.find(guid);
 
-    if (before == definition_lookup.end())
+    if (found == definition_lookup.end())
         return false;
+
+    const Geometry before = found->second;
 
     std::visit(
         [&](const auto& live) {
@@ -930,63 +1155,93 @@ bool Session::replace_definition(const std::string& guid, const Geometry& defini
         definition
     );
 
-    if (history.current)
-        history.record(DefinitionOp(guid, clone(before->second), clone(definition)));
+    const std::string from = collection_of(definitions, before).first;
+    const std::string to = collection_of(definitions, definition).first;
+    const size_t bytes = RECORD + weight(before);
 
-    _define(guid, definition);
+    if (from == to) {
+
+        if (history.current)
+            history.record(ReplaceOp(guid, before, definition), bytes);
+
+        _swap(guid, definition);
+
+        return true;
+    }
+
+    const std::shared_ptr<Tomb> removed = _half(true, from, guid);
+
+    if (!removed)
+        return false;
+
+    _kill(removed);
+    const size_t slot = push(definitions, to, definition);
+    const std::shared_ptr<Tomb> added = std::make_shared<Tomb>(to, true, slot, nullptr);
+    pin(definitions, to, slot, added);
+    definition_lookup[guid] = definition;
+    _pair(guid, "definitions", "definitions", nullptr, removed, added, bytes);
 
     return true;
 }
 
 bool Session::remove_definition(const std::string& guid) {
 
-    auto before = definition_lookup.find(guid);
+    auto found = definition_lookup.find(guid);
 
-    if (before == definition_lookup.end() || !instances_of(guid).empty())
+    if (found == definition_lookup.end() || !instances_of(guid).empty())
         return false;
 
-    if (history.current)
-        history.record(DefinitionOp(guid, clone(before->second), std::nullopt));
+    const Geometry before = found->second;
+    const std::string collection = collection_of(definitions, before).first;
+    const std::shared_ptr<Tomb> tomb = _half(true, collection, guid);
 
-    _define(guid, std::nullopt);
+    if (!tomb)
+        return false;
+
+    _kill(tomb);
+
+    if (!history.current) {
+        history.dropped += 1;
+
+        return true;
+    }
+
+    history.record(RemoveOp(guid, "definitions", std::nullopt, 0, nullptr, tomb), RECORD + weight(before));
 
     return true;
 }
 
 bool Session::to_instance(const std::string& guid, const std::string& definition_guid, const Xform& frame) {
 
-    auto it = lookup.find(guid);
+    auto found = lookup.find(guid);
 
-    if (it == lookup.end() || definition_lookup.count(definition_guid) == 0)
+    if (found == lookup.end() || definition_lookup.count(definition_guid) == 0)
         return false;
 
+    const Geometry object = found->second;
     std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition_guid, Xform::identity());
     instance->guid() = guid;
-    instance->name = item_name(it->second);
+    instance->name = item_name(object);
     const Xform placement = xform(guid) * frame;
-    const std::optional<RemoveOp> detached = _detach(guid);
+    const std::string from = collection_of(objects, object).first;
+    const std::shared_ptr<TreeNode> node = get_node(guid);
+    const std::shared_ptr<Tomb> removed = _half(false, from, guid);
 
-    if (!detached)
+    if (!removed)
         return false;
 
-    const RemoveOp removed = *detached;
-    AddOp added(
-        guid,
-        instance,
-        "instances",
-        static_cast<int>(objects.instances->size()),
-        placement.is_identity() ? std::nullopt : std::optional<Xform>(placement),
-        removed.parent_guid,
-        removed.index,
-        removed.node,
-        "instance_" + instance->name,
-        removed.edges
-    );
-    added.interactions = removed.interactions;
+    _kill(removed);
+    const size_t slot = push(objects, "instances", instance);
+    const std::shared_ptr<Tomb> added = std::make_shared<Tomb>("instances", false, slot, nullptr);
+    pin(objects, "instances", slot, added);
+    instance_lookup[guid] = instance;
+    _label(guid, "instance_" + instance->name);
+    _pair(guid, from, "instances", node, removed, added, RECORD + weight(object));
 
-    history.record(removed);
-    history.record(added);
-    _attach(added);
+    if (placement.is_identity())
+        remove_xform(guid);
+    else
+        set_xform(guid, placement);
 
     return true;
 }
@@ -1000,38 +1255,20 @@ bool Session::explode(const std::string& instance_guid) {
 
     const std::shared_ptr<InstanceRef> instance = instance_lookup.at(instance_guid);
     const Geometry copy = resolve(*instance, *definition, Xform::identity());
-    const std::pair<std::string, std::string> entry = collection_of(objects, copy);
-    const std::string collection = entry.first;
-    const std::string prefix = entry.second;
-    int size = 0;
+    const std::pair<std::string, std::string> to = collection_of(objects, copy);
+    const std::shared_ptr<TreeNode> node = get_node(instance_guid);
+    const std::shared_ptr<Tomb> removed = _half(false, "instances", instance_guid);
 
-    with_collection(objects, collection, [&](const auto& items) {
-        size = static_cast<int>(items.size());
-    });
-
-    const std::optional<RemoveOp> detached = _detach(instance_guid);
-
-    if (!detached)
+    if (!removed)
         return false;
 
-    const RemoveOp removed = *detached;
-    AddOp added(
-        instance_guid,
-        copy,
-        collection,
-        size,
-        removed.xform,
-        removed.parent_guid,
-        removed.index,
-        removed.node,
-        prefix + "_" + instance->name,
-        removed.edges
-    );
-    added.interactions = removed.interactions;
-
-    history.record(removed);
-    history.record(added);
-    _attach(added);
+    _kill(removed);
+    const size_t slot = push(objects, to.first, copy);
+    const std::shared_ptr<Tomb> added = std::make_shared<Tomb>(to.first, false, slot, nullptr);
+    pin(objects, to.first, slot, added);
+    lookup[instance_guid] = copy;
+    _label(instance_guid, to.second + "_" + instance->name);
+    _pair(instance_guid, "instances", to.first, node, removed, added, RECORD + weight(instance));
 
     return true;
 }
@@ -1049,7 +1286,7 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
         if (it != xforms.end())
             before = it->second;
 
-        history.record(XformOp(guid, before, xform));
+        history.record(XformOp(guid, before, xform), RECORD);
     }
 
     xforms[guid] = xform;
@@ -1065,7 +1302,7 @@ bool Session::remove_xform(const std::string& guid) {
         return false;
 
     if (history.current)
-        history.record(XformOp(guid, before->second, std::nullopt));
+        history.record(XformOp(guid, before->second, std::nullopt), RECORD);
 
     xforms.erase(before);
     bvh_cache_dirty = true;
@@ -1222,6 +1459,13 @@ bool Session::redo() {
     revision++;
 
     return history.redo(*this);
+}
+
+bool Session::abort() {
+
+    revision++;
+
+    return history.abort(*this);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1399,12 +1643,12 @@ Session Session::jsonload(const nlohmann::json& data) {
 
     if (data.contains("xforms"))
         for (const nlohmann::json& entry : data["xforms"])
-            session.xforms[entry["guid"].get<std::string>()] = Xform::jsonload(entry["xform"]);
+            session.xforms[entry.at("guid").get<std::string>()] = Xform::jsonload(entry.at("xform"));
 
     if (data.contains("interactions"))
         for (const nlohmann::json& entry : data["interactions"])
-            for (const nlohmann::json& item : entry["interactions"])
-                session.interactions[entry["guid"].get<std::string>()].push_back(Interaction::jsonload(item));
+            for (const nlohmann::json& item : entry.at("interactions"))
+                session.interactions[entry.at("guid").get<std::string>()].push_back(Interaction::jsonload(item));
 
     session.reindex();
 
@@ -1566,20 +1810,8 @@ std::shared_ptr<TreeNode> Session::_add_object(
 ) {
 
     const std::string guid = item_guid(obj);
-    int obj_index = 0;
-
-    with_collection(objects, collection, [&](auto& items) {
-        items.push_back(element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
-        obj_index = static_cast<int>(items.size()) - 1;
-    });
-
-    if (const Geometry* geometry = std::get_if<Geometry>(&obj))
-        lookup[guid] = *geometry;
-    else if (const Component* component = std::get_if<Component>(&obj))
-        component_lookup[guid] = *component;
-    else
-        instance_lookup[guid] = std::get<std::shared_ptr<InstanceRef>>(obj);
-
+    const size_t slot = push(objects, collection, obj);
+    _hold(guid, obj);
     const std::string attribute = type_prefix + "_" + item_name(obj);
     graph.add_node(guid, attribute);
     bvh_cache_dirty = true;
@@ -1588,253 +1820,441 @@ std::shared_ptr<TreeNode> Session::_add_object(
     revision++;
     const std::shared_ptr<TreeNode> host = parent ? parent : tree.root();
     std::optional<std::string> parent_guid;
-    int index = 0;
 
     if (host) {
-        add(node, host);
+        tree.add(node, host);
         parent_guid = host->name;
-        index = static_cast<int>(host->children().size()) - 1;
     }
 
-    if (history.current)
-        history.record(
-            AddOp(guid, clone(obj), collection, obj_index, std::nullopt, parent_guid, index, nullptr, attribute, {})
-        );
+    if (history.current) {
+
+        const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>(collection, false, slot, node);
+        pin(objects, collection, slot, tomb);
+        node->set_tomb(tomb);
+        history.record(AddOp(guid, collection, parent_guid, static_cast<int>(node->at()), node, tomb), RECORD);
+    }
 
     return node;
-}
-
-std::pair<std::string, int> Session::_locate(const std::string& guid) const {
-    return locate(objects, guid);
 }
 
 bool Session::_is_live(const std::string& guid) const {
     return lookup.count(guid) || component_lookup.count(guid) || instance_lookup.count(guid);
 }
 
-std::optional<RemoveOp> Session::_detach(const std::string& guid) {
-
-    std::optional<Item> obj;
+std::optional<Item> Session::_item(const std::string& guid) const {
 
     if (auto it = lookup.find(guid); it != lookup.end())
-        obj = it->second;
-    else if (auto it = component_lookup.find(guid); it != component_lookup.end())
-        obj = it->second;
-    else if (auto it = instance_lookup.find(guid); it != instance_lookup.end())
-        obj = it->second;
+        return it->second;
 
-    if (!obj)
-        return std::nullopt;
+    if (auto it = component_lookup.find(guid); it != component_lookup.end())
+        return it->second;
 
-    const std::pair<std::string, int> location = _locate(guid);
-    const std::string collection = location.first;
-    const int obj_index = location.second;
+    if (auto it = instance_lookup.find(guid); it != instance_lookup.end())
+        return it->second;
 
-    if (obj_index >= 0)
-        with_collection(objects, collection, [&](auto& items) {
-            take(items, obj_index);
-        });
-
-    std::shared_ptr<TreeNode> node = get_node(guid);
-    lookup.erase(guid);
-    component_lookup.erase(guid);
-    instance_lookup.erase(guid);
-    node_lookup.erase(guid);
-    std::optional<Xform> xform;
-
-    if (auto it = xforms.find(guid); it != xforms.end()) {
-        xform = it->second;
-        xforms.erase(it);
-    }
-
-    bvh_cache_dirty = true;
-    revision++;
-    std::optional<std::string> parent_guid;
-    int index = 0;
-
-    if (node) {
-
-        if (std::shared_ptr<TreeNode> parent = node->parent()) {
-            parent_guid = parent->name;
-            const std::vector<TreeNode*> children = parent->children();
-            index = static_cast<int>(std::find(children.begin(), children.end(), node.get()) - children.begin());
-        }
-
-        for (TreeNode* child : node->descendants()) {
-
-            auto held = node_lookup.find(child->name);
-
-            if (held != node_lookup.end() && held->second.get() == child)
-                node_lookup.erase(held);
-        }
-
-        node = tree.remove(node);
-    }
-
-    std::string attribute;
-    std::vector<std::tuple<std::string, std::string, bool, std::string>> edges;
-
-    if (graph.has_node(guid)) {
-
-        attribute = graph.node_label(guid);
-
-        for (const std::tuple<std::string, std::string, bool>& edge : graph.edges_of(guid))
-            edges.emplace_back(
-                std::get<0>(edge),
-                std::get<1>(edge),
-                std::get<2>(edge),
-                edge_guid(graph, guid, std::get<0>(edge))
-            );
-
-        graph.remove_node(guid);
-    }
-
-    RemoveOp op(guid, clone(*obj), collection, obj_index, xform, parent_guid, index, node, attribute, edges);
-
-    for (const std::tuple<std::string, std::string, bool, std::string>& edge : edges) {
-
-        const std::map<std::string, std::vector<std::shared_ptr<Interaction>>>::iterator found = interactions.find(std::get<3>(edge));
-
-        if (found == interactions.end())
-            continue;
-
-        op.interactions[found->first] = found->second;
-        interactions.erase(found);
-    }
-
-    return op;
+    return std::nullopt;
 }
 
-void Session::_attach(const Tombstone& op) {
+void Session::_hold(const std::string& guid, const Item& item) {
 
-    const Item obj = clone(op.obj);
-
-    with_collection(objects, op.collection, [&](auto& items) {
-        put(items, op.obj_index, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
-    });
-
-    if (const Geometry* geometry = std::get_if<Geometry>(&obj))
-        lookup[op.guid] = *geometry;
-    else if (const Component* component = std::get_if<Component>(&obj))
-        component_lookup[op.guid] = *component;
+    if (const Geometry* geometry = std::get_if<Geometry>(&item))
+        lookup[guid] = *geometry;
+    else if (const Component* component = std::get_if<Component>(&item))
+        component_lookup[guid] = *component;
     else
-        instance_lookup[op.guid] = std::get<std::shared_ptr<InstanceRef>>(obj);
+        instance_lookup[guid] = std::get<std::shared_ptr<InstanceRef>>(item);
+}
 
-    if (op.xform)
-        xforms[op.guid] = *op.xform;
+std::shared_ptr<Tomb> Session::_tomb(const std::string& guid) {
 
-    bvh_cache_dirty = true;
-    std::shared_ptr<TreeNode> node = op.node;
+    const std::optional<Item> item = _item(guid);
 
-    if (!node)
-        node = std::make_shared<TreeNode>(op.guid);
+    if (!item)
+        return nullptr;
 
-    node_lookup[op.guid] = node;
-    revision++;
+    const std::string collection = collection_for(objects, *item).first;
+    const std::optional<size_t> found = slot_of(objects, collection, guid);
+    const size_t slot = found ? *found : push(objects, collection, *item);
+    const std::shared_ptr<Tomb> pinned = tomb_at(objects, collection, slot);
 
-    for (TreeNode* child : node->descendants())
-        if (_is_live(child->name))
-            node_lookup[child->name] = child->shared_from_this();
+    if (pinned && pinned->node)
+        return pinned;
 
-    if (op.parent_guid) {
+    std::shared_ptr<TreeNode> node = get_node(guid);
 
-        std::shared_ptr<TreeNode> parent = tree.get_node_by_name(*op.parent_guid);
+    // an object outside the tree parks its transform and vertex on a detached node
+    if (node)
+        node_lookup[guid] = node;
+    else
+        node = std::make_shared<TreeNode>(guid);
 
-        if (parent) {
+    const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>(collection, false, slot, node);
+    pin(objects, collection, slot, tomb);
+    node->set_tomb(tomb);
 
-            tree.add(node, parent);
-            const std::vector<TreeNode*> children = parent->children();
+    return tomb;
+}
 
-            for (size_t i = std::min<size_t>(op.index, children.size() - 1); i + 1 < children.size(); ++i)
-                parent->add(parent->remove(children[i]->shared_from_this()));
-        }
+std::shared_ptr<Tomb> Session::_node_tomb(const std::shared_ptr<TreeNode>& node) {
+
+    const std::shared_ptr<Tomb> pinned = node->get_tomb();
+
+    if (pinned && pinned->collection.empty())
+        return pinned;
+
+    const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>("", false, 0, node);
+    node->set_tomb(tomb);
+
+    return tomb;
+}
+
+std::shared_ptr<Tomb> Session::_half(bool definition, const std::string& collection, const std::string& guid) {
+
+    std::optional<Item> item;
+
+    if (definition) {
+
+        auto found = definition_lookup.find(guid);
+
+        if (found != definition_lookup.end())
+            item = found->second;
+    } else {
+        item = _item(guid);
     }
 
-    graph.add_node(op.guid, op.attribute);
+    if (!item)
+        return nullptr;
 
-    for (const std::tuple<std::string, std::string, bool, std::string>& edge : op.edges) {
+    const Objects& lists = definition ? definitions : objects;
+    const std::optional<size_t> found = slot_of(lists, collection, guid);
+    const size_t slot = found ? *found : push(lists, collection, *item);
+    const std::shared_ptr<Tomb> pinned = tomb_at(lists, collection, slot);
 
-        const std::string& other = std::get<0>(edge);
-        const std::string& attribute = std::get<1>(edge);
-        const bool forward = std::get<2>(edge);
-        const std::string& id = std::get<3>(edge);
+    if (pinned && !pinned->node && pinned->definition == definition)
+        return pinned;
 
-        if (!graph.has_node(other))
+    const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>(collection, definition, slot, nullptr);
+    pin(lists, collection, slot, tomb);
+
+    return tomb;
+}
+
+void Session::_pair(
+    const std::string& guid,
+    const std::string& from,
+    const std::string& to,
+    std::shared_ptr<TreeNode> node,
+    std::shared_ptr<Tomb> removed,
+    std::shared_ptr<Tomb> added,
+    size_t bytes
+) {
+
+    revision++;
+    bvh_cache_dirty = true;
+
+    if (!history.current) {
+        history.dropped += 1;
+
+        return;
+    }
+
+    const int index = node ? static_cast<int>(node->at()) : 0;
+    std::optional<std::string> parent_guid;
+
+    if (node && node->parent())
+        parent_guid = node->parent()->name;
+
+    history.record(RemoveOp(guid, from, parent_guid, index, node, std::move(removed)), bytes);
+    history.record(AddOp(guid, to, parent_guid, index, std::move(node), std::move(added)), RECORD);
+}
+
+void Session::_label(const std::string& guid, const std::string& label) {
+
+    if (graph.has_node(guid))
+        graph.node_label(guid, label);
+}
+
+void Session::_queue(const std::shared_ptr<TreeNode>& parent) {
+
+    if (parent->is_queued())
+        return;
+
+    parent->set_queued(true);
+    _sweep.push_back(parent);
+}
+
+void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
+
+    if (tomb->collection.empty())
+        return;
+
+    const size_t slot = tomb->slot;
+    const std::string& collection = tomb->collection;
+    revision++;
+    bvh_cache_dirty = true;
+
+    if (tomb->definition) {
+
+        const std::optional<Item> stored = item_at(definitions, collection, slot);
+
+        if (!stored)
+            return;
+
+        const std::string guid = item_guid(*stored);
+        auto held = definition_lookup.find(guid);
+
+        if (held != definition_lookup.end() && !same(held->second, *stored))
+            store(definitions, collection, slot, held->second);
+
+        const bool owner = slot_of(definitions, collection, guid) == slot;
+        flag(definitions, collection, slot, true);
+
+        if (owner)
+            definition_lookup.erase(guid);
+
+        return;
+    }
+
+    const std::optional<Item> stored = item_at(objects, collection, slot);
+
+    if (!stored)
+        return;
+
+    const std::string guid = item_guid(*stored);
+    const std::optional<Item> held = _item(guid);
+    const bool owner = (held && same(*held, *stored)) || slot_of(objects, collection, guid) == slot;
+
+    // the map value is the truth; a twin that took the guid keeps its entry and its slot
+    if (owner && held && !same(*held, *stored))
+        store(objects, collection, slot, *held);
+
+    flag(objects, collection, slot, true);
+
+    if (owner) {
+        lookup.erase(guid);
+        component_lookup.erase(guid);
+        instance_lookup.erase(guid);
+    }
+
+    const std::shared_ptr<TreeNode>& node = tomb->node;
+
+    if (!node)
+        return;
+
+    const std::shared_ptr<TreeNode> parent = node->parent();
+    node->set_dead(true);
+    node->set_tomb(tomb);
+    auto indexed = node_lookup.find(guid);
+
+    if (indexed != node_lookup.end() && indexed->second == node)
+        node_lookup.erase(indexed);
+
+    if (parent)
+        _queue(parent);
+
+    tomb->xform.reset();
+    auto placed = xforms.find(guid);
+
+    if (placed != xforms.end()) {
+        tomb->xform = placed->second;
+        xforms.erase(placed);
+    }
+
+    std::optional<std::pair<Vertex, std::vector<Edge>>> taken = graph.take_node(guid);
+
+    if (!taken)
+        return;
+
+    for (const Edge& edge : taken->second) {
+
+        if (!edge.has_guid())
             continue;
 
-        if (forward)
-            graph.add_edge(op.guid, other, attribute);
-        else
-            graph.add_edge(other, op.guid, attribute);
+        auto list = interactions.find(edge.guid());
 
-        if (id.empty())
+        if (list == interactions.end())
             continue;
 
-        graph.edges[op.guid][other].guid() = id;
-        graph.edges[other][op.guid].guid() = id;
+        tomb->interactions[edge.guid()] = std::move(list->second);
+        interactions.erase(list);
+    }
 
-        if (!op.interactions.count(id))
+    tomb->vertex = std::move(taken->first);
+    tomb->edges = std::move(taken->second);
+}
+
+void Session::_revive(const std::shared_ptr<Tomb>& tomb) {
+
+    if (tomb->collection.empty())
+        return;
+
+    const size_t slot = tomb->slot;
+    const std::string& collection = tomb->collection;
+    revision++;
+    bvh_cache_dirty = true;
+
+    if (tomb->definition) {
+
+        flag(definitions, collection, slot, false);
+        const std::optional<Item> item = item_at(definitions, collection, slot);
+
+        if (item)
+            definition_lookup[item_guid(*item)] = std::get<Geometry>(*item);
+
+        return;
+    }
+
+    flag(objects, collection, slot, false);
+    const std::optional<Item> item = item_at(objects, collection, slot);
+
+    if (!item)
+        return;
+
+    const std::string guid = item_guid(*item);
+    _hold(guid, *item);
+    const std::shared_ptr<TreeNode>& node = tomb->node;
+
+    if (!node) {
+        _label(guid, prefix_of(collection) + "_" + item_name(*item));
+
+        return;
+    }
+
+    node->set_dead(false);
+
+    if (node->parent())
+        node_lookup[guid] = node;
+
+    if (tomb->xform) {
+        xforms[guid] = *tomb->xform;
+        tomb->xform.reset();
+    }
+
+    if (!tomb->vertex)
+        return;
+
+    Vertex vertex = std::move(*tomb->vertex);
+    std::vector<Edge> edges = std::move(tomb->edges);
+    tomb->vertex.reset();
+    tomb->edges.clear();
+    std::vector<std::pair<std::string, std::string>> ids;
+
+    for (const Edge& edge : edges)
+        if (edge.has_guid())
+            ids.emplace_back(edge.other_vertex(guid), edge.guid());
+
+    graph.put_node(std::move(vertex), std::move(edges));
+
+    for (const std::pair<std::string, std::string>& id : ids) {
+
+        auto neighbours = graph.edges.find(guid);
+
+        if (neighbours == graph.edges.end())
             continue;
 
-        for (const std::shared_ptr<Interaction>& interaction : op.interactions.at(id))
-            interactions[id].push_back(interaction->clone());
+        auto back = neighbours->second.find(id.first);
+
+        if (back == neighbours->second.end() || !back->second.has_guid() || back->second.guid() != id.second)
+            continue;
+
+        auto parked = tomb->interactions.find(id.second);
+
+        if (parked == tomb->interactions.end())
+            continue;
+
+        interactions[id.second] = std::move(parked->second);
+        tomb->interactions.erase(parked);
     }
 }
 
 void Session::_swap(const std::string& guid, const Item& obj) {
 
-    const std::pair<std::string, int> location = _locate(guid);
-    const std::string collection = location.first;
-    const int obj_index = location.second;
+    const std::pair<std::string, std::string> entry = collection_for(objects, obj);
+    revision++;
+    bvh_cache_dirty = true;
 
-    if (obj_index < 0)
+    if (!_is_live(guid)) {
+
+        const Geometry* geometry = std::get_if<Geometry>(&obj);
+
+        if (!geometry || !definition_lookup.count(guid))
+            return;
+
+        if (const std::optional<size_t> slot = slot_of(definitions, entry.first, guid))
+            store(definitions, entry.first, *slot, obj);
+
+        definition_lookup[guid] = *geometry;
+
+        return;
+    }
+
+    const std::optional<size_t> slot = slot_of(objects, entry.first, guid);
+
+    if (!slot)
         return;
 
-    with_collection(objects, collection, [&](auto& items) {
-        items.set_item(obj_index, element_of<typename std::decay_t<decltype(items)>::value_type>(obj));
-    });
-
-    if (const Geometry* geometry = std::get_if<Geometry>(&obj))
-        lookup[guid] = *geometry;
-    else if (const Component* component = std::get_if<Component>(&obj))
-        component_lookup[guid] = *component;
-    else
-        instance_lookup[guid] = std::get<std::shared_ptr<InstanceRef>>(obj);
-
-    bvh_cache_dirty = true;
-    revision++;
-    std::string attribute;
-
-    for (const std::pair<std::string, std::string>& entry : COLLECTIONS)
-        if (entry.first == collection)
-            attribute = entry.second + "_" + item_name(obj);
-
-    if (graph.has_node(guid))
-        graph.node_label(guid, attribute);
+    store(objects, entry.first, *slot, obj);
+    _hold(guid, obj);
+    _label(guid, entry.second + "_" + item_name(obj));
 }
 
-void Session::_define(const std::string& guid, const std::optional<Geometry>& definition) {
+void Session::_tree(const TreeOp& op, bool back) {
 
-    const std::pair<std::string, int> location = locate(definitions, guid);
-    const int position = location.second;
+    const std::string& name = back ? op.name_before : op.name_after;
+    const std::optional<Color>& color = back ? op.color_before : op.color_after;
+    const bool dead = back ? op.dead_before : op.dead_after;
+    const bool was = op.node->is_dead();
+    const bool live = _is_live(name);
 
-    with_collection(definitions, location.first, [&](auto& items) {
-        take(items, position);
-    });
+    // the ghost takes the node's place, and that parent is swept
+    if (op.ghost) {
 
-    definition_lookup.erase(guid);
-    bvh_cache_dirty = true;
+        const std::shared_ptr<TreeNode> from = op.node->parent();
+        TreeNode::swap(op.node, op.ghost);
+        op.ghost->set_tomb(op.tomb);
+
+        if (from)
+            _queue(from);
+    }
+
+    const std::shared_ptr<TreeNode> parent = op.node->parent();
+    op.node->name = name;
+    op.node->color = color;
+    op.node->set_dead(dead);
     revision++;
 
-    if (!definition)
+    if (dead && !was) {
+
+        op.node->set_tomb(op.tomb);
+
+        if (parent)
+            _queue(parent);
+    }
+
+    // a live object keeps its transform, only a group parks it
+    if (dead && !was && !live) {
+
+        op.tomb->xform.reset();
+        auto placed = xforms.find(name);
+
+        if (placed != xforms.end()) {
+            op.tomb->xform = placed->second;
+            xforms.erase(placed);
+        }
+    }
+
+    if (was && !dead && !live && op.tomb->xform) {
+        xforms[name] = *op.tomb->xform;
+        op.tomb->xform.reset();
+    }
+
+    if (!live)
         return;
 
-    with_collection(definitions, collection_of(definitions, *definition).first, [&](auto& items) {
-        const size_t at = position < 0 ? items.size() : static_cast<size_t>(position);
-        put(items, at, element_of<typename std::decay_t<decltype(items)>::value_type>(*definition));
-    });
-
-    definition_lookup[guid] = *definition;
+    if (!dead)
+        node_lookup[name] = op.node;
+    else if (auto held = node_lookup.find(name); held != node_lookup.end() && held->second == op.node)
+        node_lookup.erase(held);
 }
 
 void Session::_place(const std::string& guid, const std::optional<Xform>& xform) {

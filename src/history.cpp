@@ -65,6 +65,75 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features) {
     return out;
 }
 
+/// Bytes a mesh pins, from its counts.
+static size_t mesh_weight(const Mesh& mesh) {
+    return 128 + 64 * mesh.number_of_vertices() + 48 * mesh.number_of_faces();
+}
+
+/// Bytes a brep pins, from its table lengths.
+static size_t brep_weight(const BRep& brep) {
+
+    return 512 + 256 * brep.m_surfaces.size() + 128 * (brep.m_curves_3d.size() + brep.m_curves_2d.size())
+        + 24 * brep.m_vertices.size() + 64 * (brep.m_edges.size() + brep.m_faces.size());
+}
+
+/// Bytes an element pins: its record, its mesh or brep and its features.
+static size_t element_weight(const Element& element) {
+
+    size_t geometry = 0;
+
+    if (element.geometry_type_name() == "Mesh")
+        geometry = mesh_weight(element.geometry_mesh());
+    else if (element.geometry_type_name() == "BRep")
+        geometry = brep_weight(element.geometry_brep());
+
+    return 256 + geometry + 128 * element.features_count();
+}
+
+size_t weight(const Item& item) {
+
+    if (std::holds_alternative<Component>(item))
+        return 128;
+
+    if (const std::shared_ptr<InstanceRef>* instance = std::get_if<std::shared_ptr<InstanceRef>>(&item))
+        return 256 + 128 * (*instance)->features.size();
+
+    const Geometry& geometry = std::get<Geometry>(item);
+
+    if (std::holds_alternative<std::shared_ptr<Point>>(geometry))
+        return 64;
+
+    if (std::holds_alternative<std::shared_ptr<Line>>(geometry))
+        return 96;
+
+    if (std::holds_alternative<std::shared_ptr<Plane>>(geometry))
+        return 160;
+
+    if (std::holds_alternative<std::shared_ptr<OBB>>(geometry))
+        return 192;
+
+    if (const std::shared_ptr<Polyline>* polyline = std::get_if<std::shared_ptr<Polyline>>(&geometry))
+        return 64 + 24 * (*polyline)->point_count();
+
+    if (const std::shared_ptr<PointCloud>* cloud = std::get_if<std::shared_ptr<PointCloud>>(&geometry))
+        return 64 + 24 * (*cloud)->point_count() + 24 * (*cloud)->normal_count() + 16 * (*cloud)->color_count();
+
+    if (const std::shared_ptr<Mesh>* mesh = std::get_if<std::shared_ptr<Mesh>>(&geometry))
+        return mesh_weight(**mesh);
+
+    if (const std::shared_ptr<NurbsCurve>* curve = std::get_if<std::shared_ptr<NurbsCurve>>(&geometry))
+        return 96 + 32 * (*curve)->cv_count() + 8 * (*curve)->m_nurbsknot.size();
+
+    if (const std::shared_ptr<NurbsSurface>* surface = std::get_if<std::shared_ptr<NurbsSurface>>(&geometry))
+        return 128 + 32 * (*surface)->cv_count(0) * (*surface)->cv_count(1)
+            + 8 * ((*surface)->m_nurbsknot[0].size() + (*surface)->m_nurbsknot[1].size());
+
+    if (const std::shared_ptr<BRep>* brep = std::get_if<std::shared_ptr<BRep>>(&geometry))
+        return brep_weight(**brep);
+
+    return element_weight(*std::get<std::shared_ptr<Element>>(geometry));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Records
 // ═══════════════════════════════════════════════════════════════════════════
@@ -73,57 +142,45 @@ Tomb::Tomb(const std::string& collection, bool definition, size_t slot, std::sha
 
 Tombstone::Tombstone(
     const std::string& guid,
-    const Item& obj,
     const std::string& collection,
-    int obj_index,
-    const std::optional<Xform>& xform,
     const std::optional<std::string>& parent_guid,
     int index,
     std::shared_ptr<TreeNode> node,
-    const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
+    std::shared_ptr<Tomb> tomb
 )
-    : guid(guid), obj(obj), collection(collection), obj_index(obj_index), xform(xform), parent_guid(parent_guid),
-      index(index), node(std::move(node)), attribute(attribute), edges(edges) {}
+    : guid(guid), collection(collection), parent_guid(parent_guid), index(index), node(std::move(node)),
+      tomb(std::move(tomb)) {}
 
 std::string Tombstone::str() const {
     return fmt::format("{}({})", kind, guid);
 }
 
 std::string Tombstone::repr() const {
-    return fmt::format("{}({}, {}[{}])", kind, guid, collection, obj_index);
+    return fmt::format("{}({}, {})", kind, guid, collection);
 }
 
 AddOp::AddOp(
     const std::string& guid,
-    const Item& obj,
     const std::string& collection,
-    int obj_index,
-    const std::optional<Xform>& xform,
     const std::optional<std::string>& parent_guid,
     int index,
     std::shared_ptr<TreeNode> node,
-    const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
+    std::shared_ptr<Tomb> tomb
 )
-    : Tombstone(guid, obj, collection, obj_index, xform, parent_guid, index, std::move(node), attribute, edges) {
+    : Tombstone(guid, collection, parent_guid, index, std::move(node), std::move(tomb)) {
 
     kind = "add";
 }
 
 RemoveOp::RemoveOp(
     const std::string& guid,
-    const Item& obj,
     const std::string& collection,
-    int obj_index,
-    const std::optional<Xform>& xform,
     const std::optional<std::string>& parent_guid,
     int index,
     std::shared_ptr<TreeNode> node,
-    const std::string& attribute,
-    const std::vector<std::tuple<std::string, std::string, bool, std::string>>& edges
+    std::shared_ptr<Tomb> tomb
 )
-    : Tombstone(guid, obj, collection, obj_index, xform, parent_guid, index, std::move(node), attribute, edges) {
+    : Tombstone(guid, collection, parent_guid, index, std::move(node), std::move(tomb)) {
 
     kind = "remove";
 }
@@ -150,19 +207,28 @@ std::string XformOp::repr() const {
     return fmt::format("xform({})", guid);
 }
 
-DefinitionOp::DefinitionOp(
+TreeOp::TreeOp(
     const std::string& guid,
-    const std::optional<Geometry>& before,
-    const std::optional<Geometry>& after
+    std::shared_ptr<TreeNode> node,
+    std::shared_ptr<Tomb> tomb,
+    std::shared_ptr<TreeNode> ghost,
+    const std::string& name_before,
+    const std::string& name_after,
+    std::optional<Color> color_before,
+    std::optional<Color> color_after,
+    bool dead_before,
+    bool dead_after
 )
-    : guid(guid), before(before), after(after) {}
+    : guid(guid), node(std::move(node)), tomb(std::move(tomb)), ghost(std::move(ghost)), name_before(name_before),
+      name_after(name_after), color_before(std::move(color_before)), color_after(std::move(color_after)),
+      dead_before(dead_before), dead_after(dead_after) {}
 
-std::string DefinitionOp::str() const {
-    return fmt::format("definition({})", guid);
+std::string TreeOp::str() const {
+    return fmt::format("tree({})", guid);
 }
 
-std::string DefinitionOp::repr() const {
-    return fmt::format("definition({})", guid);
+std::string TreeOp::repr() const {
+    return fmt::format("tree({})", guid);
 }
 
 Transaction::Transaction(std::string label) : label(std::move(label)) {}
@@ -205,18 +271,45 @@ void History::commit() {
         return;
 
     undo_stack.push_back(std::move(*transaction));
-    redo_stack.clear();
 
-    if (depth() > CAPACITY)
+    for (const Transaction& undone : redo_stack)
+        dropped += undone.ops.size();
+
+    redo_stack.clear();
+    bytes = _pinned();
+
+    while (undo_stack.size() > 1 && (depth() > CAPACITY || bytes > budget)) {
+        dropped += undo_stack.front().ops.size();
+        bytes -= undo_stack.front().bytes;
         undo_stack.erase(undo_stack.begin());
+    }
 }
 
-void History::record(const Op& op) {
+void History::record(Op op, size_t bytes) {
 
     if (!current)
         return;
 
-    current->ops.push_back(op);
+    current->ops.push_back(std::move(op));
+    current->bytes += bytes;
+    this->bytes += bytes;
+}
+
+bool History::abort(Session& session) {
+
+    std::optional<Transaction> transaction = std::move(current);
+    current.reset();
+
+    if (!transaction)
+        return false;
+
+    for (int i = static_cast<int>(transaction->ops.size()) - 1; i >= 0; --i)
+        _revert(transaction->ops[i], session);
+
+    dropped += transaction->ops.size();
+    bytes = _pinned();
+
+    return true;
 }
 
 bool History::undo(Session& session) {
@@ -257,37 +350,60 @@ bool History::redo(Session& session) {
 
 void History::clear() {
 
+    for (const Transaction& transaction : undo_stack)
+        dropped += transaction.ops.size();
+
+    for (const Transaction& transaction : redo_stack)
+        dropped += transaction.ops.size();
+
+    if (current)
+        dropped += current->ops.size();
+
     undo_stack.clear();
     redo_stack.clear();
     current.reset();
+    bytes = 0;
+}
+
+size_t History::_pinned() const {
+
+    size_t pinned = 0;
+
+    for (const Transaction& transaction : undo_stack)
+        pinned += transaction.bytes;
+
+    for (const Transaction& transaction : redo_stack)
+        pinned += transaction.bytes;
+
+    return pinned;
 }
 
 void History::_revert(const Op& op, Session& session) {
 
     if (const AddOp* add = std::get_if<AddOp>(&op))
-        session._detach(add->guid);
+        session._kill(add->tomb);
     else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
-        session._attach(*remove);
+        session._revive(remove->tomb);
     else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
-        session._swap(replace->guid, clone(replace->before));
+        session._swap(replace->guid, replace->before);
     else if (const XformOp* xform = std::get_if<XformOp>(&op))
         session._place(xform->guid, xform->before);
-    else if (const DefinitionOp* definition = std::get_if<DefinitionOp>(&op))
-        session._define(definition->guid, definition->before ? std::optional<Geometry>(clone(*definition->before)) : std::nullopt);
+    else if (const TreeOp* tree = std::get_if<TreeOp>(&op))
+        session._tree(*tree, true);
 }
 
 void History::_apply(const Op& op, Session& session) {
 
     if (const AddOp* add = std::get_if<AddOp>(&op))
-        session._attach(*add);
+        session._revive(add->tomb);
     else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
-        session._detach(remove->guid);
+        session._kill(remove->tomb);
     else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
-        session._swap(replace->guid, clone(replace->after));
+        session._swap(replace->guid, replace->after);
     else if (const XformOp* xform = std::get_if<XformOp>(&op))
         session._place(xform->guid, xform->after);
-    else if (const DefinitionOp* definition = std::get_if<DefinitionOp>(&op))
-        session._define(definition->guid, definition->after ? std::optional<Geometry>(clone(*definition->after)) : std::nullopt);
+    else if (const TreeOp* tree = std::get_if<TreeOp>(&op))
+        session._tree(*tree, false);
 }
 
 std::string History::str() const {

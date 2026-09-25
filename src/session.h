@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 #include <memory>
 
 namespace session_proto {
@@ -269,11 +270,20 @@ public:
         std::shared_ptr<TreeNode> parent = nullptr
     );
 
-    /// Add a TreeNode to the tree hierarchy, under the root when no parent is given; null is ignored.
+    /// Put a TreeNode under a parent, the root when none is given: a placed node moves and leaves a ghost, one already there is left alone; null is ignored.
     void add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// Create a named group (TreeNode) and add it to the root of the tree.
     std::shared_ptr<TreeNode> add_group(const std::string& group_name);
+
+    /// Rename a group node; false for an object node, a dead node or the same name.
+    bool rename_node(std::shared_ptr<TreeNode> node, const std::string& name);
+
+    /// Set or clear (nullopt) the display colour of a node; false for a dead node.
+    bool set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color);
+
+    /// Kill a group node with everything below it, parking its transform; false for an object node, the root or a dead node.
+    bool remove_group(std::shared_ptr<TreeNode> node);
 
     /// Add an edge between two geometry objects in the graph.
     void add_edge(const std::string& guid1, const std::string& guid2, const std::string& attribute = "");
@@ -288,10 +298,10 @@ public:
         const std::string& relationship_type = "default"
     );
 
-    /// Remove an object by its GUID from every live table at once; the removal record is the tombstone undo restores from.
+    /// Kill an object in place: its slot, node, transform, vertex, edges and interactions flip dead until undo revives them; O(1 + d log V).
     bool remove_object(const std::string& obj_guid);
 
-    /// Swap the object stored under guid for obj, which takes over that guid; the recorded edit undo and redo restore as absolute snapshots.
+    /// Swap the object stored under guid for obj, which takes over that guid; a different type moves the guid to that type's list, the node and edges staying.
     bool replace(const std::string& guid, const Geometry& obj);
 
     /// Swap the geometry of a definition, which keeps its guid, so every instance of it changes at once; false when guid is no definition.
@@ -351,6 +361,9 @@ public:
 
     /// Reapply the latest undone transaction, returning whether there was one.
     bool redo();
+
+    /// Revert and drop the open transaction, leaving the stacks as they are; false when none is open.
+    bool abort();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Collision detection and ray casting
@@ -426,6 +439,9 @@ private:
     friend class History;
     mutable std::string _guid; // Lazily minted guid.
     std::weak_ptr<TreeNode> _indexed; // Tree root at the last reindex, stale after a wholesale tree swap.
+    std::vector<std::weak_ptr<TreeNode>> _sweep; // Parents whose children died, for the purge to compact.
+    std::vector<std::weak_ptr<TreeNode>> _pinned; // Parents the purge left while a record pinned a child.
+    std::optional<size_t> _purging; // The purge phase: 0..=12 objects lists, 13..=25 definitions lists, 26 the tree; nullopt between cycles.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Details
@@ -438,23 +454,52 @@ private:
         std::shared_ptr<TreeNode> parent
     );
 
-    /// Which Objects list holds a guid, and where; ("", -1) when none does.
-    std::pair<std::string, int> _locate(const std::string& guid) const;
-
     /// Whether guid names a live object, component or instance.
     bool _is_live(const std::string& guid) const;
 
-    /// Take an object out of every live table, unrecorded, returning its tombstone.
-    std::optional<RemoveOp> _detach(const std::string& guid);
+    /// The stored object, component or instance under guid, the pointer itself.
+    std::optional<Item> _item(const std::string& guid) const;
 
-    /// Put an object back from its tombstone, unrecorded: typed list, lookup, xform, tree node with its subtree, graph node and edges.
-    void _attach(const Tombstone& op);
+    /// Put an object, component or instance in its map under guid.
+    void _hold(const std::string& guid, const Item& item);
 
-    /// Store obj under guid in its typed list and lookup, unrecorded.
+    /// The object tomb of a live guid, reused while a record still holds it, else made and pinned on its slot and node; nullptr for no live guid; O(1).
+    std::shared_ptr<Tomb> _tomb(const std::string& guid);
+
+    /// The node-only tomb pinned on a node, reused while a record still holds it.
+    std::shared_ptr<Tomb> _node_tomb(const std::shared_ptr<TreeNode>& node);
+
+    /// A slot-only tomb on the live slot of guid in the list of that name, reused while a record still holds it; a map-only entry is pushed first; nullptr for no such guid.
+    std::shared_ptr<Tomb> _half(bool definition, const std::string& collection, const std::string& guid);
+
+    /// Record the halves of a type change under one guid, or drop them when no transaction is open.
+    void _pair(
+        const std::string& guid,
+        const std::string& from,
+        const std::string& to,
+        std::shared_ptr<TreeNode> node,
+        std::shared_ptr<Tomb> removed,
+        std::shared_ptr<Tomb> added,
+        size_t bytes
+    );
+
+    /// Relabel the graph vertex of guid, when it has one.
+    void _label(const std::string& guid, const std::string& label);
+
+    /// Remember a parent whose child died, once, for the sweep.
+    void _queue(const std::shared_ptr<TreeNode>& parent);
+
+    /// Flip a tomb dead: its slot and map entry, and for an object tomb its node, transform, vertex, edges and interactions; O(1 + d log V).
+    void _kill(const std::shared_ptr<Tomb>& tomb);
+
+    /// Flip a tomb live again: the same slot and pointer, and for an object tomb the same node, transform, vertex, edges and interactions; O(1 + d log V).
+    void _revive(const std::shared_ptr<Tomb>& tomb);
+
+    /// Store obj under guid in its slot and map, relabelling its vertex; a guid that is only a definition swaps in Session::definitions; O(1).
     void _swap(const std::string& guid, const Item& obj);
 
-    /// Set or drop (nullopt) a definition under guid, unrecorded.
-    void _define(const std::string& guid, const std::optional<Geometry>& definition);
+    /// Apply the before (back) or after state of a tree record: name, colour, liveness, and for a move the swap of node and ghost.
+    void _tree(const TreeOp& op, bool back);
 
     /// Set or drop (nullopt) the local transform under guid, unrecorded.
     void _place(const std::string& guid, const std::optional<Xform>& xform);

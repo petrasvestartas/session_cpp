@@ -93,6 +93,15 @@ public:
     /// Return whether a compaction of the children is part way.
     bool is_compacting() const;
 
+    /// Return the raw index in the parent's children, dead siblings counted.
+    size_t at() const;
+
+    /// Return whether Session.sweep holds this node.
+    bool is_queued() const;
+
+    /// Return whether a node is a child, dead or alive.
+    bool has_child(const std::shared_ptr<TreeNode>& child) const;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators
     // ═══════════════════════════════════════════════════════════════════════════
@@ -107,6 +116,12 @@ public:
 
     /// Pin this node weakly to a tomb.
     void set_tomb(const std::shared_ptr<Tomb>& tomb);
+
+    /// Mark whether Session.sweep holds this node.
+    void set_queued(bool queued);
+
+    /// Exchange the places of two nodes, each into the other's parent and raw slot; their subtrees travel with them.
+    static void swap(const std::shared_ptr<TreeNode>& a, const std::shared_ptr<TreeNode>& b);
 
     /// Purge unpinned dead children for at most work children, resuming where the last call stopped; returns the children examined.
     size_t compact_step(size_t work);
