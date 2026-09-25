@@ -215,58 +215,58 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Geometry management
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Add a point; null adds nothing and returns nullptr.
+    /// Add a point; null adds nothing and returns nullptr; a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_point(std::shared_ptr<Point> point, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add a line; null adds nothing and returns nullptr.
+    /// Add a line; null adds nothing and returns nullptr; a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add a plane; null adds nothing and returns nullptr.
+    /// Add a plane; null adds nothing and returns nullptr; a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add a bounding box; null adds nothing and returns nullptr.
+    /// Add a bounding box; null adds nothing and returns nullptr; a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_obb(std::shared_ptr<OBB> bbox);
 
-    /// Add a polyline; null, or fewer than two points, adds nothing and returns nullptr.
+    /// Add a polyline; null, or fewer than two points, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_polyline(
         std::shared_ptr<Polyline> polyline,
         std::shared_ptr<TreeNode> parent = nullptr
     );
 
-    /// Add a point cloud; null, or no points, adds nothing and returns nullptr.
+    /// Add a point cloud; null, or no points, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_pointcloud(
         std::shared_ptr<PointCloud> pointcloud,
         std::shared_ptr<TreeNode> parent = nullptr
     );
 
-    /// Add a mesh; null, or no faces, adds nothing and returns nullptr.
+    /// Add a mesh; null, or no faces, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_mesh(std::shared_ptr<Mesh> mesh, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add a curve; null, or fewer than two control vertices, adds nothing and returns nullptr.
+    /// Add a curve; null, or fewer than two control vertices, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_nurbscurve(
         std::shared_ptr<NurbsCurve> nurbscurve,
         std::shared_ptr<TreeNode> parent = nullptr
     );
 
-    /// Add a surface; null, or no control vertices, adds nothing and returns nullptr.
+    /// Add a surface; null, or no control vertices, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_nurbssurface(
         std::shared_ptr<NurbsSurface> nurbssurface,
         std::shared_ptr<TreeNode> parent = nullptr
     );
 
-    /// Add a brep; null, or no faces and no vertices, adds nothing and returns nullptr.
+    /// Add a brep; null, or no faces and no vertices, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add an element; only null adds nothing, an Element is a data record kept even without geometry.
+    /// Add an element, a data record kept even without geometry; null adds nothing, a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Add a custom component (any object with type_name/guid/name/extra).
+    /// Add a custom component (any object with type_name/guid/name/extra); a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_component(Component component, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// Add a definition, geometry in its own frame that instances share; returns its guid, also when that guid is already defined, and "" for null or a guid an object, instance or component holds.
     std::string add_definition(const Geometry& definition);
 
-    /// Add an instance under parent, placed by xform relative to the parent with its own xform folded in; nullptr when null or its definition_guid names no definition.
+    /// Add an instance under parent, placed by xform relative to the parent with its own xform folded in; nullptr when null, its definition_guid names no definition or its guid is already live.
     std::shared_ptr<TreeNode> add_instance(
         std::shared_ptr<InstanceRef> instance,
         const Xform& xform = Xform::identity(),
@@ -492,13 +492,22 @@ private:
     // ═══════════════════════════════════════════════════════════════════════════
     // Details
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Store an object in its typed list, lookup, graph and tree, recording an AddOp when a transaction is open.
+    /// Store an object in its typed list, lookup, graph and tree, recording an AddOp when a transaction is open; nullptr for a guid that is already live, as an object or a definition, which adds nothing.
     std::shared_ptr<TreeNode> _add_object(
         const std::string& collection,
         const Item& obj,
         const std::string& type_prefix,
         std::shared_ptr<TreeNode> parent
     );
+
+    /// The node of a live guid, a detached one named guid when the object is outside the tree.
+    std::shared_ptr<TreeNode> _node_of(const std::string& guid) const;
+
+    /// Whether the live entry under guid, if any, is another entry than the one in a slot of the list of that name: one on the other side of the object/definition divide, of another type, or of the same type at another slot.
+    bool _twin(bool definition, const std::string& collection, size_t slot, const std::string& guid) const;
+
+    /// Whether the entry under guid is the one a record was taken on: any entry when no node was recorded, else the live entry whose node it is.
+    bool _owns(const std::string& guid, const std::shared_ptr<TreeNode>& node) const;
 
     /// Whether guid names a live object, component or instance.
     bool _is_live(const std::string& guid) const;
@@ -535,20 +544,20 @@ private:
     /// Remember a parent whose child died, once, for the sweep.
     void _queue(const std::shared_ptr<TreeNode>& parent);
 
-    /// Flip a tomb dead: its slot and map entry, and for an object tomb its node, transform, vertex, edges and interactions; O(1 + d log V).
+    /// Flip a tomb dead: its slot and map entry, and for an object tomb its node, transform, vertex, edges and interactions; a guid a live twin owns keeps those with the twin; O(1 + d log V).
     void _kill(const std::shared_ptr<Tomb>& tomb);
 
-    /// Flip a tomb live again: the same slot and pointer, and for an object tomb the same node, transform, vertex, edges and interactions; O(1 + d log V).
+    /// Flip a tomb live again: the same slot and pointer, and for an object tomb the same node, transform, vertex, edges and interactions; a guid a live twin owns stays dead; O(1 + d log V).
     void _revive(const std::shared_ptr<Tomb>& tomb);
 
-    /// Store obj under guid in its slot and map, relabelling its vertex; a guid that is only a definition swaps in Session::definitions; O(1).
-    void _swap(const std::string& guid, const Item& obj);
+    /// Store obj under guid in the slot and map of the recorded entry, relabelling an object's vertex; a guid now live on the other side, or on the same side as another entry, is left alone; O(1).
+    void _swap(const std::string& guid, const Item& obj, const Entry& entry);
 
     /// Apply the before (back) or after state of a tree record: name, colour, liveness, and for a move the swap of node and ghost.
     void _tree(const TreeOp& op, bool back);
 
-    /// Set or drop (nullopt) the local transform under guid, unrecorded.
-    void _place(const std::string& guid, const std::optional<Xform>& xform);
+    /// Set or drop (nullopt) the local transform under guid, unrecorded; a guid whose entry is not the recorded node is left alone.
+    void _place(const std::string& guid, const std::optional<Xform>& xform, const std::shared_ptr<TreeNode>& node);
 
     /// The xforms in canonical order() sequence, identity entries omitted, the exact sequence jsondump and pb_dumps write.
     std::vector<std::pair<std::string, Xform>> _xforms_ordered() const;

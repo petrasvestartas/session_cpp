@@ -107,16 +107,28 @@ public:
     );
 };
 
-/// The object under `guid` was swapped: the stored pointers before and after, never copies.
+/// The entry a replace was taken on: an object by its tree node at record time (nullptr outside the tree) or a definition by its slot.
+class Entry {
+public:
+    bool definition;                // Whether the entry is a definition.
+    std::shared_ptr<TreeNode> node; // An object's tree node at record time; nullptr outside the tree or for a definition.
+    size_t slot;                    // A definition's slot; 0 for an object.
+
+    /// Construct an object entry from its node or a definition entry from its slot.
+    Entry(bool definition, std::shared_ptr<TreeNode> node, size_t slot);
+};
+
+/// The object or definition under `guid` was swapped: the stored pointers before and after, never copies.
 class ReplaceOp {
 public:
     std::string kind = "replace"; // Always "replace".
-    std::string guid;             // The object's guid.
-    Item before;                  // The object before the swap.
-    Item after;                   // The object after the swap.
+    std::string guid;             // The entry's guid.
+    Item before;                  // The entry before the swap.
+    Item after;                   // The entry after the swap.
+    Entry entry;                  // The entry the swap was taken on.
 
-    /// Construct from the guid and the before and after objects.
-    ReplaceOp(const std::string& guid, const Item& before, const Item& after);
+    /// Construct from the guid, the before and after items and the entry.
+    ReplaceOp(const std::string& guid, const Item& before, const Item& after, Entry entry);
 
     /// Return a string representation of the record.
     std::string str() const;
@@ -128,13 +140,19 @@ public:
 /// The local transform under `guid` changed; nullopt on either side means "none set".
 class XformOp {
 public:
-    std::string kind = "xform";  // Always "xform".
-    std::string guid;            // The object's guid.
-    std::optional<Xform> before; // Transform before the change.
-    std::optional<Xform> after;  // Transform after the change.
+    std::string kind = "xform";     // Always "xform".
+    std::string guid;               // The object's guid.
+    std::optional<Xform> before;    // Transform before the change.
+    std::optional<Xform> after;     // Transform after the change.
+    std::shared_ptr<TreeNode> node; // The entry's tree node at record time; nullptr for a group or an object outside the tree.
 
-    /// Construct from the guid and the before and after transforms.
-    XformOp(const std::string& guid, const std::optional<Xform>& before, const std::optional<Xform>& after);
+    /// Construct from the guid, the before and after transforms and the entry's node.
+    XformOp(
+        const std::string& guid,
+        const std::optional<Xform>& before,
+        const std::optional<Xform>& after,
+        std::shared_ptr<TreeNode> node
+    );
 
     /// Return a string representation of the record.
     std::string str() const;

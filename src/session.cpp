@@ -885,7 +885,9 @@ std::shared_ptr<TreeNode> Session::add_point(std::shared_ptr<Point> point, std::
     if (!point)
         return nullptr;
 
-    return _add_object("points", point, "point", parent);
+    std::shared_ptr<TreeNode> node = _add_object("points", point, "point", parent);
+
+    return node ? node : _node_of(point->guid());
 }
 
 std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::shared_ptr<TreeNode> parent) {
@@ -893,7 +895,9 @@ std::shared_ptr<TreeNode> Session::add_line(std::shared_ptr<Line> line, std::sha
     if (!line)
         return nullptr;
 
-    return _add_object("lines", line, "line", parent);
+    std::shared_ptr<TreeNode> node = _add_object("lines", line, "line", parent);
+
+    return node ? node : _node_of(line->guid());
 }
 
 std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::shared_ptr<TreeNode> parent) {
@@ -901,7 +905,9 @@ std::shared_ptr<TreeNode> Session::add_plane(std::shared_ptr<Plane> plane, std::
     if (!plane)
         return nullptr;
 
-    return _add_object("planes", plane, "plane", parent);
+    std::shared_ptr<TreeNode> node = _add_object("planes", plane, "plane", parent);
+
+    return node ? node : _node_of(plane->guid());
 }
 
 std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
@@ -909,7 +915,9 @@ std::shared_ptr<TreeNode> Session::add_obb(std::shared_ptr<OBB> bbox) {
     if (!bbox)
         return nullptr;
 
-    return _add_object("bboxes", bbox, "bbox", nullptr);
+    std::shared_ptr<TreeNode> node = _add_object("bboxes", bbox, "bbox", nullptr);
+
+    return node ? node : _node_of(bbox->guid());
 }
 
 std::shared_ptr<TreeNode> Session::add_polyline(std::shared_ptr<Polyline> polyline, std::shared_ptr<TreeNode> parent) {
@@ -973,11 +981,16 @@ std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element,
     if (!element)
         return nullptr;
 
-    return _add_object("elements", element, "element", parent);
+    std::shared_ptr<TreeNode> node = _add_object("elements", element, "element", parent);
+
+    return node ? node : _node_of(element->guid());
 }
 
 std::shared_ptr<TreeNode> Session::add_component(Component component, std::shared_ptr<TreeNode> parent) {
-    return _add_object("components", component, "component", parent);
+
+    std::shared_ptr<TreeNode> node = _add_object("components", component, "component", parent);
+
+    return node ? node : _node_of(component.guid());
 }
 
 std::string Session::add_definition(const Geometry& definition) {
@@ -1026,8 +1039,12 @@ std::shared_ptr<TreeNode> Session::add_instance(
         return nullptr;
 
     const Xform placement = xform * instance->xform;
-    instance->xform = Xform::identity();
     std::shared_ptr<TreeNode> node = _add_object("instances", instance, "instance", parent);
+
+    if (!node)
+        return nullptr;
+
+    instance->xform = Xform::identity();
 
     if (!placement.is_identity())
         set_xform(instance->guid(), placement);
@@ -1231,10 +1248,12 @@ bool Session::replace(const std::string& guid, const Geometry& obj) {
 
     if (from == to.first) {
 
-        if (history.current)
-            history.record(ReplaceOp(guid, before, obj), bytes);
+        const Entry entry(false, get_node(guid), 0);
 
-        _swap(guid, obj);
+        if (history.current)
+            history.record(ReplaceOp(guid, before, obj, entry), bytes);
+
+        _swap(guid, obj, entry);
 
         return true;
     }
@@ -1278,10 +1297,17 @@ bool Session::replace_definition(const std::string& guid, const Geometry& defini
 
     if (from == to) {
 
-        if (history.current)
-            history.record(ReplaceOp(guid, before, definition), bytes);
+        const std::optional<size_t> slot = slot_of(definitions, from, guid);
 
-        _swap(guid, definition);
+        if (!slot)
+            return false;
+
+        const Entry entry(true, nullptr, *slot);
+
+        if (history.current)
+            history.record(ReplaceOp(guid, before, definition, entry), bytes);
+
+        _swap(guid, definition, entry);
 
         return true;
     }
@@ -1403,7 +1429,7 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
         if (it != xforms.end())
             before = it->second;
 
-        history.record(XformOp(guid, before, xform), RECORD);
+        history.record(XformOp(guid, before, xform, get_node(guid)), RECORD);
     }
 
     xforms[guid] = xform;
@@ -1419,7 +1445,7 @@ bool Session::remove_xform(const std::string& guid) {
         return false;
 
     if (history.current)
-        history.record(XformOp(guid, before->second, std::nullopt), RECORD);
+        history.record(XformOp(guid, before->second, std::nullopt, get_node(guid)), RECORD);
 
     xforms.erase(before);
     bvh_cache_dirty = true;
@@ -2010,6 +2036,10 @@ std::shared_ptr<TreeNode> Session::_add_object(
 ) {
 
     const std::string guid = item_guid(obj);
+
+    if (_is_live(guid) || definition_lookup.count(guid))
+        return nullptr;
+
     const size_t slot = push(objects, collection, obj);
     _hold(guid, obj);
     const std::string attribute = type_prefix + "_" + item_name(obj);
@@ -2035,6 +2065,38 @@ std::shared_ptr<TreeNode> Session::_add_object(
     }
 
     return node;
+}
+
+std::shared_ptr<TreeNode> Session::_node_of(const std::string& guid) const {
+
+    std::shared_ptr<TreeNode> node = get_node(guid);
+
+    return node ? node : std::make_shared<TreeNode>(guid);
+}
+
+bool Session::_twin(bool definition, const std::string& collection, size_t slot, const std::string& guid) const {
+
+    const Objects& list = definition ? definitions : objects;
+    const bool other = definition ? _is_live(guid) : definition_lookup.count(guid) > 0;
+
+    if (other)
+        return true;
+
+    std::optional<Item> held;
+
+    if (!definition)
+        held = _item(guid);
+    else if (auto it = definition_lookup.find(guid); it != definition_lookup.end())
+        held = it->second;
+
+    if (!held)
+        return false;
+
+    return collection_for(list, *held).first != collection || slot_of(list, collection, guid) != slot;
+}
+
+bool Session::_owns(const std::string& guid, const std::shared_ptr<TreeNode>& node) const {
+    return !node || get_node(guid) == node;
 }
 
 bool Session::_is_live(const std::string& guid) const {
@@ -2200,7 +2262,7 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
             return;
 
         const std::string guid = item_guid(*stored);
-        const bool owner = slot_of(definitions, collection, guid) == slot;
+        const bool owner = !_twin(true, collection, slot, guid);
         auto held = definition_lookup.find(guid);
 
         if (owner && held != definition_lookup.end() && !same(held->second, *stored))
@@ -2221,7 +2283,7 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
 
     const std::string guid = item_guid(*stored);
     const std::optional<Item> held = _item(guid);
-    const bool owner = (held && same(*held, *stored)) || slot_of(objects, collection, guid) == slot;
+    const bool owner = !_twin(false, collection, slot, guid) && (held || slot_of(objects, collection, guid) == slot);
 
     if (owner && held && !same(*held, *stored))
         store(objects, collection, slot, *held);
@@ -2249,6 +2311,9 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
 
     if (parent)
         _queue(parent);
+
+    if (!owner)
+        return;
 
     tomb->xform.reset();
     auto placed = xforms.find(guid);
@@ -2293,22 +2358,32 @@ void Session::_revive(const std::shared_ptr<Tomb>& tomb) {
 
     if (tomb->definition) {
 
-        flag(definitions, collection, slot, false);
         const std::optional<Item> item = item_at(definitions, collection, slot);
 
-        if (item)
-            definition_lookup[item_guid(*item)] = std::get<Geometry>(*item);
+        if (!item)
+            return;
+
+        const std::string guid = item_guid(*item);
+
+        if (!_twin(true, collection, slot, guid)) {
+            flag(definitions, collection, slot, false);
+            definition_lookup[guid] = std::get<Geometry>(*item);
+        }
 
         return;
     }
 
-    flag(objects, collection, slot, false);
     const std::optional<Item> item = item_at(objects, collection, slot);
 
     if (!item)
         return;
 
     const std::string guid = item_guid(*item);
+
+    if (_twin(false, collection, slot, guid))
+        return;
+
+    flag(objects, collection, slot, false);
     _hold(guid, *item);
     const std::shared_ptr<TreeNode>& node = tomb->node;
 
@@ -2365,35 +2440,36 @@ void Session::_revive(const std::shared_ptr<Tomb>& tomb) {
     }
 }
 
-void Session::_swap(const std::string& guid, const Item& obj) {
+void Session::_swap(const std::string& guid, const Item& obj, const Entry& entry) {
 
-    const std::pair<std::string, std::string> entry = collection_for(objects, obj);
-    revision++;
-    bvh_cache_dirty = true;
+    const std::pair<std::string, std::string> target = collection_for(objects, obj);
 
-    if (!_is_live(guid)) {
+    if (entry.definition) {
 
         const Geometry* geometry = std::get_if<Geometry>(&obj);
 
-        if (!geometry || !definition_lookup.count(guid))
+        if (!geometry || _is_live(guid) || slot_of(definitions, target.first, guid) != entry.slot)
             return;
 
-        if (const std::optional<size_t> slot = slot_of(definitions, entry.first, guid))
-            store(definitions, entry.first, *slot, obj);
-
+        store(definitions, target.first, entry.slot, obj);
         definition_lookup[guid] = *geometry;
+    } else {
 
-        return;
+        if (definition_lookup.count(guid) || !_owns(guid, entry.node))
+            return;
+
+        const std::optional<size_t> slot = slot_of(objects, target.first, guid);
+
+        if (!slot)
+            return;
+
+        store(objects, target.first, *slot, obj);
+        _label(guid, target.second + "_" + item_name(obj));
+        _hold(guid, obj);
     }
 
-    const std::optional<size_t> slot = slot_of(objects, entry.first, guid);
-
-    if (!slot)
-        return;
-
-    store(objects, entry.first, *slot, obj);
-    _hold(guid, obj);
-    _label(guid, entry.second + "_" + item_name(obj));
+    revision++;
+    bvh_cache_dirty = true;
 }
 
 void Session::_tree(const TreeOp& op, bool back) {
@@ -2453,7 +2529,10 @@ void Session::_tree(const TreeOp& op, bool back) {
         node_lookup.erase(held);
 }
 
-void Session::_place(const std::string& guid, const std::optional<Xform>& xform) {
+void Session::_place(const std::string& guid, const std::optional<Xform>& xform, const std::shared_ptr<TreeNode>& node) {
+
+    if (!_owns(guid, node))
+        return;
 
     if (xform)
         xforms[guid] = *xform;

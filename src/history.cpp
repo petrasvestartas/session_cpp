@@ -185,8 +185,11 @@ RemoveOp::RemoveOp(
     kind = "remove";
 }
 
-ReplaceOp::ReplaceOp(const std::string& guid, const Item& before, const Item& after)
-    : guid(guid), before(before), after(after) {}
+Entry::Entry(bool definition, std::shared_ptr<TreeNode> node, size_t slot)
+    : definition(definition), node(std::move(node)), slot(slot) {}
+
+ReplaceOp::ReplaceOp(const std::string& guid, const Item& before, const Item& after, Entry entry)
+    : guid(guid), before(before), after(after), entry(std::move(entry)) {}
 
 std::string ReplaceOp::str() const {
     return fmt::format("replace({})", guid);
@@ -196,8 +199,13 @@ std::string ReplaceOp::repr() const {
     return fmt::format("replace({})", guid);
 }
 
-XformOp::XformOp(const std::string& guid, const std::optional<Xform>& before, const std::optional<Xform>& after)
-    : guid(guid), before(before), after(after) {}
+XformOp::XformOp(
+    const std::string& guid,
+    const std::optional<Xform>& before,
+    const std::optional<Xform>& after,
+    std::shared_ptr<TreeNode> node
+)
+    : guid(guid), before(before), after(after), node(std::move(node)) {}
 
 std::string XformOp::str() const {
     return fmt::format("xform({})", guid);
@@ -385,9 +393,9 @@ void History::_revert(const Op& op, Session& session) {
     else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
         session._revive(remove->tomb);
     else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
-        session._swap(replace->guid, replace->before);
+        session._swap(replace->guid, replace->before, replace->entry);
     else if (const XformOp* xform = std::get_if<XformOp>(&op))
-        session._place(xform->guid, xform->before);
+        session._place(xform->guid, xform->before, xform->node);
     else if (const TreeOp* tree = std::get_if<TreeOp>(&op))
         session._tree(*tree, true);
 }
@@ -399,9 +407,9 @@ void History::_apply(const Op& op, Session& session) {
     else if (const RemoveOp* remove = std::get_if<RemoveOp>(&op))
         session._kill(remove->tomb);
     else if (const ReplaceOp* replace = std::get_if<ReplaceOp>(&op))
-        session._swap(replace->guid, replace->after);
+        session._swap(replace->guid, replace->after, replace->entry);
     else if (const XformOp* xform = std::get_if<XformOp>(&op))
-        session._place(xform->guid, xform->after);
+        session._place(xform->guid, xform->after, xform->node);
     else if (const TreeOp* tree = std::get_if<TreeOp>(&op))
         session._tree(*tree, false);
 }
