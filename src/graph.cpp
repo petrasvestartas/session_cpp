@@ -1,7 +1,7 @@
 #include "graph.h"
 #include "graph.pb.h"
-#include "vertex.pb.h"
-#include "edge.pb.h"
+#include "graph_vertex.pb.h"
+#include "graph_edge.pb.h"
 
 namespace session_cpp {
 
