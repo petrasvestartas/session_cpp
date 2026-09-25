@@ -4330,6 +4330,7 @@ std::map<size_t, Vector> Mesh::vertex_normals_weighted(NormalWeighting weighting
 double Mesh::volume() const {
 
     double total = 0.0;
+    std::optional<Point> origin;
 
     for (const std::pair<const size_t, std::vector<size_t>>& entry : face) {
         const std::vector<size_t>& vkeys = entry.second;
@@ -4342,6 +4343,11 @@ double Mesh::volume() const {
         if (!p0)
             continue;
 
+        if (!origin)
+            origin = p0;
+
+        const Vector v0 = *p0 - *origin;
+
         for (size_t i = 1; i + 1 < vkeys.size(); ++i) {
             const std::optional<Point> p1 = vertex_point(vkeys[i]);
             const std::optional<Point> p2 = vertex_point(vkeys[i + 1]);
@@ -4349,9 +4355,7 @@ double Mesh::volume() const {
             if (!p1 || !p2)
                 continue;
 
-            total += (*p0)[0] * ((*p1)[1] * (*p2)[2] - (*p1)[2] * (*p2)[1]) +
-                (*p0)[1] * ((*p1)[2] * (*p2)[0] - (*p1)[0] * (*p2)[2]) +
-                (*p0)[2] * ((*p1)[0] * (*p2)[1] - (*p1)[1] * (*p2)[0]);
+            total += v0.dot((*p1 - *origin).cross(*p2 - *origin));
         }
     }
 

@@ -1546,6 +1546,14 @@ MINI_TEST("Mesh", "Cut By Plane") {
     MINI_CHECK(TOLERANCE.is_close(corners.volume(), 0.25));
 }
 
+MINI_TEST("Mesh", "Volume Far From Origin") {
+
+    const Xform far = Xform::translation(1000000.1, 1000000.2, 1000000.3);
+    const Mesh box = Mesh::create_box(2.0, 3.0, 4.0).transformed(far);
+
+    MINI_CHECK(std::abs(box.volume() / 24.0 - 1.0) < 1e-9);
+}
+
 MINI_TEST("Mesh", "Json Roundtrip") {
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);

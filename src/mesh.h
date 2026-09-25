@@ -893,7 +893,7 @@ public:
     /// Return the normals of all vertices with the given weighting.
     std::map<size_t, Vector> vertex_normals_weighted(NormalWeighting weighting) const;
 
-    /// Return the enclosed volume of a closed mesh.
+    /// Return the enclosed volume of a closed mesh, fanned from its first vertex so a far-away solid keeps its precision.
     double volume() const;
 
     // ═══════════════════════════════════════════════════════════════════════════

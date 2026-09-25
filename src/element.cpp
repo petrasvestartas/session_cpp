@@ -410,6 +410,7 @@ Point Element::point() {
 std::vector<Polyline> Element::polylines() {
 
     if (_is_dirty || !_polylines.has_value()) {
+        ensure_geometry();
         _polylines = compute_polylines();
         _is_dirty = false;
     }
@@ -420,6 +421,7 @@ std::vector<Polyline> Element::polylines() {
 std::vector<Plane> Element::planes() {
 
     if (_is_dirty || !_planes.has_value()) {
+        ensure_geometry();
         _planes = compute_planes();
         _is_dirty = false;
     }

@@ -883,6 +883,14 @@ namespace session_cpp {
         MINI_CHECK(std::abs(vsph - (4.0 / 3.0) * Tolerance::PI * 8) / ((4.0 / 3.0) * Tolerance::PI * 8) < 0.05);
     }
 
+    MINI_TEST("BRep", "Volume Far From Origin") {
+
+        const Xform far = Xform::translation(1000000.1, 1000000.2, 1000000.3);
+        const BRep box = BRep::create_box(2.0, 3.0, 4.0).transformed(far);
+
+        MINI_CHECK(std::abs(box.volume() / 24.0 - 1.0) < 1e-9);
+    }
+
     MINI_TEST("BRep", "Face Polylines Box") {
 
         const BRep b = BRep::create_box(2.0, 2.0, 2.0);

@@ -504,6 +504,18 @@ MINI_TEST("Element", "Polylines Empty Without Mesh") {
     MINI_CHECK(Element("no_geometry").planes().empty());
 }
 
+MINI_TEST("Element", "Planes Without Geometry Call") {
+
+    Element e(Mesh::create_box(1.0, 1.0, 1.0));
+    const bool before = e.geometry_synced();
+    const size_t count = e.planes().size();
+
+    MINI_CHECK(!before);
+    MINI_CHECK(count == 6);
+    MINI_CHECK(e.geometry_synced());
+    MINI_CHECK(e.polylines().size() == 6);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Element - Polymorphic registry
 // ═══════════════════════════════════════════════════════════════════════════
@@ -747,6 +759,8 @@ MINI_TEST("Element", "Duplicate Keeps Every Field") {
     MINI_CHECK(copy.insertion_vectors().size() == 1);
     MINI_CHECK(copy.dimensions().has_value());
     MINI_CHECK(copy.features().size() == 1);
+    MINI_CHECK(copy.features()[0] == e.features()[0]);
+    MINI_CHECK(copy.features()[0].guid() != e.features()[0].guid());
 }
 
 MINI_TEST("Element", "Equality Compares Carried Fields") {
@@ -780,6 +794,11 @@ MINI_TEST("ElementFeature", "Constructor") {
     MINI_CHECK(f == same);
     MINI_CHECK(!(f != same));
     MINI_CHECK(f.guid() != same.guid());
+
+    const ElementFeature copy = f;
+
+    MINI_CHECK(copy == f);
+    MINI_CHECK(copy.guid() != f.guid());
 
     const ElementFeature other("drill", 2, {outline}, "notch");
 
