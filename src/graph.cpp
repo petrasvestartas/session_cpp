@@ -23,9 +23,9 @@ nlohmann::ordered_json Vertex::jsondump() const {
 
 Vertex Vertex::jsonload(const nlohmann::json& data) {
 
-    Vertex vertex(data["name"], data["attribute"]);
-    vertex.guid() = data["guid"];
-    vertex.index = data["index"];
+    Vertex vertex(data.at("name"), data.at("attribute"));
+    vertex.guid() = data.at("guid");
+    vertex.index = data.at("index");
 
     if (data.contains("attributes"))
         vertex.attributes = data["attributes"];
@@ -76,10 +76,10 @@ nlohmann::ordered_json Edge::jsondump() const {
 
 Edge Edge::jsonload(const nlohmann::json& data) {
 
-    Edge edge(data["v0"], data["v1"], data["attribute"]);
-    edge.name = data["name"];
-    edge.guid() = data["guid"];
-    edge.index = data["index"];
+    Edge edge(data.at("v0"), data.at("v1"), data.at("attribute"));
+    edge.name = data.at("name");
+    edge.guid() = data.at("guid");
+    edge.index = data.at("index");
 
     if (data.contains("attributes"))
         edge.attributes = data["attributes"];
@@ -177,6 +177,73 @@ void Graph::remove_edge(const std::tuple<std::string, std::string>& edge) {
 
     edges[u].erase(v);
     edges[v].erase(u);
+    _reassign_edge_indices();
+}
+
+std::optional<std::pair<Vertex, std::vector<Edge>>> Graph::take_node(const std::string& key) {
+
+    auto found = vertices.find(key);
+
+    if (found == vertices.end())
+        return std::nullopt;
+
+    std::pair<Vertex, std::vector<Edge>> taken(std::move(found->second), std::vector<Edge>());
+    vertices.erase(found);
+    auto incident = edges.find(key);
+
+    if (incident == edges.end())
+        return taken;
+
+    std::map<std::string, Edge> neighbours = std::move(incident->second);
+    edges.erase(incident);
+
+    for (std::pair<const std::string, Edge>& neighbour : neighbours) {
+
+        auto other = edges.find(neighbour.first);
+        std::optional<Edge> twin;
+
+        if (other != edges.end()) {
+
+            auto stored = other->second.find(key);
+
+            if (stored != other->second.end()) {
+                twin = std::move(stored->second);
+                other->second.erase(stored);
+            }
+
+            if (other->second.empty())
+                edges.erase(other);
+        }
+
+        if (neighbour.second.v0 == key || !twin)
+            taken.second.push_back(std::move(neighbour.second));
+        else
+            taken.second.push_back(std::move(*twin));
+    }
+
+    return taken;
+}
+
+void Graph::put_node(Vertex vertex, std::vector<Edge> edges) {
+
+    const std::string key = vertex.name;
+    vertices[key] = std::move(vertex);
+
+    for (Edge& edge : edges) {
+
+        const std::string other = edge.other_vertex(key);
+
+        if (!has_node(other) || has_edge(std::make_tuple(key, other)))
+            continue;
+
+        this->edges[other][key] = edge;
+        this->edges[key][other] = std::move(edge);
+    }
+}
+
+void Graph::renumber() {
+
+    _reassign_indices();
     _reassign_edge_indices();
 }
 
@@ -738,10 +805,10 @@ nlohmann::ordered_json Graph::jsondump() const {
 
 Graph Graph::jsonload(const nlohmann::json& data) {
 
-    Graph graph(data["name"]);
-    graph.guid() = data["guid"];
-    graph.vertex_count = data["vertex_count"];
-    graph.edge_count = data["edge_count"];
+    Graph graph(data.at("name"));
+    graph.guid() = data.at("guid");
+    graph.vertex_count = data.at("vertex_count");
+    graph.edge_count = data.at("edge_count");
 
     if (data.contains("default_edge_attributes"))
         graph.default_edge_attributes = data["default_edge_attributes"];
@@ -749,12 +816,12 @@ Graph Graph::jsonload(const nlohmann::json& data) {
     if (data.contains("default_vertex_attributes"))
         graph.default_vertex_attributes = data["default_vertex_attributes"];
 
-    for (const nlohmann::json& vertex_data : data["vertices"]) {
+    for (const nlohmann::json& vertex_data : data.at("vertices")) {
         const Vertex vertex = Vertex::jsonload(vertex_data);
         graph.vertices[vertex.name] = vertex;
     }
 
-    for (const nlohmann::json& edge_data : data["edges"]) {
+    for (const nlohmann::json& edge_data : data.at("edges")) {
         const Edge edge = Edge::jsonload(edge_data);
         graph.edges[edge.v0][edge.v1] = edge;
         graph.edges[edge.v1][edge.v0] = edge;
@@ -920,11 +987,11 @@ Graph Graph::pb_load(const std::string& filename) {
 // String
 // ═══════════════════════════════════════════════════════════════════════════
 std::string Graph::str() const {
-    return fmt::format("<Graph with {} vertices, {} edges: {}>", vertex_count, edge_count, name);
+    return fmt::format("<Graph with {} vertices, {} edges: {}>", number_of_vertices(), number_of_edges(), name);
 }
 
 std::string Graph::repr() const {
-    return fmt::format("Graph({}, {}, {}, {})", guid(), name, vertex_count, edge_count);
+    return fmt::format("Graph({}, {}, {}, {})", guid(), name, number_of_vertices(), number_of_edges());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -585,4 +585,79 @@ MINI_TEST("Graph", "Cycle Basis") {
     MINI_CHECK(cycles.size() == 1);
 }
 
+
+MINI_TEST("Graph", "Take Node") {
+
+    Graph g("g");
+    g.add_node("a", "");
+    g.add_node("b", "bee");
+    g.add_edge("a", "b", "ab");
+    g.add_edge("b", "c", "bc");
+    g.set_vertex_attribute("b", "load", 2.0);
+    g.set_edge_attribute(std::make_tuple("a", "b"), "weight", 3.0);
+    const std::string before = g.jsondump().dump();
+    const std::pair<Vertex, std::vector<Edge>> taken = *g.take_node("b");
+    const Vertex& vertex = taken.first;
+    const std::vector<Edge>& edges = taken.second;
+
+    MINI_CHECK(before.find(vertex.guid()) != std::string::npos && vertex.index == 1 && vertex.attribute == "bee");
+    MINI_CHECK(vertex.attributes.at("load") == 2.0);
+    MINI_CHECK(edges.size() == 2 && std::all_of(edges.begin(), edges.end(), [](const Edge& e) { return e.v0 == "b" || e.v1 == "b"; }));
+    MINI_CHECK(std::any_of(edges.begin(), edges.end(), [](const Edge& e) { return e.attributes.count("weight") && e.attributes.at("weight") == 3.0; }));
+    MINI_CHECK(!g.has_node("b") && !g.has_edge(std::make_tuple("a", "b")) && !g.has_edge(std::make_tuple("c", "b")));
+    MINI_CHECK(g.vertex_count == 3 && g.edge_count == 2 && g.edges.empty());
+    MINI_CHECK(g.get_vertices()[0].index == 0 && g.get_vertices()[1].index == 2);
+    MINI_CHECK(g.str() == "<Graph with 2 vertices, 0 edges: g>");
+    MINI_CHECK(!g.take_node("b"));
+}
+
+MINI_TEST("Graph", "Put Node") {
+
+    Graph g("g");
+    g.add_edge("a", "b", "ab");
+    g.add_edge("b", "c", "bc");
+    g.set_vertex_attribute("b", "load", 2.0);
+    g.set_edge_attribute(std::make_tuple("b", "c"), "weight", 3.0);
+    const std::string before = g.jsondump().dump();
+    std::pair<Vertex, std::vector<Edge>> taken = *g.take_node("b");
+    g.put_node(taken.first, taken.second);
+    const std::string after = g.jsondump().dump();
+    const std::string ab = g.edges["a"]["b"].guid();
+    taken = *g.take_node("b");
+    g.remove_node("c");
+    g.add_edge("b", "d", "bd");
+    const std::string guid = taken.first.guid();
+    g.put_node(taken.first, taken.second);
+
+    MINI_CHECK(before == after);
+    MINI_CHECK(g.edges["a"]["b"].guid() == ab && g.edges["b"]["a"].guid() == ab);
+    MINI_CHECK(!g.has_edge(std::make_tuple("b", "c")) && g.has_edge(std::make_tuple("b", "d")));
+    MINI_CHECK(g.get_vertices()[1].guid() == guid && g.vertex_attribute("b", "load") == 2.0);
+    MINI_CHECK(g.number_of_edges() == 2);
+}
+
+MINI_TEST("Graph", "Renumber") {
+
+    Graph g("g");
+    g.add_edge("a", "b", "");
+    g.add_edge("a", "c", "");
+    g.add_edge("b", "d", "");
+    g.add_edge("c", "e", "");
+    g.add_edge("d", "e", "");
+    g.add_edge("a", "e", "");
+    g.take_node("b");
+    g.take_node("d");
+    g.renumber();
+    std::vector<int> indices;
+
+    for (const Vertex& vertex : g.get_vertices())
+        indices.push_back(vertex.index);
+
+    MINI_CHECK((indices == std::vector<int>{0, 1, 2}));
+    MINI_CHECK(g.edges["a"]["c"].index == 0 && g.edges["e"]["c"].index == 1);
+    MINI_CHECK(g.edges["a"]["e"].index == 2 && g.edges["e"]["a"].index == 2);
+    MINI_CHECK(g.vertex_count == g.number_of_vertices() && g.vertex_count == 3);
+    MINI_CHECK(g.edge_count == g.number_of_edges() && g.edge_count == 3);
+}
+
 }

@@ -2,6 +2,7 @@
 #include "tree.h"
 #include "color.h"
 #include "file_encoders.h"
+#include "history.h"
 
 namespace session_cpp {
 using namespace session_cpp::mini_test;
@@ -154,6 +155,104 @@ MINI_TEST("TreeNode", "Traverse") {
     MINI_CHECK(preorder.size() == 3 && preorder[0]->name == "root");
     MINI_CHECK(postorder.size() == 3 && postorder[2]->name == "root");
     MINI_CHECK(bfs.size() == 3 && bfs[0]->name == "root");
+}
+
+MINI_TEST("TreeNode", "Set Dead") {
+
+    std::shared_ptr<TreeNode> p = std::make_shared<TreeNode>("p");
+    std::shared_ptr<TreeNode> a = std::make_shared<TreeNode>("a");
+    std::shared_ptr<TreeNode> b = std::make_shared<TreeNode>("b");
+    std::shared_ptr<TreeNode> c = std::make_shared<TreeNode>("c");
+    std::shared_ptr<TreeNode> d = std::make_shared<TreeNode>("d");
+    p->add(a);
+    p->add(b);
+    p->add(c);
+    b->add(d);
+    b->set_dead(true);
+    std::vector<TreeNode*> kids = p->children();
+    const std::vector<TreeNode*> ancestors = d->ancestors();
+
+    MINI_CHECK(kids.size() == 2 && kids[0] == a.get() && kids[1] == c.get());
+    MINI_CHECK(b->is_dead() && b->parent() == nullptr);
+    MINI_CHECK(b->children()[0] == d.get());
+    MINI_CHECK(d->parent() == b);
+    MINI_CHECK(ancestors.size() == 1 && ancestors[0] == b.get());
+    MINI_CHECK(!p->is_leaf());
+
+    a->set_dead(true);
+    c->set_dead(true);
+
+    MINI_CHECK(p->is_leaf());
+
+    a->set_dead(false);
+    b->set_dead(false);
+    c->set_dead(false);
+    kids = p->children();
+
+    MINI_CHECK(kids.size() == 3 && kids[1] == b.get());
+    MINI_CHECK(b->parent() == p);
+}
+
+MINI_TEST("TreeNode", "Compact") {
+
+    std::shared_ptr<TreeNode> p = std::make_shared<TreeNode>("p");
+    std::vector<std::shared_ptr<TreeNode>> kids;
+
+    for (size_t i = 0; i < 6; ++i) {
+        kids.push_back(std::make_shared<TreeNode>("c" + std::to_string(i)));
+        p->add(kids[i]);
+    }
+
+    const std::shared_ptr<Tomb> tomb = std::make_shared<Tomb>("", false, 0, kids[3]);
+    kids[1]->set_dead(true);
+    kids[3]->set_dead(true);
+    kids[4]->set_dead(true);
+    kids[3]->set_tomb(tomb);
+    const std::vector<TreeNode*> before = p->children();
+    p->compact();
+    const std::vector<TreeNode*> after = p->children();
+    const size_t raw = p->compact_step(SIZE_MAX);
+    std::shared_ptr<TreeNode> q = std::make_shared<TreeNode>("q");
+    q->add(kids[5]);
+    const std::vector<TreeNode*> moved = p->children();
+
+    MINI_CHECK(raw == 4 && !p->is_compacting());
+    MINI_CHECK(after.size() == 3 && after == before);
+    MINI_CHECK(kids[3]->is_dead() && kids[3]->get_tomb() != nullptr);
+    MINI_CHECK(kids[1]->get_tomb() == nullptr);
+    MINI_CHECK(moved.size() == 2 && moved[0] == kids[0].get() && moved[1] == kids[2].get());
+}
+
+MINI_TEST("TreeNode", "Add Moves") {
+
+    Tree tree("t");
+    std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
+    std::shared_ptr<TreeNode> p1 = std::make_shared<TreeNode>("p1");
+    std::shared_ptr<TreeNode> p2 = std::make_shared<TreeNode>("p2");
+    std::shared_ptr<TreeNode> w = std::make_shared<TreeNode>("w");
+    std::shared_ptr<TreeNode> x = std::make_shared<TreeNode>("x");
+    std::shared_ptr<TreeNode> z = std::make_shared<TreeNode>("z");
+    std::shared_ptr<TreeNode> y = std::make_shared<TreeNode>("y");
+    tree.add(root);
+    tree.add(p1, root);
+    tree.add(p2, root);
+    tree.add(w, p1);
+    tree.add(x, p1);
+    tree.add(z, p1);
+    tree.add(y, x);
+    const size_t count = tree.nodes().size();
+    const std::shared_ptr<TreeNode> ghost = p2->add(x);
+    const std::shared_ptr<TreeNode> again = p2->add(x);
+    const std::vector<TreeNode*> old = p1->children();
+    const std::vector<TreeNode*> added = p2->children();
+
+    MINI_CHECK(ghost->is_dead() && ghost->name.empty());
+    MINI_CHECK(old.size() == 2 && old[0] == w.get() && old[1] == z.get());
+    MINI_CHECK(added.back() == x.get());
+    MINI_CHECK(x->parent() == p2);
+    MINI_CHECK(y->parent() == x);
+    MINI_CHECK(tree.nodes().size() == count);
+    MINI_CHECK(again == nullptr && added.size() == 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -354,6 +453,52 @@ MINI_TEST("Tree", "Get Children Guids") {
     MINI_CHECK(guids.size() == 2);
     MINI_CHECK(guids[0] == a->guid());
     MINI_CHECK(guids[1] == b->guid());
+}
+
+
+MINI_TEST("Tree", "Dead Nodes") {
+
+    Tree tree("t");
+    std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
+    std::shared_ptr<TreeNode> g = std::make_shared<TreeNode>("group");
+    std::shared_ptr<TreeNode> a = std::make_shared<TreeNode>("alpha");
+    std::shared_ptr<TreeNode> b = std::make_shared<TreeNode>("beta");
+    std::shared_ptr<TreeNode> c = std::make_shared<TreeNode>("gamma");
+    std::shared_ptr<TreeNode> d = std::make_shared<TreeNode>("delta");
+    tree.add(root);
+    tree.add(g, root);
+    tree.add(a, g);
+    tree.add(b, g);
+    tree.add(c, b);
+    tree.add(d, g);
+    b->set_dead(true);
+    const std::string b_guid = b->guid();
+    const std::string c_guid = c->guid();
+    const std::string g_guid = g->guid();
+    auto names = [](const std::vector<std::shared_ptr<TreeNode>>& nodes) {
+        std::vector<std::string> result;
+
+        for (const std::shared_ptr<TreeNode>& node : nodes)
+            result.push_back(node->name);
+
+        return result;
+    };
+    const std::string json = tree.jsondump().dump();
+    const Tree from_json = Tree::file_json_loads(json);
+    const Tree from_pb = Tree::pb_loads(tree.pb_dumps());
+    const std::vector<std::string> expected{"root", "group", "alpha", "delta"};
+
+    MINI_CHECK(names(tree.nodes()) == expected);
+    MINI_CHECK((names(tree.leaves()) == std::vector<std::string>{"alpha", "delta"}));
+    MINI_CHECK(tree.get_node_by_name("beta") == nullptr && tree.get_nodes_by_name("gamma").empty());
+    MINI_CHECK(tree.find_node_by_guid(b_guid) == nullptr && tree.find_node_by_guid(c_guid) == nullptr);
+    MINI_CHECK(tree.get_children_guids(g_guid).size() == 2);
+    MINI_CHECK(names(tree.traverse("depthfirst", "preorder")) == expected);
+    MINI_CHECK(names(tree.traverse("breadthfirst", "preorder")) == expected);
+    MINI_CHECK(tree.str().find("beta") == std::string::npos && tree.str().find("gamma") == std::string::npos);
+    MINI_CHECK(tree.repr() == "Tree(t, 4 nodes)" && g->str() == "TreeNode(group, 2 children)");
+    MINI_CHECK(json.find("beta") == std::string::npos && json.find("gamma") == std::string::npos);
+    MINI_CHECK(names(from_json.nodes()) == expected && names(from_pb.nodes()) == expected);
 }
 
 } // namespace session_cpp

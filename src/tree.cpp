@@ -3,6 +3,7 @@
 #include "treenode.pb.h"
 #include "fmt/format.h"
 #include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <queue>
 #include <sstream>
@@ -23,21 +24,30 @@ bool TreeNode::is_root() const {
 }
 
 bool TreeNode::is_leaf() const {
-    return _children.empty();
+
+    for (const std::shared_ptr<TreeNode>& child : _children)
+        if (!child->_dead)
+            return false;
+
+    return true;
 }
 
 std::shared_ptr<TreeNode> TreeNode::parent() const {
+
+    if (_dead)
+        return nullptr;
+
     return _parent.lock();
 }
 
 std::vector<TreeNode*> TreeNode::ancestors() const {
 
     std::vector<TreeNode*> result;
-    std::shared_ptr<TreeNode> current = _parent.lock();
+    std::shared_ptr<TreeNode> current = parent();
 
     while (current) {
         result.push_back(current.get());
-        current = current->_parent.lock();
+        current = current->parent();
     }
 
     return result;
@@ -56,44 +66,156 @@ std::vector<TreeNode*> TreeNode::children() const {
     std::vector<TreeNode*> result;
 
     for (const std::shared_ptr<TreeNode>& child : _children)
-        result.push_back(child.get());
+        if (!child->_dead)
+            result.push_back(child.get());
 
     return result;
+}
+
+bool TreeNode::is_dead() const {
+    return _dead;
+}
+
+std::shared_ptr<Tomb> TreeNode::get_tomb() const {
+    return _tomb.lock();
+}
+
+bool TreeNode::is_compacting() const {
+    return _cursor.has_value();
+}
+
+std::optional<size_t> TreeNode::_position(const std::shared_ptr<TreeNode>& child) const {
+
+    if (child->_at < _children.size() && _children[child->_at] == child)
+        return child->_at;
+
+    for (size_t i = 0; i < _children.size(); ++i)
+        if (_children[i] == child)
+            return i;
+
+    return std::nullopt;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Mutators
 // ═══════════════════════════════════════════════════════════════════════════
-void TreeNode::add(std::shared_ptr<TreeNode> child) {
+std::shared_ptr<TreeNode> TreeNode::add(std::shared_ptr<TreeNode> child) {
 
-    if (!child)
-        return;
+    if (!child || child.get() == this)
+        return nullptr;
 
-    if (child.get() == this)
-        return;
-
-    for (std::shared_ptr<TreeNode> ancestor = shared_from_this(); ancestor; ancestor = ancestor->parent())
+    for (std::shared_ptr<TreeNode> ancestor = _parent.lock(); ancestor; ancestor = ancestor->_parent.lock())
         if (ancestor == child)
-            return;
+            return nullptr;
+
+    const std::shared_ptr<TreeNode> old = child->_parent.lock();
+
+    if (old.get() == this)
+        return nullptr;
+
+    std::shared_ptr<TreeNode> ghost;
+
+    if (old) {
+
+        if (const std::optional<size_t> at = old->_position(child)) {
+            ghost = std::make_shared<TreeNode>("");
+            ghost->_dead = true;
+            ghost->_at = *at;
+            ghost->_parent = old;
+            old->_children[*at] = ghost;
+        }
+    }
 
     child->_parent = shared_from_this();
+    child->_at = _children.size();
     _children.push_back(child);
+
+    return ghost;
 }
 
 std::shared_ptr<TreeNode> TreeNode::remove(std::shared_ptr<TreeNode> child) {
 
-    for (size_t i = 0; i < _children.size(); ++i) {
-        if (_children[i] != child)
-            continue;
+    if (!child)
+        return nullptr;
 
-        std::shared_ptr<TreeNode> removed = _children[i];
-        _children.erase(_children.begin() + i);
-        removed->_parent.reset();
+    const std::optional<size_t> i = _position(child);
 
-        return removed;
+    if (!i)
+        return nullptr;
+
+    _children.erase(_children.begin() + *i);
+
+    for (size_t later = *i; later < _children.size(); ++later)
+        --_children[later]->_at;
+
+    _cursor.reset();
+    child->_parent.reset();
+
+    return child;
+}
+
+void TreeNode::set_dead(bool dead) {
+
+    if (const std::shared_ptr<TreeNode> parent = _parent.lock())
+        if (parent->_cursor && parent->_cursor->second <= _at && _at < parent->_cursor->first)
+            return;
+
+    _dead = dead;
+}
+
+void TreeNode::set_tomb(const std::shared_ptr<Tomb>& tomb) {
+    _tomb = tomb;
+}
+
+size_t TreeNode::compact_step(size_t work) {
+
+    if (work == 0)
+        return 0;
+
+    size_t r = _cursor ? _cursor->first : 0;
+    size_t w = _cursor ? _cursor->second : 0;
+    size_t examined = 0;
+
+    while (examined < work && r < _children.size()) {
+
+        const std::shared_ptr<TreeNode>& child = _children[r];
+
+        if (!child->_dead || !child->_tomb.expired()) {
+
+            if (w != r) {
+                std::swap(_children[w], _children[r]);
+                _children[w]->_at = w;
+                _children[r]->_at = r;
+            }
+
+            ++w;
+        }
+
+        ++r;
+        ++examined;
     }
 
-    return nullptr;
+    if (r < _children.size()) {
+        _cursor = std::make_pair(r, w);
+
+        return examined;
+    }
+
+    for (size_t i = w; i < _children.size(); ++i)
+        _children[i]->_parent.reset();
+
+    _children.erase(_children.begin() + w, _children.end());
+    _cursor.reset();
+
+    return examined;
+}
+
+void TreeNode::compact() {
+
+    if (_cursor)
+        compact_step(SIZE_MAX);
+
+    compact_step(SIZE_MAX);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -125,12 +247,12 @@ std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std
             stack.pop_back();
             result.push_back(current);
 
+            const std::vector<TreeNode*> children = current->children();
+
             if (order == "preorder")
-                for (size_t i = current->_children.size(); i > 0; --i)
-                    stack.push_back(current->_children[i - 1].get());
+                stack.insert(stack.end(), children.rbegin(), children.rend());
             else
-                for (const std::shared_ptr<TreeNode>& child : current->_children)
-                    stack.push_back(child.get());
+                stack.insert(stack.end(), children.begin(), children.end());
         }
 
         if (order == "postorder")
@@ -144,8 +266,8 @@ std::vector<TreeNode*> TreeNode::traverse(const std::string& strategy, const std
             queue.pop();
             result.push_back(current);
 
-            for (const std::shared_ptr<TreeNode>& child : current->_children)
-                queue.push(child.get());
+            for (TreeNode* child : current->children())
+                queue.push(child);
         }
     } else {
         throw std::invalid_argument("Unknown traversal strategy: " + strategy);
@@ -161,7 +283,7 @@ nlohmann::ordered_json TreeNode::jsondump() const {
 
     nlohmann::ordered_json children = nlohmann::ordered_json::array();
 
-    for (const std::shared_ptr<TreeNode>& child : _children)
+    for (const TreeNode* child : this->children())
         children.push_back(child->jsondump());
 
     nlohmann::ordered_json data;
@@ -179,13 +301,13 @@ nlohmann::ordered_json TreeNode::jsondump() const {
 
 std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json& data) {
 
-    std::shared_ptr<TreeNode> node = std::make_shared<TreeNode>(data["name"]);
-    node->guid() = data["guid"];
+    std::shared_ptr<TreeNode> node = std::make_shared<TreeNode>(data.at("name"));
+    node->guid() = data.at("guid");
 
     if (data.contains("color") && !data["color"].is_null())
         node->color = Color::jsonload(data["color"]);
 
-    for (const nlohmann::json& child : data["children"])
+    for (const nlohmann::json& child : data.at("children"))
         node->add(TreeNode::jsonload(child));
 
     return node;
@@ -195,11 +317,11 @@ std::shared_ptr<TreeNode> TreeNode::jsonload(const nlohmann::json& data) {
 // String
 // ═══════════════════════════════════════════════════════════════════════════
 std::string TreeNode::str() const {
-    return fmt::format("TreeNode({}, {} children)", name, _children.size());
+    return fmt::format("TreeNode({}, {} children)", name, children().size());
 }
 
 std::string TreeNode::repr() const {
-    return fmt::format("TreeNode({}, {}, {} children)", name, guid(), _children.size());
+    return fmt::format("TreeNode({}, {}, {} children)", name, guid(), children().size());
 }
 
 std::ostream& operator<<(std::ostream& os, const TreeNode& node) {
@@ -313,7 +435,8 @@ std::vector<std::shared_ptr<TreeNode>> Tree::nodes() const {
         result.push_back(current);
 
         for (const std::shared_ptr<TreeNode>& child : current->_children)
-            queue.push(child);
+            if (!child->_dead)
+                queue.push(child);
     }
 
     return result;
@@ -404,7 +527,7 @@ std::shared_ptr<TreeNode> Tree::remove(std::shared_ptr<TreeNode> node) {
         return node;
     }
 
-    std::shared_ptr<TreeNode> parent = node->parent();
+    std::shared_ptr<TreeNode> parent = node->_parent.lock();
 
     if (!parent)
         throw std::invalid_argument("Node is not in this tree");
@@ -475,11 +598,11 @@ nlohmann::ordered_json Tree::jsondump() const {
 
 Tree Tree::jsonload(const nlohmann::json& data) {
 
-    Tree tree(data["name"]);
-    tree.guid() = data["guid"];
+    Tree tree(data.at("name"));
+    tree.guid() = data.at("guid");
 
-    if (!data["root"].is_null())
-        tree.add(TreeNode::jsonload(data["root"]));
+    if (!data.at("root").is_null())
+        tree.add(TreeNode::jsonload(data.at("root")));
 
     return tree;
 }

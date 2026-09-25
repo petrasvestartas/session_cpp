@@ -5,9 +5,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace session_cpp {
+
+class Tomb;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TreeNode
@@ -15,11 +18,17 @@ namespace session_cpp {
 /// A node of a tree; geometry nodes are named by their object's guid, group nodes by a label.
 class TreeNode : public std::enable_shared_from_this<TreeNode> {
     friend class Tree;
+    friend class Session;
 
 private:
     mutable std::string _guid; // Lazy guid.
     std::weak_ptr<TreeNode> _parent; // Parent node, empty for the root.
-    std::vector<std::shared_ptr<TreeNode>> _children; // Child nodes in order.
+    std::vector<std::shared_ptr<TreeNode>> _children; // Raw child nodes in order, dead ones included.
+    bool _dead = false; // Hidden from every public walk.
+    std::weak_ptr<Tomb> _tomb; // Weak pin while a record holds it.
+    size_t _at = 0; // Raw index in the parent's children.
+    bool _queued = false; // Whether Session.sweep holds this parent.
+    std::optional<std::pair<size_t, size_t>> _cursor; // (read, write) while a compaction is part way.
 
 public:
     std::string name; // Object guid or group label.
@@ -60,10 +69,10 @@ public:
     /// Return whether this node has no parent.
     bool is_root() const;
 
-    /// Return whether this node has no children.
+    /// Return whether this node has no live children.
     bool is_leaf() const;
 
-    /// Return the parent node, or nullptr when this is the root.
+    /// Return the parent node, or nullptr for the root and for a dead node.
     std::shared_ptr<TreeNode> parent() const;
 
     /// Return all ancestors from the immediate parent up to the root.
@@ -72,17 +81,38 @@ public:
     /// Return all descendants of this node, depth-first.
     std::vector<TreeNode*> descendants() const;
 
-    /// Return the direct children of this node.
+    /// Return the live direct children of this node.
     std::vector<TreeNode*> children() const;
+
+    /// Return whether this node is dead.
+    bool is_dead() const;
+
+    /// Return the tomb pinning this node while a record still holds it.
+    std::shared_ptr<Tomb> get_tomb() const;
+
+    /// Return whether a compaction of the children is part way.
+    bool is_compacting() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Mutators
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Add a child node to this node.
-    void add(std::shared_ptr<TreeNode> child);
+    /// Append a child; a child placed elsewhere moves and leaves the returned dead ghost in its old slot.
+    std::shared_ptr<TreeNode> add(std::shared_ptr<TreeNode> child);
 
-    /// Remove a child node and return it, or nullptr when not found.
+    /// Remove a child node and return it, or nullptr when not found; aborts a running compaction.
     std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> child);
+
+    /// Kill or revive this node in O(1); a dead node hides itself and its subtree from every walk.
+    void set_dead(bool dead);
+
+    /// Pin this node weakly to a tomb.
+    void set_tomb(const std::shared_ptr<Tomb>& tomb);
+
+    /// Purge unpinned dead children for at most work children, resuming where the last call stopped; returns the children examined.
+    size_t compact_step(size_t work);
+
+    /// Finish a running compaction, then purge every unpinned dead child.
+    void compact();
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -116,6 +146,10 @@ public:
 
     /// Return the name, guid and child count.
     std::string repr() const;
+
+private:
+    /// Return the raw index of a child, O(1) through its _at, or nullopt when not a child.
+    std::optional<size_t> _position(const std::shared_ptr<TreeNode>& child) const;
 };
 
 /// Write the node string to a stream.

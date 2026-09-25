@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace session_proto {
@@ -229,6 +230,15 @@ public:
     /// Remove an edge, keeping its nodes.
     void remove_edge(const std::tuple<std::string, std::string>& edge);
 
+    /// Take a node and its incident edges out without renumbering, each edge once as stored under edges[v0][v1], dropping emptied neighbour maps; O(d log V).
+    std::optional<std::pair<Vertex, std::vector<Edge>>> take_node(const std::string& key);
+
+    /// Put back a taken node, adopting a bare vertex add_edge made meanwhile; an edge whose other end is gone, or taken by a newer edge, is skipped; O(d log V).
+    void put_node(Vertex vertex, std::vector<Edge> edges);
+
+    /// Make vertex and edge indices dense 0..n in their old order.
+    void renumber();
+
     /// Return all vertices in the graph.
     std::vector<Vertex> get_vertices() const;
 
@@ -370,10 +380,10 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // String
     // ═══════════════════════════════════════════════════════════════════════════
-    /// "<Graph with V vertices, E edges: name>"
+    /// "<Graph with V vertices, E edges: name>", live counts.
     std::string str() const;
 
-    /// "Graph(guid, name, vertex_count, edge_count)"
+    /// "Graph(guid, name, V, E)", live counts.
     std::string repr() const;
 
 private:
