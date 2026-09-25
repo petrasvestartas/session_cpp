@@ -424,10 +424,10 @@ public:
     static Element file_json_loads(const std::string& s);
 
     /// Write to a JSON file.
-    void file_json_dump(const std::string& path) const;
+    void file_json_dump(const std::string& filename) const;
 
     /// Read from a JSON file.
-    static Element file_json_load(const std::string& path);
+    static Element file_json_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Protobuf
@@ -445,10 +445,10 @@ public:
     static Element pb_loads(const std::string& data);
 
     /// Write to a protobuf file.
-    void pb_dump(const std::string& path) const;
+    void pb_dump(const std::string& filename) const;
 
     /// Read from a protobuf file.
-    static Element pb_load(const std::string& path);
+    static Element pb_load(const std::string& filename);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Polymorphic registry

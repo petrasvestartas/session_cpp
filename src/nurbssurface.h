@@ -369,10 +369,10 @@ public:
     std::pair<NurbsSurface, NurbsSurface> split(int dir, double c) const;
 
     /// Add weights of 1.
-    bool make_rational();
+    bool to_rational();
 
     /// Drop weights, dividing each CV by its own.
-    bool make_non_rational();
+    bool to_non_rational();
 
     /// Elevate the degree in dir without changing the shape.
     bool increase_degree(int dir, int desired_degree);
@@ -474,10 +474,10 @@ private:
     bool zero_cvs();
 
     /// Fill the nurbsknot vector in dir with clamped uniform values of the given spacing.
-    bool make_clamped_uniform_nurbsknot_vector(int dir, double delta = 1.0);
+    bool set_clamped_uniform_nurbsknot_vector(int dir, double delta = 1.0);
 
     /// Fill the nurbsknot vector in dir with periodic uniform values of the given spacing.
-    bool make_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
+    bool set_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
 
     /// Return the Euclidean point of a homogeneous CV or blend.
     Point dehomogenize(const double* h) const;

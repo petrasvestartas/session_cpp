@@ -273,7 +273,7 @@ MINI_TEST("NurbsSurface", "Control Vertices Access") {
     };
 
     NurbsSurface s = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
-    s.make_rational();
+    s.to_rational();
 
     const double* const_pointer_cv = s.cv(0, 0);
 
@@ -842,12 +842,12 @@ MINI_TEST("NurbsSurface", "Modification") {
     MINI_CHECK(TOLERANCE.is_point_close(ee.point_at_corner(0, 0), center));
 
     NurbsSurface s_rat = s;
-    s_rat.make_rational();
+    s_rat.to_rational();
     s_rat.set_weight(2, 2, 3.0);
 
     MINI_CHECK(s.point_at(0.5, 0.5) != s_rat.point_at(0.5, 0.5));
 
-    s_rat.make_non_rational();
+    s_rat.to_non_rational();
 
     MINI_CHECK(s.point_at(0.5, 0.5) == s_rat.point_at(0.5, 0.5));
 

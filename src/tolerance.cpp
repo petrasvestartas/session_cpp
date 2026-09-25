@@ -379,6 +379,28 @@ Tolerance Tolerance::pb_load(const std::string& filename) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
+
+std::string Tolerance::str() const {
+    return fmt::format("Tolerance({})", unit());
+}
+
+std::string Tolerance::repr() const {
+    return fmt::format(
+        "Tolerance(unit='{}', absolute={}, relative={}, angular={}, approximation={}, precision={}, lineardeflection={}, angulardeflection={})",
+        unit(),
+        absolute(),
+        relative(),
+        angular(),
+        approximation(),
+        precision(),
+        lineardeflection(),
+        angulardeflection()
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 

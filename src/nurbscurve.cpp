@@ -839,7 +839,7 @@ bool NurbsCurve::set_cv_4d(int cv_index, double x, double y, double z, double w)
     if (cv_index < 0 || cv_index >= m_cv_count)
         return false;
 
-    if (!m_is_rat && w != 1.0 && !make_rational())
+    if (!m_is_rat && w != 1.0 && !to_rational())
         return false;
 
     double* cv_ptr = cv(cv_index);
@@ -873,7 +873,7 @@ double NurbsCurve::weight(int cv_index) const {
 
 bool NurbsCurve::set_weight(int cv_index, double weight) {
 
-    if (!m_is_rat && !make_rational())
+    if (!m_is_rat && !to_rational())
         return false;
 
     double* cv_ptr = cv(cv_index);
@@ -1873,7 +1873,7 @@ bool NurbsCurve::extend(double t0, double t1) {
     return changed;
 }
 
-bool NurbsCurve::make_rational() {
+bool NurbsCurve::to_rational() {
 
     if (m_is_rat)
         return true;
@@ -1898,7 +1898,7 @@ bool NurbsCurve::make_rational() {
     return true;
 }
 
-bool NurbsCurve::make_non_rational(bool force) {
+bool NurbsCurve::to_non_rational(bool force) {
 
     if (!m_is_rat)
         return true;
@@ -3489,7 +3489,7 @@ void NurbsCurve::join_chain(std::vector<NurbsCurve>& chain, std::vector<NurbsCur
 
     for (NurbsCurve& c : chain) {
         if (rational)
-            c.make_rational();
+            c.to_rational();
 
         if (!c.clamp_end(2) || !c.increase_degree(max_degree))
             aligned = false;

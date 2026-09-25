@@ -44,10 +44,10 @@ inline int nurbsknot_count(int order, int cv_count) {
 double domain_tolerance(double a, double b);
 
 /// Return a clamped uniform nurbsknot vector, or an empty vector for invalid arguments.
-std::vector<double> make_clamped_uniform(int order, int cv_count, double delta = 1.0);
+std::vector<double> compute_clamped_uniform(int order, int cv_count, double delta = 1.0);
 
 /// Return a periodic uniform nurbsknot vector, or an empty vector for invalid arguments.
-std::vector<double> make_periodic_uniform(int order, int cv_count, double delta = 1.0);
+std::vector<double> compute_periodic_uniform(int order, int cv_count, double delta = 1.0);
 
 /// Clamp the selected ends in place, where end is 0 for left, 1 for right, or 2 for both.
 bool clamp(int order, int cv_count, std::vector<double>& nurbsknot, int end = 2);

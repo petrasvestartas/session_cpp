@@ -49,7 +49,7 @@ double domain_tolerance(double a, double b) {
     return tol < epsilon ? epsilon : tol;
 }
 
-std::vector<double> make_clamped_uniform(int order, int cv_count, double delta) {
+std::vector<double> compute_clamped_uniform(int order, int cv_count, double delta) {
 
     if (order < 2 || cv_count < order || !std::isfinite(delta) || delta <= 0.0)
         return std::vector<double>();
@@ -73,7 +73,7 @@ std::vector<double> make_clamped_uniform(int order, int cv_count, double delta) 
     return nurbsknot;
 }
 
-std::vector<double> make_periodic_uniform(int order, int cv_count, double delta) {
+std::vector<double> compute_periodic_uniform(int order, int cv_count, double delta) {
 
     if (order < 2 || cv_count < order || !std::isfinite(delta) || delta <= 0.0)
         return std::vector<double>();

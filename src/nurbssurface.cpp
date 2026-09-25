@@ -497,14 +497,14 @@ bool NurbsSurface::create_raw(
     zero_cvs();
 
     if (is_periodic_u)
-        make_periodic_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
+        set_periodic_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
     else
-        make_clamped_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
+        set_clamped_uniform_nurbsknot_vector(0, nurbsknot_delta_u);
 
     if (is_periodic_v)
-        make_periodic_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
+        set_periodic_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
     else
-        make_clamped_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
+        set_clamped_uniform_nurbsknot_vector(1, nurbsknot_delta_v);
 
     return true;
 }
@@ -843,7 +843,7 @@ double NurbsSurface::weight(int i, int j) const {
     return (m_is_rat && cv_ptr) ? cv_ptr[m_dim] : 1.0;
 }
 
-bool NurbsSurface::set_weight(int i, int j, double w) {
+bool NurbsSurface::set_weight(int i, int j, double weight) {
 
     double* cv_ptr = cv(i, j);
 
@@ -851,7 +851,7 @@ bool NurbsSurface::set_weight(int i, int j, double w) {
         return false;
 
     const double old_w = std::abs(cv_ptr[m_dim]) > 1e-14 ? cv_ptr[m_dim] : 1.0;
-    const double new_w = std::abs(w) > 1e-14 ? w : 1.0;
+    const double new_w = std::abs(weight) > 1e-14 ? weight : 1.0;
     const double scale = new_w / old_w;
 
     for (int d = 0; d < m_dim; d++)
@@ -1386,7 +1386,7 @@ std::pair<NurbsSurface, NurbsSurface> NurbsSurface::split(int dir, double c) con
     return {lo, hi};
 }
 
-bool NurbsSurface::make_rational() {
+bool NurbsSurface::to_rational() {
 
     if (m_is_rat)
         return true;
@@ -1412,7 +1412,7 @@ bool NurbsSurface::make_rational() {
     return true;
 }
 
-bool NurbsSurface::make_non_rational() {
+bool NurbsSurface::to_non_rational() {
 
     if (!m_is_rat)
         return true;
@@ -1854,22 +1854,22 @@ bool NurbsSurface::zero_cvs() {
     return true;
 }
 
-bool NurbsSurface::make_clamped_uniform_nurbsknot_vector(int dir, double delta) {
+bool NurbsSurface::set_clamped_uniform_nurbsknot_vector(int dir, double delta) {
 
     if (dir < 0 || dir > 1 || delta <= 0.0)
         return false;
 
-    m_nurbsknot[dir] = nurbsknot::make_clamped_uniform(m_order[dir], m_cv_count[dir], delta);
+    m_nurbsknot[dir] = nurbsknot::compute_clamped_uniform(m_order[dir], m_cv_count[dir], delta);
 
     return !m_nurbsknot[dir].empty();
 }
 
-bool NurbsSurface::make_periodic_uniform_nurbsknot_vector(int dir, double delta) {
+bool NurbsSurface::set_periodic_uniform_nurbsknot_vector(int dir, double delta) {
 
     if (dir < 0 || dir > 1 || delta <= 0.0)
         return false;
 
-    m_nurbsknot[dir] = nurbsknot::make_periodic_uniform(m_order[dir], m_cv_count[dir], delta);
+    m_nurbsknot[dir] = nurbsknot::compute_periodic_uniform(m_order[dir], m_cv_count[dir], delta);
 
     return !m_nurbsknot[dir].empty();
 }

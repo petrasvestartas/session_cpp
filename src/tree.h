@@ -15,106 +15,106 @@ namespace session_cpp {
 
 /// A node of a tree; geometry nodes are named by their object's guid, group nodes by a label.
 class TreeNode : public std::enable_shared_from_this<TreeNode> {
-  friend class Tree;
+    friend class Tree;
 
 private:
-  mutable std::string _guid; // Lazy guid.
-  std::weak_ptr<TreeNode> _parent; // Parent node, empty for the root.
-  std::vector<std::shared_ptr<TreeNode>> _children; // Child nodes in order.
+    mutable std::string _guid; // Lazy guid.
+    std::weak_ptr<TreeNode> _parent; // Parent node, empty for the root.
+    std::vector<std::shared_ptr<TreeNode>> _children; // Child nodes in order.
 
 public:
-  std::string name; // Object guid or group label.
-  std::optional<Color> color; // Display colour override.
+    std::string name; // Object guid or group label.
+    std::optional<Color> color; // Display colour override.
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Constructors
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Construct a node with a name.
-  TreeNode(std::string name = "my_node") : name(name) {}
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct a node with a name.
+    TreeNode(std::string name = "my_node") : name(name) {}
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Accessors
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Return whether the lazy guid has been created.
-  bool has_guid() const { return !_guid.empty(); }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
 
-  /// Return the guid, creating it on first access.
-  const std::string& guid() const {
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
 
-    if (_guid.empty())
-      _guid = ::guid();
+        if (_guid.empty())
+            _guid = ::guid();
 
-    return _guid;
-  }
+        return _guid;
+    }
 
-  /// Return the mutable guid, creating it on first access.
-  std::string& guid() {
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
 
-    if (_guid.empty())
-      _guid = ::guid();
+        if (_guid.empty())
+            _guid = ::guid();
 
-    return _guid;
-  }
+        return _guid;
+    }
 
-  /// Return whether this node has no parent.
-  bool is_root() const;
+    /// Return whether this node has no parent.
+    bool is_root() const;
 
-  /// Return whether this node has no children.
-  bool is_leaf() const;
+    /// Return whether this node has no children.
+    bool is_leaf() const;
 
-  /// Return the parent node, or nullptr when this is the root.
-  std::shared_ptr<TreeNode> parent() const;
+    /// Return the parent node, or nullptr when this is the root.
+    std::shared_ptr<TreeNode> parent() const;
 
-  /// Return all ancestors from the immediate parent up to the root.
-  std::vector<TreeNode*> ancestors() const;
+    /// Return all ancestors from the immediate parent up to the root.
+    std::vector<TreeNode*> ancestors() const;
 
-  /// Return all descendants of this node, depth-first.
-  std::vector<TreeNode*> descendants() const;
+    /// Return all descendants of this node, depth-first.
+    std::vector<TreeNode*> descendants() const;
 
-  /// Return the direct children of this node.
-  std::vector<TreeNode*> children() const;
+    /// Return the direct children of this node.
+    std::vector<TreeNode*> children() const;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Mutators
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Add a child node to this node.
-  void add(std::shared_ptr<TreeNode> child);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Add a child node to this node.
+    void add(std::shared_ptr<TreeNode> child);
 
-  /// Remove a child node and return it, or nullptr when not found.
-  std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> child);
+    /// Remove a child node and return it, or nullptr when not found.
+    std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> child);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Operators
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Compare by guid.
-  bool operator==(const TreeNode& other) const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Operators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Compare by guid.
+    bool operator==(const TreeNode& other) const;
 
-  /// Compare by guid.
-  bool operator!=(const TreeNode& other) const;
+    /// Compare by guid.
+    bool operator!=(const TreeNode& other) const;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Traversal
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Traverse from this node ("depthfirst"|"breadthfirst", "preorder"|"postorder").
-  std::vector<TreeNode*> traverse(const std::string& strategy = "depthfirst", const std::string& order = "preorder") const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Traversal
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Traverse from this node ("depthfirst"|"breadthfirst", "preorder"|"postorder").
+    std::vector<TreeNode*> traverse(const std::string& strategy = "depthfirst", const std::string& order = "preorder") const;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // JSON
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Serialize to a JSON object.
-  nlohmann::ordered_json jsondump() const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JSON
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Serialize to a JSON object.
+    nlohmann::ordered_json jsondump() const;
 
-  /// Deserialize from a JSON object.
-  static std::shared_ptr<TreeNode> jsonload(const nlohmann::json& data);
+    /// Deserialize from a JSON object.
+    static std::shared_ptr<TreeNode> jsonload(const nlohmann::json& data);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // String
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Return the name and child count.
-  std::string str() const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the name and child count.
+    std::string str() const;
 
-  /// Return the name, guid and child count.
-  std::string repr() const;
+    /// Return the name, guid and child count.
+    std::string repr() const;
 };
 
 /// Write the node string to a stream.
@@ -127,137 +127,137 @@ std::ostream& operator<<(std::ostream& os, const TreeNode& node);
 /// A hierarchy of TreeNodes under one root.
 class Tree {
 private:
-  mutable std::string _guid; // Lazy guid.
-  std::shared_ptr<TreeNode> _root; // Root node, null when empty.
+    mutable std::string _guid; // Lazy guid.
+    std::shared_ptr<TreeNode> _root; // Root node, null when empty.
 
 public:
-  std::string name; // Tree name.
+    std::string name; // Tree name.
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Constructors
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Construct an empty tree with a name.
-  Tree(std::string name = "my_tree") : name(name) {}
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constructors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Construct an empty tree with a name.
+    Tree(std::string name = "my_tree") : name(name) {}
 
-  /// Copy by duplicating the node hierarchy; the implicit copy shared the root between two trees.
-  Tree(const Tree& other);
+    /// Copy by duplicating the node hierarchy; the implicit copy shared the root between two trees.
+    Tree(const Tree& other);
 
-  /// Copy-assign by duplicating the node hierarchy.
-  Tree& operator=(const Tree& other);
+    /// Copy-assign by duplicating the node hierarchy.
+    Tree& operator=(const Tree& other);
 
-  /// Move while preserving the guid.
-  Tree(Tree&&) noexcept = default;
+    /// Move while preserving the guid.
+    Tree(Tree&&) noexcept = default;
 
-  /// Move-assign while preserving the guid.
-  Tree& operator=(Tree&&) noexcept = default;
+    /// Move-assign while preserving the guid.
+    Tree& operator=(Tree&&) noexcept = default;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Accessors
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Return whether the lazy guid has been created.
-  bool has_guid() const { return !_guid.empty(); }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Accessors
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return whether the lazy guid has been created.
+    bool has_guid() const { return !_guid.empty(); }
 
-  /// Return the guid, creating it on first access.
-  const std::string& guid() const {
+    /// Return the guid, creating it on first access.
+    const std::string& guid() const {
 
-    if (_guid.empty())
-      _guid = ::guid();
+        if (_guid.empty())
+            _guid = ::guid();
 
-    return _guid;
-  }
+        return _guid;
+    }
 
-  /// Return the mutable guid, creating it on first access.
-  std::string& guid() {
+    /// Return the mutable guid, creating it on first access.
+    std::string& guid() {
 
-    if (_guid.empty())
-      _guid = ::guid();
+        if (_guid.empty())
+            _guid = ::guid();
 
-    return _guid;
-  }
+        return _guid;
+    }
 
-  /// Return the root node, or nullptr when empty.
-  std::shared_ptr<TreeNode> root() const;
+    /// Return the root node, or nullptr when empty.
+    std::shared_ptr<TreeNode> root() const;
 
-  /// Return all nodes in the tree, breadth-first from the root.
-  std::vector<std::shared_ptr<TreeNode>> nodes() const;
+    /// Return all nodes in the tree, breadth-first from the root.
+    std::vector<std::shared_ptr<TreeNode>> nodes() const;
 
-  /// Return all nodes without children.
-  std::vector<std::shared_ptr<TreeNode>> leaves() const;
+    /// Return all nodes without children.
+    std::vector<std::shared_ptr<TreeNode>> leaves() const;
 
-  /// Return the first node with the given name, or nullptr when not found.
-  std::shared_ptr<TreeNode> get_node_by_name(const std::string& node_name) const;
+    /// Return the first node with the given name, or nullptr when not found.
+    std::shared_ptr<TreeNode> get_node_by_name(const std::string& node_name) const;
 
-  /// Return all nodes with the given name.
-  std::vector<std::shared_ptr<TreeNode>> get_nodes_by_name(const std::string& node_name) const;
+    /// Return all nodes with the given name.
+    std::vector<std::shared_ptr<TreeNode>> get_nodes_by_name(const std::string& node_name) const;
 
-  /// Return the node with the given guid, or nullptr when not found.
-  std::shared_ptr<TreeNode> find_node_by_guid(const std::string& node_guid) const;
+    /// Return the node with the given guid, or nullptr when not found.
+    std::shared_ptr<TreeNode> find_node_by_guid(const std::string& node_guid) const;
 
-  /// Return the guids of the children of a node by guid, empty when not found.
-  std::vector<std::string> get_children_guids(const std::string& node_guid) const;
+    /// Return the guids of the children of a node by guid, empty when not found.
+    std::vector<std::string> get_children_guids(const std::string& node_guid) const;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Mutators
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Add a node to the tree; a null parent adds it as the root.
-  void add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent = nullptr);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Mutators
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Add a node to the tree; a null parent adds it as the root.
+    void add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent = nullptr);
 
-  /// Remove a node and return it with its subtree intact.
-  std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> node);
+    /// Remove a node and return it with its subtree intact.
+    std::shared_ptr<TreeNode> remove(std::shared_ptr<TreeNode> node);
 
-  /// Reparent a child by guid; false when either node is missing or the child is the root.
-  bool add_child_by_guid(const std::string& parent_guid, const std::string& child_guid);
+    /// Reparent a child by guid; false when either node is missing or the child is the root.
+    bool add_child_by_guid(const std::string& parent_guid, const std::string& child_guid);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Traversal
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Traverse from the root ("depthfirst"|"breadthfirst", "preorder"|"postorder").
-  std::vector<std::shared_ptr<TreeNode>> traverse(const std::string& strategy = "depthfirst", const std::string& order = "preorder") const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Traversal
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Traverse from the root ("depthfirst"|"breadthfirst", "preorder"|"postorder").
+    std::vector<std::shared_ptr<TreeNode>> traverse(const std::string& strategy = "depthfirst", const std::string& order = "preorder") const;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // JSON
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Serialize to a JSON object.
-  nlohmann::ordered_json jsondump() const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // JSON
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Serialize to a JSON object.
+    nlohmann::ordered_json jsondump() const;
 
-  /// Deserialize from a JSON object.
-  static Tree jsonload(const nlohmann::json& data);
+    /// Deserialize from a JSON object.
+    static Tree jsonload(const nlohmann::json& data);
 
-  /// Serialize to a JSON string.
-  std::string file_json_dumps() const;
+    /// Serialize to a JSON string.
+    std::string file_json_dumps() const;
 
-  /// Deserialize from a JSON string.
-  static Tree file_json_loads(const std::string& json_string);
+    /// Deserialize from a JSON string.
+    static Tree file_json_loads(const std::string& json_string);
 
-  /// Write to a JSON file.
-  void file_json_dump(const std::string& filename) const;
+    /// Write to a JSON file.
+    void file_json_dump(const std::string& filename) const;
 
-  /// Read from a JSON file.
-  static Tree file_json_load(const std::string& filename);
+    /// Read from a JSON file.
+    static Tree file_json_load(const std::string& filename);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Protobuf
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Serialize to protobuf bytes.
-  std::string pb_dumps() const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Protobuf
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Serialize to protobuf bytes.
+    std::string pb_dumps() const;
 
-  /// Deserialize from protobuf bytes.
-  static Tree pb_loads(const std::string& data);
+    /// Deserialize from protobuf bytes.
+    static Tree pb_loads(const std::string& data);
 
-  /// Write to a protobuf file.
-  void pb_dump(const std::string& filename) const;
+    /// Write to a protobuf file.
+    void pb_dump(const std::string& filename) const;
 
-  /// Read from a protobuf file.
-  static Tree pb_load(const std::string& filename);
+    /// Read from a protobuf file.
+    static Tree pb_load(const std::string& filename);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // String
-  // ═══════════════════════════════════════════════════════════════════════════
-  /// Return the node count and the hierarchy drawn with box-drawing connectors.
-  std::string str() const;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the node count and the hierarchy drawn with box-drawing connectors.
+    std::string str() const;
 
-  /// Return the tree name and node count.
-  std::string repr() const;
+    /// Return the tree name and node count.
+    std::string repr() const;
 };
 
 /// Write the tree string to a stream.

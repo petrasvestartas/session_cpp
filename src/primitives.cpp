@@ -182,7 +182,7 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
         if (c.degree() < max_degree && !c.increase_degree(max_degree))
             return false;
 
-        if (any_rational && !c.make_rational())
+        if (any_rational && !c.to_rational())
             return false;
     }
 
@@ -1193,33 +1193,33 @@ NurbsSurface Primitives::create_planar(const NurbsCurve& boundary) {
     return bounded_patch(samples, plane.origin(), plane.x_axis(), plane.y_axis());
 }
 
-NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves, int degree_v) {
+NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& curves, int degree_v) {
 
-    if (input_curves.size() < 2)
+    if (curves.size() < 2)
         return NurbsSurface();
 
-    for (const NurbsCurve& c : input_curves)
+    for (const NurbsCurve& c : curves)
         if (!c.is_valid())
             return NurbsSurface();
 
-    std::vector<NurbsCurve> curves = input_curves;
+    std::vector<NurbsCurve> sections = curves;
 
-    if (!unify_curves(curves))
+    if (!unify_curves(sections))
         return NurbsSurface();
 
-    const int n = static_cast<int>(curves.size());
-    const int cv_count_u = curves[0].cv_count();
-    const bool is_rat = curves[0].is_rational();
+    const int n = static_cast<int>(sections.size());
+    const int cv_count_u = sections[0].cv_count();
+    const bool is_rat = sections[0].is_rational();
     const int order_v = std::clamp(degree_v, 1, n - 1) + 1;
-    const std::vector<double> v_params = loft_section_params(curves);
+    const std::vector<double> v_params = loft_section_params(sections);
     const std::vector<double> nurbsknots_v = loft_nurbsknots(v_params, order_v);
-    NurbsSurface surface(3, is_rat, curves[0].order(), order_v, cv_count_u, n);
+    NurbsSurface surface(3, is_rat, sections[0].order(), order_v, cv_count_u, n);
 
     if (!surface.is_valid())
         return NurbsSurface();
 
     for (int i = 0; i < surface.nurbsknot_count(0); i++)
-        surface.set_nurbsknot(0, i, curves[0].nurbsknot(i));
+        surface.set_nurbsknot(0, i, sections[0].nurbsknot(i));
 
     for (int i = 0; i < surface.nurbsknot_count(1); i++)
         surface.set_nurbsknot(1, i, nurbsknots_v[i]);
@@ -1230,7 +1230,7 @@ NurbsSurface Primitives::create_loft(const std::vector<NurbsCurve>& input_curves
         basis[k] = loft_basis_row(nurbsknots_v, order_v, n, v_params[k]);
 
     for (int i = 0; i < cv_count_u; i++) {
-        const std::vector<std::vector<double>> q = solve_linear(basis, loft_column(curves, i, is_rat));
+        const std::vector<std::vector<double>> q = solve_linear(basis, loft_column(sections, i, is_rat));
 
         for (int j = 0; j < n; j++)
             if (is_rat)

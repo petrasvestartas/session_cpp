@@ -28,23 +28,23 @@ MINI_TEST("NurbsKnot", "Make Clamped Uniform") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    const std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
 
     MINI_CHECK(TOLERANCE.is_allclose(nurbsknots, {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0}));
-    MINI_CHECK(nurbsknot::make_clamped_uniform(1, cv_count).empty());
-    MINI_CHECK(nurbsknot::make_clamped_uniform(order, cv_count, std::numeric_limits<double>::quiet_NaN()).empty());
-    MINI_CHECK(nurbsknot::make_clamped_uniform(std::numeric_limits<int>::max(), std::numeric_limits<int>::max()).empty());
+    MINI_CHECK(nurbsknot::compute_clamped_uniform(1, cv_count).empty());
+    MINI_CHECK(nurbsknot::compute_clamped_uniform(order, cv_count, std::numeric_limits<double>::quiet_NaN()).empty());
+    MINI_CHECK(nurbsknot::compute_clamped_uniform(std::numeric_limits<int>::max(), std::numeric_limits<int>::max()).empty());
 }
 
 MINI_TEST("NurbsKnot", "Make Periodic Uniform") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots = nurbsknot::make_periodic_uniform(order, cv_count);
+    const std::vector<double> nurbsknots = nurbsknot::compute_periodic_uniform(order, cv_count);
 
     MINI_CHECK(TOLERANCE.is_allclose(nurbsknots, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0}));
-    MINI_CHECK(nurbsknot::make_periodic_uniform(order, cv_count, 0.0).empty());
-    MINI_CHECK(nurbsknot::make_periodic_uniform(order, cv_count, std::numeric_limits<double>::infinity()).empty());
+    MINI_CHECK(nurbsknot::compute_periodic_uniform(order, cv_count, 0.0).empty());
+    MINI_CHECK(nurbsknot::compute_periodic_uniform(order, cv_count, std::numeric_limits<double>::infinity()).empty());
 }
 
 MINI_TEST("NurbsKnot", "Clamp") {
@@ -71,7 +71,7 @@ MINI_TEST("NurbsKnot", "Is Valid") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots_clamped = nurbsknot::make_clamped_uniform(order, cv_count);
+    const std::vector<double> nurbsknots_clamped = nurbsknot::compute_clamped_uniform(order, cv_count);
     const std::vector<double> nurbsknots_flat = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::vector<double> nurbsknots_nan = nurbsknots_clamped;
     nurbsknots_nan[3] = std::numeric_limits<double>::quiet_NaN();
@@ -86,8 +86,8 @@ MINI_TEST("NurbsKnot", "Is Clamped") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots_periodic = nurbsknot::make_periodic_uniform(order, cv_count);
-    const std::vector<double> nurbsknots_clamped = nurbsknot::make_clamped_uniform(order, cv_count);
+    const std::vector<double> nurbsknots_periodic = nurbsknot::compute_periodic_uniform(order, cv_count);
+    const std::vector<double> nurbsknots_clamped = nurbsknot::compute_clamped_uniform(order, cv_count);
     const bool is_not_clamped = nurbsknot::is_clamped(order, cv_count, nurbsknots_periodic);
     const bool is_clamped = nurbsknot::is_clamped(order, cv_count, nurbsknots_clamped);
 
@@ -101,8 +101,8 @@ MINI_TEST("NurbsKnot", "Is Periodic") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots_periodic = nurbsknot::make_periodic_uniform(order, cv_count);
-    const std::vector<double> nurbsknots_clamped = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots_periodic = nurbsknot::compute_periodic_uniform(order, cv_count);
+    const std::vector<double> nurbsknots_clamped = nurbsknot::compute_clamped_uniform(order, cv_count);
 
     MINI_CHECK(nurbsknot::is_periodic(order, cv_count, nurbsknots_periodic));
     MINI_CHECK(!nurbsknot::is_periodic(order, cv_count, nurbsknots_clamped));
@@ -116,7 +116,7 @@ MINI_TEST("NurbsKnot", "Get Domain") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
     const std::pair<double, double> domain = nurbsknot::get_domain(order, cv_count, nurbsknots);
 
     MINI_CHECK(TOLERANCE.is_close(domain.first, 0.0));
@@ -135,7 +135,7 @@ MINI_TEST("NurbsKnot", "Set Domain") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
     const bool ok = nurbsknot::set_domain(order, cv_count, nurbsknots, 0.0, 1.0);
 
     MINI_CHECK(ok);
@@ -148,7 +148,7 @@ MINI_TEST("NurbsKnot", "Reverse") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots_sym = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots_sym = nurbsknot::compute_clamped_uniform(order, cv_count);
 
     MINI_CHECK(nurbsknot::reverse(order, cv_count, nurbsknots_sym));
     MINI_CHECK(TOLERANCE.is_allclose(nurbsknots_sym, {0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0}));
@@ -167,7 +167,7 @@ MINI_TEST("NurbsKnot", "Multiplicity") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
 
     MINI_CHECK(nurbsknot::multiplicity(order, cv_count, nurbsknots, 0) == 3);
     MINI_CHECK(nurbsknot::multiplicity(order, cv_count, nurbsknots, 3) == 1);
@@ -182,7 +182,7 @@ MINI_TEST("NurbsKnot", "Span Count") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
 
     MINI_CHECK(nurbsknot::span_count(order, cv_count, nurbsknots) == 2);
 
@@ -195,7 +195,7 @@ MINI_TEST("NurbsKnot", "Find Span") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots_clamped = nurbsknot::make_clamped_uniform(order, cv_count);
+    const std::vector<double> nurbsknots_clamped = nurbsknot::compute_clamped_uniform(order, cv_count);
     const int spancount0 = nurbsknot::find_span(order, cv_count, nurbsknots_clamped, 0.5);
     const int spancount1 = nurbsknot::find_span(order, cv_count, nurbsknots_clamped, 1.5);
 
@@ -210,7 +210,7 @@ MINI_TEST("NurbsKnot", "Get Greville Abcissae") {
 
     const int order = 4;
     const int cv_count = 5;
-    std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
     const std::vector<double> greville = nurbsknot::get_greville_abcissae(order, cv_count, nurbsknots);
     const std::vector<double> periodic = nurbsknot::get_greville_abcissae(order, cv_count, nurbsknots, true);
 
@@ -278,7 +278,7 @@ MINI_TEST("NurbsKnot", "Eval Basis") {
 
     const int order = 4;
     const int cv_count = 5;
-    const std::vector<double> nurbsknots = nurbsknot::make_clamped_uniform(order, cv_count);
+    const std::vector<double> nurbsknots = nurbsknot::compute_clamped_uniform(order, cv_count);
     const int span = nurbsknot::find_span(order, cv_count, nurbsknots, 0.5);
     const std::vector<double> basis = nurbsknot::eval_basis(order, nurbsknots, span, 0.5);
     const double nan = std::numeric_limits<double>::quiet_NaN();

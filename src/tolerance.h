@@ -224,6 +224,15 @@ public:
 
     /// Read protobuf bytes from a file
     static Tolerance pb_load(const std::string& filename);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // String
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return "Tolerance(unit)".
+    std::string str() const;
+
+    /// Return a constructor-style representation.
+    std::string repr() const;
 };
 
 /// RAII guard that restores Tolerance state on destruction.

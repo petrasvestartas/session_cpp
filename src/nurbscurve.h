@@ -409,10 +409,10 @@ public:
     bool extend(double t0, double t1);
 
     /// Add unit weights.
-    bool make_rational();
+    bool to_rational();
 
     /// Drop the weights; fails when they differ unless force.
-    bool make_non_rational(bool force = false);
+    bool to_non_rational(bool force = false);
 
     /// Set full multiplicity at end (0 = start, 1 = end, 2 = both) with CVs adjusted.
     bool clamp_end(int end);

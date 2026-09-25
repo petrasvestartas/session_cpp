@@ -625,8 +625,8 @@ std::vector<Point> Element::geometry_points() const {
     if (_geometry_mesh) {
         const Mesh mesh = session_geometry_mesh(Xform::identity());
 
-        for (const auto& [key, vertex] : mesh.vertex)
-            points.push_back(vertex.position());
+        for (const std::pair<const size_t, VertexData>& entry : mesh.vertex)
+            points.push_back(entry.second.position());
     } else if (_geometry_brep) {
         points = _geometry_brep->vertex_points();
     }
@@ -721,15 +721,15 @@ Element Element::file_json_loads(const std::string& s) {
     return jsonload(nlohmann::ordered_json::parse(s));
 }
 
-void Element::file_json_dump(const std::string& path) const {
+void Element::file_json_dump(const std::string& filename) const {
 
-    std::ofstream file(path);
+    std::ofstream file(filename);
     file << jsondump().dump(2);
 }
 
-Element Element::file_json_load(const std::string& path) {
+Element Element::file_json_load(const std::string& filename) {
 
-    std::ifstream file(path);
+    std::ifstream file(filename);
 
     return jsonload(nlohmann::json::parse(file));
 }
@@ -825,16 +825,16 @@ Element Element::pb_loads(const std::string& data) {
     return from_proto(proto);
 }
 
-void Element::pb_dump(const std::string& path) const {
+void Element::pb_dump(const std::string& filename) const {
 
     const std::string data = pb_dumps();
-    std::ofstream file(path, std::ios::binary);
+    std::ofstream file(filename, std::ios::binary);
     file.write(data.data(), data.size());
 }
 
-Element Element::pb_load(const std::string& path) {
+Element Element::pb_load(const std::string& filename) {
 
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(filename, std::ios::binary);
     const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
     return pb_loads(data);

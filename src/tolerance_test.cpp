@@ -87,9 +87,13 @@ namespace session_cpp {
         Tolerance tolerance;
         const double original_absolute = tolerance.absolute();
         const double original_relative = tolerance.relative();
+        const std::string tstr = tolerance.str();
+        const std::string trepr = tolerance.repr();
 
         MINI_CHECK(original_absolute == 1e-9);
         MINI_CHECK(original_relative == 1e-6);
+        MINI_CHECK(tstr == "Tolerance(M)");
+        MINI_CHECK(trepr.rfind("Tolerance(unit='M', absolute=", 0) == 0);
 
         tolerance.set_absolute(1e-12);
         tolerance.set_relative(1e-12);
