@@ -779,4 +779,54 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(closest.second, Point(4.552264625, 1.380381100, 0.676740741)));
     }
 
+    MINI_TEST("NurbsCurve", "Length Repeated Knot") {
+
+        const std::vector<Point> points = {
+            Point(0, 0, 0),
+            Point(1, 2, 0),
+            Point(3, 2, 1),
+            Point(4, 0, 0),
+            Point(6, 1, 2),
+            Point(7, 3, 0)
+        };
+
+        NurbsCurve curve = NurbsCurve::create(false, 3, points);
+        const double length = curve.length();
+        curve.insert_nurbsknot(1.5, 2);
+
+        MINI_CHECK(curve.span_count() == 4);
+        MINI_CHECK(TOLERANCE.is_close(curve.length(), length));
+    }
+
+    MINI_TEST("NurbsCurve", "Span Vector Empty") {
+
+        const NurbsCurve curve;
+
+        MINI_CHECK(curve.get_span_vector().empty());
+    }
+
+    MINI_TEST("NurbsCurve", "Periodic Too Few Points") {
+
+        NurbsCurve curve;
+        const bool ok = curve.create_periodic_uniform(3, 4, {Point(0, 0, 0), Point(1, 0, 0)});
+
+        MINI_CHECK(!ok);
+    }
+
+    MINI_TEST("NurbsCurve", "Polyline Adaptive Closed") {
+
+        const NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
+        const std::pair<std::vector<Point>, std::vector<double>> polyline = circle.to_polyline_adaptive(0.1, 0.0, 0.0);
+
+        MINI_CHECK(polyline.first.size() == 25);
+        MINI_CHECK(TOLERANCE.is_point_close(polyline.first.front(), polyline.first.back()));
+    }
+
+    MINI_TEST("NurbsCurve", "Circle Length") {
+
+        const NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
+
+        MINI_CHECK(std::abs(circle.length() - 4.0 * Tolerance::PI) < 1e-9);
+    }
+
 } // namespace session_cpp

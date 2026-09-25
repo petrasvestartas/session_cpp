@@ -214,4 +214,34 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(a_ns.volume(), 8.0));
     }
 
+    MINI_TEST("AABB", "From Nurbscurve Tight") {
+
+        const NurbsCurve bulge = NurbsCurve::create(
+            false,
+            2,
+            {
+                Point(0.0, 0.0, 0.0),
+                Point(1.0, 2.0, 0.0),
+                Point(2.0, 1.0, 0.0),
+            }
+        );
+        const NurbsCurve arch = NurbsCurve::create(
+            false,
+            2,
+            {
+                Point(0.0, 0.0, 0.0),
+                Point(1.0, 2.0, 0.0),
+                Point(2.0, 0.0, 0.0),
+            }
+        );
+        const AABB hull = AABB::from_nurbscurve(bulge, 0.0, false);
+        const AABB tight = AABB::from_nurbscurve(bulge, 0.0, true);
+        const AABB boundary = AABB::from_nurbscurve(arch, 0.0, true);
+
+        MINI_CHECK(TOLERANCE.is_close(hull.max_point()[1], 2.0));
+        MINI_CHECK(TOLERANCE.is_close(tight.max_point()[1], 4.0 / 3.0));
+        MINI_CHECK(TOLERANCE.is_close(boundary.hy, 0.5));
+        MINI_CHECK(TOLERANCE.is_close(boundary.cy, 0.5));
+    }
+
 } // namespace session_cpp

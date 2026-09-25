@@ -59,8 +59,11 @@ bool point_in_polygon_2d(double u, double v, const std::vector<Point>& poly) {
     return winding != 0;
 }
 
-/// True when (u, v) lies inside the outer loop and outside every hole.
-bool inside_loops(double u, double v, const std::vector<std::vector<Point>>& loops_uv) {
+/// True when (u, v) lies inside the outer loop and outside every hole; bounds is the outer loop's UV box.
+bool inside_loops(double u, double v, const std::vector<std::vector<Point>>& loops_uv, const std::array<double, 4>& bounds) {
+
+    if (u < bounds[0] || v < bounds[1] || u > bounds[2] || v > bounds[3])
+        return false;
 
     if (!point_in_polygon_2d(u, v, loops_uv[0]))
         return false;
@@ -2497,12 +2500,13 @@ std::vector<std::vector<int>> insert_loops(
 void insert_crease_lines(
     Delaunay2D& dt,
     const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<double, 4>& bounds,
     const std::array<std::vector<double>, 2>& crease_knots
 ) {
 
     for (double u : crease_knots[0])
         for (double v : crease_knots[1])
-            if (inside_loops(u, v, loops_uv))
+            if (inside_loops(u, v, loops_uv, bounds))
                 dt.insert(u, v);
 
     for (int dir = 0; dir < 2; ++dir) {
@@ -2522,7 +2526,7 @@ void insert_crease_lines(
                 double uv[2] = {knot, knot};
                 uv[1 - dir] = (nodes[k - 1].first + nodes[k].first) * 0.5;
 
-                if (inside_loops(uv[0], uv[1], loops_uv))
+                if (inside_loops(uv[0], uv[1], loops_uv, bounds))
                     dt.insert_constraint(nodes[k - 1].second, nodes[k].second);
             }
         }
@@ -2554,6 +2558,7 @@ std::vector<std::array<double, 2>> refinement_points(
     const Delaunay2D& dt,
     const NurbsSurface& surface,
     const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<double, 4>& bounds,
     const std::array<std::vector<double>, 2>& crease_knots,
     double deflection,
     double cos_max_angle
@@ -2571,7 +2576,7 @@ std::vector<std::array<double, 2>> refinement_points(
         const double cu = (A.x + B.x + C.x) / 3.0;
         const double cv = (A.y + B.y + C.y) / 3.0;
 
-        if (!inside_loops(cu, cv, loops_uv))
+        if (!inside_loops(cu, cv, loops_uv, bounds))
             continue;
 
         const Point pa = surface.point_at(A.x, A.y);
@@ -2598,6 +2603,7 @@ void refine(
     Delaunay2D& dt,
     const NurbsSurface& surface,
     const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<double, 4>& bounds,
     const std::array<std::vector<double>, 2>& crease_knots,
     double deflection,
     double cos_max_angle
@@ -2608,7 +2614,7 @@ void refine(
 
     for (int iter = 0; iter < MAX_ITERS; ++iter) {
         const std::vector<std::array<double, 2>> to_insert =
-            refinement_points(dt, surface, loops_uv, crease_knots, deflection, cos_max_angle);
+            refinement_points(dt, surface, loops_uv, bounds, crease_knots, deflection, cos_max_angle);
 
         if (to_insert.empty())
             break;
@@ -2626,7 +2632,7 @@ void refine(
 }
 
 /// Drop the super triangle and every triangle whose centroid lies outside the loops.
-void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_uv) {
+void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_uv, const std::array<double, 4>& bounds) {
 
     dt.cleanup();
 
@@ -2637,7 +2643,7 @@ void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_u
         const double cu = (dt.vertices[tri.v[0]].x + dt.vertices[tri.v[1]].x + dt.vertices[tri.v[2]].x) / 3.0;
         const double cv = (dt.vertices[tri.v[0]].y + dt.vertices[tri.v[1]].y + dt.vertices[tri.v[2]].y) / 3.0;
 
-        if (!inside_loops(cu, cv, loops_uv))
+        if (!inside_loops(cu, cv, loops_uv, bounds))
             tri.alive = false;
     }
 }
@@ -3532,14 +3538,14 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3]);
     std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
     const std::vector<std::vector<int>> loop_vids = insert_loops(dt, loops.uv, crease_knots, boundary_intervals);
-    insert_crease_lines(dt, loops.uv, crease_knots);
+    insert_crease_lines(dt, loops.uv, bounds, crease_knots);
 
     for (const Point& p : loops.interior_uv)
-        if (inside_loops(p[0], p[1], loops.uv))
+        if (inside_loops(p[0], p[1], loops.uv, bounds))
             dt.insert(p[0], p[1]);
 
-    refine(dt, m_surface, loops.uv, crease_knots, deflection, cos_max_angle);
-    trim_outside(dt, loops.uv);
+    refine(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
+    trim_outside(dt, loops.uv, bounds);
     const std::vector<std::array<int, 3>> tris = dt.get_triangles();
 
     if (tris.empty() || crosses_crease(tris, dt, crease_knots))

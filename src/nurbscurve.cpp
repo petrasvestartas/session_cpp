@@ -319,6 +319,9 @@ bool NurbsCurve::create_periodic_uniform(int dimension, int order, const std::ve
 
     const int point_count = static_cast<int>(points.size());
 
+    if (point_count < order)
+        return false;
+
     if (!create(dimension, false, order, point_count + order - 1))
         return false;
 
@@ -1122,6 +1125,10 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 std::vector<double> NurbsCurve::get_span_vector() const {
 
     std::vector<double> spans;
+
+    if (!is_valid())
+        return spans;
+
     spans.push_back(m_nurbsknot[m_order - 2]);
 
     for (int i = m_order - 1; i < m_cv_count; i++)
@@ -1207,7 +1214,7 @@ double NurbsCurve::length(double tolerance) const {
 
     const int SUBDIVISIONS = 4;
     double total = 0.0;
-    const int n_spans = span_count();
+    const int n_spans = m_cv_count - m_order + 1;
 
     for (int span = 0; span < n_spans; span++) {
         const double span_a = m_nurbsknot[m_order - 2 + span];
@@ -3679,8 +3686,16 @@ std::vector<std::pair<double, Point>> NurbsCurve::adaptive_samples(double angle_
     samples.push_back({t0, point_at(t0)});
     samples.push_back({t1, point_at(t1)});
 
-    std::vector<std::pair<double, double>> work_queue;
-    work_queue.push_back({t0, t1});
+    std::vector<std::pair<double, double>> work_queue = {{t0, t1}};
+    const bool closed = samples[0].second.distance(samples[1].second) < 1e-6;
+
+    if (closed && length() > max_edge_length) {
+        const double t_third = t0 + (t1 - t0) / 3.0;
+        const double t_two_thirds = t0 + 2.0 * (t1 - t0) / 3.0;
+        samples.push_back({t_third, point_at(t_third)});
+        samples.push_back({t_two_thirds, point_at(t_two_thirds)});
+        work_queue = {{t0, t_third}, {t_third, t_two_thirds}, {t_two_thirds, t1}};
+    }
 
     const int max_iterations = 10000;
     int iterations = 0;

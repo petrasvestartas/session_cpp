@@ -76,7 +76,26 @@ Line Line::from_point_direction_length(const Point& point, const Vector& directi
     return from_points(point, point + direction.normalized() * length);
 }
 
-/// Principal direction of the points about center by power iteration on their covariance.
+/// Power iteration on the covariance rows from seed: the unit axis and its eigenvalue estimate.
+static std::pair<Vector, double> fit_points_power(const Vector& row0, const Vector& row1, const Vector& row2, const Vector& seed) {
+
+    Vector axis = seed;
+    double eigen = 0.0;
+
+    for (int i = 0; i < 100; i++) {
+        const Vector next(row0.dot(axis), row1.dot(axis), row2.dot(axis));
+        eigen = std::sqrt(next.magnitude_squared());
+
+        if (eigen < 1e-15)
+            break;
+
+        axis = next / eigen;
+    }
+
+    return {axis, eigen};
+}
+
+/// Principal direction of the points about center: power iteration from each of X, Y and Z, largest eigenvalue kept.
 static Vector fit_points_axis(const std::vector<Point>& points, const Point& center) {
 
     double cxx = 0.0;
@@ -96,52 +115,52 @@ static Vector fit_points_axis(const std::vector<Point>& points, const Point& cen
         cyz += d[1] * d[2];
     }
 
-    Vector axis(1.0, 0.0, 0.0);
+    const Vector row0(cxx, cxy, cxz);
+    const Vector row1(cxy, cyy, cyz);
+    const Vector row2(cxz, cyz, czz);
+    int first = 0;
 
     if (cyy > cxx && cyy >= czz)
-        axis = Vector(0.0, 1.0, 0.0);
+        first = 1;
     else if (czz > cxx && czz > cyy)
-        axis = Vector(0.0, 0.0, 1.0);
+        first = 2;
 
-    for (int i = 0; i < 100; i++) {
-        const Vector next(
-            cxx * axis[0] + cxy * axis[1] + cxz * axis[2],
-            cxy * axis[0] + cyy * axis[1] + cyz * axis[2],
-            cxz * axis[0] + cyz * axis[1] + czz * axis[2]
-        );
-        const double mag = std::sqrt(next.magnitude_squared());
+    Vector axis(1.0, 0.0, 0.0);
+    double best = -1.0;
 
-        if (mag < 1e-15)
-            break;
+    for (int k = 0; k < 3; k++) {
+        Vector seed(0.0, 0.0, 0.0);
+        seed[(first + k) % 3] = 1.0;
+        const std::pair<Vector, double> power = fit_points_power(row0, row1, row2, seed);
 
-        axis = next / mag;
+        if (power.second > best * (1.0 + Tolerance::RELATIVE)) {
+            axis = power.first;
+            best = power.second;
+        }
     }
 
     return axis;
 }
 
-/// Half length of the fitted line: length / 2, or the projected extent when length <= 0.
-static double fit_points_half(const std::vector<Point>& points, const Point& center, const Vector& axis, double length) {
+/// Parameter range of the fitted line along axis: +-length / 2, or the projected extent when length <= 0.
+static std::pair<double, double> fit_points_extent(const std::vector<Point>& points, const Point& center, const Vector& axis, double length) {
 
-    double half = length / 2.0;
+    if (length > 0.0)
+        return {-length / 2.0, length / 2.0};
 
-    if (length <= 0.0) {
-        double t_min = 0.0;
-        double t_max = 0.0;
+    double t_min = 0.0;
+    double t_max = 0.0;
 
-        for (const Point& p : points) {
-            const double t = (p - center).dot(axis);
-            t_min = std::min(t_min, t);
-            t_max = std::max(t_max, t);
-        }
-
-        half = std::max(std::abs(t_min), std::abs(t_max));
-
-        if (half < 1e-10)
-            half = 0.5;
+    for (const Point& p : points) {
+        const double t = (p - center).dot(axis);
+        t_min = std::min(t_min, t);
+        t_max = std::max(t_max, t);
     }
 
-    return half;
+    if (t_max - t_min < 1e-10)
+        return {-0.5, 0.5};
+
+    return {t_min, t_max};
 }
 
 Line Line::fit_points(const std::vector<Point>& points, double length) {
@@ -151,9 +170,9 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
 
     const Point center = Point::centroid(points);
     const Vector axis = fit_points_axis(points, center);
-    const double half = fit_points_half(points, center, axis, length);
+    const std::pair<double, double> extent = fit_points_extent(points, center, axis, length);
 
-    return from_points(center - axis * half, center + axis * half);
+    return from_points(center + axis * extent.first, center + axis * extent.second);
 }
 
 Line Line::with_name(const std::string& name, double x0, double y0, double z0, double x1, double y1, double z1) {

@@ -251,6 +251,18 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(t3, 1.0));
     }
 
+    MINI_TEST("Line", "Closest Point Unlimited") {
+
+        const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+        const std::pair<double, Point> before = line.closest_point(Point(-5.0, 2.0, 0.0), false);
+        const std::pair<double, Point> after = line.closest_point(Point(15.0, 3.0, 0.0), false);
+
+        MINI_CHECK(TOLERANCE.is_close(before.first, -0.5));
+        MINI_CHECK(TOLERANCE.is_point_close(before.second, Point(-5.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_close(after.first, 1.5));
+        MINI_CHECK(TOLERANCE.is_point_close(after.second, Point(15.0, 0.0, 0.0)));
+    }
+
     MINI_TEST("Line", "Start End Center") {
 
         const Line line(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
@@ -283,6 +295,31 @@ namespace session_cpp {
         });
 
         MINI_CHECK(std::fabs(l_vertical.to_direction()[1]) > 0.99);
+
+        const Line l_skew = Line::fit_points({
+            Point(3.0, 0.0, 0.0),
+            Point(-3.0, 0.0, 0.0),
+            Point(0.0, 2.4, 2.4),
+            Point(0.0, -2.4, -2.4),
+        });
+        const Vector skew = l_skew.to_direction();
+
+        MINI_CHECK(TOLERANCE.is_close(skew[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(std::fabs(skew[1]), std::sqrt(0.5)));
+        MINI_CHECK(TOLERANCE.is_close(skew[1], skew[2]));
+    }
+
+    MINI_TEST("Line", "Fit Points Uneven") {
+
+        const Line line = Line::fit_points({
+            Point(0.0, 0.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+            Point(0.0, 9.0, 0.0),
+        });
+
+        MINI_CHECK(TOLERANCE.is_close(line.length(), 9.0));
+        MINI_CHECK(TOLERANCE.is_point_close(line.start(), Point(0.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(line.end(), Point(0.0, 9.0, 0.0)));
     }
 
     MINI_TEST("Line", "Subdivide") {
@@ -332,6 +369,23 @@ namespace session_cpp {
 
         MINI_CHECK(TOLERANCE.is_close(line.start()[0], -1.0));
         MINI_CHECK(TOLERANCE.is_close(line.end()[0], 12.0));
+    }
+
+    MINI_TEST("Line", "Extend Keeps Properties") {
+
+        Line line = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
+        line.name = "beam";
+        line.width = 3.0;
+        line.dash = {2.0, 1.0};
+        line.linecolor = Color::red();
+        const std::string guid = line.guid();
+        line.extend(1.0, 2.0);
+
+        MINI_CHECK(line.name == "beam");
+        MINI_CHECK(line.width == 3.0);
+        MINI_CHECK(line.dash == std::vector<double>({2.0, 1.0}));
+        MINI_CHECK(line.linecolor == Color::red());
+        MINI_CHECK(line.guid() == guid);
     }
 
 }

@@ -98,23 +98,26 @@ AABB AABB::from_nurbscurve(const NurbsCurve& curve, double inflate, bool tight) 
 
     const double dt = (t1 - t0) / NUM_SAMPLES;
 
-    for (int axis = 0; axis < 3; axis++) {
-        for (int i = 0; i < NUM_SAMPLES; i++) {
-            const double t_start = t0 + i * dt;
-            const double t_end = t_start + dt;
-            const std::vector<Vector> deriv_start = curve.evaluate(t_start, 1);
-            const std::vector<Vector> deriv_end = curve.evaluate(t_end, 1);
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        const double t_start = t0 + i * dt;
+        const double t_end = t_start + dt;
+        const std::vector<Vector> deriv_start = curve.evaluate(t_start, 1);
+        const std::vector<Vector> deriv_end = curve.evaluate(t_end, 1);
 
-            if (deriv_start.size() < 2 || deriv_end.size() < 2)
-                continue;
+        if (deriv_start.size() < 2 || deriv_end.size() < 2)
+            continue;
 
+        for (int axis = 0; axis < 3; axis++) {
             const double d_start = deriv_start[1][axis];
             const double d_end = deriv_end[1][axis];
 
             if (d_start * d_end < 0) {
                 const double t_root = compute_extremum(curve, axis, t_start, t_end, d_start);
                 points.push_back(curve.point_at(t_root));
-            }
+            } else if (d_start == 0.0 && d_end != 0.0)
+                points.push_back(curve.point_at(t_start));
+            else if (d_end == 0.0 && d_start != 0.0)
+                points.push_back(curve.point_at(t_end));
         }
     }
 
