@@ -33,7 +33,7 @@ private:
     std::vector<E> _items;                                   // Raw slots in canonical order, dead ones included.
     std::vector<bool> _dead;                                 // One flag per slot.
     std::unordered_map<std::string, size_t> _slots;          // Live guid -> slot.
-    std::unordered_map<size_t, std::weak_ptr<Tomb>> _tombs;  // Sparse weak pin per slot.
+    std::unordered_map<size_t, std::vector<std::weak_ptr<Tomb>>> _tombs; // Weak pins per slot, newest last.
     size_t _live = 0;                                        // Live count.
     size_t _count = 0;                                       // Dead slots not yet purged.
     size_t _low = 0;                                         // Lowest dead slot, where compaction starts.
@@ -67,6 +67,22 @@ private:
     /// Point a tomb at the slot it pins; a template so Tomb may still be incomplete here.
     template <class T> static void _repin(const std::shared_ptr<T>& tomb, size_t slot) {
         tomb->slot = slot;
+    }
+
+    /// The tombs of a slot's pins that a record still holds, oldest first.
+    std::vector<std::shared_ptr<Tomb>> _held(size_t slot) const {
+
+        std::vector<std::shared_ptr<Tomb>> held;
+        auto it = _tombs.find(slot);
+
+        if (it == _tombs.end())
+            return held;
+
+        for (const std::weak_ptr<Tomb>& pin : it->second)
+            if (std::shared_ptr<Tomb> tomb = pin.lock())
+                held.push_back(std::move(tomb));
+
+        return held;
     }
 
 public:
@@ -368,22 +384,26 @@ public:
         _low = std::min(_low, slot);
     }
 
-    /// Return the tomb pinning a slot while a record still holds it.
+    /// Return the newest tomb pinning a slot while a record still holds it.
     std::shared_ptr<Tomb> get_tomb(size_t slot) const {
 
-        auto it = _tombs.find(slot);
+        const std::vector<std::shared_ptr<Tomb>> held = _held(slot);
 
-        if (it == _tombs.end())
-            return nullptr;
-
-        return it->second.lock();
+        return held.empty() ? nullptr : held.back();
     }
 
-    /// Pin a slot weakly to a tomb and point the tomb at the slot.
+    /// Pin a slot weakly to a tomb and point the tomb at the slot; older pins a record still holds stay.
     void set_tomb(size_t slot, const std::shared_ptr<Tomb>& tomb) {
 
+        std::vector<std::weak_ptr<Tomb>> pins;
+
+        for (const std::shared_ptr<Tomb>& held : _held(slot))
+            if (held != tomb)
+                pins.push_back(held);
+
+        pins.push_back(tomb);
         this->_repin(tomb, slot);
-        _tombs[slot] = tomb;
+        _tombs[slot] = std::move(pins);
     }
 
     /// Return the number of dead slots not yet purged.
@@ -450,13 +470,10 @@ public:
 
         while (examined < work && r < _items.size()) {
 
-            auto pin = _tombs.find(r);
-            const bool pinned = pin != _tombs.end() && !pin->second.expired();
+            const std::vector<std::shared_ptr<Tomb>> held = _held(r);
 
-            if (_dead[r] && !pinned) {
-                if (pin != _tombs.end())
-                    _tombs.erase(pin);
-
+            if (_dead[r] && held.empty()) {
+                _tombs.erase(r);
                 --_count;
             } else {
                 if (w != r) {
@@ -464,15 +481,13 @@ public:
                     const bool dead = _dead[r];
                     _dead[r] = _dead[w];
                     _dead[w] = dead;
+                    _tombs.erase(r);
 
-                    if (pin != _tombs.end()) {
+                    for (const std::shared_ptr<Tomb>& tomb : held)
+                        this->_repin(tomb, w);
 
-                        const std::shared_ptr<Tomb> held = pin->second.lock();
-                        _tombs.erase(pin);
-
-                        if (held)
-                            set_tomb(w, held);
-                    }
+                    if (!held.empty())
+                        _tombs[w] = std::vector<std::weak_ptr<Tomb>>(held.begin(), held.end());
 
                     if (!_dead[w])
                         _slots[guid_of(_items[w])] = w;

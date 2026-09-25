@@ -1937,60 +1937,6 @@ MINI_TEST("Session", "Remove Keeps Lookup Edit") {
     MINI_CHECK(json.find("7.0") != std::string::npos);
 }
 
-MINI_TEST("Session", "Remove Twin Keeps Slot") {
-
-    Session session;
-    const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
-    const std::shared_ptr<Point> y = std::make_shared<Point>(2.0, 0.0, 0.0);
-    y->guid() = x->guid();
-
-    session.begin("add");
-    session.add_point(x);
-    session.commit();
-    session.add_point(y);
-    session.undo();
-    const bool removed = session.remove_object(x->guid());
-    const Session loaded = Session::pb_loads(session.pb_dumps());
-
-    MINI_CHECK(removed);
-    MINI_CHECK(session.objects.points->empty());
-    MINI_CHECK(loaded.objects.points->empty());
-    MINI_CHECK(loaded.lookup.count(x->guid()) == 0);
-}
-
-MINI_TEST("Session", "Purge Clears History") {
-
-    Session session;
-    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
-    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
-    const std::shared_ptr<Point> c = std::make_shared<Point>(2.0, 0.0, 0.0);
-    const std::string a_guid = a->guid();
-    const std::string b_guid = b->guid();
-    const std::string c_guid = c->guid();
-    session.add_point(a);
-    session.add_point(b);
-    session.add_point(c);
-    session.begin("remove");
-    session.remove_object(b_guid);
-    session.commit();
-    session.purge();
-    const bool undone = session.undo();
-    std::vector<int> indices;
-
-    for (const Vertex& vertex : session.graph.get_vertices())
-        indices.push_back(vertex.index);
-
-    std::sort(indices.begin(), indices.end());
-
-    MINI_CHECK(!undone);
-    MINI_CHECK(session.history.depth() == 0);
-    MINI_CHECK(session.order() == std::vector<std::string>({a_guid, c_guid}));
-    MINI_CHECK(indices == std::vector<int>({0, 1}));
-    MINI_CHECK(session.objects.points->number_of_slots() == 2);
-    MINI_CHECK(session.number_of_dead() == 0);
-    MINI_CHECK(session.tree.nodes().size() == 3);
-}
-
 MINI_TEST("Session", "Tree Ops") {
 
     Session session;
@@ -2239,6 +2185,120 @@ MINI_TEST("Session", "Unrecorded Remove") {
     MINI_CHECK(session.objects.points->get_tomb(0) == nullptr);
     MINI_CHECK(session.history.dropped == 1);
     MINI_CHECK(!session.undo());
+}
+
+MINI_TEST("Session", "Remove Twin Keeps Slot") {
+
+    Session session;
+    const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
+    const std::shared_ptr<Point> y = std::make_shared<Point>(2.0, 0.0, 0.0);
+    y->guid() = x->guid();
+
+    session.begin("add");
+    session.add_point(x);
+    session.commit();
+    session.add_point(y);
+    session.undo();
+    const bool removed = session.remove_object(x->guid());
+    const Session loaded = Session::pb_loads(session.pb_dumps());
+
+    MINI_CHECK(removed);
+    MINI_CHECK(session.objects.points->empty());
+    MINI_CHECK(loaded.objects.points->empty());
+    MINI_CHECK(loaded.lookup.count(x->guid()) == 0);
+}
+
+MINI_TEST("Session", "Purge Clears History") {
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    const std::shared_ptr<Point> c = std::make_shared<Point>(2.0, 0.0, 0.0);
+    const std::string a_guid = a->guid();
+    const std::string b_guid = b->guid();
+    const std::string c_guid = c->guid();
+    session.add_point(a);
+    session.add_point(b);
+    session.add_point(c);
+    session.begin("remove");
+    session.remove_object(b_guid);
+    session.commit();
+    session.purge();
+    const bool undone = session.undo();
+    std::vector<int> indices;
+
+    for (const Vertex& vertex : session.graph.get_vertices())
+        indices.push_back(vertex.index);
+
+    std::sort(indices.begin(), indices.end());
+
+    MINI_CHECK(!undone);
+    MINI_CHECK(session.history.depth() == 0);
+    MINI_CHECK(session.order() == std::vector<std::string>({a_guid, c_guid}));
+    MINI_CHECK(indices == std::vector<int>({0, 1}));
+    MINI_CHECK(session.objects.points->number_of_slots() == 2);
+    MINI_CHECK(session.number_of_dead() == 0);
+    MINI_CHECK(session.tree.nodes().size() == 3);
+}
+
+MINI_TEST("Session", "Purge Keeps Replaced Tomb") {
+
+    Session session;
+    const std::string definition = session.add_definition(std::make_shared<Point>(1.0, 2.0, 3.0));
+    const std::shared_ptr<InstanceRef> first = std::make_shared<InstanceRef>(definition, Xform::identity());
+    const std::shared_ptr<InstanceRef> second = std::make_shared<InstanceRef>(definition, Xform::identity());
+    session.add_instance(first);
+    session.begin("add");
+    session.add_instance(second);
+    session.commit();
+    session.begin("explode");
+    session.explode(second->guid());
+    session.commit();
+    session.remove_object(first->guid());
+
+    while (session.purge_step(PURGE_WORK)) {}
+
+    const size_t slots = session.objects.instances->number_of_slots();
+    const bool unexploded = session.undo();
+    const size_t instances = session.objects.instances->size();
+    const bool unadded = session.undo();
+
+    MINI_CHECK(slots == 1);
+    MINI_CHECK(unexploded);
+    MINI_CHECK(instances == 1);
+    MINI_CHECK(unadded);
+    MINI_CHECK(session.objects.instances->empty());
+    MINI_CHECK(session.objects.points->empty());
+    MINI_CHECK(session.instance_lookup.count(second->guid()) == 0);
+    MINI_CHECK(session.redo());
+    MINI_CHECK(session.redo());
+    MINI_CHECK(session.objects.points->size() == 1);
+}
+
+MINI_TEST("Session", "Checkpoint Twin Xform") {
+
+    Session session;
+    const std::string definition = session.add_definition(std::make_shared<Point>(1.0, 2.0, 3.0));
+    const std::shared_ptr<Point> x = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> y = std::make_shared<Point>(1.0, 0.0, 0.0);
+    y->guid() = x->guid();
+    const std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::identity());
+    session.add_point(x);
+    session.add_point(y);
+    session.add_instance(instance, Xform::translation(0.0, 1.0, 0.0));
+    session.set_xform(x->guid(), Xform::translation(1.0, 0.0, 0.0));
+    std::optional<std::string> data = session.checkpoint(1);
+
+    while (!data)
+        data = session.checkpoint(1);
+
+    const Session loaded = Session::pb_loads(*data);
+    session_proto::Session parsed;
+    parsed.ParseFromString(*data);
+
+    MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
+    MINI_CHECK(loaded.xform(x->guid()) == session.xform(x->guid()));
+    MINI_CHECK(loaded.xform(instance->guid()) == session.xform(instance->guid()));
 }
 
 } // namespace session_cpp

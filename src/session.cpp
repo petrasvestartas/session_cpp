@@ -28,32 +28,41 @@ constexpr size_t DEFINITIONS = 29;       // Checkpoint phases 29..=41: the defin
 constexpr size_t INTERACTIONS = 42;      // Checkpoint phase: the interactions, by edge guid.
 constexpr size_t ASSEMBLY = 43;          // Checkpoint phase: the sections joined into one message.
 
-/// Objects field number per COLLECTIONS entry.
-constexpr std::array<int, 13> LISTS = {
-    session_proto::Objects::kPointsFieldNumber,
-    session_proto::Objects::kLinesFieldNumber,
-    session_proto::Objects::kPlanesFieldNumber,
-    session_proto::Objects::kBboxesFieldNumber,
-    session_proto::Objects::kPolylinesFieldNumber,
-    session_proto::Objects::kPointcloudsFieldNumber,
-    session_proto::Objects::kMeshesFieldNumber,
-    session_proto::Objects::kNurbscurvesFieldNumber,
-    session_proto::Objects::kNurbssurfacesFieldNumber,
-    session_proto::Objects::kBrepsFieldNumber,
-    session_proto::Objects::kElementsFieldNumber,
-    session_proto::Objects::kComponentsFieldNumber,
-    session_proto::Objects::kInstancesFieldNumber,
+/// Field numbers the checkpoint writer frames by hand, from the generated messages.
+struct Tags {
+    std::array<int, 7> sections; // Session field per section, 0 for one written framed: head, objects, tree, graph, xforms, definitions, interactions.
+    int root;                    // Tree.root
+    int children;                // TreeNode.children
+    std::array<int, 13> lists;   // Objects field per COLLECTIONS entry.
 };
 
-/// Session field number per checkpoint section, 0 for one whose entries carry their own key: head, objects, tree, graph, xforms, definitions, interactions.
-constexpr std::array<int, 7> SECTIONS = {
-    0,
-    session_proto::Session::kObjectsFieldNumber,
-    session_proto::Session::kTreeFieldNumber,
-    session_proto::Session::kGraphFieldNumber,
-    0,
-    session_proto::Session::kDefinitionsFieldNumber,
-    0,
+constexpr Tags TAGS = {
+    {
+        0,
+        session_proto::Session::kObjectsFieldNumber,
+        session_proto::Session::kTreeFieldNumber,
+        session_proto::Session::kGraphFieldNumber,
+        0,
+        session_proto::Session::kDefinitionsFieldNumber,
+        0,
+    },
+    session_proto::Tree::kRootFieldNumber,
+    session_proto::TreeNode::kChildrenFieldNumber,
+    {
+        session_proto::Objects::kPointsFieldNumber,
+        session_proto::Objects::kLinesFieldNumber,
+        session_proto::Objects::kPlanesFieldNumber,
+        session_proto::Objects::kBboxesFieldNumber,
+        session_proto::Objects::kPolylinesFieldNumber,
+        session_proto::Objects::kPointcloudsFieldNumber,
+        session_proto::Objects::kMeshesFieldNumber,
+        session_proto::Objects::kNurbscurvesFieldNumber,
+        session_proto::Objects::kNurbssurfacesFieldNumber,
+        session_proto::Objects::kBrepsFieldNumber,
+        session_proto::Objects::kElementsFieldNumber,
+        session_proto::Objects::kComponentsFieldNumber,
+        session_proto::Objects::kInstancesFieldNumber,
+    },
 };
 
 /// Append the key and length of a length-delimited field.
@@ -1643,8 +1652,10 @@ std::optional<std::string> Session::checkpoint(size_t work) {
     if (_purging || work == 0)
         return std::nullopt;
 
-    if (!_writer)
-        _writer = Checkpoint{revision};
+    if (!_writer) {
+        _writer.emplace();
+        _writer->revision = revision;
+    }
 
     if (!_write(*_writer, work))
         return std::nullopt;
@@ -2598,9 +2609,9 @@ size_t Session::_write_list(Checkpoint& writer, bool definition, size_t work) co
                 continue;
 
             if constexpr (std::is_same_v<E, Component>)
-                encode(buffer, items.get_item(slot).to_proto(), LISTS[list]);
+                encode(buffer, items.get_item(slot).to_proto(), TAGS.lists[list]);
             else
-                encode(buffer, items.get_item(slot)->to_proto(), LISTS[list]);
+                encode(buffer, items.get_item(slot)->to_proto(), TAGS.lists[list]);
         }
     });
     writer.cursor = end;
@@ -2652,7 +2663,7 @@ size_t Session::_write_tree(Checkpoint& writer, size_t work) const {
         done.bytes += done.node->_tail();
         const bool root = writer.stack.empty();
         std::string& parent = root ? writer.sections[2] : writer.stack.back().bytes;
-        frame(parent, root ? session_proto::Tree::kRootFieldNumber : session_proto::TreeNode::kChildrenFieldNumber, done.bytes.size());
+        frame(parent, root ? TAGS.root : TAGS.children, done.bytes.size());
         parent += done.bytes;
     }
 
@@ -2844,9 +2855,9 @@ bool Session::_assemble(Checkpoint& writer, size_t work) const {
             if (i == 5 && definition_lookup.empty())
                 continue;
 
-            if (SECTIONS[i] > 0) {
+            if (TAGS.sections[i] > 0) {
                 pieces.emplace_back();
-                frame(pieces.back(), SECTIONS[i], writer.sections[i].size());
+                frame(pieces.back(), TAGS.sections[i], writer.sections[i].size());
             }
 
             pieces.push_back(std::move(writer.sections[i]));
