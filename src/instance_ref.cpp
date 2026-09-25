@@ -128,11 +128,11 @@ nlohmann::ordered_json InstanceRef::jsondump() const {
 
 InstanceRef InstanceRef::jsonload(const nlohmann::json& data) {
 
-    InstanceRef ref(data["definition_guid"], Xform::jsonload(data["xform"]));
-    ref.color = Color::jsonload(data["color"]);
+    InstanceRef ref(data.at("definition_guid"), Xform::jsonload(data.at("xform")));
+    ref.color = Color::jsonload(data.at("color"));
     ref.flags = data.value("flags", 0u);
-    ref.guid() = data["guid"];
-    ref.name = data["name"];
+    ref.guid() = data.at("guid");
+    ref.name = data.at("name");
 
     for (const nlohmann::json& feature : data.value("features", nlohmann::json::array()))
         ref.features.push_back(ElementFeature::jsonload(feature));

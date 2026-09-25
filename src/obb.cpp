@@ -677,15 +677,15 @@ nlohmann::ordered_json OBB::jsondump() const {
 OBB OBB::jsonload(const nlohmann::json& data) {
 
     OBB obb(
-        Point::jsonload(data["center"]),
-        Vector::jsonload(data["x_axis"]),
-        Vector::jsonload(data["y_axis"]),
-        Vector::jsonload(data["z_axis"]),
-        Vector::jsonload(data["half_size"])
+        Point::jsonload(data.at("center")),
+        Vector::jsonload(data.at("x_axis")),
+        Vector::jsonload(data.at("y_axis")),
+        Vector::jsonload(data.at("z_axis")),
+        Vector::jsonload(data.at("half_size"))
     );
 
-    obb.guid() = data["guid"];
-    obb.name = data["name"];
+    obb.guid() = data.at("guid");
+    obb.name = data.at("name");
 
     return obb;
 }

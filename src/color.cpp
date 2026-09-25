@@ -228,13 +228,13 @@ nlohmann::ordered_json Color::jsondump() const {
 Color Color::jsonload(const nlohmann::json& data) {
 
     Color color(
-        data["r"].get<float>(),
-        data["g"].get<float>(),
-        data["b"].get<float>(),
-        data["a"].get<float>(),
-        data["name"]
+        data.at("r").get<float>(),
+        data.at("g").get<float>(),
+        data.at("b").get<float>(),
+        data.at("a").get<float>(),
+        data.at("name")
     );
-    color.guid() = data["guid"];
+    color.guid() = data.at("guid");
 
     return color;
 }

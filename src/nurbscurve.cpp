@@ -2306,8 +2306,8 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
         const int n = std::min(cv_count, static_cast<int>(cps.size()));
 
         for (int i = 0; i < n; i++) {
-            const double x = cps[i][0];
-            const double y = cps[i][1];
+            const double x = cps[i].at(0);
+            const double y = cps[i].at(1);
             const double z = (cps[i].size() > 2) ? cps[i][2].get<double>() : 0.0;
 
             if (is_rat && cps[i].size() > 3)

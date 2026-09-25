@@ -798,9 +798,9 @@ nlohmann::ordered_json Xform::jsondump() const {
 
 Xform Xform::jsonload(const nlohmann::json& data) {
 
-    Xform xform(data["m"].get<std::array<double, 16>>());
-    xform.guid() = data["guid"].get<std::string>();
-    xform.name = data["name"].get<std::string>();
+    Xform xform(data.at("m").get<std::array<double, 16>>());
+    xform.guid() = data.at("guid").get<std::string>();
+    xform.name = data.at("name").get<std::string>();
 
     return xform;
 }

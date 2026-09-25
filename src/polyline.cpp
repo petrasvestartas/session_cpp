@@ -1573,8 +1573,8 @@ nlohmann::ordered_json Polyline::jsondump() const {
 Polyline Polyline::jsonload(const nlohmann::json& data) {
 
     Polyline polyline;
-    polyline.guid() = data["guid"];
-    polyline.name = data["name"];
+    polyline.guid() = data.at("guid");
+    polyline.name = data.at("name");
 
     if (data.contains("coords")) {
         polyline._coords = data["coords"].get<std::vector<double>>();

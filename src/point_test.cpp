@@ -105,6 +105,16 @@ namespace session_cpp {
         const Point loaded = Point::file_json_load(filename);
         const Point parsed = Point::file_json_loads(p.file_json_dumps());
 
+        nlohmann::ordered_json missing = p.jsondump();
+        missing.erase("x");
+        bool missing_failed = false;
+
+        try {
+            Point::jsonload(missing);
+        } catch (const nlohmann::json::out_of_range&) {
+            missing_failed = true;
+        }
+
         MINI_CHECK(loaded.name == "test_point");
         MINI_CHECK(loaded[0] == 1.5 && loaded[1] == 2.5 && loaded[2] == 3.5);
         MINI_CHECK(loaded.width == 2.0);
@@ -115,6 +125,7 @@ namespace session_cpp {
         MINI_CHECK(parsed == p);
         MINI_CHECK(loaded.guid() == guid);
         MINI_CHECK(parsed.guid() == guid);
+        MINI_CHECK(missing_failed);
     }
 
     MINI_TEST("Point", "Protobuf Roundtrip") {

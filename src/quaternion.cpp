@@ -355,9 +355,9 @@ nlohmann::ordered_json Quaternion::jsondump() const {
 
 Quaternion Quaternion::jsonload(const nlohmann::json& data) {
 
-    Quaternion q(data["s"], Vector(data["x"], data["y"], data["z"]));
-    q.guid() = data["guid"];
-    q.name = data["name"];
+    Quaternion q(data.at("s"), Vector(data.at("x"), data.at("y"), data.at("z")));
+    q.guid() = data.at("guid");
+    q.name = data.at("name");
 
     return q;
 }

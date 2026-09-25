@@ -5253,9 +5253,9 @@ static std::map<size_t, VertexData> vertex_from_json(const nlohmann::json& verte
     for (nlohmann::json::const_iterator it = vertex_json.begin(); it != vertex_json.end(); ++it) {
         const nlohmann::json& vdata = it.value();
         VertexData vertex_data;
-        vertex_data.x = vdata["x"];
-        vertex_data.y = vdata["y"];
-        vertex_data.z = vdata["z"];
+        vertex_data.x = vdata.at("x");
+        vertex_data.y = vdata.at("y");
+        vertex_data.z = vdata.at("z");
 
         if (vdata.contains("attributes"))
             vertex_data.attributes = vdata["attributes"].get<std::map<std::string, double>>();
@@ -5286,7 +5286,7 @@ static std::map<size_t, std::vector<std::array<size_t, 3>>> triangulation_from_j
         std::vector<std::array<size_t, 3>> tris;
 
         for (const nlohmann::json& t : it.value())
-            tris.push_back({t[0].get<size_t>(), t[1].get<size_t>(), t[2].get<size_t>()});
+            tris.push_back({t.at(0).get<size_t>(), t.at(1).get<size_t>(), t.at(2).get<size_t>()});
 
         triangulation[std::stoull(it.key())] = tris;
     }

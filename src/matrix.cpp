@@ -734,13 +734,13 @@ nlohmann::ordered_json Matrix::jsondump() const {
 Matrix Matrix::jsonload(const nlohmann::json& d) {
 
     Matrix m = Matrix::from_vec(
-        d["rows"].get<int>(),
-        d["cols"].get<int>(),
-        d["data"].get<std::vector<double>>()
+        d.at("rows").get<int>(),
+        d.at("cols").get<int>(),
+        d.at("data").get<std::vector<double>>()
     );
 
-    m.guid() = d["guid"].get<std::string>();
-    m.name = d["name"].get<std::string>();
+    m.guid() = d.at("guid").get<std::string>();
+    m.name = d.at("name").get<std::string>();
 
     return m;
 }

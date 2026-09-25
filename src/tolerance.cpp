@@ -267,14 +267,14 @@ nlohmann::ordered_json Tolerance::jsondump() const {
 
 Tolerance Tolerance::jsonload(const nlohmann::json& data) {
 
-    Tolerance tolerance(data["unit"]);
-    tolerance.set_absolute(data["absolute"]);
-    tolerance.set_angular(data["angular"]);
-    tolerance.set_angulardeflection(data["angulardeflection"]);
-    tolerance.set_approximation(data["approximation"]);
-    tolerance.set_lineardeflection(data["lineardeflection"]);
-    tolerance.set_precision(data["precision"]);
-    tolerance.set_relative(data["relative"]);
+    Tolerance tolerance(data.at("unit"));
+    tolerance.set_absolute(data.at("absolute"));
+    tolerance.set_angular(data.at("angular"));
+    tolerance.set_angulardeflection(data.at("angulardeflection"));
+    tolerance.set_approximation(data.at("approximation"));
+    tolerance.set_lineardeflection(data.at("lineardeflection"));
+    tolerance.set_precision(data.at("precision"));
+    tolerance.set_relative(data.at("relative"));
 
     return tolerance;
 }

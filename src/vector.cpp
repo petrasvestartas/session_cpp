@@ -587,9 +587,9 @@ nlohmann::ordered_json Vector::jsondump() const {
 
 Vector Vector::jsonload(const nlohmann::json& data) {
 
-    Vector vector(data["x"], data["y"], data["z"]);
-    vector.guid() = data["guid"];
-    vector.name = data["name"];
+    Vector vector(data.at("x"), data.at("y"), data.at("z"));
+    vector.guid() = data.at("guid");
+    vector.name = data.at("name");
 
     return vector;
 }

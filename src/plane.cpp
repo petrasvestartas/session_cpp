@@ -562,16 +562,16 @@ nlohmann::ordered_json Plane::jsondump() const {
 
 Plane Plane::jsonload(const nlohmann::json& data) {
 
-    const nlohmann::json& frame = data["frame"];
+    const nlohmann::json& frame = data.at("frame");
     Plane plane = from_frame(
-        Point(frame[0].get<double>(), frame[1].get<double>(), frame[2].get<double>()),
-        Vector(frame[3].get<double>(), frame[4].get<double>(), frame[5].get<double>()),
-        Vector(frame[6].get<double>(), frame[7].get<double>(), frame[8].get<double>()),
-        Vector(frame[9].get<double>(), frame[10].get<double>(), frame[11].get<double>())
+        Point(frame.at(0).get<double>(), frame.at(1).get<double>(), frame.at(2).get<double>()),
+        Vector(frame.at(3).get<double>(), frame.at(4).get<double>(), frame.at(5).get<double>()),
+        Vector(frame.at(6).get<double>(), frame.at(7).get<double>(), frame.at(8).get<double>()),
+        Vector(frame.at(9).get<double>(), frame.at(10).get<double>(), frame.at(11).get<double>())
     );
 
-    plane.guid() = data["guid"];
-    plane.name = data["name"];
+    plane.guid() = data.at("guid");
+    plane.name = data.at("name");
 
     if (data.contains("linecolor"))
         plane.linecolor = Color::jsonload(data["linecolor"]);

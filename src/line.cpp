@@ -566,9 +566,9 @@ nlohmann::ordered_json Line::jsondump() const {
 
 Line Line::jsonload(const nlohmann::json& data) {
 
-    Line line(data["x0"], data["y0"], data["z0"], data["x1"], data["y1"], data["z1"]);
-    line.guid() = data["guid"];
-    line.name = data["name"];
+    Line line(data.at("x0"), data.at("y0"), data.at("z0"), data.at("x1"), data.at("y1"), data.at("z1"));
+    line.guid() = data.at("guid");
+    line.name = data.at("name");
 
     if (data.contains("dash"))
         line.dash = data["dash"].get<std::vector<double>>();

@@ -1669,7 +1669,7 @@ std::vector<BRepRef> refs_from_json(const nlohmann::json& arr) {
     std::vector<BRepRef> refs;
 
     for (const nlohmann::json& r : arr)
-        refs.push_back({r["index"], orientation_from_str(r["orientation"])});
+        refs.push_back({r.at("index"), orientation_from_str(r.at("orientation"))});
 
     return refs;
 }
@@ -1701,15 +1701,15 @@ nlohmann::ordered_json edge_to_json(const BRepEdge& e) {
 BRepEdge edge_from_json(const nlohmann::json& e) {
 
     BRepEdge be;
-    be.curve_3d_index = e["curve_3d_index"];
-    be.degenerated = e["degenerated"];
-    be.end_vertex = e["end_vertex"];
+    be.curve_3d_index = e.at("curve_3d_index");
+    be.degenerated = e.at("degenerated");
+    be.end_vertex = e.at("end_vertex");
 
-    for (const nlohmann::json& pc : e["pcurves"])
-        be.pcurves.push_back({pc["surface_index"], pc["curve_2d_index"], pc["curve_2d_index_2"]});
+    for (const nlohmann::json& pc : e.at("pcurves"))
+        be.pcurves.push_back({pc.at("surface_index"), pc.at("curve_2d_index"), pc.at("curve_2d_index_2")});
 
-    be.start_vertex = e["start_vertex"];
-    be.tolerance = e["tolerance"];
+    be.start_vertex = e.at("start_vertex");
+    be.tolerance = e.at("tolerance");
 
     return be;
 }
@@ -1737,9 +1737,9 @@ BRepFace face_from_json(const nlohmann::json& f) {
     if (f.contains("facecolor"))
         bf.facecolor = Color::jsonload(f["facecolor"]);
 
-    bf.surface_index = f["surface_index"];
-    bf.tolerance = f["tolerance"];
-    bf.wires = refs_from_json(f["wires"]);
+    bf.surface_index = f.at("surface_index");
+    bf.tolerance = f.at("tolerance");
+    bf.wires = refs_from_json(f.at("wires"));
 
     return bf;
 }
@@ -2758,7 +2758,7 @@ BRep BRep::jsonload(const nlohmann::json& data) {
 
     if (data.contains("vertices"))
         for (const nlohmann::json& v : data["vertices"])
-            b.m_vertices.push_back({Point(v["point"][0], v["point"][1], v["point"][2]), v["tolerance"]});
+            b.m_vertices.push_back({Point(v.at("point").at(0), v.at("point").at(1), v.at("point").at(2)), v.at("tolerance")});
 
     if (data.contains("edges"))
         for (const nlohmann::json& e : data["edges"])
@@ -2766,7 +2766,7 @@ BRep BRep::jsonload(const nlohmann::json& data) {
 
     if (data.contains("wires"))
         for (const nlohmann::json& w : data["wires"])
-            b.m_wires.push_back({refs_from_json(w["edges"])});
+            b.m_wires.push_back({refs_from_json(w.at("edges"))});
 
     if (data.contains("faces"))
         for (const nlohmann::json& f : data["faces"])
@@ -2774,11 +2774,11 @@ BRep BRep::jsonload(const nlohmann::json& data) {
 
     if (data.contains("shells"))
         for (const nlohmann::json& s : data["shells"])
-            b.m_shells.push_back({refs_from_json(s["faces"])});
+            b.m_shells.push_back({refs_from_json(s.at("faces"))});
 
     if (data.contains("solids"))
         for (const nlohmann::json& s : data["solids"])
-            b.m_solids.push_back({refs_from_json(s["shells"])});
+            b.m_solids.push_back({refs_from_json(s.at("shells"))});
 
     return b;
 }

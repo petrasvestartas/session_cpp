@@ -369,11 +369,11 @@ nlohmann::ordered_json Point::jsondump() const {
 
 Point Point::jsonload(const nlohmann::json& data) {
 
-    Point point(data["x"], data["y"], data["z"]);
-    point.guid() = data["guid"];
-    point.name = data["name"];
-    point.pointcolor = Color::jsonload(data["pointcolor"]);
-    point.width = data["width"];
+    Point point(data.at("x"), data.at("y"), data.at("z"));
+    point.guid() = data.at("guid");
+    point.name = data.at("name");
+    point.pointcolor = Color::jsonload(data.at("pointcolor"));
+    point.width = data.at("width");
 
     return point;
 }
