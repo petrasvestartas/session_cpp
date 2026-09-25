@@ -938,7 +938,6 @@ void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> pare
     if (old && ghost)
         _queue(old);
 
-    // a group comes back with its transform; an object's stays with its own tomb
     const std::shared_ptr<Tomb> held = node->get_tomb();
 
     if (was_dead && held && held->collection.empty() && held->xform) {
@@ -1011,7 +1010,7 @@ bool Session::remove_group(std::shared_ptr<TreeNode> node) {
     const std::string name = node->name;
     const std::shared_ptr<TreeNode> parent = node->parent();
 
-    if (!parent || _is_live(name))
+    if (!parent || _is_live(name) || node->is_dead())
         return false;
 
     const std::shared_ptr<Tomb> tomb = _node_tomb(node);
@@ -1882,7 +1881,6 @@ std::shared_ptr<Tomb> Session::_tomb(const std::string& guid) {
 
     std::shared_ptr<TreeNode> node = get_node(guid);
 
-    // an object outside the tree parks its transform and vertex on a detached node
     if (node)
         node_lookup[guid] = node;
     else
@@ -2001,12 +1999,12 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
             return;
 
         const std::string guid = item_guid(*stored);
+        const bool owner = slot_of(definitions, collection, guid) == slot;
         auto held = definition_lookup.find(guid);
 
-        if (held != definition_lookup.end() && !same(held->second, *stored))
+        if (owner && held != definition_lookup.end() && !same(held->second, *stored))
             store(definitions, collection, slot, held->second);
 
-        const bool owner = slot_of(definitions, collection, guid) == slot;
         flag(definitions, collection, slot, true);
 
         if (owner)
@@ -2024,7 +2022,6 @@ void Session::_kill(const std::shared_ptr<Tomb>& tomb) {
     const std::optional<Item> held = _item(guid);
     const bool owner = (held && same(*held, *stored)) || slot_of(objects, collection, guid) == slot;
 
-    // the map value is the truth; a twin that took the guid keeps its entry and its slot
     if (owner && held && !same(*held, *stored))
         store(objects, collection, slot, *held);
 
@@ -2206,7 +2203,6 @@ void Session::_tree(const TreeOp& op, bool back) {
     const bool was = op.node->is_dead();
     const bool live = _is_live(name);
 
-    // the ghost takes the node's place, and that parent is swept
     if (op.ghost) {
 
         const std::shared_ptr<TreeNode> from = op.node->parent();
@@ -2231,7 +2227,6 @@ void Session::_tree(const TreeOp& op, bool back) {
             _queue(parent);
     }
 
-    // a live object keeps its transform, only a group parks it
     if (dead && !was && !live) {
 
         op.tomb->xform.reset();
