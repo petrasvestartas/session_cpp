@@ -2025,6 +2025,40 @@ static Point chart_eval(const AnFace& an, const Window& w, const Point& q) {
     return an_eval(an, (w.su0 + q[0]) * PI_2, angular ? (w.sv0 + q[1]) * PI_2 : q[1]);
 }
 
+/// Chart polyline of every edge of a loop, shifted by whole periods so consecutive edges of a projected loop meet.
+static std::vector<std::vector<Point>> analytic_chains(const Loop& lp, const AnFace& an, const Window& w) {
+
+    const double period = 4.0;
+    std::vector<std::vector<Point>> chains;
+
+    for (const LoopEdge& le : lp.edges) {
+        std::vector<Point> uv;
+
+        for (const Point& p : le.uv)
+            uv.push_back(chart_point(an, w, p));
+
+        if (le.reversed)
+            std::reverse(uv.begin(), uv.end());
+
+        chains.push_back(uv);
+    }
+
+    for (size_t k = 1; lp.projected && k < chains.size(); k++) {
+        if (chains[k].empty() || chains[k - 1].empty())
+            continue;
+
+        const int n = (int)std::round((chains[k - 1].back()[0] - chains[k].front()[0]) / period);
+        const int m = an.kind == 5 ? (int)std::round((chains[k - 1].back()[1] - chains[k].front()[1]) / period) : 0;
+
+        for (Point& p : chains[k]) {
+            p[0] += n * period;
+            p[1] += m * period;
+        }
+    }
+
+    return chains;
+}
+
 /// Chart window of the loops; none when they are empty or wider than 16 quarter arcs.
 static std::optional<Window> analytic_window(const std::vector<Loop>& loops, const AnFace& an) {
 
@@ -2340,34 +2374,7 @@ public:
     /// Pending edges of one loop in the chart, plus a degenerated edge across each pole or apex gap between consecutive edges.
     std::vector<PendingEdge> analytic_pending(const Loop& lp, const AnFace& an, const Window& w, double scale3) {
 
-        const double period = 4.0;
-        std::vector<std::vector<Point>> chains;
-
-        for (const LoopEdge& le : lp.edges) {
-            std::vector<Point> uv;
-
-            for (const Point& p : le.uv)
-                uv.push_back(chart_point(an, w, p));
-
-            if (le.reversed)
-                std::reverse(uv.begin(), uv.end());
-
-            chains.push_back(uv);
-        }
-
-        for (size_t k = 1; lp.projected && k < chains.size(); k++) {
-            if (chains[k].empty() || chains[k - 1].empty())
-                continue;
-
-            const int n = (int)std::round((chains[k - 1].back()[0] - chains[k].front()[0]) / period);
-            const int m = an.kind == 5 ? (int)std::round((chains[k - 1].back()[1] - chains[k].front()[1]) / period) : 0;
-
-            for (Point& p : chains[k]) {
-                p[0] += n * period;
-                p[1] += m * period;
-            }
-        }
-
+        const std::vector<std::vector<Point>> chains = analytic_chains(lp, an, w);
         std::vector<PendingEdge> pl;
 
         for (size_t k = 0; k < lp.edges.size(); k++) {
@@ -2655,27 +2662,8 @@ public:
         }
     }
 
-    /// ADVANCED_FACE: vertex-loop face, analytic face, or projection onto the plane, cylinder chart or B-spline surface.
-    void add_face(int face_id) {
-
-        const StepEntity* fent = r.get(face_id);
-        const StepSubEntity* face = fent ? fent->find("ADVANCED_FACE") : nullptr;
-
-        if (!face)
-            return;
-
-        const std::vector<int> bound_refs = list_refs(face->params);
-        const int surface_ref = first_ref(face->params);
-        const bool same_sense = last_flag(face->params, true);
-        const std::vector<int> vl_ids = vertex_loop_ids(bound_refs);
-
-        if (!vl_ids.empty() && add_face_vertex_loop(vl_ids, surface_ref, same_sense))
-            return;
-
-        const AnFace an = r.get_analytic_srf(surface_ref);
-
-        if (an.kind >= 2 && add_face_analytic(bound_refs, surface_ref, same_sense, an))
-            return;
+    /// Face projected onto its plane, cylinder chart or B-spline surface, with a filled surface when the projection has none.
+    void add_face_projected(const std::vector<int>& bound_refs, int surface_ref, bool same_sense) {
 
         const Proj proj = r.get_projector(surface_ref);
         const NurbsSurface proj_srf = proj.kind == 0 ? r.fill_surface(surface_ref, 0, 1, 0, 1) : NurbsSurface();
@@ -2716,6 +2704,31 @@ public:
             pending.push_back(pending_of(lp));
 
         finish_face(srf_idx, !same_sense, pending);
+    }
+
+    /// ADVANCED_FACE: vertex-loop face, analytic face, or projection onto the plane, cylinder chart or B-spline surface.
+    void add_face(int face_id) {
+
+        const StepEntity* fent = r.get(face_id);
+        const StepSubEntity* face = fent ? fent->find("ADVANCED_FACE") : nullptr;
+
+        if (!face)
+            return;
+
+        const std::vector<int> bound_refs = list_refs(face->params);
+        const int surface_ref = first_ref(face->params);
+        const bool same_sense = last_flag(face->params, true);
+        const std::vector<int> vl_ids = vertex_loop_ids(bound_refs);
+
+        if (!vl_ids.empty() && add_face_vertex_loop(vl_ids, surface_ref, same_sense))
+            return;
+
+        const AnFace an = r.get_analytic_srf(surface_ref);
+
+        if (an.kind >= 2 && add_face_analytic(bound_refs, surface_ref, same_sense, an))
+            return;
+
+        add_face_projected(bound_refs, surface_ref, same_sense);
     }
 
     /// BRep of a CLOSED_SHELL (one solid) or OPEN_SHELL (one shell), empty for anything else.

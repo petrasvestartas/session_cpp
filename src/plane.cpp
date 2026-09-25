@@ -134,10 +134,8 @@ Plane Plane::from_points(const std::vector<Point>& points) {
     return from_frame(points[0], x_axis, y_axis, z_axis);
 }
 
-Plane Plane::from_points_pca(const std::vector<Point>& points) {
-
-    if (points.size() < 3)
-        return Plane();
+/// Mean of the points.
+static Point pca_centroid(const std::vector<Point>& points) {
 
     const double n = static_cast<double>(points.size());
     double cx = 0.0;
@@ -154,6 +152,12 @@ Plane Plane::from_points_pca(const std::vector<Point>& points) {
     cy /= n;
     cz /= n;
 
+    return Point(cx, cy, cz);
+}
+
+/// Covariance matrix of the points about their centroid.
+static std::array<std::array<double, 3>, 3> pca_covariance(const std::vector<Point>& points, const Point& centroid) {
+
     double cxx = 0.0;
     double cyy = 0.0;
     double czz = 0.0;
@@ -162,9 +166,9 @@ Plane Plane::from_points_pca(const std::vector<Point>& points) {
     double cyz = 0.0;
 
     for (const Point& p : points) {
-        const double dx = p[0] - cx;
-        const double dy = p[1] - cy;
-        const double dz = p[2] - cz;
+        const double dx = p[0] - centroid[0];
+        const double dy = p[1] - centroid[1];
+        const double dz = p[2] - centroid[2];
 
         cxx += dx * dx;
         cyy += dy * dy;
@@ -174,9 +178,14 @@ Plane Plane::from_points_pca(const std::vector<Point>& points) {
         cyz += dy * dz;
     }
 
-    double eigvec[3][3];
-    double eigval[3];
-    double cov[3][3] = {{cxx, cxy, cxz}, {cxy, cyy, cyz}, {cxz, cyz, czz}};
+    return {{{cxx, cxy, cxz}, {cxy, cyy, cyz}, {cxz, cyz, czz}}};
+}
+
+/// Eigenvectors of a covariance matrix by power iteration with deflation, largest eigenvalue first.
+static std::array<std::array<double, 3>, 3> pca_eigenvectors(std::array<std::array<double, 3>, 3> cov) {
+
+    std::array<std::array<double, 3>, 3> eigvec{};
+    std::array<double, 3> eigval{};
 
     for (int e = 0; e < 3; e++) {
         double vx = e == 0 ? 1.0 : 0.0;
@@ -207,6 +216,17 @@ Plane Plane::from_points_pca(const std::vector<Point>& points) {
                 cov[i][j] -= eigval[e] * eigvec[e][i] * eigvec[e][j];
     }
 
+    return eigvec;
+}
+
+Plane Plane::from_points_pca(const std::vector<Point>& points) {
+
+    if (points.size() < 3)
+        return Plane();
+
+    const Point centroid = pca_centroid(points);
+    const std::array<std::array<double, 3>, 3> eigvec = pca_eigenvectors(pca_covariance(points, centroid));
+
     Vector x_axis(eigvec[0][0], eigvec[0][1], eigvec[0][2]);
     Vector y_axis(eigvec[1][0], eigvec[1][1], eigvec[1][2]);
 
@@ -217,7 +237,7 @@ Plane Plane::from_points_pca(const std::vector<Point>& points) {
     y_axis.normalize_self();
     x_axis.normalize_self();
 
-    return from_frame(Point(cx, cy, cz), x_axis, y_axis, z_axis);
+    return from_frame(centroid, x_axis, y_axis, z_axis);
 }
 
 Plane Plane::from_two_points(const Point& point1, const Point& point2) {

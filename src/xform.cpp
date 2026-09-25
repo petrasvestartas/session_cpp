@@ -250,6 +250,40 @@ Xform Xform::rotation_around_line(const Line& line, double angle, bool degrees) 
     return t1 * (r * t0);
 }
 
+/// Scale row p to a unit pivot, then clear column p in rows a and b; false on a zero pivot.
+static bool change_basis_pivot(double r[3][6], int p, int a, int b) {
+
+    if (r[p][p] == 0.0)
+        return false;
+
+    double d = 1.0 / r[p][p];
+
+    for (int j = 0; j < 6; j++)
+        r[p][j] *= d;
+
+    r[p][p] = 1.0;
+
+    if (r[a][p] != 0.0) {
+        d = -r[a][p];
+
+        for (int j = 0; j < 6; j++)
+            r[a][j] += d * r[p][j];
+
+        r[a][p] = 0.0;
+    }
+
+    if (r[b][p] != 0.0) {
+        d = -r[b][p];
+
+        for (int j = 0; j < 6; j++)
+            r[b][j] += d * r[p][j];
+
+        r[b][p] = 0.0;
+    }
+
+    return true;
+}
+
 Xform Xform::change_basis(
     const Point& origin_1,
     const Vector& x_axis_1,
@@ -278,92 +312,17 @@ Xform Xform::change_basis(
     int i1 = (i0 + 1) % 3;
     int i2 = (i1 + 1) % 3;
 
-    if (r[i0][i0] == 0.0)
+    if (!change_basis_pivot(r, i0, i1, i2))
         return Xform::identity();
-
-    double d = 1.0 / r[i0][i0];
-
-    for (int j = 0; j < 6; j++)
-        r[i0][j] *= d;
-
-    r[i0][i0] = 1.0;
-
-    if (r[i1][i0] != 0.0) {
-        d = -r[i1][i0];
-
-        for (int j = 0; j < 6; j++)
-            r[i1][j] += d * r[i0][j];
-
-        r[i1][i0] = 0.0;
-    }
-
-    if (r[i2][i0] != 0.0) {
-        d = -r[i2][i0];
-
-        for (int j = 0; j < 6; j++)
-            r[i2][j] += d * r[i0][j];
-
-        r[i2][i0] = 0.0;
-    }
 
     if (std::abs(r[i1][i1]) < std::abs(r[i2][i2]))
         std::swap(i1, i2);
 
-    if (r[i1][i1] == 0.0)
+    if (!change_basis_pivot(r, i1, i0, i2))
         return Xform::identity();
 
-    d = 1.0 / r[i1][i1];
-
-    for (int j = 0; j < 6; j++)
-        r[i1][j] *= d;
-
-    r[i1][i1] = 1.0;
-
-    if (r[i0][i1] != 0.0) {
-        d = -r[i0][i1];
-
-        for (int j = 0; j < 6; j++)
-            r[i0][j] += d * r[i1][j];
-
-        r[i0][i1] = 0.0;
-    }
-
-    if (r[i2][i1] != 0.0) {
-        d = -r[i2][i1];
-
-        for (int j = 0; j < 6; j++)
-            r[i2][j] += d * r[i1][j];
-
-        r[i2][i1] = 0.0;
-    }
-
-    if (r[i2][i2] == 0.0)
+    if (!change_basis_pivot(r, i2, i0, i1))
         return Xform::identity();
-
-    d = 1.0 / r[i2][i2];
-
-    for (int j = 0; j < 6; j++)
-        r[i2][j] *= d;
-
-    r[i2][i2] = 1.0;
-
-    if (r[i0][i2] != 0.0) {
-        d = -r[i0][i2];
-
-        for (int j = 0; j < 6; j++)
-            r[i0][j] += d * r[i2][j];
-
-        r[i0][i2] = 0.0;
-    }
-
-    if (r[i1][i2] != 0.0) {
-        d = -r[i1][i2];
-
-        for (int j = 0; j < 6; j++)
-            r[i1][j] += d * r[i2][j];
-
-        r[i1][i2] = 0.0;
-    }
 
     Xform m_xform;
     m_xform.m[0] = r[0][3];

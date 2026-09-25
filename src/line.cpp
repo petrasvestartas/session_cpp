@@ -76,12 +76,9 @@ Line Line::from_point_direction_length(const Point& point, const Vector& directi
     return from_points(point, point + direction.normalized() * length);
 }
 
-Line Line::fit_points(const std::vector<Point>& points, double length) {
+/// Principal direction of the points about center by power iteration on their covariance.
+static Vector fit_points_axis(const std::vector<Point>& points, const Point& center) {
 
-    if (points.size() < 2)
-        throw std::invalid_argument("At least 2 points are required for line fitting");
-
-    const Point center = Point::centroid(points);
     double cxx = 0.0;
     double cyy = 0.0;
     double czz = 0.0;
@@ -120,6 +117,12 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         axis = next / mag;
     }
 
+    return axis;
+}
+
+/// Half length of the fitted line: length / 2, or the projected extent when length <= 0.
+static double fit_points_half(const std::vector<Point>& points, const Point& center, const Vector& axis, double length) {
+
     double half = length / 2.0;
 
     if (length <= 0.0) {
@@ -137,6 +140,18 @@ Line Line::fit_points(const std::vector<Point>& points, double length) {
         if (half < 1e-10)
             half = 0.5;
     }
+
+    return half;
+}
+
+Line Line::fit_points(const std::vector<Point>& points, double length) {
+
+    if (points.size() < 2)
+        throw std::invalid_argument("At least 2 points are required for line fitting");
+
+    const Point center = Point::centroid(points);
+    const Vector axis = fit_points_axis(points, center);
+    const double half = fit_points_half(points, center, axis, length);
 
     return from_points(center - axis * half, center + axis * half);
 }

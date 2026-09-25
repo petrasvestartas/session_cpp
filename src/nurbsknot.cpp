@@ -692,6 +692,43 @@ std::vector<double> build_fitted_nurbsknots_adaptive(const std::vector<double>& 
     return nurbsknots;
 }
 
+/// Cumulative chord lengths around closed points, weighted up where the points turn.
+static std::vector<double> periodic_weighted_lengths(const std::vector<double>& params, const double* points, int n, int dim, double scale) {
+
+    std::vector<double> turn(n, 0.0);
+
+    for (int i = 0; i < n; i++)
+        turn[i] = turn_angle(points, dim, i == 0 ? n - 1 : i - 1, i, (i + 1) % n);
+
+    std::vector<double> cum(n + 1, 0.0);
+
+    for (int i = 0; i < n; i++) {
+        const double chord = std::max(params[i + 1] - params[i], PIVOT_TOLERANCE);
+        cum[i + 1] = cum[i] + chord * (1.0 + scale * (turn[i] + turn[(i + 1) % n]) * 0.5);
+    }
+
+    return cum;
+}
+
+/// Periodic nurbsknot intervals that split the weighted length into equal shares.
+static std::vector<double> periodic_intervals(const std::vector<double>& params, const std::vector<double>& cum, int n, int num_cvs, double period) {
+
+    const double total = cum[n];
+    std::vector<double> base(num_cvs, 0.0);
+
+    for (int j = 0; j < num_cvs; j++)
+        base[j] = locate_target(params, cum, n - 1, total * j / num_cvs);
+
+    std::vector<double> intervals(num_cvs, 0.0);
+
+    for (int j = 0; j < num_cvs - 1; j++)
+        intervals[j] = base[j + 1] - base[j];
+
+    intervals[num_cvs - 1] = period - base[num_cvs - 1];
+
+    return intervals;
+}
+
 std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<double>& params, const double* points, int n, int dim, int num_cvs, int degree, double scale) {
 
     if (n < 0 || degree < 1 || degree - 1 > num_cvs || degree == std::numeric_limits<int>::max() || !std::isfinite(scale) || params.size() <= static_cast<std::size_t>(n) || !are_finite(params, static_cast<std::size_t>(n) + 1))
@@ -727,30 +764,8 @@ std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<
     if (dim < 1 || !are_finite(points, static_cast<std::size_t>(n) * static_cast<std::size_t>(dim)))
         return std::vector<double>();
 
-    std::vector<double> turn(n, 0.0);
-
-    for (int i = 0; i < n; i++)
-        turn[i] = turn_angle(points, dim, i == 0 ? n - 1 : i - 1, i, (i + 1) % n);
-
-    std::vector<double> cum(n + 1, 0.0);
-
-    for (int i = 0; i < n; i++) {
-        const double chord = std::max(params[i + 1] - params[i], PIVOT_TOLERANCE);
-        cum[i + 1] = cum[i] + chord * (1.0 + scale * (turn[i] + turn[(i + 1) % n]) * 0.5);
-    }
-
-    const double total = cum[n];
-    std::vector<double> base(num_cvs, 0.0);
-
-    for (int j = 0; j < num_cvs; j++)
-        base[j] = locate_target(params, cum, n - 1, total * j / num_cvs);
-
-    std::vector<double> intervals(num_cvs, 0.0);
-
-    for (int j = 0; j < num_cvs - 1; j++)
-        intervals[j] = base[j + 1] - base[j];
-
-    intervals[num_cvs - 1] = period - base[num_cvs - 1];
+    const std::vector<double> cum = periodic_weighted_lengths(params, points, n, dim, scale);
+    const std::vector<double> intervals = periodic_intervals(params, cum, n, num_cvs, period);
 
     for (int i = 1; i < degree; i++)
         nurbsknots[degree - 1 - i] = nurbsknots[degree - i] - intervals[num_cvs - i];
@@ -761,16 +776,8 @@ std::vector<double> build_fitted_nurbsknots_periodic_adaptive(const std::vector<
     return nurbsknots;
 }
 
-bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs) {
-
-    if (dim < 1 || n < 1 || half_bw < 0 || half_bw == std::numeric_limits<int>::max())
-        return false;
-
-    const std::size_t band_count = static_cast<std::size_t>(n) * (static_cast<std::size_t>(half_bw) + 1);
-    const std::size_t rhs_count = static_cast<std::size_t>(n) * static_cast<std::size_t>(dim);
-
-    if (!are_finite(band, band_count) || !are_finite(rhs, rhs_count))
-        return false;
+/// Cholesky factor of a banded symmetric matrix in place; false when it is not positive definite.
+static bool banded_cholesky(int n, int half_bw, std::vector<double>& band) {
 
     const int bw1 = half_bw + 1;
 
@@ -799,6 +806,14 @@ bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, st
         }
     }
 
+    return true;
+}
+
+/// Forward substitution with the lower banded Cholesky factor, in place on rhs.
+static void banded_forward_substitute(int dim, int n, int half_bw, const std::vector<double>& band, std::vector<double>& rhs) {
+
+    const int bw1 = half_bw + 1;
+
     for (int i = 0; i < n; i++) {
         for (int d = 0; d < dim; d++) {
             double sum = 0.0;
@@ -810,6 +825,12 @@ bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, st
             rhs[index] = (rhs[index] - sum) / band[static_cast<std::size_t>(i) * bw1];
         }
     }
+}
+
+/// Back substitution with the transposed banded Cholesky factor, in place on rhs.
+static void banded_back_substitute(int dim, int n, int half_bw, const std::vector<double>& band, std::vector<double>& rhs) {
+
+    const int bw1 = half_bw + 1;
 
     for (int i = n - 1; i >= 0; i--) {
         for (int d = 0; d < dim; d++) {
@@ -823,6 +844,24 @@ bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, st
             rhs[index] = (rhs[index] - sum) / band[static_cast<std::size_t>(i) * bw1];
         }
     }
+}
+
+bool solve_banded_spd(int dim, int n, int half_bw, std::vector<double>& band, std::vector<double>& rhs) {
+
+    if (dim < 1 || n < 1 || half_bw < 0 || half_bw == std::numeric_limits<int>::max())
+        return false;
+
+    const std::size_t band_count = static_cast<std::size_t>(n) * (static_cast<std::size_t>(half_bw) + 1);
+    const std::size_t rhs_count = static_cast<std::size_t>(n) * static_cast<std::size_t>(dim);
+
+    if (!are_finite(band, band_count) || !are_finite(rhs, rhs_count))
+        return false;
+
+    if (!banded_cholesky(n, half_bw, band))
+        return false;
+
+    banded_forward_substitute(dim, n, half_bw, band, rhs);
+    banded_back_substitute(dim, n, half_bw, band, rhs);
 
     return true;
 }

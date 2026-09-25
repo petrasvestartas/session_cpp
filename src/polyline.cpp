@@ -1235,6 +1235,41 @@ Polyline Polyline::quick_hull(const Polyline& polygon) {
     return Polyline(pts3d);
 }
 
+std::array<double, 4> Polyline::rotated_extents_2d(const std::vector<std::array<double, 2>>& pts2d, double ca, double sa) {
+
+    double min_u = std::numeric_limits<double>::max();
+    double max_u = -std::numeric_limits<double>::max();
+    double min_v = std::numeric_limits<double>::max();
+    double max_v = -std::numeric_limits<double>::max();
+
+    for (const std::array<double, 2>& h : pts2d) {
+        const double u = h[0] * ca + h[1] * sa;
+        const double v = -h[0] * sa + h[1] * ca;
+        min_u = std::min(min_u, u);
+        max_u = std::max(max_u, u);
+        min_v = std::min(min_v, v);
+        max_v = std::max(max_v, v);
+    }
+
+    return {min_u, max_u, min_v, max_v};
+}
+
+Polyline Polyline::unproject_rectangle(const Point& origin, const Vector& x_axis, const Vector& y_axis, const std::array<double, 4>& extents, double angle) {
+
+    const double ca = std::cos(angle);
+    const double sa = std::sin(angle);
+    const std::array<std::array<double, 2>, 4> uv = {{{extents[0], extents[2]}, {extents[0], extents[3]}, {extents[1], extents[3]}, {extents[1], extents[2]}}};
+    std::vector<Point> pts3d;
+    pts3d.reserve(5);
+
+    for (const std::array<double, 2>& c : uv)
+        pts3d.push_back(unproject(origin, x_axis, y_axis, c[0] * ca - c[1] * sa, c[0] * sa + c[1] * ca));
+
+    pts3d.push_back(pts3d[0]);
+
+    return Polyline(pts3d);
+}
+
 std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
 
     const Polyline hull = quick_hull(polygon);
@@ -1251,10 +1286,7 @@ std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
     std::vector<std::array<double, 2>> hull2d;
     hull.project_to_plane(origin, xa, ya, hull2d);
     double best_area = std::numeric_limits<double>::max();
-    double best_min_u = 0.0;
-    double best_max_u = 0.0;
-    double best_min_v = 0.0;
-    double best_max_v = 0.0;
+    std::array<double, 4> best_extents = {0.0, 0.0, 0.0, 0.0};
     double best_angle = 0.0;
     const size_t hn = hull2d.size();
 
@@ -1267,46 +1299,17 @@ std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
         if (len < 1e-12)
             continue;
 
-        const double ca = ex / len;
-        const double sa = ey / len;
-        double min_u = std::numeric_limits<double>::max();
-        double max_u = -std::numeric_limits<double>::max();
-        double min_v = std::numeric_limits<double>::max();
-        double max_v = -std::numeric_limits<double>::max();
-
-        for (const std::array<double, 2>& h : hull2d) {
-            const double u = h[0] * ca + h[1] * sa;
-            const double v = -h[0] * sa + h[1] * ca;
-            min_u = std::min(min_u, u);
-            max_u = std::max(max_u, u);
-            min_v = std::min(min_v, v);
-            max_v = std::max(max_v, v);
-        }
-
-        const double area = (max_u - min_u) * (max_v - min_v);
+        const std::array<double, 4> extents = rotated_extents_2d(hull2d, ex / len, ey / len);
+        const double area = (extents[1] - extents[0]) * (extents[3] - extents[2]);
 
         if (area < best_area) {
             best_area = area;
-            best_min_u = min_u;
-            best_max_u = max_u;
-            best_min_v = min_v;
-            best_max_v = max_v;
+            best_extents = extents;
             best_angle = std::atan2(ey, ex);
         }
     }
 
-    const double ca = std::cos(best_angle);
-    const double sa = std::sin(best_angle);
-    const std::array<std::array<double, 2>, 4> uv = {{{best_min_u, best_min_v}, {best_min_u, best_max_v}, {best_max_u, best_max_v}, {best_max_u, best_min_v}}};
-    std::vector<Point> pts3d;
-    pts3d.reserve(5);
-
-    for (const std::array<double, 2>& c : uv)
-        pts3d.push_back(unproject(origin, xa, ya, c[0] * ca - c[1] * sa, c[0] * sa + c[1] * ca));
-
-    pts3d.push_back(pts3d[0]);
-
-    return Polyline(pts3d);
+    return unproject_rectangle(origin, xa, ya, best_extents, best_angle);
 }
 
 std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon, double offset_dist, double div_dist, size_t max_pts) {
@@ -1813,22 +1816,23 @@ void Polyline::quick_hull_recurse(const std::vector<std::array<double, 2>>& pts,
     quick_hull_recurse(right, fx, fy, bx, by, hull);
 }
 
-void Polyline::offset_polygon_2d(std::vector<std::array<double, 2>>& poly2d, double offset_dist) {
+double Polyline::shoelace_2d(const std::vector<std::array<double, 2>>& poly2d) {
 
     const size_t n = poly2d.size();
-
-    if (offset_dist == 0.0 || n < 3)
-        return;
-
-    double signed_area = 0.0;
+    double area = 0.0;
 
     for (size_t i = 0; i < n; i++) {
         const std::array<double, 2>& a = poly2d[i];
         const std::array<double, 2>& b = poly2d[(i + 1) % n];
-        signed_area += a[0] * b[1] - b[0] * a[1];
+        area += a[0] * b[1] - b[0] * a[1];
     }
 
-    const double delta = signed_area < 0.0 ? -offset_dist : offset_dist;
+    return area;
+}
+
+std::vector<std::array<double, 2>> Polyline::edge_normals_2d(const std::vector<std::array<double, 2>>& poly2d) {
+
+    const size_t n = poly2d.size();
     std::vector<std::array<double, 2>> normals;
     normals.reserve(n);
 
@@ -1845,6 +1849,18 @@ void Polyline::offset_polygon_2d(std::vector<std::array<double, 2>>& poly2d, dou
             normals.push_back({ey / len, -ex / len});
     }
 
+    return normals;
+}
+
+void Polyline::offset_polygon_2d(std::vector<std::array<double, 2>>& poly2d, double offset_dist) {
+
+    const size_t n = poly2d.size();
+
+    if (offset_dist == 0.0 || n < 3)
+        return;
+
+    const double delta = shoelace_2d(poly2d) < 0.0 ? -offset_dist : offset_dist;
+    const std::vector<std::array<double, 2>> normals = edge_normals_2d(poly2d);
     std::vector<std::array<double, 2>> out;
     out.reserve(n * 3);
 
@@ -1867,15 +1883,7 @@ void Polyline::offset_polygon_2d(std::vector<std::array<double, 2>>& poly2d, dou
         }
     }
 
-    double out_area = 0.0;
-
-    for (size_t i = 0; i < out.size(); i++) {
-        const std::array<double, 2>& a = out[i];
-        const std::array<double, 2>& b = out[(i + 1) % out.size()];
-        out_area += a[0] * b[1] - b[0] * a[1];
-    }
-
-    if (out.size() >= 3 && std::abs(out_area) > 1e-4)
+    if (out.size() >= 3 && std::abs(shoelace_2d(out)) > 1e-4)
         poly2d = std::move(out);
 }
 

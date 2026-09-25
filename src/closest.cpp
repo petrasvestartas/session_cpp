@@ -881,6 +881,43 @@ static std::vector<size_t> mesh_face_keys(const Mesh& mesh) {
     return face_keys;
 }
 
+/// Closest point, face key and distance on triangle object_id of mesh; infinite distance for an invalid id.
+static std::tuple<Point, size_t, double> mesh_triangle_point(const Mesh& mesh, const std::vector<size_t>& face_keys, int object_id, const Point& test_point) {
+
+    Point v0;
+    Point v1;
+    Point v2;
+    size_t face_idx = 0;
+    size_t sub_idx = 0;
+
+    if (!mesh.get_triangle_by_id(object_id, face_idx, sub_idx, v0, v1, v2))
+        return {Point(0, 0, 0), 0, std::numeric_limits<double>::infinity()};
+
+    const Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
+
+    return {cp, face_keys[face_idx], cp.distance(test_point)};
+}
+
+/// Push the children nearer than best_dist, the nearer one last so it pops first.
+static void push_nearer_last(int* stack, int& top, int left, int right, double ld, double rd, double best_dist) {
+
+    assert(top + 2 <= STACK_SIZE);
+
+    if (ld <= rd) {
+        if (rd < best_dist)
+            stack[top++] = right;
+
+        if (ld < best_dist)
+            stack[top++] = left;
+    } else {
+        if (ld < best_dist)
+            stack[top++] = left;
+
+        if (rd < best_dist)
+            stack[top++] = right;
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Curves
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1158,23 +1195,10 @@ std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Po
             continue;
 
         if (node.is_leaf()) {
-            Point v0;
-            Point v1;
-            Point v2;
-            size_t face_idx = 0;
-            size_t sub_idx = 0;
+            const std::tuple<Point, size_t, double> hit = mesh_triangle_point(mesh, face_keys, node.object_id, test_point);
 
-            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
-                continue;
-
-            const Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
-            const double dist = cp.distance(test_point);
-
-            if (dist < best_dist) {
-                best_dist = dist;
-                best_point = cp;
-                best_face_key = face_keys[face_idx];
-            }
+            if (std::get<2>(hit) < best_dist)
+                std::tie(best_point, best_face_key, best_dist) = hit;
 
             continue;
         }
@@ -1182,21 +1206,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Po
         const double ld = aabb_min_distance(bvh->nodes[node.left].aabb, test_point);
         const double rd = aabb_min_distance(bvh->nodes[node.right].aabb, test_point);
 
-        assert(top + 2 <= STACK_SIZE);
-
-        if (ld <= rd) {
-            if (rd < best_dist)
-                stack[top++] = node.right;
-
-            if (ld < best_dist)
-                stack[top++] = node.left;
-        } else {
-            if (ld < best_dist)
-                stack[top++] = node.left;
-
-            if (rd < best_dist)
-                stack[top++] = node.right;
-        }
+        push_nearer_last(stack, top, node.left, node.right, ld, rd, best_dist);
     }
 
     return {best_point, best_face_key, best_dist};
@@ -1230,23 +1240,10 @@ std::tuple<Point, size_t, double> Closest::mesh_point_aabb(const Mesh& mesh, con
             continue;
 
         if (node.object_id >= 0) {
-            Point v0;
-            Point v1;
-            Point v2;
-            size_t face_idx = 0;
-            size_t sub_idx = 0;
+            const std::tuple<Point, size_t, double> hit = mesh_triangle_point(mesh, face_keys, node.object_id, test_point);
 
-            if (!mesh.get_triangle_by_id(node.object_id, face_idx, sub_idx, v0, v1, v2))
-                continue;
-
-            const Point cp = closest_point_on_triangle(test_point, v0, v1, v2);
-            const double dist = cp.distance(test_point);
-
-            if (dist < best_dist) {
-                best_dist = dist;
-                best_point = cp;
-                best_face_key = face_keys[face_idx];
-            }
+            if (std::get<2>(hit) < best_dist)
+                std::tie(best_point, best_face_key, best_dist) = hit;
 
             continue;
         }
@@ -1256,21 +1253,7 @@ std::tuple<Point, size_t, double> Closest::mesh_point_aabb(const Mesh& mesh, con
         const double ld = aabb_min_distance(tree->nodes[left].aabb, test_point);
         const double rd = aabb_min_distance(tree->nodes[right].aabb, test_point);
 
-        assert(top + 2 <= STACK_SIZE);
-
-        if (ld <= rd) {
-            if (rd < best_dist)
-                stack[top++] = right;
-
-            if (ld < best_dist)
-                stack[top++] = left;
-        } else {
-            if (ld < best_dist)
-                stack[top++] = left;
-
-            if (rd < best_dist)
-                stack[top++] = right;
-        }
+        push_nearer_last(stack, top, left, right, ld, rd, best_dist);
     }
 
     return {best_point, best_face_key, best_dist};

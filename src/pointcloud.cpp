@@ -290,14 +290,7 @@ std::vector<Vector> PointCloud::get_normals() const {
 // ═══════════════════════════════════════════════════════════════════════════
 // LOD octree
 // ═══════════════════════════════════════════════════════════════════════════
-void PointCloud::build_lod(double root_spacing, int leaf_capacity) {
-
-    const SpatialOctree tree = SpatialOctree::from_coords(_coords, root_spacing, leaf_capacity);
-    const std::vector<int>& order = tree.order();
-
-    if (_point_ids.empty())
-        for (size_t i = 0; i < point_count(); i++)
-            _point_ids.push_back(static_cast<int>(i));
+void PointCloud::lod_reorder(const std::vector<int>& order) {
 
     const bool has_colors = _colors.size() == order.size() * 4;
     const bool has_normals = _normals.size() == order.size() * 3;
@@ -334,6 +327,9 @@ void PointCloud::build_lod(double root_spacing, int leaf_capacity) {
 
     if (has_normals)
         _normals = std::move(normals);
+}
+
+void PointCloud::lod_store_nodes(const SpatialOctree& tree) {
 
     _lod_min.clear();
     _lod_size.clear();
@@ -360,6 +356,18 @@ void PointCloud::build_lod(double root_spacing, int leaf_capacity) {
         for (int k = 0; k < 8; k++)
             _lod_children.push_back(k < static_cast<int>(kids.size()) ? kids[k] : -1);
     }
+}
+
+void PointCloud::build_lod(double root_spacing, int leaf_capacity) {
+
+    const SpatialOctree tree = SpatialOctree::from_coords(_coords, root_spacing, leaf_capacity);
+
+    if (_point_ids.empty())
+        for (size_t i = 0; i < point_count(); i++)
+            _point_ids.push_back(static_cast<int>(i));
+
+    lod_reorder(tree.order());
+    lod_store_nodes(tree);
 }
 
 std::pair<Point, double> PointCloud::lod_cube(int i) const {

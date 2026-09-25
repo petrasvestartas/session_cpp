@@ -386,6 +386,18 @@ private:
     /// Add the hull points of pts right of the segment (a, b) to hull.
     static void quick_hull_recurse(const std::vector<std::array<double, 2>>& pts, double ax, double ay, double bx, double by, std::vector<std::array<double, 2>>& hull);
 
+    /// Return the extents (min_u, max_u, min_v, max_v) of pts2d in the frame rotated by cosine ca and sine sa.
+    static std::array<double, 4> rotated_extents_2d(const std::vector<std::array<double, 2>>& pts2d, double ca, double sa);
+
+    /// Return the closed rectangle of extents rotated by angle in the frame (origin, x_axis, y_axis).
+    static Polyline unproject_rectangle(const Point& origin, const Vector& x_axis, const Vector& y_axis, const std::array<double, 4>& extents, double angle);
+
+    /// Return twice the signed area of a 2D polygon by the shoelace formula.
+    static double shoelace_2d(const std::vector<std::array<double, 2>>& poly2d);
+
+    /// Return the unit normal of every edge of a 2D polygon, zero for a degenerate edge.
+    static std::vector<std::array<double, 2>> edge_normals_2d(const std::vector<std::array<double, 2>>& poly2d);
+
     /// Miter-offset a 2D polygon in place by offset_dist.
     static void offset_polygon_2d(std::vector<std::array<double, 2>>& poly2d, double offset_dist);
 

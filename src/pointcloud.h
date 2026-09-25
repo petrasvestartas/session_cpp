@@ -19,6 +19,8 @@ class PointCloud;
 
 namespace session_cpp {
 
+class SpatialOctree;
+
 /// A point cloud as flat coordinate, color and normal arrays with an optional LOD octree.
 class PointCloud {
 private:
@@ -301,6 +303,13 @@ public:
 
     /// Return "PointCloud(name, N points, N colors, N normals)".
     std::string repr() const;
+
+private:
+    /// Permute points, ids, colors and normals into the given order.
+    void lod_reorder(const std::vector<int>& order);
+
+    /// Replace the LOD node arrays with the nodes of tree.
+    void lod_store_nodes(const SpatialOctree& tree);
 };
 
 /// Write the string representation to a stream.

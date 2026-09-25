@@ -1214,6 +1214,56 @@ void validate(const BRep& result, const BRep& original, double tolerance) {
     }
 }
 
+/// Parameter-space tolerance of a surface: tolerance over its larger world length per unit parameter.
+double surface_uv_tolerance(const NurbsSurface& surface, double tolerance) {
+
+    double u0 = 0.0;
+    double u1 = 0.0;
+    double v0 = 0.0;
+    double v1 = 0.0;
+    std::tie(u0, u1) = surface.domain(0);
+    std::tie(v0, v1) = surface.domain(1);
+    const Point origin = surface.point_at(u0, v0);
+    const double scale = std::max(
+        origin.distance(surface.point_at(u1, v0)) / (u1 - u0),
+        origin.distance(surface.point_at(u0, v1)) / (v1 - v0)
+    );
+    require(scale > EPSILON, "Cannot split a degenerate surface domain");
+
+    return tolerance / scale;
+}
+
+/// Wires of every region, one new edge per run added to result.
+std::vector<std::vector<BRepRef>> region_wires(
+    BRep& result,
+    std::vector<Piece>& pieces,
+    const BRep& brep,
+    int surface_index,
+    const std::vector<Source>& sources,
+    const std::vector<std::vector<std::vector<Run>>>& regions,
+    double tolerance
+) {
+
+    std::vector<std::vector<BRepRef>> new_wires;
+
+    for (const std::vector<std::vector<Run>>& region : regions) {
+        std::vector<BRepRef> wires;
+
+        for (const std::vector<Run>& loop : region) {
+            std::vector<BRepRef> refs;
+
+            for (const Run& run : loop)
+                refs.push_back(add_run_edge(result, pieces, brep, surface_index, sources, run, tolerance));
+
+            wires.push_back({result.add_wire(refs), FORWARD});
+        }
+
+        new_wires.push_back(wires);
+    }
+
+    return new_wires;
+}
+
 } // namespace
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1283,19 +1333,7 @@ BRep split_brep_face_by_curves(
     const NurbsSurface& surface = brep.m_surfaces[face.surface_index];
     check_surface(surface);
 
-    double u0 = 0.0;
-    double u1 = 0.0;
-    double v0 = 0.0;
-    double v1 = 0.0;
-    std::tie(u0, u1) = surface.domain(0);
-    std::tie(v0, v1) = surface.domain(1);
-    const Point origin = surface.point_at(u0, v0);
-    const double scale = std::max(
-        origin.distance(surface.point_at(u1, v0)) / (u1 - u0),
-        origin.distance(surface.point_at(u0, v1)) / (v1 - v0)
-    );
-    require(scale > EPSILON, "Cannot split a degenerate surface domain");
-    const double uv_tolerance = tolerance / scale;
+    const double uv_tolerance = surface_uv_tolerance(surface, tolerance);
 
     std::vector<Source> sources;
     const std::vector<std::vector<Point>> original_loops = boundary_loops(brep, face_index, uv_tolerance, sources);
@@ -1314,26 +1352,11 @@ BRep split_brep_face_by_curves(
 
     BRep result = brep;
     std::vector<Piece> pieces;
-    std::vector<std::vector<BRepRef>> new_wires;
-
-    for (const std::vector<std::vector<Run>>& region : regions) {
-        std::vector<BRepRef> wires;
-
-        for (const std::vector<Run>& loop : region) {
-            std::vector<BRepRef> refs;
-
-            for (const Run& run : loop)
-                refs.push_back(add_run_edge(result, pieces, brep, face.surface_index, sources, run, tolerance));
-
-            wires.push_back({result.add_wire(refs), FORWARD});
-        }
-
-        new_wires.push_back(wires);
-    }
-
+    const std::vector<std::vector<BRepRef>> new_wires = region_wires(result, pieces, brep, face.surface_index, sources, regions, tolerance);
     replace_wires(result, brep, sources, pieces);
     add_faces(result, face, face_index, new_wires);
     validate(result, brep, tolerance);
+
     return result;
 }
 

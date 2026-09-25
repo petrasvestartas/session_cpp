@@ -65,11 +65,13 @@ static void load_rows_3x3(
     }
 }
 
-/// Swap two coefficient columns in all rows of the 3x4 work array.
-static void swap_columns(double w[12], int c0, int c1) {
+/// Swap two coefficient columns in all rows of the 3x4 work array, and the unknowns they solve for.
+static void swap_columns(double w[12], int slot[3], int c0, int c1) {
 
     for (int r = 0; r < 3; r++)
         std::swap(w[4 * r + c0], w[4 * r + c1]);
+
+    std::swap(slot[c0], slot[c1]);
 }
 
 /// Scale the top row to a unit pivot and clear the first column of the rows below.
@@ -187,10 +189,8 @@ int Intersection::solve_3x3(
     int slot[3] = {0, 1, 2};
     load_rows_3x3(w, row0, row1, row2, d0, d1, d2, i);
 
-    if (j != 0) {
-        swap_columns(w, 0, j);
-        std::swap(slot[0], slot[j]);
-    }
+    if (j != 0)
+        swap_columns(w, slot, 0, j);
 
     eliminate_first_column(w);
     temp = max_pivot_2x2(w, i, j);
@@ -200,10 +200,8 @@ int Intersection::solve_3x3(
 
     update_pivot_range(std::fabs(temp), maxpiv, minpiv);
 
-    if (j != 0) {
-        swap_columns(w, 1, 2);
-        std::swap(slot[1], slot[2]);
-    }
+    if (j != 0)
+        swap_columns(w, slot, 1, 2);
 
     const int pivot = i ? 8 : 4;
     const int other = i ? 4 : 8;
@@ -961,65 +959,47 @@ bool curve_refine_intersection_newton(const NurbsCurve& curve, const Plane& plan
     return std::abs(curve_signed_distance_to_plane(curve.point_at(t), plane)) < tolerance * 2.0;
 }
 
-/// Bezier-clipping recursion of the curve-plane distance on [ta, tb].
-void curve_plane_clip(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double ta,
-    double tb,
-    int depth,
-    std::vector<double>& results
-) {
+/// Newton refinement of the plane crossing in a tiny interval [ta, tb], kept when it stays inside and on the plane.
+void curve_plane_refine(const NurbsCurve& curve, const Plane& plane, double tolerance, double ta, double tb, std::vector<double>& results) {
 
-    if (depth > 50) {
-        double tm = (ta + tb) * 0.5;
-        Point pm = curve.point_at(tm);
-        double dist = curve_signed_distance_to_plane(pm, plane);
+    double tm = (ta + tb) * 0.5;
+    Point pm = curve.point_at(tm);
+    double dist = curve_signed_distance_to_plane(pm, plane);
 
-        if (std::abs(dist) < tolerance)
-            results.push_back(tm);
-
+    if (std::abs(dist) >= tolerance)
         return;
-    }
 
-    if (std::abs(tb - ta) < tolerance * 0.01) {
-        double tm = (ta + tb) * 0.5;
-        Point pm = curve.point_at(tm);
-        double dist = curve_signed_distance_to_plane(pm, plane);
+    double t = tm;
 
-        if (std::abs(dist) < tolerance) {
-            double t = tm;
+    for (int iter = 0; iter < 10; iter++) {
+        Point pt = curve.point_at(t);
 
-            for (int iter = 0; iter < 10; iter++) {
-                Point pt = curve.point_at(t);
+        double f = curve_signed_distance_to_plane(pt, plane);
+        double df = curve_plane_slope(curve, plane, t);
 
-                double f = curve_signed_distance_to_plane(pt, plane);
-                double df = curve_plane_slope(curve, plane, t);
+        if (std::abs(df) < 1e-12)
+            break;
 
-                if (std::abs(df) < 1e-12)
-                    break;
+        double dt = -f / df;
+        t += dt;
 
-                double dt = -f / df;
-                t += dt;
+        if (std::abs(dt) < tolerance * 0.01)
+            break;
 
-                if (std::abs(dt) < tolerance * 0.01)
-                    break;
-
-                if (t < ta || t > tb) {
-                    t = tm;
-                    break;
-                }
-            }
-
-            Point pt_final = curve.point_at(t);
-
-            if (std::abs(curve_signed_distance_to_plane(pt_final, plane)) < tolerance && t >= ta && t <= tb)
-                results.push_back(t);
+        if (t < ta || t > tb) {
+            t = tm;
+            break;
         }
-
-        return;
     }
+
+    Point pt_final = curve.point_at(t);
+
+    if (std::abs(curve_signed_distance_to_plane(pt_final, plane)) < tolerance && t >= ta && t <= tb)
+        results.push_back(t);
+}
+
+/// Part of [ta, tb] where the sampled distance crosses the plane, the whole interval when unclear; empty when it misses.
+std::optional<std::pair<double, double>> curve_plane_clip_range(const NurbsCurve& curve, const Plane& plane, double tolerance, double ta, double tb) {
 
     int num_samples = std::min(curve.order() + 1, 10);
     std::vector<double> distances;
@@ -1038,7 +1018,7 @@ void curve_plane_clip(
     double d_max = *std::max_element(distances.begin(), distances.end());
 
     if (d_min > tolerance || d_max < -tolerance)
-        return;
+        return std::nullopt;
 
     double t_min = ta;
     double t_max = tb;
@@ -1064,6 +1044,44 @@ void curve_plane_clip(
     t_min = std::max(ta, t_min);
     t_max = std::min(tb, t_max);
 
+    return std::make_pair(t_min, t_max);
+}
+
+/// Bezier-clipping recursion of the curve-plane distance on [ta, tb].
+void curve_plane_clip(
+    const NurbsCurve& curve,
+    const Plane& plane,
+    double tolerance,
+    double ta,
+    double tb,
+    int depth,
+    std::vector<double>& results
+) {
+
+    if (depth > 50) {
+        double tm = (ta + tb) * 0.5;
+        Point pm = curve.point_at(tm);
+        double dist = curve_signed_distance_to_plane(pm, plane);
+
+        if (std::abs(dist) < tolerance)
+            results.push_back(tm);
+
+        return;
+    }
+
+    if (std::abs(tb - ta) < tolerance * 0.01) {
+        curve_plane_refine(curve, plane, tolerance, ta, tb, results);
+
+        return;
+    }
+
+    const std::optional<std::pair<double, double>> range = curve_plane_clip_range(curve, plane, tolerance, ta, tb);
+
+    if (!range)
+        return;
+
+    const double t_min = range->first;
+    const double t_max = range->second;
     double reduction = (t_max - t_min) / (tb - ta);
 
     if (reduction > 0.8 || (t_max - t_min) < tolerance * 0.1) {
@@ -1864,6 +1882,39 @@ double turn_step(const SurfacePlaneField& field, double tu, double tv, double pr
     return field.step;
 }
 
+/// Midpoint tangent and step at (u, v) along dir, the previous tangent reused where the field has none; false when neither exists.
+bool march_tangent(
+    const SurfacePlaneField& field,
+    double u,
+    double v,
+    int dir,
+    double prev_tu,
+    double prev_tv,
+    double& tu,
+    double& tv,
+    double& local_step
+) {
+
+    if (!field.tangent(u, v, dir, tu, tv)) {
+        if (std::hypot(prev_tu, prev_tv) < 1e-14)
+            return false;
+
+        tu = prev_tu;
+        tv = prev_tv;
+    }
+
+    local_step = turn_step(field, tu, tv, prev_tu, prev_tv);
+    double tu2;
+    double tv2;
+
+    if (field.tangent(u + local_step * 0.5 * tu, v + local_step * 0.5 * tv, dir, tu2, tv2)) {
+        tu = tu2;
+        tv = tv2;
+    }
+
+    return true;
+}
+
 /// March the zero set from (su, sv) in direction dir; true when it closes on its start.
 bool surface_plane_march(
     const SurfacePlaneField& field,
@@ -1885,23 +1936,10 @@ bool surface_plane_march(
     for (int s = 0; s < field.max_steps; s++) {
         double tu;
         double tv;
+        double local_step;
 
-        if (!field.tangent(u, v, dir, tu, tv)) {
-            if (std::hypot(prev_tu, prev_tv) < 1e-14)
-                break;
-
-            tu = prev_tu;
-            tv = prev_tv;
-        }
-
-        const double local_step = turn_step(field, tu, tv, prev_tu, prev_tv);
-        double tu2;
-        double tv2;
-
-        if (field.tangent(u + local_step * 0.5 * tu, v + local_step * 0.5 * tv, dir, tu2, tv2)) {
-            tu = tu2;
-            tv = tv2;
-        }
+        if (!march_tangent(field, u, v, dir, prev_tu, prev_tv, tu, tv, local_step))
+            break;
 
         prev_tu = tu;
         prev_tv = tv;
@@ -2306,16 +2344,10 @@ double fitted_max_deviation(
     return max_dev;
 }
 
-/// Cubic fitted to the points in the plane's frame, CVs doubled until within fit_tol, lifted back to 3D.
-NurbsCurve fit_planar_freeform(const std::vector<Point>& all_pts, bool is_loop, const Plane& plane, double fit_tol) {
+/// Best cubic fitted to 2D points, CVs doubled until within fit_tol; invalid when no fit succeeds.
+NurbsCurve fit_freeform_2d(const std::vector<Point>& pts_2d, const std::vector<double>& chords, bool is_loop, double fit_tol) {
 
-    const int m = (int)all_pts.size();
-
-    if (m < 4)
-        return NurbsCurve();
-
-    const std::vector<Point> pts_2d = plane_points_2d(all_pts, plane);
-    const std::vector<double> chords = chord_parameters(pts_2d, is_loop);
+    const int m = (int)pts_2d.size();
     int target_cvs = std::max(8, (int)(total_turning(pts_2d) / 0.5) + 6);
     const int max_cvs = std::min(m - 1, 128);
     NurbsCurve crv_2d;
@@ -2343,12 +2375,11 @@ NurbsCurve fit_planar_freeform(const std::vector<Point>& all_pts, bool is_loop, 
         target_cvs = std::min(target_cvs * 2, max_cvs + 1);
     }
 
-    if (!crv_2d.is_valid())
-        crv_2d = is_loop ? NurbsCurve::create_interpolated(pts_2d, CurveNurbsKnotStyle::ChordPeriodic)
-                         : NurbsCurve::create_interpolated(pts_2d);
+    return crv_2d;
+}
 
-    if (!crv_2d.is_valid())
-        return NurbsCurve();
+/// Move the CVs of a curve drawn in the plane's 2D frame to 3D, in place.
+void lift_to_plane(NurbsCurve& crv_2d, const Plane& plane) {
 
     const Vector ax = plane.x_axis();
     const Vector ay = plane.y_axis();
@@ -2368,6 +2399,28 @@ NurbsCurve fit_planar_freeform(const std::vector<Point>& all_pts, bool is_loop, 
             )
         );
     }
+}
+
+/// Cubic fitted to the points in the plane's frame, CVs doubled until within fit_tol, lifted back to 3D.
+NurbsCurve fit_planar_freeform(const std::vector<Point>& all_pts, bool is_loop, const Plane& plane, double fit_tol) {
+
+    const int m = (int)all_pts.size();
+
+    if (m < 4)
+        return NurbsCurve();
+
+    const std::vector<Point> pts_2d = plane_points_2d(all_pts, plane);
+    const std::vector<double> chords = chord_parameters(pts_2d, is_loop);
+    NurbsCurve crv_2d = fit_freeform_2d(pts_2d, chords, is_loop, fit_tol);
+
+    if (!crv_2d.is_valid())
+        crv_2d = is_loop ? NurbsCurve::create_interpolated(pts_2d, CurveNurbsKnotStyle::ChordPeriodic)
+                         : NurbsCurve::create_interpolated(pts_2d);
+
+    if (!crv_2d.is_valid())
+        return NurbsCurve();
+
+    lift_to_plane(crv_2d, plane);
 
     return crv_2d;
 }
@@ -2492,8 +2545,8 @@ NurbsCurve fit_plane_circle(const std::vector<Point>& all_pts, const Plane& plan
     return circle_nurbs(cx3d, cy3d, cz3d, {ax[0], ax[1], ax[2]}, {ay[0], ay[1], ay[2]}, radius);
 }
 
-/// Least-squares conic A x^2 + B xy + C y^2 + D x + E y = 1 through the points in the plane's frame.
-bool fit_plane_conic(const std::vector<Point>& all_pts, const Point& po, const Vector& ax, const Vector& ay, double coef[5]) {
+/// Augmented normal equations [AtA | Atb] of the conic fit through the points in the frame (po, ax, ay).
+void conic_normal_equations(const std::vector<Point>& all_pts, const Point& po, const Vector& ax, const Vector& ay, double m[5][6]) {
 
     double ata[5][5] = {};
     double atb[5] = {};
@@ -2512,14 +2565,16 @@ bool fit_plane_conic(const std::vector<Point>& all_pts, const Point& po, const V
         }
     }
 
-    double m[5][6];
-
     for (int r = 0; r < 5; r++) {
         for (int c = 0; c < 5; c++)
             m[r][c] = ata[r][c];
 
         m[r][5] = atb[r];
     }
+}
+
+/// Solve an augmented 5x6 system by Gaussian elimination with partial pivoting; false when singular.
+bool solve_augmented_5x5(double m[5][6], double coef[5]) {
 
     for (int col = 0; col < 5; col++) {
         int pivot = col;
@@ -2553,6 +2608,35 @@ bool fit_plane_conic(const std::vector<Point>& all_pts, const Point& po, const V
     }
 
     return true;
+}
+
+/// Least-squares conic A x^2 + B xy + C y^2 + D x + E y = 1 through the points in the plane's frame.
+bool fit_plane_conic(const std::vector<Point>& all_pts, const Point& po, const Vector& ax, const Vector& ay, double coef[5]) {
+
+    double m[5][6];
+    conic_normal_equations(all_pts, po, ax, ay, m);
+
+    return solve_augmented_5x5(m, coef);
+}
+
+/// Largest residual of the conic coef over the points in the frame (po, ax, ay).
+double conic_max_deviation(const std::vector<Point>& all_pts, const Point& po, const Vector& ax, const Vector& ay, const double coef[5]) {
+
+    const double ca = coef[0];
+    const double cb = coef[1];
+    const double cc = coef[2];
+    const double cd = coef[3];
+    const double ce = coef[4];
+    double max_conic_dev = 0;
+
+    for (const Point& p : all_pts) {
+        double x;
+        double y;
+        std::tie(x, y) = plane_coords_2d(p, po, ax, ay);
+        max_conic_dev = std::max(max_conic_dev, std::fabs(ca * x * x + cb * x * y + cc * y * y + cd * x + ce * y - 1.0));
+    }
+
+    return max_conic_dev;
 }
 
 /// Largest distance from the points to the ellipse (cx, cy, semi_a, semi_b, theta) in the plane's frame.
@@ -2607,14 +2691,7 @@ NurbsCurve fit_plane_ellipse(const std::vector<Point>& all_pts, const Plane& pla
     if (disc >= -1e-10 || std::fabs(ca) <= 1e-14)
         return NurbsCurve();
 
-    double max_conic_dev = 0;
-
-    for (const Point& p : all_pts) {
-        double x;
-        double y;
-        std::tie(x, y) = plane_coords_2d(p, po, ax, ay);
-        max_conic_dev = std::max(max_conic_dev, std::fabs(ca * x * x + cb * x * y + cc * y * y + cd * x + ce * y - 1.0));
-    }
+    const double max_conic_dev = conic_max_deviation(all_pts, po, ax, ay, coef);
 
     if (max_conic_dev / std::max(std::max(std::fabs(ca), std::fabs(cc)), 1e-10) >= 0.01)
         return NurbsCurve();
@@ -3269,6 +3346,36 @@ static NurbsCurve exact_ellipse(
     return crv;
 }
 
+/// Jacobi rotation of the symmetric a that zeroes a[p][q], accumulated into the eigenvector columns of v.
+static void jacobi_rotate(double a[3][3], double v[3][3], int p, int q) {
+
+    const double theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+    const double t = (theta >= 0 ? 1.0 : -1.0) / (std::abs(theta) + std::sqrt(theta * theta + 1.0));
+    const double c = 1.0 / std::sqrt(t * t + 1.0);
+    const double s = t * c;
+
+    for (int k = 0; k < 3; k++) {
+        const double akp = a[k][p];
+        const double akq = a[k][q];
+        a[k][p] = c * akp - s * akq;
+        a[k][q] = s * akp + c * akq;
+    }
+
+    for (int k = 0; k < 3; k++) {
+        const double apk = a[p][k];
+        const double aqk = a[q][k];
+        a[p][k] = c * apk - s * aqk;
+        a[q][k] = s * apk + c * aqk;
+    }
+
+    for (int k = 0; k < 3; k++) {
+        const double vkp = v[k][p];
+        const double vkq = v[k][q];
+        v[k][p] = c * vkp - s * vkq;
+        v[k][q] = s * vkp + c * vkq;
+    }
+}
+
 /// Eigenvalues/vectors of a symmetric 3x3 matrix (cyclic Jacobi).
 static void jacobi_eig3(const double m[3][3], double eigvals[3], std::array<double, 3> eigvecs[3]) {
 
@@ -3297,31 +3404,7 @@ static void jacobi_eig3(const double m[3][3], double eigvals[3], std::array<doub
             if (std::abs(a[p][q]) < 1e-300)
                 continue;
 
-            double theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
-            double t = (theta >= 0 ? 1.0 : -1.0) / (std::abs(theta) + std::sqrt(theta * theta + 1.0));
-            double c = 1.0 / std::sqrt(t * t + 1.0);
-            double s = t * c;
-
-            for (int k = 0; k < 3; k++) {
-                double akp = a[k][p];
-                double akq = a[k][q];
-                a[k][p] = c * akp - s * akq;
-                a[k][q] = s * akp + c * akq;
-            }
-
-            for (int k = 0; k < 3; k++) {
-                double apk = a[p][k];
-                double aqk = a[q][k];
-                a[p][k] = c * apk - s * aqk;
-                a[q][k] = s * apk + c * aqk;
-            }
-
-            for (int k = 0; k < 3; k++) {
-                double vkp = v[k][p];
-                double vkq = v[k][q];
-                v[k][p] = c * vkp - s * vkq;
-                v[k][q] = s * vkp + c * vkq;
-            }
+            jacobi_rotate(a, v, p, q);
         }
     }
 
@@ -6479,6 +6562,36 @@ static bool ssi_cone_sphere(const RecogSurface& cone, const RecogSurface& sph, s
     return true;
 }
 
+/// Points where the cross-section circles of two parallel cylinders at axis distance d meet, one when they touch.
+static std::vector<std::array<double, 3>> parallel_cylinder_feet(
+    const std::array<double, 3>& p1,
+    const std::array<double, 3>& w1,
+    double r1,
+    const std::array<double, 3>& p2,
+    double r2,
+    double d,
+    double ktol
+) {
+
+    double off = ssi_dot(std::array<double, 3>{p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]}, w1);
+    std::array<double, 3> p2p{p2[0] - off * w1[0], p2[1] - off * w1[1], p2[2] - off * w1[2]};
+    std::array<double, 3> xdir = ssi_unit(std::array<double, 3>{p2p[0] - p1[0], p2p[1] - p1[1], p2p[2] - p1[2]});
+    std::array<double, 3> ydir = ssi_unit(ssi_cross(w1, xdir));
+    double aa = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
+    double h = std::sqrt(std::max(0.0, r1 * r1 - aa * aa));
+    std::array<double, 3> foot{p1[0] + aa * xdir[0], p1[1] + aa * xdir[1], p1[2] + aa * xdir[2]};
+    std::vector<std::array<double, 3>> feet;
+
+    if (h <= ktol) {
+        feet.push_back(foot);
+    } else {
+        feet.push_back(std::array<double, 3>{foot[0] + h * ydir[0], foot[1] + h * ydir[1], foot[2] + h * ydir[2]});
+        feet.push_back(std::array<double, 3>{foot[0] - h * ydir[0], foot[1] - h * ydir[1], foot[2] - h * ydir[2]});
+    }
+
+    return feet;
+}
+
 /// Parallel cylinders: shared ruling lines, false when coaxial with equal radii.
 static bool ssi_parallel_cylinders(
     const NurbsSurface& sa,
@@ -6506,13 +6619,6 @@ static bool ssi_parallel_cylinders(
     if (d > r1 + r2 + ktol || d < std::abs(r1 - r2) - ktol)
         return true;
 
-    double off = ssi_dot(std::array<double, 3>{p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]}, w1);
-    std::array<double, 3> p2p{p2[0] - off * w1[0], p2[1] - off * w1[1], p2[2] - off * w1[2]};
-    std::array<double, 3> xdir = ssi_unit(std::array<double, 3>{p2p[0] - p1[0], p2p[1] - p1[1], p2p[2] - p1[2]});
-    std::array<double, 3> ydir = ssi_unit(ssi_cross(w1, xdir));
-    double aa = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
-    double h = std::sqrt(std::max(0.0, r1 * r1 - aa * aa));
-    std::array<double, 3> foot{p1[0] + aa * xdir[0], p1[1] + aa * xdir[1], p1[2] + aa * xdir[2]};
     double s0a;
     double s1a;
     double s0b;
@@ -6525,16 +6631,7 @@ static bool ssi_parallel_cylinders(
     if (shi - slo <= ktol)
         return true;
 
-    std::vector<std::array<double, 3>> feet;
-
-    if (h <= ktol) {
-        feet.push_back(foot);
-    } else {
-        feet.push_back(std::array<double, 3>{foot[0] + h * ydir[0], foot[1] + h * ydir[1], foot[2] + h * ydir[2]});
-        feet.push_back(std::array<double, 3>{foot[0] - h * ydir[0], foot[1] - h * ydir[1], foot[2] - h * ydir[2]});
-    }
-
-    for (const std::array<double, 3>& bp : feet) {
+    for (const std::array<double, 3>& bp : parallel_cylinder_feet(p1, w1, r1, p2, r2, d, ktol)) {
         NurbsCurve line = axis_segment(bp, w1, slo, shi);
         line.set_domain(0.0, 1.0);
         out.push_back(line);
@@ -7117,6 +7214,38 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
 // ═══════════════════════════════════════════════════════════════════════════
 // NURBS surfaces
 // ═══════════════════════════════════════════════════════════════════════════
+/// Whether crv runs through a curve of curves at a quarter, half and three quarters of its domain within tolerance.
+static bool is_duplicate_curve(const NurbsCurve& crv, const std::vector<NurbsCurve>& curves, double tolerance) {
+
+    const std::pair<double, double> domain_ct = crv.domain();
+    const double ct0 = domain_ct.first;
+    const double ct1 = domain_ct.second;
+
+    for (const NurbsCurve& existing : curves) {
+        const std::pair<double, double> domain_et = existing.domain();
+        const double et0 = domain_et.first;
+        const double et1 = domain_et.second;
+        bool all_close = true;
+
+        for (double f : {0.25, 0.5, 0.75}) {
+            Point cp = crv.point_at(ct0 + (ct1 - ct0) * f);
+            Point ep = existing.point_at(et0 + (et1 - et0) * f);
+            Point em = existing.point_at((et0 + et1) * 0.5);
+            double d = std::min(cp.distance(ep), cp.distance(em));
+
+            if (d > tolerance) {
+                all_close = false;
+                break;
+            }
+        }
+
+        if (all_close)
+            return true;
+    }
+
+    return false;
+}
+
 std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface, const Plane& plane, double tolerance) {
 
     if (!surface.is_valid())
@@ -7145,37 +7274,9 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
         if (!crv.is_valid())
             continue;
 
-        const std::pair<double, double> domain_ct = crv.domain();
-        const double ct0 = domain_ct.first;
-        const double ct1 = domain_ct.second;
-        double dup_tol = step * uv_to_3d * 3.0;
-        bool dup = false;
+        const double dup_tol = step * uv_to_3d * 3.0;
 
-        for (NurbsCurve& existing : result) {
-            const std::pair<double, double> domain_et = existing.domain();
-            const double et0 = domain_et.first;
-            const double et1 = domain_et.second;
-            bool all_close = true;
-
-            for (double f : {0.25, 0.5, 0.75}) {
-                Point cp = crv.point_at(ct0 + (ct1 - ct0) * f);
-                Point ep = existing.point_at(et0 + (et1 - et0) * f);
-                Point em = existing.point_at((et0 + et1) * 0.5);
-                double d = std::min(cp.distance(ep), cp.distance(em));
-
-                if (d > dup_tol) {
-                    all_close = false;
-                    break;
-                }
-            }
-
-            if (all_close) {
-                dup = true;
-                break;
-            }
-        }
-
-        if (!dup)
+        if (!is_duplicate_curve(crv, result, dup_tol))
             result.push_back(std::move(crv));
     }
 
@@ -9515,6 +9616,43 @@ bool Intersection::offset_in_3d(Polyline& polyline, const Plane& plane, double o
     return true;
 }
 
+/// Boolean of two flat polylines, intersection_type 0 intersect, 1 union, 2 difference, 3 xor; empty on failure.
+static std::vector<Polyline> polyline_boolean_2d(const Polyline& a2d, const Polyline& b2d, int intersection_type) {
+
+    if (intersection_type >= 0 && intersection_type <= 2)
+        return BooleanPolyline::compute(a2d, b2d, intersection_type);
+
+    if (intersection_type != 3)
+        return {};
+
+    const std::vector<Polyline> u = BooleanPolyline::compute(a2d, b2d, 1);
+    const std::vector<Polyline> inter = BooleanPolyline::compute(a2d, b2d, 0);
+
+    if (u.empty())
+        return {};
+
+    if (inter.empty())
+        return u;
+
+    return BooleanPolyline::compute(u[0], inter[0], 2);
+}
+
+/// Ring without consecutive points closer than eps, the closing point included.
+static std::vector<std::array<double, 2>> collapse_close_points(const std::vector<std::array<double, 2>>& ring, double eps) {
+
+    const double eps_sq = eps * eps;
+    std::vector<std::array<double, 2>> collapsed;
+
+    for (const std::array<double, 2>& p : ring)
+        if (collapsed.empty() || distance_sq_2d(p, collapsed.back()) >= eps_sq)
+            collapsed.push_back(p);
+
+    if (collapsed.size() >= 2 && distance_sq_2d(collapsed.back(), collapsed.front()) < eps_sq)
+        collapsed.pop_back();
+
+    return collapsed;
+}
+
 bool Intersection::polyline_boolean_2d_in_plane(
     const Polyline& polyline0,
     const Polyline& polyline1,
@@ -9538,24 +9676,7 @@ bool Intersection::polyline_boolean_2d_in_plane(
     const Polyline b2d =
         polyline_to_3d(polyline_to_2d(polyline1, origin, xax, yax), Point(), Vector(1, 0, 0), Vector(0, 1, 0));
 
-    std::vector<Polyline> result_2d;
-
-    if (intersection_type >= 0 && intersection_type <= 2) {
-        result_2d = BooleanPolyline::compute(a2d, b2d, intersection_type);
-    } else if (intersection_type == 3) {
-        const std::vector<Polyline> u = BooleanPolyline::compute(a2d, b2d, 1);
-        const std::vector<Polyline> inter = BooleanPolyline::compute(a2d, b2d, 0);
-
-        if (u.empty())
-            return false;
-
-        if (inter.empty())
-            result_2d = u;
-        else
-            result_2d = BooleanPolyline::compute(u[0], inter[0], 2);
-    } else {
-        return false;
-    }
+    const std::vector<Polyline> result_2d = polyline_boolean_2d(a2d, b2d, intersection_type);
 
     if (result_2d.empty())
         return false;
@@ -9566,17 +9687,7 @@ bool Intersection::polyline_boolean_2d_in_plane(
         return false;
 
     if (collapse_eps > 0.0) {
-        const double eps_sq = collapse_eps * collapse_eps;
-        std::vector<std::array<double, 2>> collapsed;
-
-        for (const std::array<double, 2>& p : ring)
-            if (collapsed.empty() || distance_sq_2d(p, collapsed.back()) >= eps_sq)
-                collapsed.push_back(p);
-
-        if (collapsed.size() >= 2 && distance_sq_2d(collapsed.back(), collapsed.front()) < eps_sq)
-            collapsed.pop_back();
-
-        ring.swap(collapsed);
+        ring = collapse_close_points(ring, collapse_eps);
 
         if (ring.size() < 3)
             return false;
@@ -9747,14 +9858,8 @@ bool Intersection::closed_and_open_paths_2d(
 // ═══════════════════════════════════════════════════════════════════════════
 // Elements
 // ═══════════════════════════════════════════════════════════════════════════
-std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to_face(
-    const std::vector<int>& adjacency,
-    const std::vector<std::vector<Polyline>>& polylines,
-    const std::vector<std::vector<Plane>>& planes,
-    double coplanar_tolerance
-) {
-
-    std::vector<std::tuple<int, int, int, int, int, Polyline>> results;
+/// Bounding box (min xyz, max xyz) of every face, padded by tolerance.
+static std::vector<std::vector<std::array<double, 6>>> padded_face_boxes(const std::vector<std::vector<Polyline>>& polylines, double tolerance) {
 
     std::vector<std::vector<std::array<double, 6>>> face_boxes(polylines.size());
 
@@ -9783,13 +9888,45 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
             }
 
             for (int k = 0; k < 3; ++k) {
-                bx[k] -= coplanar_tolerance;
-                bx[k + 3] += coplanar_tolerance;
+                bx[k] -= tolerance;
+                bx[k + 3] += tolerance;
             }
 
             face_boxes[e].push_back(bx);
         }
     }
+
+    return face_boxes;
+}
+
+/// Closed overlap of two coplanar faces in the frame of face_a's first edge and normal za, empty when they only touch.
+static std::optional<Polyline> coplanar_face_overlap(const Polyline& face_a, const Vector& za, const Polyline& face_b) {
+
+    std::vector<Point> pts_i = face_a.get_points();
+    Vector edge(pts_i[1][0] - pts_i[0][0], pts_i[1][1] - pts_i[0][1], pts_i[1][2] - pts_i[0][2]);
+    edge.normalize_self();
+    Vector zax = za;
+    Vector yax = zax.cross(edge);
+    yax.normalize_self();
+    Plane pln = Plane::from_frame(pts_i[0], edge, yax, zax);
+
+    std::vector<Polyline> bools = Polyline::boolean_op(face_a, face_b, pln, 0);
+
+    if (bools.empty() || bools[0].point_count() < 3)
+        return std::nullopt;
+
+    return bools[0].is_closed() ? std::move(bools[0]) : bools[0].closed();
+}
+
+std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to_face(
+    const std::vector<int>& adjacency,
+    const std::vector<std::vector<Polyline>>& polylines,
+    const std::vector<std::vector<Plane>>& planes,
+    double coplanar_tolerance
+) {
+
+    std::vector<std::tuple<int, int, int, int, int, Polyline>> results;
+    const std::vector<std::vector<std::array<double, 6>>> face_boxes = padded_face_boxes(polylines, coplanar_tolerance);
 
     for (size_t idx = 0; idx < adjacency.size(); idx += 4) {
         int a = adjacency[idx];
@@ -9818,22 +9955,13 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
                     ))
                     continue;
 
-                std::vector<Point> pts_i = polylines[a][i].get_points();
-                Vector edge(pts_i[1][0] - pts_i[0][0], pts_i[1][1] - pts_i[0][1], pts_i[1][2] - pts_i[0][2]);
-                edge.normalize_self();
-                Vector zax = za;
-                Vector yax = zax.cross(edge);
-                yax.normalize_self();
-                Plane pln = Plane::from_frame(pts_i[0], edge, yax, zax);
+                std::optional<Polyline> jpl = coplanar_face_overlap(polylines[a][i], za, polylines[b][j]);
 
-                std::vector<Polyline> bools = Polyline::boolean_op(polylines[a][i], polylines[b][j], pln, 0);
-
-                if (bools.empty() || bools[0].point_count() < 3)
+                if (!jpl)
                     continue;
 
                 int type = (i > 1 ? 0 : 1) + (j > 1 ? 0 : 1);
-                Polyline jpl = bools[0].is_closed() ? std::move(bools[0]) : bools[0].closed();
-                results.emplace_back(a, b, i, j, type, std::move(jpl));
+                results.emplace_back(a, b, i, j, type, std::move(*jpl));
                 found = true;
                 break;
             }
@@ -9912,36 +10040,28 @@ std::vector<std::tuple<int, int, int, int, int, Polyline>> Intersection::face_to
     return face_to_face(adjacency, all_polys, all_planes, coplanar_tolerance);
 }
 
-bool Intersection::line_line_classified(
-    const Line& s0,
-    const Line& s1,
-    int n_segs_0,
-    int n_segs_1,
-    int cur_seg_0,
-    int cur_seg_1,
-    double above_closer_to_edge,
-    Point& p0,
-    Point& p1,
-    Vector& v0,
-    Vector& v1,
-    Vector& normal,
-    bool& type0,
-    bool& type1,
-    bool& is_parallel
-) {
+/// Directions of two segments, their unit normal, and whether they are parallel within one degree.
+static bool line_line_frame(const Line& s0, const Line& s1, Vector& v0, Vector& v1, Vector& normal) {
 
-    const double DIST_SQ = 1e-6;
     const double EPS_PAR = 1.0;
     v0 = s0.to_vector();
     v1 = s1.to_vector();
     normal = v0.cross(v1);
     const double ang = v0.angle(v1, false, true);
-    is_parallel = normal.magnitude_squared() < 1e-24 || (90.0 - std::abs(ang - 90.0)) < EPS_PAR;
+    const bool is_parallel = normal.magnitude_squared() < 1e-24 || (90.0 - std::abs(ang - 90.0)) < EPS_PAR;
 
     if (is_parallel)
         normal = Plane::from_point_normal(s0.start(), v0).base1();
 
     normal.normalize_self();
+
+    return is_parallel;
+}
+
+/// End shared by two segments as p0 and p1, with unit directions leaving it along each segment.
+static bool line_line_shared_end(const Line& s0, const Line& s1, Point& p0, Point& p1, Vector& v0, Vector& v1) {
+
+    const double DIST_SQ = 1e-6;
     const std::array<Point, 2> ends0{s0.start(), s0.end()};
     const std::array<Point, 2> ends1{s1.start(), s1.end()};
 
@@ -9954,55 +10074,41 @@ bool Intersection::line_line_classified(
                 v1 = ends1[1 - j] - ends1[j];
                 v0.normalize_self();
                 v1.normalize_self();
-                type0 = 0;
-                type1 = 0;
 
                 return true;
             }
 
-    v0.normalize_self();
-    v1.normalize_self();
+    return false;
+}
 
-    if (is_parallel) {
-        std::vector<std::pair<double, double>> pts;
+/// Closest points of two parallel segments at the middle of their overlap, each unit direction flipped to leave its nearer end.
+static void line_line_parallel(const Line& s0, const Line& s1, Point& p0, Point& p1, Vector& v0, Vector& v1) {
 
-        for (const Point& q : {s0.start(), s0.end(), s1.start(), s1.end()}) {
-            const Point q0 = s0.closest_point(q, false).second;
-            const Point q1 = s1.closest_point(q, false).second;
-            pts.emplace_back((q0 - s0.start()).dot(v0), (q1 - s1.start()).dot(v1));
-        }
+    std::vector<std::pair<double, double>> pts;
 
-        std::sort(pts.begin(), pts.end());
-        const Point m0 = s0.start() + v0 * ((pts[1].first + pts[2].first) * 0.5);
-        const Point m1 = s1.start() + v1 * ((pts[1].second + pts[2].second) * 0.5);
-        const Point avg = m0 + (m1 - m0) * 0.5;
-        p0 = s0.closest_point(avg, false).second;
-        p1 = s1.closest_point(avg, false).second;
-
-        if (s0.closest_point(p0, false).first > 0.5)
-            v0 = -v0;
-
-        if (s1.closest_point(p1, false).first > 0.5)
-            v1 = -v1;
-
-        type0 = 0;
-        type1 = 0;
-
-        return true;
+    for (const Point& q : {s0.start(), s0.end(), s1.start(), s1.end()}) {
+        const Point q0 = s0.closest_point(q, false).second;
+        const Point q1 = s1.closest_point(q, false).second;
+        pts.emplace_back((q0 - s0.start()).dot(v0), (q1 - s1.start()).dot(v1));
     }
 
-    double t0_v;
-    double t1_v;
+    std::sort(pts.begin(), pts.end());
+    const Point m0 = s0.start() + v0 * ((pts[1].first + pts[2].first) * 0.5);
+    const Point m1 = s1.start() + v1 * ((pts[1].second + pts[2].second) * 0.5);
+    const Point avg = m0 + (m1 - m0) * 0.5;
+    p0 = s0.closest_point(avg, false).second;
+    p1 = s1.closest_point(avg, false).second;
 
-    if (!line_line_parameters(s0, s1, t0_v, t1_v, 0.0, false, true))
-        return false;
+    if (s0.closest_point(p0, false).first > 0.5)
+        v0 = -v0;
 
-    const double t0c = std::max(0.0, std::min(1.0, t0_v));
-    const double t1c = std::max(0.0, std::min(1.0, t1_v));
-    p0 = s0.point_at(t0c);
-    p1 = s1.point_at(t1c);
-    const double tt0 = (t0c + (double)cur_seg_0) / (double)n_segs_0;
-    const double tt1 = (t1c + (double)cur_seg_1) / (double)n_segs_1;
+    if (s1.closest_point(p1, false).first > 0.5)
+        v1 = -v1;
+}
+
+/// Types (0 end, 1 side) from the positions tt0 and tt1 along the polylines, the direction of an end past the middle flipped.
+static void line_line_types(double tt0, double tt1, double above_closer_to_edge, bool& type0, bool& type1, Vector& v0, Vector& v1) {
+
     const double close0 = 2.0 * std::abs(0.5 - tt0);
     const double close1 = 2.0 * std::abs(0.5 - tt1);
 
@@ -10027,6 +10133,59 @@ bool Intersection::line_line_classified(
 
     if (tt1 > 0.5 && type1 == 0)
         v1 = -v1;
+}
+
+bool Intersection::line_line_classified(
+    const Line& s0,
+    const Line& s1,
+    int n_segs_0,
+    int n_segs_1,
+    int cur_seg_0,
+    int cur_seg_1,
+    double above_closer_to_edge,
+    Point& p0,
+    Point& p1,
+    Vector& v0,
+    Vector& v1,
+    Vector& normal,
+    bool& type0,
+    bool& type1,
+    bool& is_parallel
+) {
+
+    is_parallel = line_line_frame(s0, s1, v0, v1, normal);
+
+    if (line_line_shared_end(s0, s1, p0, p1, v0, v1)) {
+        type0 = 0;
+        type1 = 0;
+
+        return true;
+    }
+
+    v0.normalize_self();
+    v1.normalize_self();
+
+    if (is_parallel) {
+        line_line_parallel(s0, s1, p0, p1, v0, v1);
+        type0 = 0;
+        type1 = 0;
+
+        return true;
+    }
+
+    double t0_v;
+    double t1_v;
+
+    if (!line_line_parameters(s0, s1, t0_v, t1_v, 0.0, false, true))
+        return false;
+
+    const double t0c = std::max(0.0, std::min(1.0, t0_v));
+    const double t1c = std::max(0.0, std::min(1.0, t1_v));
+    p0 = s0.point_at(t0c);
+    p1 = s1.point_at(t1c);
+    const double tt0 = (t0c + (double)cur_seg_0) / (double)n_segs_0;
+    const double tt1 = (t1c + (double)cur_seg_1) / (double)n_segs_1;
+    line_line_types(tt0, tt1, above_closer_to_edge, type0, type1, v0, v1);
 
     return true;
 }
