@@ -585,7 +585,6 @@ MINI_TEST("Graph", "Cycle Basis") {
     MINI_CHECK(cycles.size() == 1);
 }
 
-
 MINI_TEST("Graph", "Take Node") {
 
     Graph g("g");

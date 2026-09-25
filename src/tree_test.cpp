@@ -455,7 +455,6 @@ MINI_TEST("Tree", "Get Children Guids") {
     MINI_CHECK(guids[1] == b->guid());
 }
 
-
 MINI_TEST("Tree", "Dead Nodes") {
 
     Tree tree("t");
