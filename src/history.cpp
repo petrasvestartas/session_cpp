@@ -65,16 +65,36 @@ std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features) {
     return out;
 }
 
-/// Bytes a mesh pins, from its counts.
+/// Bytes a mesh pins, from its counts: a vertex owns its halfedge map, a face its vertex list (measured, triangle caches not counted).
 static size_t mesh_weight(const Mesh& mesh) {
-    return 128 + 64 * mesh.number_of_vertices() + 48 * mesh.number_of_faces();
+    return 128 + 768 * mesh.number_of_vertices() + 192 * mesh.number_of_faces();
 }
 
-/// Bytes a brep pins, from its table lengths.
+/// Bytes a curve pins, from its control point and knot counts.
+static size_t curve_weight(const NurbsCurve& curve) {
+    return 256 + 32 * curve.cv_count() + 8 * curve.m_nurbsknot.size();
+}
+
+/// Bytes a surface pins, from its control point and knot counts.
+static size_t surface_weight(const NurbsSurface& surface) {
+    return 1536 + 32 * surface.cv_count() + 8 * (surface.m_nurbsknot[0].size() + surface.m_nurbsknot[1].size());
+}
+
+/// Bytes a brep pins: every surface and curve of its pools, plus its tables.
 static size_t brep_weight(const BRep& brep) {
 
-    return 512 + 256 * brep.m_surfaces.size() + 128 * (brep.m_curves_3d.size() + brep.m_curves_2d.size())
-        + 24 * brep.m_vertices.size() + 64 * (brep.m_edges.size() + brep.m_faces.size());
+    size_t bytes = 512 + 24 * brep.m_vertices.size() + 64 * (brep.m_edges.size() + brep.m_faces.size());
+
+    for (const NurbsSurface& surface : brep.m_surfaces)
+        bytes += surface_weight(surface);
+
+    for (const NurbsCurve& curve : brep.m_curves_3d)
+        bytes += curve_weight(curve);
+
+    for (const NurbsCurve& curve : brep.m_curves_2d)
+        bytes += curve_weight(curve);
+
+    return bytes;
 }
 
 /// Bytes an element pins: its record, its mesh or brep and its features.
@@ -122,11 +142,10 @@ size_t weight(const Item& item) {
         return mesh_weight(**mesh);
 
     if (const std::shared_ptr<NurbsCurve>* curve = std::get_if<std::shared_ptr<NurbsCurve>>(&geometry))
-        return 96 + 32 * (*curve)->cv_count() + 8 * (*curve)->m_nurbsknot.size();
+        return curve_weight(**curve);
 
     if (const std::shared_ptr<NurbsSurface>* surface = std::get_if<std::shared_ptr<NurbsSurface>>(&geometry))
-        return 128 + 32 * (*surface)->cv_count(0) * (*surface)->cv_count(1)
-            + 8 * ((*surface)->m_nurbsknot[0].size() + (*surface)->m_nurbsknot[1].size());
+        return surface_weight(**surface);
 
     if (const std::shared_ptr<BRep>* brep = std::get_if<std::shared_ptr<BRep>>(&geometry))
         return brep_weight(**brep);

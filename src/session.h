@@ -26,6 +26,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -478,8 +479,8 @@ private:
         std::vector<Frame> stack; // Nodes being written, root first.
         std::vector<std::string> sections = std::vector<std::string>(7); // The seven Session fields.
         std::string out; // The joined message.
-        std::unordered_set<std::string> seen; // Xforms guids order() reached.
-        std::vector<std::string> rest; // Xforms guids outside order(), sorted.
+        size_t hits = 0; // Xforms entries order() reached, every one once the rest scan is done.
+        std::set<std::string> rest; // Xforms guids outside order(), in guid order.
     };
 
     mutable std::string _guid; // Lazily minted guid.
@@ -598,10 +599,10 @@ private:
     /// Write the graph edges in vertex order after the last key written, at most work entries per call, then the counts and defaults; returns the entries examined.
     size_t _write_edges(Checkpoint& writer, size_t work) const;
 
-    /// Write the non-identity xforms of the live objects of one order() list, each guid once; returns the slots examined.
+    /// Write the non-identity xforms of the live objects of one order() list; returns the slots examined.
     size_t _write_ordered(Checkpoint& writer, size_t work) const;
 
-    /// Write the non-identity xforms of guids outside order(), sorted, after one scan of xforms that runs only when order() missed some; returns the entries examined.
+    /// Write the non-identity xforms of guids outside order() in guid order, after a scan of xforms in slices of work that runs only when order() missed some; returns the entries examined or written.
     size_t _write_rest(Checkpoint& writer, size_t work) const;
 
     /// Append one XformEntry to the xforms section.

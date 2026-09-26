@@ -2870,10 +2870,13 @@ size_t Session::_write_ordered(Checkpoint& writer, size_t work) const {
             const std::string& guid = guid_of(items.get_item(slot));
             auto it = xforms.find(guid);
 
-            if (it == xforms.end() || !writer.seen.insert(guid).second || it->second.is_identity())
+            if (it == xforms.end())
                 continue;
 
-            _write_xform(writer, guid, it->second);
+            writer.hits++;
+
+            if (!it->second.is_identity())
+                _write_xform(writer, guid, it->second);
         }
     });
     writer.cursor = end;
@@ -2888,28 +2891,45 @@ size_t Session::_write_ordered(Checkpoint& writer, size_t work) const {
 
 size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
 
-    size_t spent = 0;
+    if (writer.hits < xforms.size()) {
 
-    if (writer.cursor == 0 && writer.seen.size() < xforms.size()) {
+        const size_t start = writer.cursor;
+        const size_t end = std::min(xforms.size(), start + std::min(work, xforms.size()));
+        auto it = std::next(xforms.begin(), start);
 
-        for (const std::pair<const std::string, Xform>& entry : xforms)
-            if (!writer.seen.count(entry.first) && !entry.second.is_identity())
-                writer.rest.push_back(entry.first);
+        for (size_t i = start; i < end; ++i, ++it) {
 
-        std::sort(writer.rest.begin(), writer.rest.end());
-        spent = xforms.size();
+            auto held = lookup.find(it->first);
+            const bool ordered = held != lookup.end()
+                && slot_of(objects, collection_of(objects, held->second).first, it->first).has_value();
+
+            if (!ordered && !it->second.is_identity())
+                writer.rest.insert(it->first);
+        }
+
+        writer.cursor = end;
+
+        if (end >= xforms.size()) {
+            writer.hits = xforms.size();
+            writer.cursor = 0;
+        }
+
+        return end - start;
     }
 
-    const size_t start = writer.cursor;
-    const size_t end = std::min(writer.rest.size(), start + std::min(work, writer.rest.size()));
+    size_t spent = 0;
+    auto it = writer.cursor > 0 ? writer.rest.upper_bound(writer.key) : writer.rest.begin();
 
-    for (size_t i = start; i < end; ++i)
-        _write_xform(writer, writer.rest[i], xforms.at(writer.rest[i]));
+    for (; it != writer.rest.end() && spent < work; ++it, ++spent) {
+        _write_xform(writer, *it, xforms.at(*it));
+        writer.key = *it;
+    }
 
-    writer.cursor = end;
+    if (it != writer.rest.end()) {
+        writer.cursor++;
 
-    if (end < writer.rest.size())
-        return spent + end - start;
+        return spent;
+    }
 
     writer.cursor = 0;
     writer.phase = INTERACTIONS;
@@ -2919,7 +2939,7 @@ size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
         writer.phase = DEFINITIONS;
     }
 
-    return spent + end - start;
+    return spent;
 }
 
 void Session::_write_xform(Checkpoint& writer, const std::string& guid, const Xform& xform) const {

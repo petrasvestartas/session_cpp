@@ -29,7 +29,7 @@ Geometry clone(const Geometry& obj);
 /// A copy of features that keeps each guid, which the ElementFeature copy would mint anew.
 std::vector<ElementFeature> clone(const std::vector<ElementFeature>& features);
 
-/// An estimate of the bytes an item pins while a record holds it, O(1) from its container lengths.
+/// An estimate of the bytes an item pins while a record holds it, from its container lengths.
 size_t weight(const Item& item);
 
 // ═══════════════════════════════════════════════════════════════════════════

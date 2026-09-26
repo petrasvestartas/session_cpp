@@ -1233,6 +1233,11 @@ MINI_TEST("Session", "Checkpoint Restarts On Edit") {
     for (int i = 0; i < 20; ++i)
         guids.push_back(session.add_point(std::make_shared<Point>(static_cast<double>(i), 0.0, 0.0))->name);
 
+    for (int i = 0; i < 25; ++i) {
+        const std::string name = session.add_group("group" + std::to_string(i))->name;
+        session.set_xform(name, Xform::translation(0.0, static_cast<double>(i + 1), 0.0));
+    }
+
     const std::optional<std::string> first = session.checkpoint(10);
     session.begin("remove");
     session.remove_object(guids[5]);
@@ -1249,6 +1254,7 @@ MINI_TEST("Session", "Checkpoint Restarts On Edit") {
     MINI_CHECK(!first);
     MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
     MINI_CHECK(loaded.objects.points->size() == 19);
+    MINI_CHECK(loaded.xforms.size() == 25);
     MINI_CHECK(loaded.lookup.count(guids[5]) == 0);
     MINI_CHECK(session.history.can_undo());
 }
@@ -2636,7 +2642,7 @@ MINI_TEST("Session", "History Budget Bounds") {
     }
 
     Session session;
-    session.history.budget = 1 << 20;
+    session.history.budget = 4 << 20;
     std::vector<std::string> guids;
 
     for (int i = 0; i < 200; i++) {
