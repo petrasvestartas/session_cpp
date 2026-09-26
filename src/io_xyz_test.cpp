@@ -76,6 +76,7 @@ namespace session_cpp {
         original.add_point(Point(1.0, 2.5, -3.0));
         original.add_point(Point(0.1, 1e-05, 1e+16));
         original.add_point(Point(123456.789, -0.0, 1.0 / 3.0));
+        original.add_point(Point(7.120236347223045e-307, 6.386688990511104e+293, 0.0001220703125));
 
         const std::string filepath = "./serialization/test_temp_exact.xyz";
         io_xyz::write_xyz(original, filepath);
@@ -84,7 +85,7 @@ namespace session_cpp {
         file.close();
         const PointCloud loaded = io_xyz::read_xyz(filepath);
 
-        MINI_CHECK(text == "1 2.5 -3\n0.1 1e-05 1e+16\n123456.789 -0 0.3333333333333333\n");
+        MINI_CHECK(text == "1 2.5 -3\n0.1 1e-05 1e+16\n123456.789 -0 0.3333333333333333\n7.120236347223045e-307 6.386688990511104e+293 0.0001220703125\n");
         MINI_CHECK(io_xyz::write_xyz_to_string(loaded) == text);
         MINI_CHECK(loaded.get_points()[2][2] == 1.0 / 3.0);
 
