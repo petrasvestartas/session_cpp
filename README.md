@@ -1,5 +1,7 @@
 # session_cpp
 
+Undo, history and purge: [docs/history.md](docs/history.md).
+
 ## Fast Local Development
 
 ```bash
