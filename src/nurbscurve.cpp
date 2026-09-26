@@ -3761,6 +3761,9 @@ void NurbsCurve::insert_wrapped_nurbsknot_once(double nurbsknot_value) {
         return a >= 0 ? a / b : -((b - 1 - a) / b);
     };
     const auto knot_at = [&](int i) {
+        if (i > 0 && i <= static_cast<int>(nurbsknot.size()))
+            return nurbsknot[i - 1];
+
         return nurbsknot[(i - 1) % period_cv_count] + ((i - 1) / period_cv_count) * period;
     };
     int k = p;
@@ -3773,7 +3776,16 @@ void NurbsCurve::insert_wrapped_nurbsknot_once(double nurbsknot_value) {
     for (int i = 0; i < static_cast<int>(nurbsknot_new.size()); i++) {
         const int q = floor_div(i - k, new_period_cv_count);
         const int r = i - k - q * new_period_cv_count;
-        nurbsknot_new[i] = (r == 0 ? nurbsknot_value : knot_at(k + r)) + q * period;
+
+        if (r != 0)
+            nurbsknot_new[i] = knot_at(k + r + q * period_cv_count);
+        else if (q == 0)
+            nurbsknot_new[i] = nurbsknot_value;
+        else {
+            const double lo = knot_at(k + q * period_cv_count);
+            const double hi = knot_at(k + 1 + q * period_cv_count);
+            nurbsknot_new[i] = std::min(std::max(lo + nurbsknot_value - knot_at(k), lo), hi);
+        }
     }
 
     std::vector<double> cv_new((new_period_cv_count + p) * stride);
