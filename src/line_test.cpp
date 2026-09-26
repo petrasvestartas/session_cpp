@@ -142,6 +142,8 @@ namespace session_cpp {
 
         const nlohmann::ordered_json j = line.jsondump();
         const Line loaded_j = Line::jsonload(j);
+        nlohmann::ordered_json unknown = j;
+        unknown["arrowhead"] = "sideways";
 
         const std::string s = line.file_json_dumps();
         const Line loaded_s = Line::file_json_loads(s);
@@ -164,6 +166,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.arrowhead == Arrowhead::END && loaded_j.arrowhead == Arrowhead::END);
         MINI_CHECK(Line().file_json_dumps().find("arrowhead") == std::string::npos);
+        MINI_CHECK(Line::jsonload(unknown).arrowhead == Arrowhead::NONE);
     }
 
     MINI_TEST("Line", "Protobuf Roundtrip") {
@@ -181,6 +184,8 @@ namespace session_cpp {
         line.pb_dump(fname);
         const Line loaded = Line::pb_load(fname);
         const Line converted = Line::from_proto(line.to_proto());
+        session_proto::Line outside = line.to_proto();
+        outside.set_arrowhead(9);
 
         MINI_CHECK(loaded_s.name == "test_line");
         MINI_CHECK(TOLERANCE.is_close(loaded_s[0], 42.1));
@@ -195,6 +200,7 @@ namespace session_cpp {
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.guid() == guid);
         MINI_CHECK(loaded.arrowhead == Arrowhead::END);
+        MINI_CHECK(Line::from_proto(outside).arrowhead == Arrowhead::NONE);
         MINI_CHECK(converted == line);
         MINI_CHECK(converted.guid() == guid);
     }

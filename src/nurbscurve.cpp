@@ -2445,7 +2445,8 @@ NurbsCurve NurbsCurve::from_proto(const session_proto::NurbsCurve& proto) {
         curve.linecolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
     }
 
-    curve.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
+    if (proto.arrowhead() > 0 && proto.arrowhead() < 4)
+        curve.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return curve;
 }

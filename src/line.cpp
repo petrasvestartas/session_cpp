@@ -718,7 +718,8 @@ Line Line::from_proto(const session_proto::Line& proto) {
             line.linecolor.name = proto.linecolor_name();
     }
 
-    line.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
+    if (proto.arrowhead() > 0 && proto.arrowhead() < 4)
+        line.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return line;
 }

@@ -1705,7 +1705,8 @@ Polyline Polyline::from_proto(const session_proto::Polyline& proto) {
     if (proto.has_linecolor())
         polyline.linecolor = Color::from_proto(proto.linecolor());
 
-    polyline.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
+    if (proto.arrowhead() > 0 && proto.arrowhead() < 4)
+        polyline.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return polyline;
 }
