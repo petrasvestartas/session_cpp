@@ -40,7 +40,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # - After modifying pch.h, delete build/CMakeFiles to force rebuild
 #############################################################################################
 
-option(ENABLE_UNITY_BUILD "Enable unity build for faster compilation" ON)
+# Unity on in CI (fewer compiles from scratch), off locally: an edited .cpp then recompiles alone (6 s, not its 10-file batch at 16 s).
+if(DEFINED ENV{CI})
+    option(ENABLE_UNITY_BUILD "Enable unity build for faster compilation" ON)
+else()
+    option(ENABLE_UNITY_BUILD "Enable unity build for faster compilation" OFF)
+endif()
 option(ENABLE_PCH "Enable precompiled headers" ON)
 
 # Files under active development - excluded from Unity Build for faster iteration
@@ -105,8 +110,6 @@ endif()
 # PROTOBUF - BUILD FROM SOURCE (ensures MSVC version compatibility)
 #############################################################################################
 
-message(STATUS "Protocol Buffers: ENABLED (building from source)")
-
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
 set(PROTOC_VERSION "36.2")
@@ -134,12 +137,54 @@ else()
 endif()
 set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "" FORCE)
 
-FetchContent_Declare(protobuf
-    GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
-    GIT_TAG v${PROTOC_VERSION}
-    GIT_SHALLOW TRUE
-)
-FetchContent_MakeAvailable(protobuf)
+# Prebuilt protobuf + abseil from session/bash/deps_protobuf.sh: no clone and no third-party compile per build dir.
+# SESSION_DEPS_PREFIX (cache or env) names an install, else ~/.cache/session-deps/protobuf-<version> when present,
+# else (CI, a fresh machine) FetchContent as before; outside CI it reuses the sources that script cloned.
+set(SESSION_DEPS_PREFIX "$ENV{SESSION_DEPS_PREFIX}" CACHE PATH "Prebuilt protobuf+abseil prefix (session/bash/deps_protobuf.sh)")
+if(DEFINED ENV{SESSION_DEPS_ROOT})
+    set(SESSION_DEPS_ROOT "$ENV{SESSION_DEPS_ROOT}")
+else()
+    set(SESSION_DEPS_ROOT "$ENV{HOME}/.cache/session-deps")
+endif()
+set(SESSION_PROTOBUF_PREFIX "${SESSION_DEPS_PREFIX}")
+# CI never picks up a local prefix; global imported targets (wood links them from its own scope) need CMake 3.24
+if(NOT SESSION_PROTOBUF_PREFIX AND NOT DEFINED ENV{CI} AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.24
+   AND EXISTS "${SESSION_DEPS_ROOT}/protobuf-${PROTOC_VERSION}/.session-deps-ok")
+    set(SESSION_PROTOBUF_PREFIX "${SESSION_DEPS_ROOT}/protobuf-${PROTOC_VERSION}")
+endif()
+
+if(SESSION_PROTOBUF_PREFIX AND CMAKE_VERSION VERSION_LESS 3.24)
+    message(FATAL_ERROR "SESSION_DEPS_PREFIX needs CMake 3.24 or newer (global imported targets)")
+endif()
+
+if(SESSION_PROTOBUF_PREFIX)
+    message(STATUS "Protocol Buffers: prebuilt at ${SESSION_PROTOBUF_PREFIX}")
+    list(PREPEND CMAKE_PREFIX_PATH "${SESSION_PROTOBUF_PREFIX}")
+    set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL ON)
+    find_package(Protobuf CONFIG REQUIRED)
+    set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL OFF)
+    if(NOT Protobuf_VERSION VERSION_EQUAL PROTOC_VERSION)
+        message(FATAL_ERROR "${SESSION_PROTOBUF_PREFIX} holds protobuf ${Protobuf_VERSION}, this tree pins ${PROTOC_VERSION}")
+    endif()
+    add_library(libprotobuf ALIAS protobuf::libprotobuf)
+    add_executable(protoc ALIAS protobuf::protoc)
+else()
+    message(STATUS "Protocol Buffers: building from source")
+    if(NOT DEFINED ENV{CI} AND EXISTS "${SESSION_DEPS_ROOT}/src/protobuf-${PROTOC_VERSION}/.session-deps-clone-ok")
+        set(FETCHCONTENT_SOURCE_DIR_PROTOBUF "${SESSION_DEPS_ROOT}/src/protobuf-${PROTOC_VERSION}")
+        file(STRINGS "${FETCHCONTENT_SOURCE_DIR_PROTOBUF}/cmake/dependencies.cmake" ABSL_VERSION REGEX "abseil-cpp-version")
+        string(REGEX MATCH "[0-9]+\\.[0-9]+" ABSL_VERSION "${ABSL_VERSION}")
+        if(EXISTS "${SESSION_DEPS_ROOT}/src/abseil-cpp-${ABSL_VERSION}/.session-deps-clone-ok")
+            set(FETCHCONTENT_SOURCE_DIR_ABSL "${SESSION_DEPS_ROOT}/src/abseil-cpp-${ABSL_VERSION}")
+        endif()
+    endif()
+    FetchContent_Declare(protobuf
+        GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
+        GIT_TAG v${PROTOC_VERSION}
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(protobuf)
+endif()
 
 # Suppress warnings from protobuf and absl third-party libraries
 if(MSVC)
@@ -147,7 +192,7 @@ if(MSVC)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(THIRD_PARTY_COMPILE_OPTIONS -w)
 endif()
-if(THIRD_PARTY_COMPILE_OPTIONS)
+if(THIRD_PARTY_COMPILE_OPTIONS AND NOT SESSION_PROTOBUF_PREFIX)
     foreach(TGT IN ITEMS libprotobuf libprotobuf-lite utf8_validity utf8_range libupb)
         if(TARGET ${TGT})
             target_compile_options(${TGT} PRIVATE ${THIRD_PARTY_COMPILE_OPTIONS})
@@ -283,7 +328,7 @@ endif()
 
 target_include_directories(session_core SYSTEM PUBLIC
     ${GENERATED_DIR}
-    ${protobuf_SOURCE_DIR}/src
+    $<$<BOOL:${protobuf_SOURCE_DIR}>:${protobuf_SOURCE_DIR}/src>
 )
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
@@ -343,6 +388,9 @@ add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 target_compile_options(point_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
+if(ENABLE_PCH)
+    target_precompile_headers(point_minitest REUSE_FROM session_core)
+endif()
 
 # Optional local scratch driver (untracked): drop a main_dbg.cpp next to this file to get a
 # quick executable linked against the kernel without touching the test targets.

@@ -48,4 +48,11 @@
 #include <cassert>
 #include <cstdint>
 
+// Vendored and third-party headers nearly every file parses (1.0 s of the 1.7 s front end per file)
+#include "json.h"
+#include "fmt/core.h"
+#include <google/protobuf/message.h>
+#include <google/protobuf/generated_message_reflection.h>
+#include <google/protobuf/map_field.h>
+
 #endif // PCH_H
