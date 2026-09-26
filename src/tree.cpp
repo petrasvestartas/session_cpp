@@ -725,7 +725,9 @@ std::string Tree::pb_dumps() const {
 Tree Tree::pb_loads(const std::string& data) {
 
     session_proto::Tree proto;
-    proto.ParseFromString(data);
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Tree protobuf data");
+
     Tree tree(proto.name());
 
     if (!proto.guid().empty())

@@ -1924,7 +1924,10 @@ session_proto::Session Session::to_proto() const {
         proto.set_guid(guid());
 
     *proto.mutable_objects() = objects.to_proto();
-    proto.mutable_tree()->ParseFromString(tree.pb_dumps());
+
+    if (!proto.mutable_tree()->ParseFromString(tree.pb_dumps()))
+        throw std::runtime_error("Failed to parse Tree protobuf data");
+
     *proto.mutable_graph() = graph.to_proto();
 
     for (const std::pair<std::string, Xform>& entry : _xforms_ordered()) {

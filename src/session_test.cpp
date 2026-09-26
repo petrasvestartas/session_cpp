@@ -1213,7 +1213,7 @@ MINI_TEST("Session", "Checkpoint Keeps History") {
 
     const Session loaded = Session::pb_loads(*bytes);
     session_proto::Session parsed;
-    parsed.ParseFromString(*bytes);
+    MINI_CHECK(parsed.ParseFromString(*bytes));
 
     MINI_CHECK(whole == copy);
     MINI_CHECK(calls > 1);
@@ -1249,7 +1249,7 @@ MINI_TEST("Session", "Checkpoint Restarts On Edit") {
 
     const Session loaded = Session::pb_loads(*bytes);
     session_proto::Session parsed;
-    parsed.ParseFromString(*bytes);
+    MINI_CHECK(parsed.ParseFromString(*bytes));
 
     MINI_CHECK(!first);
     MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
@@ -1611,7 +1611,7 @@ MINI_TEST("Session", "Instance Protobuf Roundtrip") {
     session.pb_dump(fname);
     Session loaded = Session::pb_load(fname);
     session_proto::Session plain;
-    plain.ParseFromString(Session().pb_dumps());
+    MINI_CHECK(plain.ParseFromString(Session().pb_dumps()));
 
     MINI_CHECK(loaded.definitions.meshes->size() == 1);
     MINI_CHECK(loaded.instance_lookup[guid]->features.size() == 1);
@@ -2584,7 +2584,7 @@ MINI_TEST("Session", "Checkpoint After Purge Steps") {
 
     const Session loaded = Session::pb_loads(*bytes);
     session_proto::Session parsed;
-    parsed.ParseFromString(*bytes);
+    MINI_CHECK(parsed.ParseFromString(*bytes));
 
     MINI_CHECK(steps > 1);
     MINI_CHECK(loaded.objects.points->size() == n - bulk);
@@ -2720,7 +2720,7 @@ MINI_TEST("Session", "Checkpoint Twin Xform") {
 
     const Session loaded = Session::pb_loads(*data);
     session_proto::Session parsed;
-    parsed.ParseFromString(*data);
+    MINI_CHECK(parsed.ParseFromString(*data));
 
     MINI_CHECK(google::protobuf::util::MessageDifferencer::Equals(parsed, session.to_proto()));
     MINI_CHECK(loaded.xform(x->guid()) == session.xform(x->guid()));
