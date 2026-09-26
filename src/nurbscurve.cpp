@@ -204,6 +204,9 @@ bool NurbsCurve::operator==(const NurbsCurve& other) const {
     if (linecolors != other.linecolors)
         return false;
 
+    if (arrowhead != other.arrowhead)
+        return false;
+
     if (m_nurbsknot.size() != other.m_nurbsknot.size())
         return false;
 
@@ -1762,6 +1765,8 @@ bool NurbsCurve::reverse() {
         set_cv_4d(j, xi, yi, zi, wi);
     }
 
+    arrowhead = arrowhead_flipped(arrowhead);
+
     return true;
 }
 
@@ -2268,6 +2273,9 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
         pointcolors_arr.push_back(c.a);
     }
 
+    if (arrowhead != Arrowhead::NONE)
+        j["arrowhead"] = arrowhead_name(arrowhead);
+
     j["control_points"] = cps;
     j["cv_count"] = m_cv_count;
     j["cv_stride"] = m_cv_stride;
@@ -2320,6 +2328,7 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     curve.guid() = data.value("guid", ::guid());
     curve.name = data.value("name", "my_nurbscurve");
     curve.width = data.value("width", 1.0);
+    curve.arrowhead = arrowhead_from_name(data.value("arrowhead", "none"));
 
     if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
         const nlohmann::json& arr = data["pointcolors"];
@@ -2402,6 +2411,8 @@ session_proto::NurbsCurve NurbsCurve::to_proto() const {
         cp->set_a(c.a);
     }
 
+    proto.set_arrowhead(static_cast<int>(arrowhead));
+
     return proto;
 }
 
@@ -2433,6 +2444,8 @@ NurbsCurve NurbsCurve::from_proto(const session_proto::NurbsCurve& proto) {
         const session_proto::Color& c = proto.linecolors(i);
         curve.linecolors.push_back(Color(c.r(), c.g(), c.b(), c.a()));
     }
+
+    curve.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return curve;
 }
@@ -2723,6 +2736,7 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     width = src.width;
     pointcolors = src.pointcolors;
     linecolors = src.linecolors;
+    arrowhead = src.arrowhead;
 }
 
 bool NurbsCurve::evaluate_nurbs_de_boor(int cv_dim, int order, int cv_stride, double* cv, const double* nurbsknots, int side, double t) {

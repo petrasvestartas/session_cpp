@@ -19,6 +19,23 @@ class Line;
 
 namespace session_cpp {
 
+/// Which ends of a curve carry an arrowhead.
+enum class Arrowhead : int {
+    NONE = 0,  // No arrowhead.
+    START = 1, // Arrowhead at the start.
+    END = 2,   // Arrowhead at the end.
+    BOTH = 3,  // Arrowheads at both ends.
+};
+
+/// Return the arrowhead with start and end swapped.
+Arrowhead arrowhead_flipped(Arrowhead arrowhead);
+
+/// Return the lowercase name.
+std::string arrowhead_name(Arrowhead arrowhead);
+
+/// Return the arrowhead named name, none when unknown.
+Arrowhead arrowhead_from_name(const std::string& name);
+
 /// A 3D line segment with display width, dash pattern and color.
 class Line {
 private:
@@ -35,6 +52,7 @@ public:
     double width = 1.0; // Display width.
     std::vector<double> dash; // Dash pattern lengths.
     Color linecolor = Color::black(); // Display color.
+    Arrowhead arrowhead = Arrowhead::NONE; // Arrowhead ends.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
@@ -101,10 +119,10 @@ public:
     /// Return the coordinate by index (0=x0, 1=y0, 2=z0, 3=x1, 4=y1, 5=z1).
     const double& operator[](int index) const;
 
-    /// Compare name, coordinates to 1e-6, width and linecolor; guid ignored.
+    /// Compare name, coordinates to 1e-6, width, linecolor and arrowhead; guid ignored.
     bool operator==(const Line& other) const;
 
-    /// Compare name, coordinates to 1e-6, width and linecolor; guid ignored.
+    /// Compare name, coordinates to 1e-6, width, linecolor and arrowhead; guid ignored.
     bool operator!=(const Line& other) const;
 
     /// Translate in place.
@@ -131,7 +149,7 @@ public:
     /// Return a copy with both ends divided.
     Line operator/(double factor) const;
 
-    /// Return a flipped copy (end to start).
+    /// Return a flipped copy (end to start, arrowhead ends swapped).
     Line operator-() const;
 
     // ═══════════════════════════════════════════════════════════════════════════

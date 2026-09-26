@@ -73,6 +73,10 @@ namespace session_cpp {
         plc.linecolor = Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
         plc.width = 2.5;
 
+        Polyline pla = plc;
+        pla.arrowhead = Arrowhead::START;
+        const Polyline placopy = pla;
+
         MINI_CHECK(pl.name == "my_polyline" && !pl.guid().empty() && point_count == 4);
         MINI_CHECK(segment_count == 3 && !is_empty);
         MINI_CHECK(pt[0] == 1.0 && pt[1] == 0.0 && pt[2] == 0.0);
@@ -92,6 +96,7 @@ namespace session_cpp {
         MINI_CHECK(rdif.get_point(0)[0] == -1.0 && rdif.get_point(0)[1] == -1.0);
         MINI_CHECK(neg.get_point(0)[0] == 3.0 && neg.get_point(3)[0] == 0.0);
         MINI_CHECK(plc.linecolor[0] == 1.0f && plc.linecolor[1] == 0.0f && plc.width == 2.5);
+        MINI_CHECK(pl.arrowhead == Arrowhead::NONE && placopy == pla && pla != plc);
     }
 
     MINI_TEST("Polyline", "From Coords") {
@@ -134,12 +139,14 @@ namespace session_cpp {
             Point(1.0, 1.0, 0.0),
             Point(0.0, 1.0, 0.0),
         });
+        pl.arrowhead = Arrowhead::BOTH;
         const Xform pl_xf = Xform::translation(10.0, 0.0, 0.0);
         const Polyline pl_transformed = pl.transformed(pl_xf);
         pl.transform(pl_xf);
 
         MINI_CHECK(pl_transformed.get_point(0)[0] == 10.0 && pl_transformed.get_point(1)[0] == 11.0);
         MINI_CHECK(pl.get_point(0)[0] == 10.0 && pl.get_point(1)[0] == 11.0);
+        MINI_CHECK(pl_transformed.arrowhead == Arrowhead::BOTH && pl.arrowhead == Arrowhead::BOTH);
     }
 
     MINI_TEST("Polyline", "Json Roundtrip") {
@@ -152,6 +159,7 @@ namespace session_cpp {
         });
         pl.name = "test_polyline";
         pl.dash = {3.0, 2.0};
+        pl.arrowhead = Arrowhead::END;
 
         const nlohmann::ordered_json j = pl.jsondump();
         const Polyline loaded_j = Polyline::jsonload(j);
@@ -174,6 +182,8 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(loaded.get_point(2)[2], 9.0));
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.guid() == pl.guid());
+        MINI_CHECK(loaded.arrowhead == Arrowhead::END && loaded_j.arrowhead == Arrowhead::END);
+        MINI_CHECK(Polyline().file_json_dumps().find("arrowhead") == std::string::npos);
     }
 
     MINI_TEST("Polyline", "Protobuf Roundtrip") {
@@ -186,6 +196,7 @@ namespace session_cpp {
         });
         pl.name = "test_polyline";
         pl.dash = {3.0, 2.0};
+        pl.arrowhead = Arrowhead::END;
 
         const std::string guid = pl.guid();
         const std::string s = pl.pb_dumps();
@@ -206,6 +217,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(loaded.get_point(2)[2], 9.0));
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.guid() == guid);
+        MINI_CHECK(loaded.arrowhead == Arrowhead::END);
         MINI_CHECK(converted == pl);
         MINI_CHECK(converted.guid() == guid);
     }
@@ -295,6 +307,7 @@ namespace session_cpp {
             Point(2.0, 0.0, 0.0),
             Point(3.0, 0.0, 0.0),
         });
+        pl.arrowhead = Arrowhead::END;
 
         const Polyline rev = pl.reversed();
         const double orig_first = pl.get_point(0)[0];
@@ -306,6 +319,7 @@ namespace session_cpp {
         MINI_CHECK(orig_first == 0.0);
         MINI_CHECK(rev_first == 3.0);
         MINI_CHECK(in_place_first == 3.0);
+        MINI_CHECK(rev.arrowhead == Arrowhead::START && pl.arrowhead == Arrowhead::START);
     }
 
     MINI_TEST("Polyline", "Closest Point") {

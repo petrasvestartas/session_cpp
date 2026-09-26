@@ -47,11 +47,11 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
     {
       PROTOBUF_FIELD_OFFSET(Line, _impl_._has_bits_),
       0, // no _extensions_
-      11, 56,  // max_field_number, fast_idx_mask
+      12, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294965331,  // skipmap
+      4294963283,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      7,  // num_field_entries
+      8,  // num_field_entries
       0,  // num_aux_entries
       offsetof(ParseTableT_, field_names),  // no aux_entries
       class_data,
@@ -61,18 +61,9 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
       ::_pbi::TcParser::GetTable<::session_proto::Line>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      // repeated double dash = 8;
-      {::_pbi::TcParser::FastF64P1,
-       {66, 0, 0,
-        PROTOBUF_FIELD_OFFSET(Line, _impl_.dash_)}},
-      // repeated double coords = 9;
-      {::_pbi::TcParser::FastF64P1,
-       {74, 1, 0,
-        PROTOBUF_FIELD_OFFSET(Line, _impl_.coords_)}},
-      // repeated float linecolor_rgba = 10;
-      {::_pbi::TcParser::FastF32P1,
-       {82, 2, 0,
-        PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
       // string guid = 3;
       {::_pbi::TcParser::FastUS1,
        {26, 3, 0,
@@ -86,6 +77,29 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
       {::_pbi::TcParser::FastF64S1,
        {49, 6, 0,
         PROTOBUF_FIELD_OFFSET(Line, _impl_.width_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      // repeated double dash = 8;
+      {::_pbi::TcParser::FastF64P1,
+       {66, 0, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.dash_)}},
+      // repeated double coords = 9;
+      {::_pbi::TcParser::FastF64P1,
+       {74, 1, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.coords_)}},
+      // repeated float linecolor_rgba = 10;
+      {::_pbi::TcParser::FastF32P1,
+       {82, 2, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_)}},
+      // string linecolor_name = 11;
+      {::_pbi::TcParser::FastUS1,
+       {90, 5, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_name_)}},
+      // int32 arrowhead = 12;
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Line, _impl_.arrowhead_), 7>(),
+       {96, 7, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.arrowhead_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
     }}, {{
       65535, 65535
@@ -104,10 +118,12 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
       {PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_rgba_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFloat)},
       // string linecolor_name = 11;
       {PROTOBUF_FIELD_OFFSET(Line, _impl_.linecolor_name_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
+      // int32 arrowhead = 12;
+      {PROTOBUF_FIELD_OFFSET(Line, _impl_.arrowhead_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
     }},
     // no aux_entries
     {{
-      "\22\4\4\0\0\0\0\16"
+      "\22\4\4\0\0\0\0\16\0\0\0\0\0\0\0\0"
       "session_proto.Line"
       "guid"
       "name"
@@ -144,7 +160,8 @@ inline constexpr Line::Impl_::Impl_(
         linecolor_name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        width_{0} {}
+        width_{0},
+        arrowhead_{0} {}
 
 template <typename>
 constexpr Line::Line(::_pbi::ConstantInitialized,
@@ -248,7 +265,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_._has_bits_),
-        10, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.width_),
@@ -256,6 +273,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.coords_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_rgba_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_name_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.arrowhead_),
         3,
         4,
         6,
@@ -263,6 +281,7 @@ const ::uint32_t
         1,
         2,
         5,
+        7,
 };
 
 static const ::_pbi::MigrationSchema
@@ -275,17 +294,18 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 };
 const char descriptor_table_protodef_line_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\nline.proto\022\rsession_proto\"\227\001\n\004Line\022\014\n\004"
+    "\n\nline.proto\022\rsession_proto\"\252\001\n\004Line\022\014\n\004"
     "guid\030\003 \001(\t\022\014\n\004name\030\004 \001(\t\022\r\n\005width\030\006 \001(\001\022"
     "\014\n\004dash\030\010 \003(\001\022\016\n\006coords\030\t \003(\001\022\026\n\016linecol"
-    "or_rgba\030\n \003(\002\022\026\n\016linecolor_name\030\013 \001(\tJ\004\010"
-    "\001\020\002J\004\010\002\020\003J\004\010\005\020\006J\004\010\007\020\010b\006proto3"
+    "or_rgba\030\n \003(\002\022\026\n\016linecolor_name\030\013 \001(\t\022\021\n"
+    "\tarrowhead\030\014 \001(\005J\004\010\001\020\002J\004\010\002\020\003J\004\010\005\020\006J\004\010\007\020\010"
+    "b\006proto3"
 };
 static ::absl::once_flag descriptor_table_line_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_line_2eproto = {
     false,
     false,
-    189,
+    208,
     descriptor_table_protodef_line_2eproto,
     "line.proto",
     &descriptor_table_line_2eproto_once,
@@ -354,7 +374,13 @@ Line::Line(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  _impl_.width_ = from._impl_.width_;
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, width_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, width_),
+           offsetof(Impl_, arrowhead_) -
+               offsetof(Impl_, width_) +
+               sizeof(Impl_::arrowhead_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Line)
 }
@@ -382,7 +408,12 @@ PROTOBUF_NDEBUG_INLINE Line::Impl_::Impl_(
 
 inline void Line::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  _impl_.width_ = {};
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, width_),
+           0,
+           offsetof(Impl_, arrowhead_) -
+               offsetof(Impl_, width_) +
+               sizeof(Impl_::arrowhead_));
 }
 Line::~Line() {
   // @@protoc_insertion_point(destructor:session_proto.Line)
@@ -454,7 +485,13 @@ PROTOBUF_NOINLINE void Line::Clear() {
       this_._impl_.linecolor_name_.ClearNonDefaultToEmpty();
     }
   }
-  this_._impl_.width_ = 0;
+  if (BatchCheckHasBit(cached_has_bits, 0x000000c0U)) {
+    ::memset(&this_._impl_.width_, 0,
+             static_cast<::size_t>(
+                 reinterpret_cast<char*>(&this_._impl_.arrowhead_) -
+                 reinterpret_cast<char*>(&this_._impl_.width_)) +
+                 sizeof(_impl_.arrowhead_));
+  }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -538,6 +575,15 @@ PROTOBUF_NOINLINE void Line::Clear() {
     }
   }
 
+  // int32 arrowhead = 12;
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    if (this_._internal_arrowhead() != 0) {
+      target =
+          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<12>(
+              stream, this_._internal_arrowhead(), target);
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -561,7 +607,7 @@ PROTOBUF_NOINLINE void Line::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double dash = 8;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       ::size_t data_size = ::size_t{8} *
@@ -619,6 +665,13 @@ PROTOBUF_NOINLINE void Line::Clear() {
         total_size += 9;
       }
     }
+    // int32 arrowhead = 12;
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      if (this_._internal_arrowhead() != 0) {
+        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
+            this_._internal_arrowhead());
+      }
+    }
   }
   return this_.MaybeComputeUnknownFieldsSize(total_size,
                                              &this_._impl_._cached_size_);
@@ -637,7 +690,7 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_dash()->MergeFrom(from._internal_dash());
     }
@@ -679,6 +732,11 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.width_ = from._impl_.width_;
       }
     }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      if (from._internal_arrowhead() != 0) {
+        _this->_impl_.arrowhead_ = from._impl_.arrowhead_;
+      }
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -705,7 +763,12 @@ void Line::InternalSwap(Line* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.linecolor_name_, &other->_impl_.linecolor_name_, arena);
-  swap(_impl_.width_, other->_impl_.width_);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.arrowhead_)
+      + sizeof(Line::_impl_.arrowhead_)
+      - PROTOBUF_FIELD_OFFSET(Line, _impl_.width_)>(
+          reinterpret_cast<char*>(&_impl_.width_),
+          reinterpret_cast<char*>(&other->_impl_.width_));
 }
 
 ::google::protobuf::Metadata Line::GetMetadata() const {

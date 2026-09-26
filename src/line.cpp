@@ -10,6 +10,48 @@
 namespace session_cpp {
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Arrowhead
+// ═══════════════════════════════════════════════════════════════════════════
+Arrowhead arrowhead_flipped(Arrowhead arrowhead) {
+
+    if (arrowhead == Arrowhead::START)
+        return Arrowhead::END;
+
+    if (arrowhead == Arrowhead::END)
+        return Arrowhead::START;
+
+    return arrowhead;
+}
+
+std::string arrowhead_name(Arrowhead arrowhead) {
+
+    switch (arrowhead) {
+    case Arrowhead::START:
+        return "start";
+    case Arrowhead::END:
+        return "end";
+    case Arrowhead::BOTH:
+        return "both";
+    default:
+        return "none";
+    }
+}
+
+Arrowhead arrowhead_from_name(const std::string& name) {
+
+    if (name == "start")
+        return Arrowhead::START;
+
+    if (name == "end")
+        return Arrowhead::END;
+
+    if (name == "both")
+        return Arrowhead::BOTH;
+
+    return Arrowhead::NONE;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
 Line::Line(double x0, double y0, double z0, double x1, double y1, double z1)
@@ -17,7 +59,7 @@ Line::Line(double x0, double y0, double z0, double x1, double y1, double z1)
 
 Line::Line(const Line& other)
     : _x0(other._x0), _y0(other._y0), _z0(other._z0), _x1(other._x1), _y1(other._y1), _z1(other._z1),
-      name(other.name), width(other.width), dash(other.dash), linecolor(other.linecolor) {}
+      name(other.name), width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
 
 Line& Line::operator=(const Line& other) {
 
@@ -35,6 +77,7 @@ Line& Line::operator=(const Line& other) {
     width = other.width;
     dash = other.dash;
     linecolor = other.linecolor;
+    arrowhead = other.arrowhead;
 
     return *this;
 }
@@ -243,7 +286,8 @@ bool Line::operator==(const Line& other) const {
            std::round(_y1 * 1000000.0) == std::round(other._y1 * 1000000.0) &&
            std::round(_z1 * 1000000.0) == std::round(other._z1 * 1000000.0) &&
            std::round(width * 1000000.0) == std::round(other.width * 1000000.0) &&
-           linecolor == other.linecolor;
+           linecolor == other.linecolor &&
+           arrowhead == other.arrowhead;
 }
 
 bool Line::operator!=(const Line& other) const {
@@ -331,7 +375,14 @@ Line Line::operator/(double factor) const {
 }
 
 Line Line::operator-() const {
-    return Line(_x1, _y1, _z1, _x0, _y0, _z0);
+
+    Line result = *this;
+    std::swap(result._x0, result._x1);
+    std::swap(result._y0, result._y1);
+    std::swap(result._z0, result._z1);
+    result.arrowhead = arrowhead_flipped(arrowhead);
+
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -549,6 +600,10 @@ void Line::scale(double dist) {
 nlohmann::ordered_json Line::jsondump() const {
 
     nlohmann::ordered_json data;
+
+    if (arrowhead != Arrowhead::NONE)
+        data["arrowhead"] = arrowhead_name(arrowhead);
+
     data["dash"] = dash;
     data["guid"] = guid();
     data["linecolor"] = linecolor.jsondump();
@@ -579,6 +634,9 @@ Line Line::jsonload(const nlohmann::json& data) {
 
     if (data.contains("width"))
         line.width = data["width"].get<double>();
+
+    if (data.contains("arrowhead"))
+        line.arrowhead = arrowhead_from_name(data["arrowhead"].get<std::string>());
 
     return line;
 }
@@ -628,6 +686,7 @@ session_proto::Line Line::to_proto() const {
     proto.add_linecolor_rgba(linecolor.b);
     proto.add_linecolor_rgba(linecolor.a);
     proto.set_linecolor_name(linecolor.name);
+    proto.set_arrowhead(static_cast<int>(arrowhead));
 
     return proto;
 }
@@ -658,6 +717,8 @@ Line Line::from_proto(const session_proto::Line& proto) {
         if (!proto.linecolor_name().empty())
             line.linecolor.name = proto.linecolor_name();
     }
+
+    line.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return line;
 }

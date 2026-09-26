@@ -221,6 +221,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     kNameFieldNumber = 2,
     kLinecolorFieldNumber = 5,
     kWidthFieldNumber = 4,
+    kArrowheadFieldNumber = 8,
   };
   // repeated double coords = 3;
   [[nodiscard]] int coords_size() const;
@@ -315,11 +316,21 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
   void _internal_set_width(double value);
 
   public:
+  // int32 arrowhead = 8;
+  void clear_arrowhead() ;
+  [[nodiscard]] ::int32_t arrowhead() const;
+  void set_arrowhead(::int32_t value);
+
+  private:
+  ::int32_t _internal_arrowhead() const;
+  void _internal_set_arrowhead(::int32_t value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Polyline)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 6,
+      ::google::protobuf::internal::TcParseTable<3, 7,
                           1, 39,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -354,6 +365,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     double width_;
+    ::int32_t arrowhead_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -721,6 +733,30 @@ inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
 Polyline::_internal_mutable_dash() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.dash_;
+}
+
+// int32 arrowhead = 8;
+inline void Polyline::clear_arrowhead() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = 0;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+}
+inline ::int32_t Polyline::arrowhead() const {
+  // @@protoc_insertion_point(field_get:session_proto.Polyline.arrowhead)
+  return _internal_arrowhead();
+}
+inline void Polyline::set_arrowhead(::int32_t value) {
+  _internal_set_arrowhead(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_set:session_proto.Polyline.arrowhead)
+}
+inline ::int32_t Polyline::_internal_arrowhead() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.arrowhead_;
+}
+inline void Polyline::_internal_set_arrowhead(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = value;
 }
 
 #ifdef __GNUC__

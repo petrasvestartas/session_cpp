@@ -47,11 +47,11 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
     {
       PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_._has_bits_),
       0, // no _extensions_
-      13, 120,  // max_field_number, fast_idx_mask
+      14, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294961152,  // skipmap
+      4294952960,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      12,  // num_field_entries
+      13,  // num_field_entries
       2,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -111,7 +111,10 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       {::_pbi::TcParser::FastMtR1,
        {106, 3, 1,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // int32 arrowhead = 14;
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.arrowhead_), 12>(),
+       {112, 12, 0,
+        PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_)}},
       {::_pbi::TcParser::MiniParse, {}},
     }}, {{
       65535, 65535
@@ -140,6 +143,8 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.pointcolors_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // repeated .session_proto.Color linecolors = 13;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
+      // int32 arrowhead = 14;
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -197,7 +202,8 @@ inline constexpr NurbsCurve::Impl_::Impl_(
         order_{0},
         cv_count_{0},
         width_{0},
-        cv_stride_{0} {}
+        cv_stride_{0},
+        arrowhead_{0} {}
 
 template <typename>
 constexpr NurbsCurve::NurbsCurve(::_pbi::ConstantInitialized,
@@ -301,7 +307,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_._has_bits_),
-        15, // hasbit index offset
+        16, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.dimension_),
@@ -314,6 +320,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.pointcolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.linecolors_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.arrowhead_),
         4,
         5,
         6,
@@ -326,6 +333,7 @@ const ::uint32_t
         10,
         2,
         3,
+        12,
 };
 
 static const ::_pbi::MigrationSchema
@@ -339,14 +347,14 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_nurbscurve_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\020nurbscurve.proto\022\rsession_proto\032\013color"
-    ".proto\"\217\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
+    ".proto\"\242\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
     "ame\030\002 \001(\t\022\021\n\tdimension\030\003 \001(\005\022\023\n\013is_ratio"
     "nal\030\004 \001(\010\022\r\n\005order\030\005 \001(\005\022\020\n\010cv_count\030\006 \001"
     "(\005\022\021\n\tcv_stride\030\007 \001(\005\022\022\n\nnurbsknots\030\010 \003("
     "\001\022\013\n\003cvs\030\t \003(\001\022\r\n\005width\030\n \001(\001\022)\n\013pointco"
     "lors\030\013 \003(\0132\024.session_proto.Color\022(\n\nline"
-    "colors\030\r \003(\0132\024.session_proto.ColorJ\004\010\014\020\r"
-    "b\006proto3"
+    "colors\030\r \003(\0132\024.session_proto.Color\022\021\n\tar"
+    "rowhead\030\016 \001(\005J\004\010\014\020\rb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_nurbscurve_2eproto_deps[1] = {
@@ -356,7 +364,7 @@ static ::absl::once_flag descriptor_table_nurbscurve_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_nurbscurve_2eproto = {
     false,
     false,
-    328,
+    347,
     descriptor_table_protodef_nurbscurve_2eproto,
     "nurbscurve.proto",
     &descriptor_table_nurbscurve_2eproto_once,
@@ -445,9 +453,9 @@ NurbsCurve::NurbsCurve(
                offsetof(Impl_, dimension_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, dimension_),
-           offsetof(Impl_, cv_stride_) -
+           offsetof(Impl_, arrowhead_) -
                offsetof(Impl_, dimension_) +
-               sizeof(Impl_::cv_stride_));
+               sizeof(Impl_::arrowhead_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.NurbsCurve)
 }
@@ -482,9 +490,9 @@ inline void NurbsCurve::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, dimension_),
            0,
-           offsetof(Impl_, cv_stride_) -
+           offsetof(Impl_, arrowhead_) -
                offsetof(Impl_, dimension_) +
-               sizeof(Impl_::cv_stride_));
+               sizeof(Impl_::arrowhead_));
 }
 NurbsCurve::~NurbsCurve() {
   // @@protoc_insertion_point(destructor:session_proto.NurbsCurve)
@@ -562,12 +570,12 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
                  reinterpret_cast<char*>(&this_._impl_.dimension_)) +
                  sizeof(_impl_.is_rational_));
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     ::memset(&this_._impl_.order_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.cv_stride_) -
+                 reinterpret_cast<char*>(&this_._impl_.arrowhead_) -
                  reinterpret_cast<char*>(&this_._impl_.order_)) +
-                 sizeof(_impl_.cv_stride_));
+                 sizeof(_impl_.arrowhead_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -704,6 +712,15 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
     }
   }
 
+  // int32 arrowhead = 14;
+  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+    if (this_._internal_arrowhead() != 0) {
+      target =
+          ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<14>(
+              stream, this_._internal_arrowhead(), target);
+    }
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -790,7 +807,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     // int32 order = 5;
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (this_._internal_order() != 0) {
@@ -816,6 +833,13 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
       if (this_._internal_cv_stride() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_stride());
+      }
+    }
+    // int32 arrowhead = 14;
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+      if (this_._internal_arrowhead() != 0) {
+        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
+            this_._internal_arrowhead());
       }
     }
   }
@@ -883,7 +907,7 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (from._internal_order() != 0) {
         _this->_impl_.order_ = from._impl_.order_;
@@ -902,6 +926,11 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (from._internal_cv_stride() != 0) {
         _this->_impl_.cv_stride_ = from._impl_.cv_stride_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+      if (from._internal_arrowhead() != 0) {
+        _this->_impl_.arrowhead_ = from._impl_.arrowhead_;
       }
     }
   }
@@ -931,8 +960,8 @@ void NurbsCurve::InternalSwap(NurbsCurve* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_stride_)
-      + sizeof(NurbsCurve::_impl_.cv_stride_)
+      PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_)
+      + sizeof(NurbsCurve::_impl_.arrowhead_)
       - PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.dimension_)>(
           reinterpret_cast<char*>(&_impl_.dimension_),
           reinterpret_cast<char*>(&other->_impl_.dimension_));

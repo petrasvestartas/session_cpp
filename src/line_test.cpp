@@ -71,6 +71,11 @@ namespace session_cpp {
         lc.linecolor = Color(1.0f, 0.0f, 0.0f, 1.0f, "red");
         lc.width = 2.5;
 
+        Line la = lc;
+        la.arrowhead = Arrowhead::END;
+        const Line lacopy = la;
+        const Line laneg = -la;
+
         const Line lwn = Line::with_name("custom", 0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 
         Point ms;
@@ -109,6 +114,8 @@ namespace session_cpp {
         MINI_CHECK(l_pv[3] == 4.0 && l_pv[4] == 6.0 && l_pv[5] == 8.0);
         MINI_CHECK(l_pdl[0] == 0.0 && l_pdl[3] == 5.0);
         MINI_CHECK(lc.linecolor[0] == 1.0f && lc.linecolor[1] == 0.0f && lc.width == 2.5);
+        MINI_CHECK(line.arrowhead == Arrowhead::NONE && lacopy == la && la != lc);
+        MINI_CHECK(laneg.arrowhead == Arrowhead::START && laneg[0] == 1.0 && laneg[3] == 0.0);
         MINI_CHECK(lwn.name == "custom" && lwn[3] == 1.0);
         MINI_CHECK(TOLERANCE.is_close(ms[1], 1.0) && TOLERANCE.is_close(me[1], 1.0));
     }
@@ -116,12 +123,14 @@ namespace session_cpp {
     MINI_TEST("Line", "Transformation") {
 
         Line line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        line.arrowhead = Arrowhead::BOTH;
         const Xform xform = Xform::translation(10.0, 0.0, 0.0);
         const Line moved = line.transformed(xform);
         line.transform(xform);
 
         MINI_CHECK(moved[0] == 10.0 && moved[3] == 11.0);
         MINI_CHECK(line[0] == 10.0 && line[3] == 11.0);
+        MINI_CHECK(moved.arrowhead == Arrowhead::BOTH && line.arrowhead == Arrowhead::BOTH);
     }
 
     MINI_TEST("Line", "Json Roundtrip") {
@@ -129,6 +138,7 @@ namespace session_cpp {
         Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         line.name = "test_line";
         line.dash = {3.0, 2.0};
+        line.arrowhead = Arrowhead::END;
 
         const nlohmann::ordered_json j = line.jsondump();
         const Line loaded_j = Line::jsonload(j);
@@ -152,6 +162,8 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(loaded[4], 210.5));
         MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
+        MINI_CHECK(loaded.arrowhead == Arrowhead::END && loaded_j.arrowhead == Arrowhead::END);
+        MINI_CHECK(Line().file_json_dumps().find("arrowhead") == std::string::npos);
     }
 
     MINI_TEST("Line", "Protobuf Roundtrip") {
@@ -159,6 +171,7 @@ namespace session_cpp {
         Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         line.name = "test_line";
         line.dash = {3.0, 2.0};
+        line.arrowhead = Arrowhead::END;
 
         const std::string guid = line.guid();
         const std::string s = line.pb_dumps();
@@ -181,6 +194,7 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(loaded[5], 252.6));
         MINI_CHECK(loaded.dash == std::vector<double>({3.0, 2.0}));
         MINI_CHECK(loaded.guid() == guid);
+        MINI_CHECK(loaded.arrowhead == Arrowhead::END);
         MINI_CHECK(converted == line);
         MINI_CHECK(converted.guid() == guid);
     }

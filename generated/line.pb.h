@@ -221,6 +221,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     kNameFieldNumber = 4,
     kLinecolorNameFieldNumber = 11,
     kWidthFieldNumber = 6,
+    kArrowheadFieldNumber = 12,
   };
   // repeated double dash = 8;
   [[nodiscard]] int dash_size() const;
@@ -334,12 +335,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
   void _internal_set_width(double value);
 
   public:
+  // int32 arrowhead = 12;
+  void clear_arrowhead() ;
+  [[nodiscard]] ::int32_t arrowhead() const;
+  void set_arrowhead(::int32_t value);
+
+  private:
+  ::int32_t _internal_arrowhead() const;
+  void _internal_set_arrowhead(::int32_t value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Line)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 7,
-                          0, 49,
+      ::google::protobuf::internal::TcParseTable<4, 8,
+                          0, 57,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -374,6 +385,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::google::protobuf::internal::ArenaStringPtr linecolor_name_;
     double width_;
+    ::int32_t arrowhead_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -763,6 +775,30 @@ inline void Line::set_allocated_linecolor_name(::std::string* PROTOBUF_NULLABLE 
     _impl_.linecolor_name_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:session_proto.Line.linecolor_name)
+}
+
+// int32 arrowhead = 12;
+inline void Line::clear_arrowhead() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = 0;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+}
+inline ::int32_t Line::arrowhead() const {
+  // @@protoc_insertion_point(field_get:session_proto.Line.arrowhead)
+  return _internal_arrowhead();
+}
+inline void Line::set_arrowhead(::int32_t value) {
+  _internal_set_arrowhead(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:session_proto.Line.arrowhead)
+}
+inline ::int32_t Line::_internal_arrowhead() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.arrowhead_;
+}
+inline void Line::_internal_set_arrowhead(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = value;
 }
 
 #ifdef __GNUC__

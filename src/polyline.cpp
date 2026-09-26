@@ -197,7 +197,7 @@ Polyline::Polyline(const std::vector<Point>& points) {
 
 Polyline::Polyline(const Polyline& other)
     : _plane_dirty(other._plane_dirty), name(other.name), _coords(other._coords), plane(other.plane),
-      width(other.width), dash(other.dash), linecolor(other.linecolor) {}
+      width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
 
 Polyline& Polyline::operator=(const Polyline& other) {
 
@@ -212,6 +212,7 @@ Polyline& Polyline::operator=(const Polyline& other) {
     width = other.width;
     dash = other.dash;
     linecolor = other.linecolor;
+    arrowhead = other.arrowhead;
 
     return *this;
 }
@@ -643,6 +644,7 @@ void Polyline::reverse() {
 
     _coords = std::move(coords);
     plane.reverse();
+    arrowhead = arrowhead_flipped(arrowhead);
 }
 
 Polyline Polyline::reversed() const {
@@ -953,7 +955,7 @@ bool Polyline::operator==(const Polyline& other) const {
     if (std::round(width * 1000000.0) != std::round(other.width * 1000000.0))
         return false;
 
-    return linecolor == other.linecolor;
+    return linecolor == other.linecolor && arrowhead == other.arrowhead;
 }
 
 bool Polyline::operator!=(const Polyline& other) const {
@@ -1598,6 +1600,10 @@ bool Polyline::trim_rectangles_by_plane(Polyline& first, Polyline& second, const
 nlohmann::ordered_json Polyline::jsondump() const {
 
     nlohmann::ordered_json data;
+
+    if (arrowhead != Arrowhead::NONE)
+        data["arrowhead"] = arrowhead_name(arrowhead);
+
     data["coords"] = _coords;
     data["dash"] = dash;
     data["guid"] = guid();
@@ -1630,6 +1636,9 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
 
     if (data.contains("linecolor"))
         polyline.linecolor = Color::jsonload(data["linecolor"]);
+
+    if (data.contains("arrowhead"))
+        polyline.arrowhead = arrowhead_from_name(data["arrowhead"].get<std::string>());
 
     polyline.recompute_plane_if_needed();
 
@@ -1677,6 +1686,7 @@ session_proto::Polyline Polyline::to_proto() const {
         proto.add_coords(c);
 
     *proto.mutable_linecolor() = linecolor.to_proto();
+    proto.set_arrowhead(static_cast<int>(arrowhead));
 
     return proto;
 }
@@ -1694,6 +1704,8 @@ Polyline Polyline::from_proto(const session_proto::Polyline& proto) {
 
     if (proto.has_linecolor())
         polyline.linecolor = Color::from_proto(proto.linecolor());
+
+    polyline.arrowhead = static_cast<Arrowhead>(proto.arrowhead());
 
     return polyline;
 }

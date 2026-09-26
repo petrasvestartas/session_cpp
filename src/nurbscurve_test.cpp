@@ -34,6 +34,10 @@ namespace session_cpp {
         const NurbsCurve ccopy = curve;
         const NurbsCurve cother = NurbsCurve::create(false, 2, points);
 
+        NurbsCurve carrow = curve;
+        carrow.arrowhead = Arrowhead::BOTH;
+        const NurbsCurve carrowcopy = carrow;
+
         MINI_CHECK(curve.is_valid());
         MINI_CHECK(curve.cv_count() == 4);
         MINI_CHECK(curve.degree() == 2);
@@ -46,6 +50,7 @@ namespace session_cpp {
         MINI_CHECK(ccopy.guid() != curve.guid());
         MINI_CHECK(ccopy == curve);
         MINI_CHECK(cother != curve);
+        MINI_CHECK(curve.arrowhead == Arrowhead::NONE && carrowcopy == carrow && carrow != curve);
     }
 
     MINI_TEST("NurbsCurve", "Create Interpolated") {
@@ -548,9 +553,11 @@ namespace session_cpp {
         NurbsCurve curve = NurbsCurve::create(false, 2, points);
 
         NurbsCurve curve_reversed = curve;
+        curve_reversed.arrowhead = Arrowhead::START;
         curve_reversed.reverse();
 
         MINI_CHECK(TOLERANCE.is_point_close(curve_reversed.point_at_start(), curve.point_at_end()));
+        MINI_CHECK(curve_reversed.arrowhead == Arrowhead::END);
 
         curve.swap_coordinates(0, 1);
 
@@ -636,6 +643,7 @@ namespace session_cpp {
         };
 
         NurbsCurve curve1 = NurbsCurve::create(false, 2, points);
+        curve1.arrowhead = Arrowhead::BOTH;
         const Xform curve1_xf = Xform::translation(0.0, 0.0, 1.0);
         curve1.transform(curve1_xf);
 
@@ -651,7 +659,7 @@ namespace session_cpp {
         x = Xform::translation(0.0, 0.0, 10.0);
         const NurbsCurve curve4_transformed = curve4.transformed(x);
 
-        MINI_CHECK(curve1.cv(0)[2] == 1.0);
+        MINI_CHECK(curve1.cv(0)[2] == 1.0 && curve1.arrowhead == Arrowhead::BOTH);
         MINI_CHECK(curve2.cv(0)[2] == 1.0);
         MINI_CHECK(curve3_transformed.cv(0)[2] == 10.0);
         MINI_CHECK(curve4_transformed.cv(0)[2] == 10.0);
@@ -667,7 +675,8 @@ namespace session_cpp {
             Point(4.0, 0.0, 0.0)
         };
 
-        const NurbsCurve curve = NurbsCurve::create(false, 2, points);
+        NurbsCurve curve = NurbsCurve::create(false, 2, points);
+        curve.arrowhead = Arrowhead::END;
         const std::string guid = curve.guid();
         const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbscurve.json").string();
         curve.file_json_dump(filename);
@@ -681,6 +690,8 @@ namespace session_cpp {
         MINI_CHECK(loaded_json_string == curve);
         MINI_CHECK(loaded_from_file == curve);
         MINI_CHECK(loaded_from_file.guid() == guid);
+        MINI_CHECK(loaded_from_file.arrowhead == Arrowhead::END);
+        MINI_CHECK(curve.file_json_dumps().find("\"arrowhead\":\"end\"") != std::string::npos);
     }
 
     MINI_TEST("NurbsCurve", "Protobuf Roundtrip") {
@@ -693,7 +704,8 @@ namespace session_cpp {
             Point(4.0, 0.0, 0.0)
         };
 
-        const NurbsCurve curve = NurbsCurve::create(false, 2, points);
+        NurbsCurve curve = NurbsCurve::create(false, 2, points);
+        curve.arrowhead = Arrowhead::END;
         const std::string guid = curve.guid();
         const std::string filename = (std::filesystem::path(__FILE__).parent_path().parent_path() / "serialization" / "test_nurbscurve.bin").string();
         curve.pb_dump(filename);
@@ -705,6 +717,7 @@ namespace session_cpp {
         MINI_CHECK(loaded_proto_string == curve);
         MINI_CHECK(loaded == curve);
         MINI_CHECK(loaded.guid() == guid);
+        MINI_CHECK(loaded.arrowhead == Arrowhead::END);
         MINI_CHECK(converted == curve);
         MINI_CHECK(converted.guid() == guid);
     }

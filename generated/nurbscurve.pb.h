@@ -227,6 +227,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     kCvCountFieldNumber = 6,
     kWidthFieldNumber = 10,
     kCvStrideFieldNumber = 7,
+    kArrowheadFieldNumber = 14,
   };
   // repeated double nurbsknots = 8;
   [[nodiscard]] int nurbsknots_size() const;
@@ -396,11 +397,21 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
   void _internal_set_cv_stride(::int32_t value);
 
   public:
+  // int32 arrowhead = 14;
+  void clear_arrowhead() ;
+  [[nodiscard]] ::int32_t arrowhead() const;
+  void set_arrowhead(::int32_t value);
+
+  private:
+  ::int32_t _internal_arrowhead() const;
+  void _internal_set_arrowhead(::int32_t value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.NurbsCurve)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 12,
+      ::google::protobuf::internal::TcParseTable<4, 13,
                           2, 49,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -441,6 +452,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     ::int32_t cv_count_;
     double width_;
     ::int32_t cv_stride_;
+    ::int32_t arrowhead_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -935,6 +947,30 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::Color>* PROTOBUF_NO
 NurbsCurve::_internal_mutable_linecolors() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.linecolors_;
+}
+
+// int32 arrowhead = 14;
+inline void NurbsCurve::clear_arrowhead() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = 0;
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+}
+inline ::int32_t NurbsCurve::arrowhead() const {
+  // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.arrowhead)
+  return _internal_arrowhead();
+}
+inline void NurbsCurve::set_arrowhead(::int32_t value) {
+  _internal_set_arrowhead(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.arrowhead)
+}
+inline ::int32_t NurbsCurve::_internal_arrowhead() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.arrowhead_;
+}
+inline void NurbsCurve::_internal_set_arrowhead(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.arrowhead_ = value;
 }
 
 #ifdef __GNUC__

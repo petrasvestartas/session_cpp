@@ -2,6 +2,7 @@
 #include "color.h"
 #include "guid.h"
 #include "json.h"
+#include "line.h"
 #include "nurbsknot.h"
 #include "plane.h"
 #include "point.h"
@@ -34,6 +35,7 @@ public:
     double width = 1.0; // Display width.
     std::vector<Color> pointcolors; // Display color per control point.
     std::vector<Color> linecolors; // Display color per control polygon segment.
+    Arrowhead arrowhead = Arrowhead::NONE; // Arrowhead ends.
     int m_dim; // Coordinate dimension.
     int m_is_rat; // 1 when rational, 0 otherwise.
     int m_order; // Degree + 1.
@@ -87,10 +89,10 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Compare name, width, colors, layout, nurbsknots and CVs to 1e-12; guid ignored.
+    /// Compare name, width, colors, arrowhead, layout, nurbsknots and CVs to 1e-12; guid ignored.
     bool operator==(const NurbsCurve& other) const;
 
-    /// Compare name, width, colors, layout, nurbsknots and CVs to 1e-12; guid ignored.
+    /// Compare name, width, colors, arrowhead, layout, nurbsknots and CVs to 1e-12; guid ignored.
     bool operator!=(const NurbsCurve& other) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -412,7 +414,7 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Modifications
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Reverse the direction keeping the domain.
+    /// Reverse the direction keeping the domain and swap the arrowhead ends.
     bool reverse();
 
     /// Swap two coordinate axes of every CV.

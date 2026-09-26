@@ -34,6 +34,7 @@ public:
     double width = 1.0; // Display width.
     std::vector<double> dash; // Dash pattern lengths.
     Color linecolor = Color::black(); // Display color.
+    Arrowhead arrowhead = Arrowhead::NONE; // Arrowhead ends.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
@@ -160,7 +161,7 @@ public:
     /// Remove the point at index into out_point; false when out of range.
     bool remove_point(size_t index, Point& out_point);
 
-    /// Reverse the point order in place.
+    /// Reverse the point order and swap the arrowhead ends in place.
     void reverse();
 
     /// Return a reversed copy.
@@ -202,10 +203,10 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Compare name, coordinates to 1e-6, width and linecolor; guid ignored.
+    /// Compare name, coordinates to 1e-6, width, linecolor and arrowhead; guid ignored.
     bool operator==(const Polyline& other) const;
 
-    /// Compare name, coordinates to 1e-6, width and linecolor; guid ignored.
+    /// Compare name, coordinates to 1e-6, width, linecolor and arrowhead; guid ignored.
     bool operator!=(const Polyline& other) const;
 
     /// Return the point at index.
