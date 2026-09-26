@@ -15,6 +15,11 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Line", "Constructor") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Color;
+        // using session_cpp::Line;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         Line line(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
@@ -121,6 +126,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Transformation") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Line;
+        // using session_cpp::Xform;
 
         Line line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
         line.arrowhead = Arrowhead::BOTH;
@@ -134,6 +142,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Json Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Line;
 
         Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         line.name = "test_line";
@@ -170,6 +180,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Protobuf Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Line;
 
         Line line(42.1, 84.2, 126.3, 168.4, 210.5, 252.6);
         line.name = "test_line";
@@ -206,6 +218,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Length") {
+        // using session_cpp::Line;
 
         const Line line(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
         const double ln = line.length();
@@ -216,6 +229,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "To Vector") {
+        // using session_cpp::Line;
+        // using session_cpp::Vector;
 
         const Line line(1.0, 2.0, 3.0, 4.0, 6.0, 9.0);
         const Vector v = line.to_vector();
@@ -224,6 +239,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "To Direction") {
+        // using session_cpp::Line;
+        // using session_cpp::Vector;
 
         const Line line(0.0, 0.0, 0.0, 3.0, 4.0, 0.0);
         const Vector d = line.to_direction();
@@ -235,6 +252,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Point At") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line(0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
         const Point ps = line.point_at(0.0);
@@ -247,6 +266,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Closest Point") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
         const Point p1(5.0, 5.0, 0.0);
@@ -272,6 +293,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Closest Point Unlimited") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
         const std::pair<double, Point> before = line.closest_point(Point(-5.0, 2.0, 0.0), false);
@@ -284,6 +307,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Start End Center") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
         const Point start = line.start();
@@ -296,6 +321,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Fit Points") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const std::vector<Point> fit_pts = {
             Point(0.0, 0.0, 0.0),
@@ -330,6 +358,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Fit Points Uneven") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line = Line::fit_points({
             Point(0.0, 0.0, 0.0),
@@ -343,6 +373,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Subdivide") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
         const std::vector<Point> pts = line.subdivide(3);
@@ -359,6 +391,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Overlap") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         const Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
@@ -371,6 +405,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Overlap Average") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const Line l0 = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         const Line l1 = Line::from_points(Point(5.0, 0.0, 0.0), Point(15.0, 0.0, 0.0));
@@ -383,6 +419,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Extend") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         Line line = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         line.extend(1.0, 2.0);
@@ -392,6 +430,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Extend Keeps Properties") {
+        // using session_cpp::Color;
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         Line line = Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0));
         line.name = "beam";
@@ -409,6 +450,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Split At Crossings") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const std::vector<Line> lines = {
             Line::from_points(Point(-2.0, 5.0, 0.0), Point(12.0, 5.0, 0.0)),
@@ -439,6 +482,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Line", "Split At Crossings Zero Length") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
 
         const std::vector<Line> lines = {
             Line::from_points(Point(-2.0, 5.0, 0.0), Point(12.0, 5.0, 0.0)),

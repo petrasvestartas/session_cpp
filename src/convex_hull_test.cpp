@@ -10,6 +10,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("ConvexHull", "Hull 2d") {
+    // using session_cpp::ConvexHull;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -25,6 +27,8 @@ MINI_TEST("ConvexHull", "Hull 2d") {
 }
 
 MINI_TEST("ConvexHull", "Hull 2d Collinear") {
+    // using session_cpp::ConvexHull;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -39,6 +43,8 @@ MINI_TEST("ConvexHull", "Hull 2d Collinear") {
 }
 
 MINI_TEST("ConvexHull", "Hull 2d Circle") {
+    // using session_cpp::ConvexHull;
+    // using session_cpp::Point;
 
     const size_t n = 12;
     std::vector<Point> points;
@@ -56,6 +62,9 @@ MINI_TEST("ConvexHull", "Hull 2d Circle") {
 }
 
 MINI_TEST("ConvexHull", "Hull 3d") {
+    // using session_cpp::ConvexHull;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -76,6 +85,9 @@ MINI_TEST("ConvexHull", "Hull 3d") {
 }
 
 MINI_TEST("ConvexHull", "Hull 3d Cube") {
+    // using session_cpp::ConvexHull;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),

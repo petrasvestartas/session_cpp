@@ -8,6 +8,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("SpatialRTree", "Constructor") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -32,6 +33,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Creation") {
+        // using session_cpp::SpatialRTree;
 
         const SpatialRTree<int, double, 3> tree;
 
@@ -39,6 +41,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Insert") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -50,6 +53,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Insert Multiple") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -67,6 +71,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Search Hit") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -87,6 +92,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Search Miss") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -102,6 +108,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Remove") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -116,6 +123,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Remove All") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -134,6 +142,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Search Count") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -161,6 +170,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Search Stop") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {0, 0, 0};
@@ -176,6 +186,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Normalizes Reversed Bounds") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const double min0[3] = {1, 2, 3};
@@ -200,6 +211,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("SpatialRTree", "Search 100 Boxes") {
+        // using session_cpp::SpatialRTree;
 
         SpatialRTree<int, double, 3> tree;
         const std::vector<std::array<double, 6>> boxes = {

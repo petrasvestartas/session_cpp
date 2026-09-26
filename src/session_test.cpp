@@ -14,6 +14,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Session", "Constructor") {
+    // using session_cpp::Session;
 
     Session session;
     Session named("my_named_session");
@@ -24,6 +25,11 @@ MINI_TEST("Session", "Constructor") {
 }
 
 MINI_TEST("Session", "Copy") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Element;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session("original");
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -69,6 +75,8 @@ MINI_TEST("Session", "Copy") {
 }
 
 MINI_TEST("Session", "Add Point") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -80,6 +88,8 @@ MINI_TEST("Session", "Add Point") {
 }
 
 MINI_TEST("Session", "Add Line") {
+    // using session_cpp::Session;
+    // using session_cpp::Line;
 
     Session session;
     std::shared_ptr<Line> line = std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -90,6 +100,8 @@ MINI_TEST("Session", "Add Line") {
 }
 
 MINI_TEST("Session", "Add Plane") {
+    // using session_cpp::Session;
+    // using session_cpp::Plane;
 
     Session session;
     std::shared_ptr<Plane> plane = std::make_shared<Plane>(Plane::xy_plane());
@@ -100,6 +112,10 @@ MINI_TEST("Session", "Add Plane") {
 }
 
 MINI_TEST("Session", "Add OBB") {
+    // using session_cpp::Session;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Session session;
     std::shared_ptr<OBB> obb = std::make_shared<OBB>(
@@ -116,6 +132,9 @@ MINI_TEST("Session", "Add OBB") {
 }
 
 MINI_TEST("Session", "Add Polyline") {
+    // using session_cpp::Session;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Polyline> pl =
@@ -128,6 +147,11 @@ MINI_TEST("Session", "Add Polyline") {
 }
 
 MINI_TEST("Session", "Select By Type") {
+    // using session_cpp::Session;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> g0 = session.add_group("g0");
@@ -150,6 +174,11 @@ MINI_TEST("Session", "Select By Type") {
 }
 
 MINI_TEST("Session", "Add Pointcloud") {
+    // using session_cpp::Session;
+    // using session_cpp::PointCloud;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Color;
 
     Session session;
     std::shared_ptr<PointCloud> pc = std::make_shared<PointCloud>(
@@ -164,6 +193,9 @@ MINI_TEST("Session", "Add Pointcloud") {
 }
 
 MINI_TEST("Session", "Add Mesh") {
+    // using session_cpp::Session;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
@@ -178,6 +210,9 @@ MINI_TEST("Session", "Add Mesh") {
 }
 
 MINI_TEST("Session", "Add Nurbscurve") {
+    // using session_cpp::Session;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     Session session;
     std::vector<Point> pts = {Point(0, 0, 0), Point(1, 1, 0), Point(2, 0, 0), Point(3, 1, 0)};
@@ -189,6 +224,9 @@ MINI_TEST("Session", "Add Nurbscurve") {
 }
 
 MINI_TEST("Session", "Add Nurbssurface") {
+    // using session_cpp::Session;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     Session session;
     std::vector<Point> pts = {
@@ -219,6 +257,8 @@ MINI_TEST("Session", "Add Nurbssurface") {
 }
 
 MINI_TEST("Session", "Add Brep") {
+    // using session_cpp::Session;
+    // using session_cpp::BRep;
 
     Session session;
     std::shared_ptr<BRep> brep = std::make_shared<BRep>(BRep::create_box(1.0, 1.0, 1.0));
@@ -229,6 +269,8 @@ MINI_TEST("Session", "Add Brep") {
 }
 
 MINI_TEST("Session", "Add Element") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
 
     Session session;
     std::shared_ptr<Element> plate = std::make_shared<Element>("p1");
@@ -240,6 +282,15 @@ MINI_TEST("Session", "Add Element") {
 }
 
 MINI_TEST("Session", "Add Empty Geometry") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::PointCloud;
+    // using session_cpp::Mesh;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::BRep;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("empty");
@@ -265,6 +316,8 @@ MINI_TEST("Session", "Add Empty Geometry") {
 }
 
 MINI_TEST("Session", "Add Group") {
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("my_group");
@@ -274,6 +327,8 @@ MINI_TEST("Session", "Add Group") {
 }
 
 MINI_TEST("Session", "Add Edge") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -286,6 +341,9 @@ MINI_TEST("Session", "Add Edge") {
 }
 
 MINI_TEST("Session", "Add Hierarchy") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(0, 0, 0);
@@ -300,6 +358,9 @@ MINI_TEST("Session", "Add Hierarchy") {
 }
 
 MINI_TEST("Session", "Get Children") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(0, 0, 0);
@@ -317,6 +378,8 @@ MINI_TEST("Session", "Get Children") {
 }
 
 MINI_TEST("Session", "Add Relationship") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(0, 0, 0);
@@ -361,6 +424,9 @@ std::shared_ptr<Interaction> named_interaction(const std::string&) {
 } // namespace
 
 MINI_TEST("Session", "Add Interaction") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Interaction;
 
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
@@ -402,6 +468,9 @@ MINI_TEST("Session", "Add Interaction") {
 }
 
 MINI_TEST("Session", "Get Interaction") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Interaction;
 
     Interaction::register_type("NamedInteraction", named_interaction);
     Session session;
@@ -434,6 +503,9 @@ MINI_TEST("Session", "Get Interaction") {
 }
 
 MINI_TEST("Session", "Has Interaction") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Interaction;
 
     Interaction::register_type("NamedInteraction", named_interaction);
     Session session;
@@ -454,6 +526,8 @@ MINI_TEST("Session", "Has Interaction") {
 }
 
 MINI_TEST("Session", "Remove Interaction") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
 
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
@@ -476,6 +550,9 @@ MINI_TEST("Session", "Remove Interaction") {
 }
 
 MINI_TEST("Session", "Undo Remove Interaction") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Interaction;
 
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
@@ -503,6 +580,8 @@ MINI_TEST("Session", "Undo Remove Interaction") {
 }
 
 MINI_TEST("Session", "Get Neighbours") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(0, 0, 0);
@@ -518,6 +597,10 @@ MINI_TEST("Session", "Get Neighbours") {
 }
 
 MINI_TEST("Session", "Get Collisions") {
+    // using session_cpp::Session;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Session session;
     std::shared_ptr<OBB> obb1 = std::make_shared<OBB>(
@@ -542,6 +625,11 @@ MINI_TEST("Session", "Get Collisions") {
 }
 
 MINI_TEST("Session", "Ray Cast") {
+    // using session_cpp::Session;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Mesh> mesh = std::make_shared<Mesh>();
@@ -569,6 +657,8 @@ MINI_TEST("Session", "Ray Cast") {
 }
 
 MINI_TEST("Session", "Get Object") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -581,6 +671,9 @@ MINI_TEST("Session", "Get Object") {
 }
 
 MINI_TEST("Session", "Remove Object") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Element;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -608,6 +701,9 @@ MINI_TEST("Session", "Remove Object") {
 }
 
 MINI_TEST("Session", "Get Geometry") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Objects;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -619,6 +715,9 @@ MINI_TEST("Session", "Get Geometry") {
 }
 
 MINI_TEST("Session", "Get Geometry Is Pure") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -636,6 +735,10 @@ MINI_TEST("Session", "Get Geometry Is Pure") {
 }
 
 MINI_TEST("Session", "Json Roundtrip") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -661,6 +764,8 @@ MINI_TEST("Session", "Json Roundtrip") {
 }
 
 MINI_TEST("Session", "Protobuf Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> p1 = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -681,6 +786,8 @@ MINI_TEST("Session", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Session", "Lookup Mutation Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::Line;
 
     Session session;
     std::shared_ptr<Line> line = std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -698,6 +805,9 @@ MINI_TEST("Session", "Lookup Mutation Roundtrip") {
 }
 
 MINI_TEST("Session", "Order") {
+    // using session_cpp::Session;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Line> line = std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -720,6 +830,9 @@ MINI_TEST("Session", "Order") {
 }
 
 MINI_TEST("Session", "Set Xform") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -738,6 +851,10 @@ MINI_TEST("Session", "Set Xform") {
 }
 
 MINI_TEST("Session", "World Xform Hierarchy") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
@@ -770,6 +887,9 @@ MINI_TEST("Session", "World Xform Hierarchy") {
 }
 
 MINI_TEST("Session", "Xform Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -817,6 +937,14 @@ static std::shared_ptr<Mesh> create_box(const Point& center, double size) {
 }
 
 MINI_TEST("Session", "Tree Transformation Hierarchy") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    // using session_cpp::Plane;
+    // using session_cpp::Mesh;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Objects;
 
     Session scene("tree_transformation_test");
 
@@ -853,6 +981,8 @@ MINI_TEST("Session", "Tree Transformation Hierarchy") {
 }
 
 MINI_TEST("Session", "Add Component") {
+    // using session_cpp::Session;
+    // using session_cpp::Component;
 
     Session session;
 
@@ -870,6 +1000,10 @@ MINI_TEST("Session", "Add Component") {
 }
 
 MINI_TEST("Session", "Component Json Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::Component;
+    // using session_cpp::file_encoders::file_json_dump;
+    // using session_cpp::file_encoders::file_json_load;
 
     Session original;
     Component c;
@@ -890,6 +1024,9 @@ MINI_TEST("Session", "Component Json Roundtrip") {
 }
 
 MINI_TEST("Session", "Document Workflow") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -923,6 +1060,10 @@ MINI_TEST("Session", "Document Workflow") {
 }
 
 MINI_TEST("Session", "Undo Remove") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("g");
@@ -967,6 +1108,9 @@ MINI_TEST("Session", "Undo Remove") {
 }
 
 MINI_TEST("Session", "Undo Add") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("g");
@@ -991,6 +1135,8 @@ MINI_TEST("Session", "Undo Add") {
 }
 
 MINI_TEST("Session", "Undo Replace") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -1014,6 +1160,10 @@ MINI_TEST("Session", "Undo Replace") {
 }
 
 MINI_TEST("Session", "Undo Xform") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::XformOp;
 
     Session session;
     std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -1040,6 +1190,8 @@ MINI_TEST("Session", "Undo Xform") {
 }
 
 MINI_TEST("Session", "History Purged On Save") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
 
@@ -1066,6 +1218,9 @@ MINI_TEST("Session", "History Purged On Save") {
 }
 
 MINI_TEST("Session", "Purge On Save") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Vertex;
 
     Session session;
     std::vector<std::string> guids;
@@ -1097,6 +1252,9 @@ MINI_TEST("Session", "Purge On Save") {
 }
 
 MINI_TEST("Session", "Purge Unreachable") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::PURGE_WORK;
 
     Session session;
     std::vector<std::string> guids;
@@ -1127,6 +1285,9 @@ MINI_TEST("Session", "Purge Unreachable") {
 }
 
 MINI_TEST("Session", "Purge Step") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     std::vector<std::string> guids;
@@ -1189,6 +1350,11 @@ MINI_TEST("Session", "Purge Step") {
 }
 
 MINI_TEST("Session", "Checkpoint Keeps History") {
+    // using session_cpp::Color;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<TreeNode> group = session.add_group("group");
@@ -1234,6 +1400,9 @@ MINI_TEST("Session", "Checkpoint Keeps History") {
 }
 
 MINI_TEST("Session", "Checkpoint Restarts On Edit") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     std::vector<std::string> guids;
@@ -1268,6 +1437,8 @@ MINI_TEST("Session", "Checkpoint Restarts On Edit") {
 }
 
 MINI_TEST("Session", "History Capacity") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
 
     Session session;
 
@@ -1291,6 +1462,9 @@ MINI_TEST("Session", "History Capacity") {
 }
 
 MINI_TEST("Session", "Str Hierarchy") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::TreeNode;
 
     Session session("blocks");
     std::shared_ptr<TreeNode> group = session.add_group("Group");
@@ -1307,6 +1481,10 @@ MINI_TEST("Session", "Str Hierarchy") {
 }
 
 MINI_TEST("Session", "Add Definition") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::Mesh;
 
     Session session;
     std::shared_ptr<Mesh> box = create_box(Point(0, 0, 0), 2.0);
@@ -1330,6 +1508,11 @@ MINI_TEST("Session", "Add Definition") {
 }
 
 MINI_TEST("Session", "Add Instance") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("bay");
@@ -1351,6 +1534,11 @@ MINI_TEST("Session", "Add Instance") {
 }
 
 MINI_TEST("Session", "Definition Of") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::Mesh;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1366,6 +1554,10 @@ MINI_TEST("Session", "Definition Of") {
 }
 
 MINI_TEST("Session", "Instances Of") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1384,6 +1576,11 @@ MINI_TEST("Session", "Instances Of") {
 }
 
 MINI_TEST("Session", "World Geometry") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::Mesh;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1409,6 +1606,12 @@ MINI_TEST("Session", "World Geometry") {
 }
 
 MINI_TEST("Session", "Get Geometry Resolves Instances") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Objects;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1429,6 +1632,11 @@ MINI_TEST("Session", "Get Geometry Resolves Instances") {
 }
 
 MINI_TEST("Session", "Replace Definition") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::Mesh;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1450,6 +1658,10 @@ MINI_TEST("Session", "Replace Definition") {
 }
 
 MINI_TEST("Session", "Remove Definition") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1471,6 +1683,11 @@ MINI_TEST("Session", "Remove Definition") {
 }
 
 MINI_TEST("Session", "To Instance") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Mesh;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("bay");
@@ -1505,6 +1722,13 @@ MINI_TEST("Session", "To Instance") {
 }
 
 MINI_TEST("Session", "Explode") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::ElementFeature;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(std::make_shared<Element>(*create_box(Point(0, 0, 0), 2.0), "plate"));
@@ -1535,6 +1759,12 @@ MINI_TEST("Session", "Explode") {
 }
 
 MINI_TEST("Session", "Undo Instance") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Mesh;
 
     Session session;
     std::shared_ptr<TreeNode> group = session.add_group("bay");
@@ -1583,6 +1813,10 @@ MINI_TEST("Session", "Undo Instance") {
 }
 
 MINI_TEST("Session", "Instance Json Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1606,6 +1840,12 @@ MINI_TEST("Session", "Instance Json Roundtrip") {
 }
 
 MINI_TEST("Session", "Instance Protobuf Roundtrip") {
+    // using session_cpp::Session;
+    // using session_cpp::ElementFeature;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1630,6 +1870,10 @@ MINI_TEST("Session", "Instance Protobuf Roundtrip") {
 }
 
 MINI_TEST("Session", "Get Collisions Instances") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1651,6 +1895,11 @@ MINI_TEST("Session", "Get Collisions Instances") {
 }
 
 MINI_TEST("Session", "Ray Cast Instance") {
+    // using session_cpp::Session;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
 
     Session session;
     std::string definition = session.add_definition(create_box(Point(0, 0, 0), 2.0));
@@ -1667,6 +1916,10 @@ MINI_TEST("Session", "Ray Cast Instance") {
 }
 
 MINI_TEST("Session", "Get Node") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<TreeNode> node = session.add_point(std::make_shared<Point>(0.0, 0.0, 0.0));
@@ -1703,6 +1956,11 @@ MINI_TEST("Session", "Get Node") {
 }
 
 MINI_TEST("Session", "Remove Keeps Slot") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
+    // using session_cpp::RemoveOp;
 
     Session session;
     const std::shared_ptr<TreeNode> g = session.add_group("g");
@@ -1748,6 +2006,9 @@ MINI_TEST("Session", "Remove Keeps Slot") {
 }
 
 MINI_TEST("Session", "Redo Add Keeps Node") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -1772,6 +2033,9 @@ MINI_TEST("Session", "Redo Add Keeps Node") {
 }
 
 MINI_TEST("Session", "Replace Shares Geometry") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::ReplaceOp;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -1800,6 +2064,10 @@ MINI_TEST("Session", "Replace Shares Geometry") {
 }
 
 MINI_TEST("Session", "Replace Across Types") {
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -1832,6 +2100,9 @@ MINI_TEST("Session", "Replace Across Types") {
 }
 
 MINI_TEST("Session", "Undo Restores Graph") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
@@ -1872,6 +2143,8 @@ MINI_TEST("Session", "Undo Restores Graph") {
 }
 
 MINI_TEST("Session", "Undo Restores Interactions") {
+    // using session_cpp::Element;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Element> a = std::make_shared<Element>("a");
@@ -1903,6 +2176,8 @@ MINI_TEST("Session", "Undo Restores Interactions") {
 }
 
 MINI_TEST("Session", "Dead Guid Reused") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -1935,6 +2210,8 @@ MINI_TEST("Session", "Dead Guid Reused") {
 }
 
 MINI_TEST("Session", "Remove Keeps Lookup Edit") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -1956,6 +2233,12 @@ MINI_TEST("Session", "Remove Keeps Lookup Edit") {
 }
 
 MINI_TEST("Session", "Tree Ops") {
+    // using session_cpp::Color;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeOp;
 
     Session session;
     session.add_group("A");
@@ -2023,6 +2306,9 @@ MINI_TEST("Session", "Tree Ops") {
 }
 
 MINI_TEST("Session", "Move Node") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<TreeNode> g1 = session.add_group("g1");
@@ -2057,6 +2343,12 @@ MINI_TEST("Session", "Move Node") {
 }
 
 MINI_TEST("Session", "Deleted Parent Orphans Children") {
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Xform;
 
     Session session;
     const std::shared_ptr<Element> element = std::make_shared<Element>("E");
@@ -2095,6 +2387,9 @@ MINI_TEST("Session", "Deleted Parent Orphans Children") {
 }
 
 MINI_TEST("Session", "Copy Drops Dead") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<TreeNode> g = session.add_group("g");
@@ -2122,6 +2417,14 @@ MINI_TEST("Session", "Copy Drops Dead") {
 }
 
 MINI_TEST("Session", "Live Views") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
+    // using session_cpp::Mesh;
+    // using session_cpp::Objects;
 
     Session session;
     const std::shared_ptr<TreeNode> g = session.add_group("gone_group");
@@ -2187,6 +2490,8 @@ MINI_TEST("Session", "Live Views") {
 }
 
 MINI_TEST("Session", "Unrecorded Remove") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2206,6 +2511,9 @@ MINI_TEST("Session", "Unrecorded Remove") {
 }
 
 MINI_TEST("Session", "Remove Twin Keeps Slot") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2241,6 +2549,9 @@ MINI_TEST("Session", "Remove Twin Keeps Slot") {
 }
 
 MINI_TEST("Session", "Redo Twin Keeps Slot") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2291,6 +2602,10 @@ MINI_TEST("Session", "Redo Twin Keeps Slot") {
 }
 
 MINI_TEST("Session", "Cross Type Twin") {
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2340,6 +2655,14 @@ MINI_TEST("Session", "Cross Type Twin") {
 }
 
 MINI_TEST("Session", "Add Live Guid Refused") {
+    // using session_cpp::Component;
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2392,6 +2715,11 @@ MINI_TEST("Session", "Add Live Guid Refused") {
 }
 
 MINI_TEST("Session", "Twin Skips Recorded Edits") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     const std::shared_ptr<Point> x = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -2478,6 +2806,9 @@ MINI_TEST("Session", "Twin Skips Recorded Edits") {
 }
 
 MINI_TEST("Session", "Definition Guid Is Live") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::string definition = session.add_definition(std::make_shared<Point>(0.0, 0.0, 0.0));
@@ -2524,6 +2855,9 @@ MINI_TEST("Session", "Definition Guid Is Live") {
 }
 
 MINI_TEST("Session", "Purge Clears History") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Vertex;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
@@ -2616,6 +2950,12 @@ MINI_TEST("Session", "Checkpoint Tags") {
 }
 
 MINI_TEST("Session", "Checkpoint After Purge Steps") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
+    // using session_cpp::CAPACITY;
+    // using session_cpp::PURGE_WORK;
+    // using session_cpp::TreeNode;
 
     const size_t n = 40000;
     const size_t bulk = 20000;
@@ -2661,6 +3001,11 @@ MINI_TEST("Session", "Checkpoint After Purge Steps") {
 }
 
 MINI_TEST("Session", "Steady State Bounds") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::CAPACITY;
+    // using session_cpp::PURGE_WORK;
+    // using session_cpp::TreeNode;
 
     const size_t n = 2000;
     const size_t cycles = 1000;
@@ -2695,6 +3040,10 @@ MINI_TEST("Session", "Steady State Bounds") {
 }
 
 MINI_TEST("Session", "History Budget Bounds") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::CAPACITY;
 
     const size_t side = 30;
     std::vector<Point> vertices;
@@ -2735,6 +3084,11 @@ MINI_TEST("Session", "History Budget Bounds") {
 }
 
 MINI_TEST("Session", "Purge Keeps Replaced Tomb") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::PURGE_WORK;
+    // using session_cpp::Xform;
 
     Session session;
     const std::string definition = session.add_definition(std::make_shared<Point>(1.0, 2.0, 3.0));
@@ -2769,6 +3123,10 @@ MINI_TEST("Session", "Purge Keeps Replaced Tomb") {
 }
 
 MINI_TEST("Session", "Checkpoint Twin Xform") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
 
     Session session;
     const std::string definition = session.add_definition(std::make_shared<Point>(1.0, 2.0, 3.0));
@@ -2795,6 +3153,8 @@ MINI_TEST("Session", "Checkpoint Twin Xform") {
 }
 
 MINI_TEST("Session", "Checkpoint Keeps Replaced Definition") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);

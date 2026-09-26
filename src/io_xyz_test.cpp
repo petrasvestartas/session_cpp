@@ -14,6 +14,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("IoXyz", "Read Bunny") {
+        // using session_cpp::io_xyz::read_xyz;
+        // using session_cpp::PointCloud;
+        // using session_cpp::Point;
 
         if (!std::filesystem::exists("session_data/bunny.xyz"))
             return;
@@ -32,6 +35,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("IoXyz", "Write Read Roundtrip") {
+        // using session_cpp::Point;
+        // using session_cpp::PointCloud;
+        // using session_cpp::io_xyz::read_xyz;
+        // using session_cpp::io_xyz::write_xyz;
 
         std::filesystem::create_directories("./serialization");
 
@@ -54,6 +61,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("IoXyz", "String Roundtrip") {
+        // using session_cpp::Point;
+        // using session_cpp::PointCloud;
+        // using session_cpp::io_xyz::read_xyz_from_str;
+        // using session_cpp::io_xyz::write_xyz_to_string;
 
         PointCloud original;
         original.add_point(Point(0.0, 0.0, 0.0));
@@ -69,6 +80,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("IoXyz", "Write Exact Text") {
+        // using session_cpp::Point;
+        // using session_cpp::PointCloud;
+        // using session_cpp::io_xyz::read_xyz;
+        // using session_cpp::io_xyz::write_xyz;
+        // using session_cpp::io_xyz::write_xyz_to_string;
 
         std::filesystem::create_directories("./serialization");
 
@@ -93,6 +109,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("IoXyz", "File Errors") {
+        // using session_cpp::PointCloud;
+        // using session_cpp::io_xyz::read_xyz;
+        // using session_cpp::io_xyz::write_xyz;
 
         const PointCloud cloud;
         bool read_failed = false;

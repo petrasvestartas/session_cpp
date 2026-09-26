@@ -92,6 +92,16 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Shared Grid Boundary") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::BRepRef;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::RemeshNurbsSurfaceGrid;
+        // using session_cpp::Tolerance::PI;
+        // using session_cpp::Mesh;
+        // using session_cpp::Vector;
 
         BRep b;
         std::vector<NurbsSurface> surfaces;
@@ -188,6 +198,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Constructor") {
+        // using session_cpp::BRep;
 
         BRep b;
 
@@ -208,6 +219,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Box") {
+        // using session_cpp::BRep;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
@@ -220,6 +232,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Accessors") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
 
@@ -245,6 +259,13 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Add Face") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::BRepRef;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Mesh;
 
         BRep b;
         NurbsSurface srf(3, false, 2, 2, 2, 2);
@@ -291,6 +312,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Mesh") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const Mesh m = box.mesh();
@@ -304,6 +327,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Point At") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const Point pt = box.point_at(0, 0.5, 0.5);
@@ -318,6 +344,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Solid") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const BRep cyl = BRep::create_cylinder(1.0, 2.0);
@@ -348,6 +377,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Is Closed") {
+        // using session_cpp::BRep;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         BRep open = box;
@@ -360,6 +390,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Wire Edges") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::BRepRef;
+        // using session_cpp::brep_compose;
+        // using session_cpp::brep_reverse;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const BRepRef fwd{0, BRepOrientation::Forward};
@@ -377,6 +412,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Edge Faces") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::BRepRef;
 
         const BRep cyl = BRep::create_cylinder(1.0, 2.0);
         const std::vector<BRepRef> bot = cyl.edge_faces(0);
@@ -395,6 +433,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Update Tolerances") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
 
         BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const double worst = box.update_tolerances();
@@ -416,6 +456,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transformation") {
+        // using session_cpp::BRep;
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
         const Xform box_xf = Xform::translation(10.0, 20.0, 30.0);
@@ -431,6 +474,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Transform Roundtrip") {
+        // using session_cpp::BRep;
+        // using session_cpp::Vector;
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
 
         const Vector axis(0.3, 0.5, 0.81);
         const Xform rot = Xform::rotation(axis, 37.0, true);
@@ -462,6 +509,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Cut By Plane") {
+        // using session_cpp::BRep;
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Xform;
 
         const BRep box = BRep::create_box(2.0, 2.0, 2.0);
         const BRep half = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0)));
@@ -481,6 +533,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Json Roundtrip") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::Color;
 
         BRep box = BRep::create_cylinder(1.0, 2.0);
         box.name = "test_brep";
@@ -506,6 +561,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cylinder") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep cyl = BRep::create_cylinder(1.0, 2.0);
         const Mesh m = cyl.mesh();
@@ -520,6 +577,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Sphere") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep sph = BRep::create_sphere(1.0);
         const Mesh m = sph.mesh();
@@ -535,6 +594,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Cone") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep cone = BRep::create_cone(1.0, 2.0);
         const Mesh m = cone.mesh();
@@ -549,6 +610,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Pyramid") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep pyr = BRep::create_pyramid(2.0, 1.0);
         const Mesh m = pyr.mesh();
@@ -563,6 +626,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Torus") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
 
         const BRep tor = BRep::create_torus(2.0, 0.5);
         const Mesh m = tor.mesh();
@@ -577,6 +642,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Create Block With Hole") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::Mesh;
 
         const BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
         const Mesh m = bh.mesh();
@@ -593,6 +661,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Polylines") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Mesh;
 
         const double hx = 1.0;
         const double hy = 1.5;
@@ -666,6 +738,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Mesh;
 
         const double hx = 1.0;
         const double hy = 1.5;
@@ -737,6 +813,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Nurbscurves Holes") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Primitives;
+        // using session_cpp::Tolerance::PI;
+        // using session_cpp::Mesh;
 
         const NurbsCurve outer = NurbsCurve::create(false, 1, {
             Point(-5, -5, 0),
@@ -796,6 +878,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "From Polylines Holes") {
+        // using session_cpp::BRep;
+        // using session_cpp::Polyline;
 
         std::vector<Polyline> faces;
         std::vector<std::vector<Polyline>> holes;
@@ -809,6 +893,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Planar Fast Path") {
+        // using session_cpp::BRep;
+        // using session_cpp::Polyline;
+        // using session_cpp::Mesh;
+        // using session_cpp::VertexData;
 
         std::vector<Polyline> faces;
         std::vector<std::vector<Polyline>> holes;
@@ -837,6 +925,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Mesh Orientation") {
+        // using session_cpp::BRep;
+        // using session_cpp::Tolerance::PI;
 
         const BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
         const double vol = bh.mesh().volume();
@@ -846,6 +936,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Protobuf Roundtrip") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::Color;
 
         BRep box = BRep::create_cylinder(1.0, 2.0);
         box.name = "test_brep";
@@ -870,6 +963,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Volume") {
+        // using session_cpp::BRep;
+        // using session_cpp::Tolerance::PI;
 
         const BRep box = BRep::create_box(2, 3, 4);
         const BRep cyl = BRep::create_cylinder(1.0, 4.0);
@@ -884,6 +979,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Volume Far From Origin") {
+        // using session_cpp::BRep;
+        // using session_cpp::Xform;
 
         const Xform far = Xform::translation(1000000.1, 1000000.2, 1000000.3);
         const BRep box = BRep::create_box(2.0, 3.0, 4.0).transformed(far);
@@ -892,6 +989,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines Box") {
+        // using session_cpp::BRep;
+        // using session_cpp::Polyline;
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         const BRep b = BRep::create_box(2.0, 2.0, 2.0);
         const std::vector<Polyline> pls = b.face_polylines();
@@ -949,6 +1050,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines Cylinder Caps Only") {
+        // using session_cpp::BRep;
 
         const BRep b = BRep::create_cylinder(1.0, 4.0);
 
@@ -958,6 +1060,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines Ignores Holes") {
+        // using session_cpp::BRep;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         const std::vector<Polyline> pls = b.face_polylines();
@@ -982,6 +1087,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Polylines No Planar Faces") {
+        // using session_cpp::BRep;
 
         const BRep b = BRep::create_sphere(1.0);
 
@@ -990,6 +1096,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Reversed Flip") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         BRep b;
         const int fi_forward = build_quad_face(b);
@@ -1011,6 +1121,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Point Outward") {
+        // using session_cpp::BRep;
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const BRep box = BRep::create_box(2.0, 2.0, 2.0);
         const std::vector<Plane> box_planes = box.face_planes();
@@ -1036,6 +1150,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Outward Block With Hole") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         const BRep b = BRep::create_block_with_hole(4.0, 4.0, 2.0, 1.0);
         MINI_CHECK(b.is_solid());
@@ -1055,6 +1173,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("BRep", "Face Planes Outward Under Mirrored Winding") {
+        // using session_cpp::BRep;
+        // using session_cpp::BRepOrientation;
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
+        // using session_cpp::Polyline;
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
+        // using session_cpp::BRepRef;
+        // using session_cpp::BRepEdge;
 
         const Xform mirror = Xform::scale_xyz(-1.0, 1.0, 1.0);
         const BRep b = BRep::create_box(2.0, 2.0, 2.0).transformed(mirror);

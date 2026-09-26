@@ -6,6 +6,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("SessionConfig", "Runtime Modification") {
+        // using session_cpp::SESSION_CONFIG;
+        // using session_cpp::SessionConfig;
 
         SESSION_CONFIG.reset();
 

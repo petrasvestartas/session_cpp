@@ -12,6 +12,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("FileObj", "Read Bunny") {
+        // using session_cpp::file_obj::read_file_obj;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const std::filesystem::path bunny_path = std::filesystem::path(__FILE__).parent_path().parent_path() /
             "session_data" / "bunny.obj";
@@ -43,6 +46,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileObj", "Write Read Roundtrip") {
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::file_obj::read_file_obj;
+        // using session_cpp::file_obj::write_file_obj;
 
         std::filesystem::create_directories("./serialization");
 
@@ -69,6 +76,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileObj", "String Roundtrip") {
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::file_obj::read_file_obj_from_str;
+        // using session_cpp::file_obj::write_file_obj_to_string;
 
         Mesh original;
         const size_t v0 = original.add_vertex(Point(0.0, 0.0, 0.0));

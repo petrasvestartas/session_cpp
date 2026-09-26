@@ -22,6 +22,10 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("OBB", "Constructor") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::AABB;
 
     OBB bb1 = OBB::from_point(Point(5.0, 5.0, 5.0), 2.0);
 
@@ -93,6 +97,8 @@ MINI_TEST("OBB", "Constructor") {
 }
 
 MINI_TEST("OBB", "Collision") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     const OBB bb1 = OBB::from_point(Point(0.0, 0.0, 0.0), 1.0);
     const OBB bb2 = OBB::from_point(Point(1.5, 0.0, 0.0), 1.0);
@@ -109,6 +115,9 @@ MINI_TEST("OBB", "Collision") {
 }
 
 MINI_TEST("OBB", "Transformation") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -126,6 +135,8 @@ MINI_TEST("OBB", "Transformation") {
 }
 
 MINI_TEST("OBB", "Json Roundtrip") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox";
@@ -153,6 +164,8 @@ MINI_TEST("OBB", "Json Roundtrip") {
 }
 
 MINI_TEST("OBB", "Protobuf Roundtrip") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     OBB bb = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
     bb.name = "test_bbox_proto";
@@ -182,6 +195,8 @@ MINI_TEST("OBB", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("OBB", "Accessors") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -215,6 +230,17 @@ MINI_TEST("OBB", "Accessors") {
 }
 
 MINI_TEST("OBB", "From Geometry") {
+    // using session_cpp::AABB;
+    // using session_cpp::Color;
+    // using session_cpp::Line;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::PointCloud;
+    // using session_cpp::Polyline;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
 
     const OBB bb_aabb = OBB::from_aabb(AABB(1.0, 2.0, 3.0, 0.5, 1.0, 1.5));
 
@@ -286,6 +312,9 @@ MINI_TEST("OBB", "From Geometry") {
 }
 
 MINI_TEST("OBB", "From Plane") {
+    // using session_cpp::OBB;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
 
     const Plane plane = Plane::xy_plane();
     const OBB box = OBB::from_plane(plane, 2.0, 3.0, 4.0);
@@ -309,6 +338,9 @@ MINI_TEST("OBB", "From Plane") {
 }
 
 MINI_TEST("OBB", "Two Rectangles") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     const OBB bb(
         Point(1.0, 2.0, 3.0),

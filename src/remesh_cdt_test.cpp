@@ -12,6 +12,10 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("RemeshCDT", "Triangulate") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline border({
         Point(0, 0, 0),
@@ -47,6 +51,10 @@ MINI_TEST("RemeshCDT", "Triangulate") {
 }
 
 MINI_TEST("RemeshCDT", "Triangle") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline polyline({
         Point(0, 0, 0),
@@ -59,6 +67,10 @@ MINI_TEST("RemeshCDT", "Triangle") {
 }
 
 MINI_TEST("RemeshCDT", "Rectangle") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline polyline({
         Point(3, 0, 0),
@@ -72,6 +84,10 @@ MINI_TEST("RemeshCDT", "Rectangle") {
 }
 
 MINI_TEST("RemeshCDT", "L Shape") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline polyline({
         Point(7, 0, 0),
@@ -87,6 +103,10 @@ MINI_TEST("RemeshCDT", "L Shape") {
 }
 
 MINI_TEST("RemeshCDT", "U Shape") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline polyline({
         Point(25, 0, 0),
@@ -104,6 +124,10 @@ MINI_TEST("RemeshCDT", "U Shape") {
 }
 
 MINI_TEST("RemeshCDT", "Octagon") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
+    // using session_cpp::Mesh;
 
     Polyline polyline = Polyline::from_sides(8, 1.5);
     polyline += Vector(14, 1.5, 0);
@@ -113,6 +137,10 @@ MINI_TEST("RemeshCDT", "Octagon") {
 }
 
 MINI_TEST("RemeshCDT", "Rectangle With Rectangle Hole") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline border({
         Point(0, 0, 0),
@@ -132,6 +160,10 @@ MINI_TEST("RemeshCDT", "Rectangle With Rectangle Hole") {
 }
 
 MINI_TEST("RemeshCDT", "Duplicate Vertices") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline polyline({
         Point(33, 0, 0),
@@ -147,6 +179,10 @@ MINI_TEST("RemeshCDT", "Duplicate Vertices") {
 }
 
 MINI_TEST("RemeshCDT", "Tilted Rectangle With Rectangle Hole") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Polyline border({
         Point(55, 0, 0),
@@ -166,6 +202,10 @@ MINI_TEST("RemeshCDT", "Tilted Rectangle With Rectangle Hole") {
 }
 
 MINI_TEST("RemeshCDT", "Irregular Tilted Polyline") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> border = {
         Point(125.390575, 14.236865, -16.468853), Point(115.72382, 17.091624, -3.285212),
@@ -199,6 +239,10 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline") {
 }
 
 MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> border = {
         Point(80.805571, 2.103432, 0),   Point(77.056348, 6.382318, 0),   Point(73.469325, 10.712368, 0),
@@ -271,6 +315,9 @@ MINI_TEST("RemeshCDT", "Irregular Tilted Polyline With Holes") {
 }
 
 MINI_TEST("RemeshCDT", "Degenerate Hole Keeps Flat Indices") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     const Polyline border({
         Point(0, 0, 0),
@@ -300,6 +347,9 @@ MINI_TEST("RemeshCDT", "Degenerate Hole Keeps Flat Indices") {
 }
 
 MINI_TEST("RemeshCDT", "Large Coordinates") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     const Polyline border({
         Point(1e13, 1e13, 0),
@@ -313,6 +363,10 @@ MINI_TEST("RemeshCDT", "Large Coordinates") {
 }
 
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
+    // using session_cpp::RemeshCDT;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> border = {
         Point(734.392021, -1906.59468, 1101.588031),

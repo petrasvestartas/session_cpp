@@ -163,6 +163,10 @@ static double pcurve_line_deviation(const NurbsCurve& line, const NurbsCurve& pc
 }
 
 MINI_TEST("Intersection", "Line Line") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Tolerance;
+    // using session_cpp::Point;
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
@@ -177,6 +181,10 @@ MINI_TEST("Intersection", "Line Line") {
 }
 
 MINI_TEST("Intersection", "Line Line Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Tolerance;
+    // using session_cpp::Point;
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 1.0, 0.0, 1.0, 1.0, 0.0);
@@ -188,6 +196,9 @@ MINI_TEST("Intersection", "Line Line Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Tolerance;
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.5, -1.0, 0.0, 0.5, 1.0, 0.0);
@@ -202,6 +213,9 @@ MINI_TEST("Intersection", "Line Line Parameters") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Tolerance;
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
@@ -216,6 +230,9 @@ MINI_TEST("Intersection", "Line Line Parameters Endpoints") {
 }
 
 MINI_TEST("Intersection", "Line Line Parameters Infinite") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Tolerance;
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line line1(2.0, -1.0, 0.0, 2.0, 1.0, 0.0);
@@ -230,6 +247,11 @@ MINI_TEST("Intersection", "Line Line Parameters Infinite") {
 }
 
 MINI_TEST("Intersection", "Plane Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Line;
 
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
@@ -252,6 +274,11 @@ MINI_TEST("Intersection", "Plane Plane") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Complex") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Line;
 
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
@@ -281,6 +308,11 @@ MINI_TEST("Intersection", "Plane Plane Complex") {
 }
 
 MINI_TEST("Intersection", "Plane Plane To Line Canonical") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Line;
 
     Point p0(0.0, 0.0, 2.0);
     Vector n0(0.0, 0.0, 1.0);
@@ -307,6 +339,11 @@ MINI_TEST("Intersection", "Plane Plane To Line Canonical") {
 }
 
 MINI_TEST("Intersection", "Line Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
@@ -324,6 +361,11 @@ MINI_TEST("Intersection", "Line Plane") {
 }
 
 MINI_TEST("Intersection", "Line Plane Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point p(0.0, 0.0, 1.0);
     Vector n(0.0, 0.0, 1.0);
@@ -338,6 +380,11 @@ MINI_TEST("Intersection", "Line Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Line Plane Real World") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Line l0(500.000, -573.576, -819.152, 500.000, 573.576, 819.152);
 
@@ -356,6 +403,10 @@ MINI_TEST("Intersection", "Line Plane Real World") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point plane_origin_0(213.787107, 513.797811, -24.743845);
     Vector plane_xaxis_0(0.907673, -0.258819, 0.330366);
@@ -382,6 +433,10 @@ MINI_TEST("Intersection", "Plane Plane Plane") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point p0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
@@ -402,6 +457,10 @@ MINI_TEST("Intersection", "Plane Plane Plane Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Box") {
+    // using session_cpp::Intersection;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
@@ -423,6 +482,10 @@ MINI_TEST("Intersection", "Ray Box") {
 }
 
 MINI_TEST("Intersection", "Ray Box Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point center(0.0, 0.0, 0.0);
     Vector x_axis(1.0, 0.0, 0.0);
@@ -442,6 +505,9 @@ MINI_TEST("Intersection", "Ray Box Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(-5.0, 0.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -458,6 +524,9 @@ MINI_TEST("Intersection", "Ray Sphere") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Tangent") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(-5.0, 2.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -473,6 +542,9 @@ MINI_TEST("Intersection", "Ray Sphere Tangent") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(-5.0, 5.0, 0.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -487,6 +559,9 @@ MINI_TEST("Intersection", "Ray Sphere Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -507,6 +582,9 @@ MINI_TEST("Intersection", "Ray Triangle") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(2.0, 2.0, -1.0);
     Vector direction(0.0, 0.0, 1.0);
@@ -525,6 +603,9 @@ MINI_TEST("Intersection", "Ray Triangle Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point origin(0.5, 0.5, -1.0);
     Vector direction(1.0, 0.0, 0.0);
@@ -544,6 +625,10 @@ MINI_TEST("Intersection", "Ray Triangle Parallel") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -574,6 +659,10 @@ MINI_TEST("Intersection", "Ray Mesh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh First") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -603,6 +692,10 @@ MINI_TEST("Intersection", "Ray Mesh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -626,6 +719,10 @@ MINI_TEST("Intersection", "Ray Mesh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -656,6 +753,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh First") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -685,6 +786,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh First") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons = {
         {
@@ -708,6 +813,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Miss") {
 }
 
 MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Point>> polygons;
 
@@ -743,6 +852,10 @@ MINI_TEST("Intersection", "Ray Mesh Bvh Vs Naive") {
 }
 
 MINI_TEST("Intersection", "Ray Box Real World") {
+    // using session_cpp::Intersection;
+    // using session_cpp::OBB;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point min(214.0, 192.0, 484.0);
@@ -766,6 +879,9 @@ MINI_TEST("Intersection", "Ray Box Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Sphere Real World") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point sphere_center(457.0, 192.0, 207.0);
@@ -787,6 +903,10 @@ MINI_TEST("Intersection", "Ray Sphere Real World") {
 }
 
 MINI_TEST("Intersection", "Ray Triangle Real World") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Tolerance;
 
     Line l0(500.0, -573.576, -819.152, 500.0, 573.576, 819.152);
     Point p1(214.0, 567.0, 484.0);
@@ -803,6 +923,12 @@ MINI_TEST("Intersection", "Ray Triangle Real World") {
 }
 
 MINI_TEST("Intersection", "Curve Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
     Point origin(1.0, 0.0, 0.0);
@@ -827,6 +953,12 @@ MINI_TEST("Intersection", "Curve Plane") {
 }
 
 MINI_TEST("Intersection", "Curve Plane Bezier Clipping") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
     Point origin(1.0, 0.0, 0.0);
@@ -847,6 +979,12 @@ MINI_TEST("Intersection", "Curve Plane Bezier Clipping") {
 }
 
 MINI_TEST("Intersection", "Curve Plane Algebraic") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
 
     NurbsCurve curve = NurbsCurve::create(
         false,
@@ -875,6 +1013,12 @@ MINI_TEST("Intersection", "Curve Plane Algebraic") {
 }
 
 MINI_TEST("Intersection", "Curve Plane Production") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
     Point origin(1.0, 0.0, 0.0);
@@ -889,6 +1033,10 @@ MINI_TEST("Intersection", "Curve Plane Production") {
 }
 
 MINI_TEST("Intersection", "Curve Closest Point") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 2.0);
     Point test_point(3.0, 0.0, 0.0);
@@ -901,6 +1049,12 @@ MINI_TEST("Intersection", "Curve Closest Point") {
 }
 
 MINI_TEST("Intersection", "Surface Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     std::vector<Point> pts = {
         Point(0, 0, 0),
@@ -933,6 +1087,12 @@ MINI_TEST("Intersection", "Surface Plane") {
 }
 
 MINI_TEST("Intersection", "Surface Plane Curved") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     std::vector<Point> pts;
 
@@ -969,6 +1129,12 @@ MINI_TEST("Intersection", "Surface Plane Curved") {
 }
 
 MINI_TEST("Intersection", "Surface Plane Miss") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     std::vector<Point> pts = {
         Point(0, 0, 0),
@@ -988,6 +1154,13 @@ MINI_TEST("Intersection", "Surface Plane Miss") {
 }
 
 MINI_TEST("Intersection", "Surface Plane UV") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     Point pp(0.0, 0.0, 2.0);
@@ -1053,6 +1226,11 @@ MINI_TEST("Intersection", "Surface Plane UV") {
 }
 
 MINI_TEST("Intersection", "Surface Surface") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface flat = NurbsSurface::create(
         false,
@@ -1140,6 +1318,11 @@ MINI_TEST("Intersection", "Surface Surface") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Accuracy") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
@@ -1179,6 +1362,10 @@ MINI_TEST("Intersection", "Surface Surface Accuracy") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Planes") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface flat = bilinear(Point(-3.0, -3.0, 0.5), Point(-3.0, 3.0, 0.5), Point(3.0, -3.0, 0.5), Point(3.0, 3.0, 0.5));
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
@@ -1199,6 +1386,11 @@ MINI_TEST("Intersection", "Surface Surface Planes") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Plane Cone") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface flat = bilinear(Point(-3.0, -3.0, 0.5), Point(-3.0, 3.0, 0.5), Point(3.0, -3.0, 0.5), Point(3.0, 3.0, 0.5));
@@ -1235,6 +1427,11 @@ MINI_TEST("Intersection", "Surface Surface Plane Cone") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Plane Torus") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
@@ -1250,6 +1447,14 @@ MINI_TEST("Intersection", "Surface Surface Plane Torus") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Cylinders") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Primitives;
+    // using session_cpp::Tolerance;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
     NurbsSurface beside = Primitives::cylinder_surface(1.5, 0.0, -2.0, 1.0, 4.0);
@@ -1279,6 +1484,10 @@ MINI_TEST("Intersection", "Surface Surface Cylinders") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
@@ -1310,6 +1519,10 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Coaxial Tori") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
     NurbsSurface wide_cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 2.2, 4.0);
@@ -1354,6 +1567,11 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Tori") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Cone Apex") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface axial = bilinear(Point(0.0, -3.0, -3.0), Point(0.0, -3.0, 4.0), Point(0.0, 3.0, -3.0), Point(0.0, 3.0, 4.0));
@@ -1366,6 +1584,12 @@ MINI_TEST("Intersection", "Surface Surface Cone Apex") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Seam Pieces") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Tolerance;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
@@ -1396,6 +1620,11 @@ MINI_TEST("Intersection", "Surface Surface Seam Pieces") {
 }
 
 MINI_TEST("Intersection", "Surface Surface Seam Crossings") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
@@ -1415,6 +1644,11 @@ MINI_TEST("Intersection", "Surface Surface Seam Crossings") {
 }
 
 MINI_TEST("Intersection", "Cut Curves On Surface") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface flat = NurbsSurface::create(
         false,
@@ -1449,6 +1683,11 @@ MINI_TEST("Intersection", "Cut Curves On Surface") {
 }
 
 MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
@@ -1477,6 +1716,11 @@ MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
 }
 
 MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
@@ -1489,6 +1733,11 @@ MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
 }
 
 MINI_TEST("Intersection", "Cut Curves Slanted Cutter") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface slanted = bilinear(Point(-3.0, -3.0, 0.0), Point(-3.0, 3.0, -0.6), Point(3.0, -3.0, 1.2), Point(3.0, 3.0, 0.6));
@@ -1505,6 +1754,10 @@ MINI_TEST("Intersection", "Cut Curves Slanted Cutter") {
 }
 
 MINI_TEST("Intersection", "Cut Curves Plane Trapezoid") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
 
     const NurbsSurface trapezoid = bilinear(Point(-3.0, -3.0, 0.0), Point(-1.0, 3.0, 0.0), Point(3.0, -3.0, 0.0), Point(7.0, 3.0, 0.0));
     const NurbsSurface wall = bilinear(Point(6.0, -5.0, -1.0), Point(6.0, 5.0, -1.0), Point(6.0, -5.0, 1.0), Point(6.0, 5.0, 1.0));
@@ -1536,6 +1789,7 @@ MINI_TEST("Intersection", "Cut Curves Plane Trapezoid") {
 }
 
 MINI_TEST("Intersection", "Remap") {
+    // using session_cpp::Intersection;
 
     MINI_CHECK(std::fabs(Intersection::remap(5.0, 0.0, 10.0, 0.0, 1.0) - 0.5) < 1e-9);
     MINI_CHECK(std::fabs(Intersection::remap(0.0, 0.0, 10.0, 0.0, 1.0) - 0.0) < 1e-9);
@@ -1543,6 +1797,9 @@ MINI_TEST("Intersection", "Remap") {
 }
 
 MINI_TEST("Intersection", "Closest Point On Segment") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     Line seg(0.0, 0.0, 0.0, 4.0, 0.0, 0.0);
     Point pt(2.0, 3.0, 0.0);
@@ -1565,6 +1822,10 @@ MINI_TEST("Intersection", "Closest Point On Segment") {
 }
 
 MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point o0(0.0, 0.0, 0.0);
     Vector n0(0.0, 0.0, 1.0);
@@ -1598,6 +1859,11 @@ MINI_TEST("Intersection", "Plane Plane Plane Check Parallel") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Closed") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
@@ -1638,6 +1904,11 @@ MINI_TEST("Intersection", "Plane 4 Planes Closed") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Planes Open") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     Point mp(0.0, 0.0, 0.0);
     Vector mn(0.0, 0.0, 1.0);
@@ -1666,6 +1937,12 @@ MINI_TEST("Intersection", "Plane 4 Planes Open") {
 }
 
 MINI_TEST("Intersection", "Plane 4 Lines") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     Point pp(0.0, 0.0, 0.0);
     Vector pn(0.0, 0.0, 1.0);
@@ -1688,6 +1965,11 @@ MINI_TEST("Intersection", "Plane 4 Lines") {
 }
 
 MINI_TEST("Intersection", "Line Two Planes") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Line line(0.0, 0.0, -5.0, 0.0, 0.0, 5.0);
     Point o0(0.0, 0.0, -1.0);
@@ -1704,6 +1986,10 @@ MINI_TEST("Intersection", "Line Two Planes") {
 }
 
 MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Point p0o(0.0, 0.0, 0.0);
     Vector p0n(0.0, 0.0, 1.0);
@@ -1720,6 +2006,11 @@ MINI_TEST("Intersection", "Scale Vector To Distance Of 2 Planes") {
 }
 
 MINI_TEST("Intersection", "Polyline Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     std::vector<Point> pts = {
         Point(-1.0, -1.0, 0.0),
@@ -1745,6 +2036,9 @@ MINI_TEST("Intersection", "Polyline Plane") {
 }
 
 MINI_TEST("Intersection", "Line Line 3D") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     Line cutter(0.0, 1.0, 0.0, 2.0, 1.0, 0.0);
     Line seg(1.0, 0.0, 0.0, 1.0, 2.0, 0.0);
@@ -1764,6 +2058,9 @@ MINI_TEST("Intersection", "Line Line 3D") {
 }
 
 MINI_TEST("Intersection", "Polyline Boolean") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline a({
         Point(0.0, 0.0, 0.0),
@@ -1798,6 +2095,10 @@ MINI_TEST("Intersection", "Polyline Boolean") {
 }
 
 MINI_TEST("Intersection", "Offset In 3D") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline square({
         Point(0.0, 0.0, 0.0),
@@ -1823,6 +2124,10 @@ MINI_TEST("Intersection", "Offset In 3D") {
 }
 
 MINI_TEST("Intersection", "Polyline Boolean 2D In Plane") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline a({
         Point(0.0, 0.0, 1.0),
@@ -1861,6 +2166,12 @@ MINI_TEST("Intersection", "Polyline Boolean 2D In Plane") {
 }
 
 MINI_TEST("Intersection", "Polyline Plane To Line") {
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
+    // using session_cpp::Intersection::polyline_plane_to_line;
+    // using session_cpp::Line;
 
     Polyline poly({
         Point(0.0, 0.0, 0.0),
@@ -1883,6 +2194,12 @@ MINI_TEST("Intersection", "Polyline Plane To Line") {
 }
 
 MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Intersection::quad_from_line_top_bottom_planes;
+    // using session_cpp::Polyline;
 
     Plane face = Plane::xy_plane();
     Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
@@ -1903,6 +2220,10 @@ MINI_TEST("Intersection", "Quad From Line Top Bottom Planes") {
 }
 
 MINI_TEST("Intersection", "Orthogonal Vector Between Two Plane Pairs") {
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Intersection::orthogonal_vector_between_two_plane_pairs;
 
     Plane pp00 = Plane::xy_plane();
     Point yz0_o(0.0, 0.0, 0.0);
@@ -1924,6 +2245,10 @@ MINI_TEST("Intersection", "Orthogonal Vector Between Two Plane Pairs") {
 }
 
 MINI_TEST("Intersection", "Closed And Open Paths 2D") {
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Intersection::closed_and_open_paths_2d;
 
     Polyline plate({
         Point(0.0, 0.0, 0.0),
@@ -1956,6 +2281,11 @@ MINI_TEST("Intersection", "Closed And Open Paths 2D") {
 }
 
 MINI_TEST("Intersection", "Face To Face") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     std::vector<std::vector<Polyline>> polylines = {
         {
@@ -2025,6 +2355,10 @@ MINI_TEST("Intersection", "Face To Face") {
 }
 
 MINI_TEST("Intersection", "Adjacency Search") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Element;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Element a(Mesh::from_polylines({
         {
@@ -2064,6 +2398,10 @@ MINI_TEST("Intersection", "Adjacency Search") {
 }
 
 MINI_TEST("Intersection", "Line Line Classified") {
+    // using session_cpp::Line;
+    // using session_cpp::Intersection::line_line_classified;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Line s0(-1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
     Line s1(0.0, -1.0, 0.0, 0.0, 1.0, 0.0);

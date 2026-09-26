@@ -28,6 +28,9 @@ namespace session_cpp {
     using namespace session_cpp::file_encoders;
 
     MINI_TEST("FileEncoders", "Json Dump Load") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dump;
+        // using session_cpp::file_encoders::file_json_load;
 
         Point original(1.5, 2.5, 3.5);
         original.name = "test_point";
@@ -46,6 +49,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Json Dumps Loads") {
+        // using session_cpp::Vector;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         Vector original(42.1, 84.2, 126.3);
         original.name = "test_vector";
@@ -64,6 +70,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Encode Collection Values") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_encode_collection;
 
         std::vector<Point> points;
         points.push_back(Point(1.0, 2.0, 3.0));
@@ -80,6 +88,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Encode Collection Shared Ptr") {
+        // using session_cpp::Line;
+        // using session_cpp::file_encoders::file_encode_collection;
 
         std::vector<std::shared_ptr<Line>> lines;
         lines.push_back(std::make_shared<Line>(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
@@ -94,6 +104,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Collection") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_encode_collection;
+        // using session_cpp::file_encoders::file_decode_collection;
 
         std::vector<Point> original_points;
         original_points.push_back(Point(1.0, 2.0, 3.0));
@@ -108,6 +121,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Collection Ptr") {
+        // using session_cpp::Vector;
+        // using session_cpp::file_encoders::file_encode_collection;
 
         std::vector<std::shared_ptr<Vector>> original_vectors;
         original_vectors.push_back(std::make_shared<Vector>(1.0, 0.0, 0.0));
@@ -122,6 +137,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Nested Collections") {
+        // using session_cpp::Line;
+        // using session_cpp::file_encoders::file_encode_collection;
+        // using session_cpp::file_encoders::file_decode_collection;
 
         std::vector<Line> lines;
         lines.push_back(Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0));
@@ -141,6 +159,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Roundtrip File Io") {
+        // using session_cpp::Vector;
+        // using session_cpp::file_encoders::file_encode_collection;
+        // using session_cpp::file_encoders::file_decode_collection;
+        // using session_cpp::file_encoders::file_json_dump;
+        // using session_cpp::file_encoders::file_json_load_data;
 
         std::vector<Vector> vectors;
         vectors.push_back(Vector(1.0, 0.0, 0.0));
@@ -163,6 +186,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Pretty Vs Compact") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const Point point(1.0, 2.0, 3.0);
 
@@ -208,6 +234,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode List") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_encode_collection;
+        // using session_cpp::file_encoders::file_decode_collection;
 
         const std::vector<int> data = {1, 2, 3};
         const nlohmann::json json = data;
@@ -232,6 +261,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Dict") {
+        // using session_cpp::Vector;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         std::map<std::string, int> data;
         data["a"] = 1;
@@ -252,6 +284,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Mesh") {
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const Mesh mesh = Mesh::from_vertices_and_faces(
             {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0)},
@@ -265,6 +301,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Instance Ref") {
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Xform;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const InstanceRef instance("def-abc", Xform::translation(1.0, 2.0, 3.0));
         const std::string json_str = file_json_dumps(instance);
@@ -275,6 +315,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Element Feature") {
+        // using session_cpp::ElementFeature;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const Polyline outline({Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)});
         const ElementFeature feature("cut", 2, {outline}, "notch");
@@ -288,6 +333,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Component") {
+        // using session_cpp::Component;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         Component component;
         component.type_name = "FloorBuilder";
@@ -302,6 +350,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Nurbs Surface Trimmed") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::NurbsSurfaceTrimmed;
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         NurbsSurface surface(3, false, 2, 2, 2, 2);
         surface.set_cv(0, 0, Point(0.0, 0.0, 0.0));
@@ -332,6 +386,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Nurbs Surface") {
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
+        // using session_cpp::Mesh;
 
         NurbsSurface surface(3, false, 2, 2, 2, 2);
         surface.set_cv(0, 0, Point(0.0, 0.0, 0.0));
@@ -348,6 +407,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode BRep") {
+        // using session_cpp::BRep;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const BRep brep = BRep::create_box(1.0, 2.0, 3.0);
         const std::string json_str = file_json_dumps(brep);
@@ -357,6 +419,13 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Element") {
+        // using session_cpp::Element;
+        // using session_cpp::ElementFeature;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         const Mesh mesh = Mesh::from_vertices_and_faces(
             {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0)},
@@ -374,6 +443,15 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Objects") {
+        // using session_cpp::Component;
+        // using session_cpp::ElementFeature;
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Objects;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Xform;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         Component component;
         component.type_name = "FloorBuilder";
@@ -395,6 +473,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Decode Tolerance") {
+        // using session_cpp::Tolerance;
+        // using session_cpp::file_encoders::file_json_dumps;
+        // using session_cpp::file_encoders::file_json_loads;
 
         Tolerance tolerance("MM");
         tolerance.set_absolute(0.01);
@@ -417,6 +498,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Dict Of Lists") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_encode_collection;
+        // using session_cpp::file_encoders::file_decode_collection;
 
         std::vector<Point> points;
         points.push_back(Point(1.0, 0.0, 0.0));
@@ -440,6 +524,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "List Of Dict") {
+        // using session_cpp::Point;
 
         const Point point(1.0, 2.0, 3.0);
 
@@ -461,6 +546,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Dict Of Dicts") {
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point point(1.0, 2.0, 3.0);
         const Vector vec(0.0, 0.0, 1.0);
@@ -485,6 +572,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileEncoders", "Write Error") {
+        // using session_cpp::Point;
+        // using session_cpp::file_encoders::file_json_dump;
 
         const Point point(1.0, 2.0, 3.0);
         bool threw = false;

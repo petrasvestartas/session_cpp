@@ -18,6 +18,11 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 MINI_TEST("Mesh", "Constructor") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Polyline;
+    // using session_cpp::Color;
+    // using session_cpp::ColorMode;
+    // using session_cpp::Point;
 
     std::vector<Point> vertices = Polyline::from_sides(6, 1.0, false).get_points();
     Mesh mesh = Mesh::from_vertices_and_faces(vertices, {{0, 1, 2, 3, 4, 5}});
@@ -98,6 +103,7 @@ MINI_TEST("Mesh", "Constructor") {
 }
 
 MINI_TEST("Mesh", "From Polylines") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::from_polylines(
         {
@@ -133,6 +139,9 @@ MINI_TEST("Mesh", "From Polylines") {
 }
 
 MINI_TEST("Mesh", "From Polylines Polyline") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Mesh mesh = Mesh::from_polylines(
         std::vector<Polyline>{
@@ -168,6 +177,9 @@ MINI_TEST("Mesh", "From Polylines Polyline") {
 }
 
 MINI_TEST("Mesh", "From Lines") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     std::vector<Line> lines = {
         Line::from_points(Point(4.948083, -0.149798, 1.00765), Point(4.395544, -0.996413, 1.196018)),
@@ -187,6 +199,9 @@ MINI_TEST("Mesh", "From Lines") {
 }
 
 MINI_TEST("Mesh", "From Arrangement") {
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Line> lines = {
         Line::from_points(Point(-2.0, 5.0, 0.0), Point(12.0, 5.0, 0.0)),
@@ -220,6 +235,9 @@ MINI_TEST("Mesh", "From Arrangement") {
 }
 
 MINI_TEST("Mesh", "From Arrangement Components") {
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Line> lines = {
         Line::from_points(Point(-2.0, 8.5, 0.0), Point(12.0, 8.5, 0.0)),
@@ -251,6 +269,7 @@ MINI_TEST("Mesh", "From Arrangement Components") {
 }
 
 MINI_TEST("Mesh", "From Polygon With Holes") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::from_polygon_with_holes(
         {
@@ -309,6 +328,9 @@ MINI_TEST("Mesh", "From Polygon With Holes") {
 }
 
 MINI_TEST("Mesh", "Loft") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Polyline> bottom = {
         Polyline(
@@ -398,6 +420,8 @@ MINI_TEST("Mesh", "Loft") {
 }
 
 MINI_TEST("Mesh", "Loft Concave With Holes") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Polyline;
 
     std::vector<Polyline> annen_bot = {
         Polyline({
@@ -499,6 +523,8 @@ MINI_TEST("Mesh", "Loft Concave With Holes") {
 }
 
 MINI_TEST("Mesh", "From Polygon With Holes Many") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     std::vector<std::vector<std::vector<Point>>> inputs;
 
@@ -533,6 +559,9 @@ MINI_TEST("Mesh", "From Polygon With Holes Many") {
 }
 
 MINI_TEST("Mesh", "Loft Many") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<std::pair<std::vector<Polyline>, std::vector<Polyline>>> loft_inputs;
 
@@ -583,6 +612,14 @@ MINI_TEST("Mesh", "Loft Many") {
 }
 
 MINI_TEST("Mesh", "Loft With Quads And Triangles") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Color;
+    // using session_cpp::LoftFaceRole;
+    // using session_cpp::LoftResult;
+    // using session_cpp::LoftPanel;
+    // using session_cpp::LoftAdjPair;
+    // using session_cpp::LoftWallFace;
 
     std::vector<std::vector<Point>> top7 = {
         {
@@ -757,6 +794,7 @@ MINI_TEST("Mesh", "Loft With Quads And Triangles") {
 }
 
 MINI_TEST("Mesh", "Boolean Queries") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::from_polylines(
         {
@@ -823,6 +861,8 @@ MINI_TEST("Mesh", "Boolean Queries") {
 }
 
 MINI_TEST("Mesh", "Attributes") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
@@ -945,6 +985,7 @@ MINI_TEST("Mesh", "Attributes") {
 }
 
 MINI_TEST("Mesh", "Edges") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     size_t v0 = mesh.vertices()[0];
@@ -956,6 +997,7 @@ MINI_TEST("Mesh", "Edges") {
 }
 
 MINI_TEST("Mesh", "Create Dodecahedron") {
+    // using session_cpp::Mesh;
 
     Mesh m = Mesh::create_dodecahedron(2.0);
 
@@ -965,6 +1007,8 @@ MINI_TEST("Mesh", "Create Dodecahedron") {
 }
 
 MINI_TEST("Mesh", "Vertex And Face Operations") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     double hx = 0.5;
     double hy = 0.5;
@@ -1107,6 +1151,10 @@ MINI_TEST("Mesh", "Vertex And Face Operations") {
 }
 
 MINI_TEST("Mesh", "Connectivity Queries") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Line;
+    // using session_cpp::Polyline;
 
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -1300,6 +1348,11 @@ MINI_TEST("Mesh", "Connectivity Queries") {
 }
 
 MINI_TEST("Mesh", "Geometric Properties") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NormalWeighting;
+    // using session_cpp::Polyline;
 
     Mesh mesh = Mesh::create_dodecahedron(1.5);
 
@@ -1532,6 +1585,9 @@ MINI_TEST("Mesh", "Geometric Properties") {
 }
 
 MINI_TEST("Mesh", "Transformation") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -1567,6 +1623,11 @@ MINI_TEST("Mesh", "Transformation") {
 }
 
 MINI_TEST("Mesh", "Cut By Plane") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
     Mesh half = box.cut_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0)));
@@ -1611,6 +1672,11 @@ MINI_TEST("Mesh", "Cut By Plane") {
 }
 
 MINI_TEST("Mesh", "Section By Plane") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Plane plane = Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0));
     const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
@@ -1643,6 +1709,11 @@ MINI_TEST("Mesh", "Section By Plane") {
 }
 
 MINI_TEST("Mesh", "Section By Plane Coplanar") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
     const std::vector<Polyline> top = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)));
@@ -1655,6 +1726,11 @@ MINI_TEST("Mesh", "Section By Plane Coplanar") {
 }
 
 MINI_TEST("Mesh", "Section By Plane Open") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
     const size_t low_start = mesh.add_vertex(Point(5.0, 0.0, -1.0));
@@ -1675,6 +1751,11 @@ MINI_TEST("Mesh", "Section By Plane Open") {
 }
 
 MINI_TEST("Mesh", "Section By Plane Vertex Ring") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     const std::vector<Point> vertices = {
         Point(0.0, 0.0, 0.0),
@@ -1706,6 +1787,11 @@ MINI_TEST("Mesh", "Section By Plane Vertex Ring") {
 }
 
 MINI_TEST("Mesh", "Section By Plane Diagonal") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Polyline;
 
     const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
     const std::vector<Polyline> diagonal = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(1.0, -1.0, 0.0)));
@@ -1716,6 +1802,8 @@ MINI_TEST("Mesh", "Section By Plane Diagonal") {
 }
 
 MINI_TEST("Mesh", "Volume Far From Origin") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Xform;
 
     const Xform far = Xform::translation(1000000.1, 1000000.2, 1000000.3);
     const Mesh box = Mesh::create_box(2.0, 3.0, 4.0).transformed(far);
@@ -1724,6 +1812,8 @@ MINI_TEST("Mesh", "Volume Far From Origin") {
 }
 
 MINI_TEST("Mesh", "Json Roundtrip") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.name = "test_mesh";
@@ -1782,6 +1872,8 @@ MINI_TEST("Mesh", "Json Roundtrip") {
 }
 
 MINI_TEST("Mesh", "Protobuf Roundtrip") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.name = "test_mesh_proto";
@@ -1838,6 +1930,9 @@ MINI_TEST("Mesh", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Mesh", "Loft Plate Four Holes") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Polyline> bot = {
         Polyline(
@@ -1959,6 +2054,9 @@ MINI_TEST("Mesh", "Loft Plate Four Holes") {
 }
 
 MINI_TEST("Mesh", "Loft Plate V2") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Polyline> top = {
         Polyline(
@@ -2062,6 +2160,9 @@ MINI_TEST("Mesh", "Loft Plate V2") {
 }
 
 MINI_TEST("Mesh", "Loft Plate V3") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Polyline> top = {
         Polyline(
@@ -2165,6 +2266,7 @@ MINI_TEST("Mesh", "Loft Plate V3") {
 }
 
 MINI_TEST("Mesh", "Vertex Neighbors") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<size_t> n0 = *mesh.vertex_neighbors(0);
@@ -2177,6 +2279,7 @@ MINI_TEST("Mesh", "Vertex Neighbors") {
 }
 
 MINI_TEST("Mesh", "Vertices On Boundary") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
@@ -2188,6 +2291,7 @@ MINI_TEST("Mesh", "Vertices On Boundary") {
 }
 
 MINI_TEST("Mesh", "Edges On Boundary") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
@@ -2199,6 +2303,7 @@ MINI_TEST("Mesh", "Edges On Boundary") {
 }
 
 MINI_TEST("Mesh", "Faces On Boundary") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
 
@@ -2210,6 +2315,7 @@ MINI_TEST("Mesh", "Faces On Boundary") {
 }
 
 MINI_TEST("Mesh", "Halfedge Face") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::optional<size_t> f = mesh.halfedge_face({0, 3});
@@ -2223,6 +2329,7 @@ MINI_TEST("Mesh", "Halfedge Face") {
 }
 
 MINI_TEST("Mesh", "Halfedge After Before") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::optional<std::pair<size_t, size_t>> after = mesh.halfedge_after({0, 3});
@@ -2235,6 +2342,7 @@ MINI_TEST("Mesh", "Halfedge After Before") {
 }
 
 MINI_TEST("Mesh", "Halfedge Loop") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<std::pair<size_t, size_t>> loop = mesh.halfedge_loop({0, 3});
@@ -2244,6 +2352,7 @@ MINI_TEST("Mesh", "Halfedge Loop") {
 }
 
 MINI_TEST("Mesh", "Halfedge Strip") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<std::pair<size_t, size_t>> strip = mesh.halfedge_strip({0, 3});
@@ -2254,6 +2363,7 @@ MINI_TEST("Mesh", "Halfedge Strip") {
 }
 
 MINI_TEST("Mesh", "Vertex Sample") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<size_t> s = mesh.vertex_sample(3, 42);
@@ -2270,6 +2380,7 @@ MINI_TEST("Mesh", "Vertex Sample") {
 }
 
 MINI_TEST("Mesh", "Edge Sample") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<std::pair<size_t, size_t>> s = mesh.edge_sample(2, 7);
@@ -2282,6 +2393,7 @@ MINI_TEST("Mesh", "Edge Sample") {
 }
 
 MINI_TEST("Mesh", "Face Sample") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<size_t> s = mesh.face_sample(2, 11);
@@ -2294,6 +2406,8 @@ MINI_TEST("Mesh", "Face Sample") {
 }
 
 MINI_TEST("Mesh", "Face Center") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
     Point c = *mesh.face_center(0);
@@ -2303,6 +2417,9 @@ MINI_TEST("Mesh", "Face Center") {
 }
 
 MINI_TEST("Mesh", "Face Polygon") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     Polyline poly = *mesh.face_polygon(0);
@@ -2313,6 +2430,8 @@ MINI_TEST("Mesh", "Face Polygon") {
 }
 
 MINI_TEST("Mesh", "Flip Cycles") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Vector;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     Vector n0 = *mesh.face_normal(0);
@@ -2325,6 +2444,8 @@ MINI_TEST("Mesh", "Flip Cycles") {
 }
 
 MINI_TEST("Mesh", "Face Normal Unitized") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Vector;
 
     Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
     Vector nu = *mesh.face_normal_unitized(0, true);
@@ -2335,6 +2456,7 @@ MINI_TEST("Mesh", "Face Normal Unitized") {
 }
 
 MINI_TEST("Mesh", "Default Attributes") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_vertex_attributes({{"is_support", 0.0}, {"load_z", 0.0}});
@@ -2348,6 +2470,7 @@ MINI_TEST("Mesh", "Default Attributes") {
 }
 
 MINI_TEST("Mesh", "Vertex Attribute") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_vertex_attributes({{"is_support", 0.0}});
@@ -2358,6 +2481,7 @@ MINI_TEST("Mesh", "Vertex Attribute") {
 }
 
 MINI_TEST("Mesh", "Face Attribute") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_face_attributes({{"stress", 0.0}});
@@ -2368,6 +2492,7 @@ MINI_TEST("Mesh", "Face Attribute") {
 }
 
 MINI_TEST("Mesh", "Edge Attribute") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_edge_attributes({{"weight", 1.0}});
@@ -2378,6 +2503,7 @@ MINI_TEST("Mesh", "Edge Attribute") {
 }
 
 MINI_TEST("Mesh", "Vertices Attribute Bulk") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_vertex_attributes({{"is_support", 0.0}});
@@ -2392,6 +2518,7 @@ MINI_TEST("Mesh", "Vertices Attribute Bulk") {
 }
 
 MINI_TEST("Mesh", "Vertices Where") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_vertex_attributes({{"is_support", 0.0}});
@@ -2405,6 +2532,7 @@ MINI_TEST("Mesh", "Vertices Where") {
 }
 
 MINI_TEST("Mesh", "Faces Where") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_face_attributes({{"tag", 0.0}});
@@ -2417,6 +2545,7 @@ MINI_TEST("Mesh", "Faces Where") {
 }
 
 MINI_TEST("Mesh", "Edges Where") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_edge_attributes({{"weight", 0.0}});
@@ -2428,6 +2557,7 @@ MINI_TEST("Mesh", "Edges Where") {
 }
 
 MINI_TEST("Mesh", "Vertices Where Predicate") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_vertex_attributes({{"load", 0.0}});
@@ -2443,6 +2573,7 @@ MINI_TEST("Mesh", "Vertices Where Predicate") {
 }
 
 MINI_TEST("Mesh", "Faces Where Predicate") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_face_attributes({{"area", 0.0}});
@@ -2458,6 +2589,7 @@ MINI_TEST("Mesh", "Faces Where Predicate") {
 }
 
 MINI_TEST("Mesh", "Edges Where Predicate") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.update_default_edge_attributes({{"weight", 0.0}});
@@ -2473,6 +2605,7 @@ MINI_TEST("Mesh", "Edges Where Predicate") {
 }
 
 MINI_TEST("Mesh", "Refresh Guid") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::string original = mesh.guid();
@@ -2487,6 +2620,9 @@ MINI_TEST("Mesh", "Refresh Guid") {
 }
 
 MINI_TEST("Mesh", "Assignment Keeps Objectcolor") {
+    // using session_cpp::Color;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     Mesh source =
         Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 1, 0)}, {{0, 1, 2, 3}});
@@ -2503,6 +2639,9 @@ MINI_TEST("Mesh", "Assignment Keeps Objectcolor") {
 }
 
 MINI_TEST("Mesh", "From Polyline Pairs") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline top(std::vector<Point>{
         Point(0.0, 0.0, 1.0),
@@ -2526,6 +2665,9 @@ MINI_TEST("Mesh", "From Polyline Pairs") {
 }
 
 MINI_TEST("Mesh", "From Polyline Pairs Vnf") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline top(std::vector<Point>{
         Point(0.0, 0.0, 1.0),
@@ -2553,6 +2695,9 @@ MINI_TEST("Mesh", "From Polyline Pairs Vnf") {
 }
 
 MINI_TEST("Mesh", "Reflex Fold") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     Polyline cross_section(std::vector<Point>{
         Point(0.0, 0.0, 0.0),
@@ -2572,6 +2717,9 @@ MINI_TEST("Mesh", "Reflex Fold") {
 }
 
 MINI_TEST("Mesh", "Miter Contours") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Vector;
+    // using session_cpp::Point;
 
     Mesh shell = Mesh::create_box(2.0, 2.0, 2.0);
     std::vector<std::tuple<std::vector<Point>, std::vector<Point>, std::vector<Point>, std::vector<Point>, Vector>>
@@ -2586,6 +2734,7 @@ MINI_TEST("Mesh", "Miter Contours") {
 }
 
 MINI_TEST("Mesh", "Set Face Triangulation") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.set_face_triangulation(0, {{0, 3, 2}, {0, 2, 1}});
@@ -2595,6 +2744,7 @@ MINI_TEST("Mesh", "Set Face Triangulation") {
 }
 
 MINI_TEST("Mesh", "Set Face Holes") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.set_face_holes(0, {{4, 5, 6}});
@@ -2604,6 +2754,7 @@ MINI_TEST("Mesh", "Set Face Holes") {
 }
 
 MINI_TEST("Mesh", "Rebuild Halfedges") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::map<size_t, std::map<size_t, std::optional<size_t>>> halfedge = mesh.halfedge;
@@ -2614,6 +2765,7 @@ MINI_TEST("Mesh", "Rebuild Halfedges") {
 }
 
 MINI_TEST("Mesh", "Ensure Halfedges") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     mesh.halfedge.clear();
@@ -2624,6 +2776,7 @@ MINI_TEST("Mesh", "Ensure Halfedges") {
 }
 
 MINI_TEST("Mesh", "Edge Face Map") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::map<std::pair<size_t, size_t>, size_t> efm = mesh.edge_face_map();
@@ -2634,6 +2787,8 @@ MINI_TEST("Mesh", "Edge Face Map") {
 }
 
 MINI_TEST("Mesh", "Face Outlines") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Polyline;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::vector<Polyline> outlines = mesh.face_outlines();
@@ -2644,6 +2799,7 @@ MINI_TEST("Mesh", "Face Outlines") {
 }
 
 MINI_TEST("Mesh", "Dihedral Angle") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
     std::optional<double> angle = mesh.dihedral_angle(0, 1);
@@ -2653,6 +2809,9 @@ MINI_TEST("Mesh", "Dihedral Angle") {
 }
 
 MINI_TEST("Mesh", "Triangle Bvh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
     mesh.build_triangle_bvh();
@@ -2678,6 +2837,7 @@ MINI_TEST("Mesh", "Triangle Bvh") {
 }
 
 MINI_TEST("Mesh", "Triangle Aabb Tree") {
+    // using session_cpp::Mesh;
 
     Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
     mesh.build_triangle_aabb_tree();

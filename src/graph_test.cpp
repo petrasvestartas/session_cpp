@@ -10,6 +10,7 @@ using namespace session_cpp::mini_test;
 // Vertex
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Vertex", "Constructor") {
+    // using session_cpp::Vertex;
 
     Vertex v0;
     Vertex v("v_named", "attr");
@@ -22,6 +23,9 @@ MINI_TEST("Vertex", "Constructor") {
 }
 
 MINI_TEST("Vertex", "Json Roundtrip") {
+    // using session_cpp::Vertex;
+    // using session_cpp::file_encoders::file_json_dump;
+    // using session_cpp::file_encoders::file_json_load;
 
     Vertex original("v0", "test_attribute");
     original.attributes["load"] = 1.5;
@@ -39,6 +43,7 @@ MINI_TEST("Vertex", "Json Roundtrip") {
 // Edge
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Edge", "Constructor") {
+    // using session_cpp::Edge;
 
     const Edge e("a", "b", "attr");
 
@@ -49,6 +54,9 @@ MINI_TEST("Edge", "Constructor") {
 }
 
 MINI_TEST("Edge", "Json Roundtrip") {
+    // using session_cpp::Edge;
+    // using session_cpp::file_encoders::file_json_dump;
+    // using session_cpp::file_encoders::file_json_load;
 
     Edge original("v0", "v1", "test_edge_attr");
     original.attributes["weight"] = 2.5;
@@ -64,6 +72,7 @@ MINI_TEST("Edge", "Json Roundtrip") {
 }
 
 MINI_TEST("Edge", "Vertices") {
+    // using session_cpp::Edge;
 
     const Edge e("a", "b");
     std::string u;
@@ -74,6 +83,7 @@ MINI_TEST("Edge", "Vertices") {
 }
 
 MINI_TEST("Edge", "Connects") {
+    // using session_cpp::Edge;
 
     const Edge e("a", "b");
 
@@ -83,6 +93,7 @@ MINI_TEST("Edge", "Connects") {
 }
 
 MINI_TEST("Edge", "Other Vertex") {
+    // using session_cpp::Edge;
 
     const Edge e("a", "b");
 
@@ -94,6 +105,7 @@ MINI_TEST("Edge", "Other Vertex") {
 // Graph
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Graph", "Constructor") {
+    // using session_cpp::Graph;
 
     const Graph g0;
     const Graph g("my_named_graph");
@@ -110,6 +122,7 @@ MINI_TEST("Graph", "Constructor") {
 }
 
 MINI_TEST("Graph", "Json Roundtrip") {
+    // using session_cpp::Graph;
 
     Graph original("test_graph");
     original.add_node("node1", "Node 1");
@@ -137,6 +150,7 @@ MINI_TEST("Graph", "Json Roundtrip") {
 }
 
 MINI_TEST("Graph", "Protobuf Roundtrip") {
+    // using session_cpp::Graph;
 
     Graph original("test_graph");
     original.add_node("node1", "Node 1");
@@ -171,6 +185,7 @@ MINI_TEST("Graph", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Graph", "Has Node") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a");
@@ -180,6 +195,7 @@ MINI_TEST("Graph", "Has Node") {
 }
 
 MINI_TEST("Graph", "Has Edge") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -192,6 +208,8 @@ MINI_TEST("Graph", "Has Edge") {
 }
 
 MINI_TEST("Graph", "Has Guid") {
+    // using session_cpp::Edge;
+    // using session_cpp::Vertex;
 
     const Vertex v("a");
     const Edge e("a", "b");
@@ -207,6 +225,7 @@ MINI_TEST("Graph", "Has Guid") {
 }
 
 MINI_TEST("Graph", "Add Node") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     const std::string key = g.add_node("a");
@@ -217,6 +236,7 @@ MINI_TEST("Graph", "Add Node") {
 }
 
 MINI_TEST("Graph", "Add Edge") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     const std::tuple<std::string, std::string> edge = g.add_edge("a", "b");
@@ -233,6 +253,7 @@ MINI_TEST("Graph", "Add Edge") {
 }
 
 MINI_TEST("Graph", "Remove Node") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -244,6 +265,7 @@ MINI_TEST("Graph", "Remove Node") {
 }
 
 MINI_TEST("Graph", "Remove Edge") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -256,6 +278,8 @@ MINI_TEST("Graph", "Remove Edge") {
 }
 
 MINI_TEST("Graph", "Get Vertices") {
+    // using session_cpp::Graph;
+    // using session_cpp::Vertex;
 
     Graph g("g");
     g.add_node("a");
@@ -267,6 +291,7 @@ MINI_TEST("Graph", "Get Vertices") {
 }
 
 MINI_TEST("Graph", "Get Edges") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -278,6 +303,7 @@ MINI_TEST("Graph", "Get Edges") {
 }
 
 MINI_TEST("Graph", "Neighbors") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -289,6 +315,7 @@ MINI_TEST("Graph", "Neighbors") {
 }
 
 MINI_TEST("Graph", "Number Of Vertices") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a");
@@ -299,6 +326,7 @@ MINI_TEST("Graph", "Number Of Vertices") {
 }
 
 MINI_TEST("Graph", "Number Of Edges") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -308,6 +336,7 @@ MINI_TEST("Graph", "Number Of Edges") {
 }
 
 MINI_TEST("Graph", "Clear") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -318,6 +347,7 @@ MINI_TEST("Graph", "Clear") {
 }
 
 MINI_TEST("Graph", "Node Label") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a", "initial");
@@ -327,6 +357,7 @@ MINI_TEST("Graph", "Node Label") {
 }
 
 MINI_TEST("Graph", "Edge Label") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b", "initial");
@@ -336,6 +367,7 @@ MINI_TEST("Graph", "Edge Label") {
 }
 
 MINI_TEST("Graph", "Update Default Vertex Attributes") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.update_default_vertex_attributes({{"is_support", 0.0}, {"load", 0.0}});
@@ -347,6 +379,7 @@ MINI_TEST("Graph", "Update Default Vertex Attributes") {
 }
 
 MINI_TEST("Graph", "Update Default Edge Attributes") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.update_default_edge_attributes({{"weight", 1.0}, {"stiffness", 0.0}});
@@ -358,6 +391,7 @@ MINI_TEST("Graph", "Update Default Edge Attributes") {
 }
 
 MINI_TEST("Graph", "Vertex Attribute") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a");
@@ -372,6 +406,8 @@ MINI_TEST("Graph", "Vertex Attribute") {
 }
 
 MINI_TEST("Graph", "Set Vertex Attribute") {
+    // using session_cpp::Graph;
+    // using session_cpp::Vertex;
 
     Graph g("g");
     g.add_node("a");
@@ -385,6 +421,7 @@ MINI_TEST("Graph", "Set Vertex Attribute") {
 }
 
 MINI_TEST("Graph", "Edge Attribute") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -405,6 +442,7 @@ MINI_TEST("Graph", "Edge Attribute") {
 }
 
 MINI_TEST("Graph", "Set Edge Attribute") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -421,6 +459,7 @@ MINI_TEST("Graph", "Set Edge Attribute") {
 }
 
 MINI_TEST("Graph", "Vertices Where") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a");
@@ -438,6 +477,7 @@ MINI_TEST("Graph", "Vertices Where") {
 }
 
 MINI_TEST("Graph", "Edges Where") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -461,6 +501,7 @@ MINI_TEST("Graph", "Edges Where") {
 }
 
 MINI_TEST("Graph", "Vertices Where Predicate") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_node("a");
@@ -480,6 +521,7 @@ MINI_TEST("Graph", "Vertices Where Predicate") {
 }
 
 MINI_TEST("Graph", "Edges Where Predicate") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -500,6 +542,7 @@ MINI_TEST("Graph", "Edges Where Predicate") {
 }
 
 MINI_TEST("Graph", "Bfs") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -514,6 +557,7 @@ MINI_TEST("Graph", "Bfs") {
 }
 
 MINI_TEST("Graph", "Dfs") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -528,6 +572,7 @@ MINI_TEST("Graph", "Dfs") {
 }
 
 MINI_TEST("Graph", "Connected Components") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -544,6 +589,7 @@ MINI_TEST("Graph", "Connected Components") {
 }
 
 MINI_TEST("Graph", "Shortest Path") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -559,6 +605,7 @@ MINI_TEST("Graph", "Shortest Path") {
 }
 
 MINI_TEST("Graph", "Has Cycle") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -574,6 +621,7 @@ MINI_TEST("Graph", "Has Cycle") {
 }
 
 MINI_TEST("Graph", "Cycle Basis") {
+    // using session_cpp::Graph;
 
     Graph g("g");
     g.add_edge("a", "b");
@@ -586,6 +634,9 @@ MINI_TEST("Graph", "Cycle Basis") {
 }
 
 MINI_TEST("Graph", "Take Node") {
+    // using session_cpp::Graph;
+    // using session_cpp::Vertex;
+    // using session_cpp::Edge;
 
     Graph g("g");
     g.add_node("a", "");
@@ -618,6 +669,9 @@ MINI_TEST("Graph", "Take Node") {
 }
 
 MINI_TEST("Graph", "Put Node") {
+    // using session_cpp::Graph;
+    // using session_cpp::Vertex;
+    // using session_cpp::Edge;
 
     Graph g("g");
     g.add_edge("a", "b", "ab");
@@ -643,6 +697,8 @@ MINI_TEST("Graph", "Put Node") {
 }
 
 MINI_TEST("Graph", "Renumber") {
+    // using session_cpp::Graph;
+    // using session_cpp::Vertex;
 
     Graph g("g");
     g.add_edge("a", "b", "");

@@ -18,6 +18,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Closest", "Curve Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -43,6 +46,9 @@ MINI_TEST("Closest", "Curve Point") {
 }
 
 MINI_TEST("Closest", "Curve Curve") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     const NurbsCurve curve0 = NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)});
     const NurbsCurve curve1 = NurbsCurve::create(false, 1, {Point(5.0, -5.0, 1.0), Point(5.0, 5.0, 1.0)});
@@ -61,6 +67,9 @@ MINI_TEST("Closest", "Curve Curve") {
 }
 
 MINI_TEST("Closest", "Line Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::Line;
+    // using session_cpp::Point;
 
     const Line line(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
 
@@ -94,6 +103,9 @@ MINI_TEST("Closest", "Line Point") {
 }
 
 MINI_TEST("Closest", "Polyline Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     const Polyline pl({
         Point(0.0, 0.0, 0.0),
@@ -115,6 +127,9 @@ MINI_TEST("Closest", "Polyline Point") {
 }
 
 MINI_TEST("Closest", "Surface Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -153,6 +168,11 @@ MINI_TEST("Closest", "Surface Point") {
 }
 
 MINI_TEST("Closest", "Surface Curve") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     double u0 = 0.0;
@@ -207,6 +227,10 @@ MINI_TEST("Closest", "Surface Curve") {
 }
 
 MINI_TEST("Closest", "Mesh Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Mesh m = Primitives::cube(2.0);
 
@@ -223,6 +247,10 @@ MINI_TEST("Closest", "Mesh Point") {
 }
 
 MINI_TEST("Closest", "Mesh Point AABB") {
+    // using session_cpp::Closest;
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const Mesh m = Primitives::cube(2.0);
 
@@ -239,6 +267,9 @@ MINI_TEST("Closest", "Mesh Point AABB") {
 }
 
 MINI_TEST("Closest", "Pointcloud Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::PointCloud;
+    // using session_cpp::Point;
 
     const PointCloud pc(
         {
@@ -269,6 +300,9 @@ MINI_TEST("Closest", "Pointcloud Point") {
 }
 
 MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
+    // using session_cpp::Closest;
+    // using session_cpp::PointCloud;
+    // using session_cpp::Point;
 
     const PointCloud pc(
         {
@@ -299,6 +333,8 @@ MINI_TEST("Closest", "Pointcloud Point SpatialKDTree") {
 }
 
 MINI_TEST("Closest", "Lines Closest") {
+    // using session_cpp::Closest;
+    // using session_cpp::Line;
 
     const std::vector<Line> lines = {
         Line(0.0, 0.0, 0.0, 5.0, 0.0, 0.0),
@@ -314,6 +350,9 @@ MINI_TEST("Closest", "Lines Closest") {
 }
 
 MINI_TEST("Closest", "Polylines Closest") {
+    // using session_cpp::Closest;
+    // using session_cpp::Polyline;
+    // using session_cpp::Point;
 
     const std::vector<Polyline> pls = {
         Polyline({Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
@@ -329,6 +368,9 @@ MINI_TEST("Closest", "Polylines Closest") {
 }
 
 MINI_TEST("Closest", "Nurbscurves Closest") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     const std::vector<NurbsCurve> curves = {
         NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(5.0, 0.0, 0.0)}),
@@ -344,6 +386,8 @@ MINI_TEST("Closest", "Nurbscurves Closest") {
 }
 
 MINI_TEST("Closest", "Boxes Closest") {
+    // using session_cpp::AABB;
+    // using session_cpp::Closest;
 
     const std::vector<AABB> boxes = {
         AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),

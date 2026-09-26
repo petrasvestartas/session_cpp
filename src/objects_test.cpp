@@ -6,6 +6,7 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Objects", "Constructor") {
+    // using session_cpp::Objects;
 
     Objects objects;
     Objects named("custom_objects");
@@ -20,6 +21,13 @@ MINI_TEST("Objects", "Constructor") {
 }
 
 MINI_TEST("Objects", "Json Roundtrip") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
+    // using session_cpp::Objects;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Objects original;
     original.points->push_back(std::make_shared<Point>(1.0, 2.0, 3.0));
@@ -52,6 +60,13 @@ MINI_TEST("Objects", "Json Roundtrip") {
 }
 
 MINI_TEST("Objects", "Protobuf Roundtrip") {
+    // using session_cpp::InstanceRef;
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
+    // using session_cpp::Objects;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     Objects original;
     original.points->push_back(std::make_shared<Point>(1.0, 2.0, 3.0));
@@ -83,6 +98,7 @@ MINI_TEST("Objects", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Objects", "Component Constructor") {
+    // using session_cpp::Component;
 
     Component component;
     component.type_name = "FloorBuilder";
@@ -97,6 +113,7 @@ MINI_TEST("Objects", "Component Constructor") {
 }
 
 MINI_TEST("Objects", "Component Json Roundtrip") {
+    // using session_cpp::Component;
 
     Component original;
     original.type_name = "FloorBuilder";
@@ -120,6 +137,10 @@ MINI_TEST("Objects", "Component Json Roundtrip") {
 }
 
 MINI_TEST("Objects", "Objects Component Json Roundtrip") {
+    // using session_cpp::Component;
+    // using session_cpp::Objects;
+    // using session_cpp::file_encoders::file_json_dump;
+    // using session_cpp::file_encoders::file_json_load;
 
     Objects original;
     Component component;
@@ -140,6 +161,8 @@ MINI_TEST("Objects", "Objects Component Json Roundtrip") {
 }
 
 MINI_TEST("Objects", "Component Protobuf Roundtrip") {
+    // using session_cpp::Component;
+    // using session_cpp::Objects;
 
     Objects original;
     Component component;

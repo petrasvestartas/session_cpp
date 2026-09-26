@@ -19,6 +19,11 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Polyline", "Constructor") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Color;
 
         const Point p0(0.0, 0.0, 0.0);
         const Point p1(1.0, 0.0, 0.0);
@@ -100,6 +105,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "From Coords") {
+        // using session_cpp::Polyline;
 
         const std::vector<double> coords = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0};
         const Polyline pl = Polyline::from_coords(coords);
@@ -111,6 +117,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "From Sides") {
+        // using session_cpp::Polyline;
 
         const Polyline sq = Polyline::from_sides(4, 1.0, false);
         const Polyline sq_closed = Polyline::from_sides(4, 1.0, true);
@@ -121,6 +128,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Rectangle") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Vector;
 
         const Point o(0.0, 0.0, 0.0);
         const Polyline r = Polyline::rectangle(o, Vector::x_axis(), Vector::y_axis(), 2.0, 1.0, true);
@@ -132,6 +142,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Transformation") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -150,6 +164,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Json Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(1.0, 2.0, 3.0),
@@ -187,6 +204,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Protobuf Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(1.0, 2.0, 3.0),
@@ -223,6 +243,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Length") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -238,6 +260,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Center") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -253,6 +277,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Is Closed") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline open_pl({
             Point(0.0, 0.0, 0.0),
@@ -275,6 +301,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Closed") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline open_pl({
             Point(0.0, 0.0, 0.0),
@@ -300,6 +328,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Reverse") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -323,6 +354,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Closest Point") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -342,6 +375,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Closest Point To Line") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point line_start(0.0, 0.0, 0.0);
         const Point line_end(2.0, 0.0, 0.0);
@@ -353,6 +388,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Line Line Overlap") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point s0(0.0, 0.0, 0.0);
         const Point e0(2.0, 0.0, 0.0);
@@ -376,6 +413,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Line Line Average") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point s0(0.0, 0.0, 0.0);
         const Point e0(2.0, 0.0, 0.0);
@@ -392,6 +431,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Line Line Overlap Average") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point s0(0.0, 0.0, 0.0);
         const Point e0(2.0, 0.0, 0.0);
@@ -407,6 +448,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Line From Projected Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point s(0.0, 0.0, 0.0);
         const Point e(4.0, 0.0, 0.0);
@@ -424,6 +467,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Point In Polygon 2d") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline sq({
             Point(0.0, 0.0, 0.0),
@@ -438,6 +483,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Trim Rectangles By Plane") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Vector;
 
         Polyline first({
             Point(0.0, 0.0, 0.0),
@@ -464,6 +513,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Extend Segment") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -480,6 +531,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Extend Segment Equally") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -496,6 +549,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Extend Line Segment") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Point start(1.0, 0.0, 0.0);
         Point end(3.0, 0.0, 0.0);
@@ -506,6 +561,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Shrink Line Segment") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Point start(0.0, 0.0, 0.0);
         Point end(10.0, 0.0, 0.0);
@@ -516,6 +573,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Get Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -533,6 +592,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Get Lines") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Line;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -549,6 +611,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Add Point") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -561,6 +625,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Insert Point") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -574,6 +640,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Remove Point") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -590,6 +658,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Shift") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -607,6 +677,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Point At") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point start(0.0, 0.0, 0.0);
         const Point end(2.0, 0.0, 0.0);
@@ -618,6 +690,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Is Clockwise") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Plane;
 
         const Polyline cw_pl({
             Point(0.0, 0.0, 0.0),
@@ -638,6 +713,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Convex Corners") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -652,6 +729,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Tween") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline pl0({
             Point(0.0, 0.0, 0.0),
@@ -672,6 +751,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Average Plane") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
 
         const Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -695,6 +778,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Interpolate Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Point a(0.0, 0.0, 0.0);
         const Point b(4.0, 0.0, 0.0);
@@ -715,6 +800,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Quick Hull") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline poly({
             Point(0.0, 0.0, 0.0),
@@ -729,6 +816,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Bounding Rectangle") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline poly({
             Point(0.0, 0.0, 0.0),
@@ -744,6 +833,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Grid Of Points In Polygon") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const Polyline poly({
             Point(0.0, 0.0, 0.0),
@@ -762,6 +853,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Polylabel") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Plane;
 
         const Polyline poly({
             Point(0.0, 0.0, 0.0),
@@ -780,6 +874,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Polylabel Circle Division Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Polyline poly({
             Point(0.0, 0.0, 0.0),
@@ -798,6 +895,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Boolean Op") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         const Polyline sq_a({
             Point(-1.0, -1.0, 0.0),
@@ -856,6 +955,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Boolean Op Plane") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Vector;
 
         const Point origin(0.0, 0.0, 5.0);
         const Vector normal(0.0, 0.0, 1.0);
@@ -893,6 +996,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Merge Collinear") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -908,6 +1013,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Simplify Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         std::vector<Point> pts;
 
@@ -930,6 +1037,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Simplify") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         std::vector<Point> pts;
 
@@ -949,6 +1058,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Simplify Collinear") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const std::vector<Point> pts = {
             Point(0.0, 0.0, 0.0),
@@ -965,6 +1076,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Simplify Zigzag") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         std::vector<Point> pts;
 
@@ -983,6 +1096,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Simplify Two Points") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
 
         const std::vector<Point> pts = {
             Point(0.0, 0.0, 0.0),
@@ -994,6 +1109,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Translate") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Vector;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -1008,6 +1126,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Extend Edge Equally") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         Polyline pl({
             Point(0.0, 0.0, 0.0),
@@ -1024,6 +1144,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Offset Sides") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         Polyline square(std::vector<Point>{
             Point(0.0, 0.0, 0.0),
@@ -1055,6 +1177,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Polyline", "Offset Sides Degenerate") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         const Polyline square(std::vector<Point>{
             Point(0.0, 0.0, 0.0),

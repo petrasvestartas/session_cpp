@@ -17,6 +17,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Xform", "Constructor") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
 
         const Xform x;
         const double m00 = x.m[0];
@@ -65,6 +67,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "From Axes") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Xform xf = Xform::from_axes(Vector(0, 1, 0), Vector(-1, 0, 0), Vector(0, 0, 1));
         const Point p = Point(1, 2, 3).transformed(xf);
@@ -73,6 +78,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Translation") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Xform xf = Xform::translation(1.5, 1.0, 0.5);
         const Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -89,6 +97,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Rotation X") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const double s = std::sqrt(2.0);
         const Xform xf = Xform::rotation_x(Tolerance::PI / 4.0);
@@ -106,6 +117,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Rotation Y") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const double s = std::sqrt(2.0);
         const Xform xf = Xform::rotation_y(Tolerance::PI / 4.0);
@@ -123,6 +137,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Rotation Z") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const double s = std::sqrt(2.0);
         const Xform xf = Xform::rotation_z(Tolerance::PI / 4.0);
@@ -140,6 +157,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Rotation Axis") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const double t = 1.0 / 3.0;
         const double k = 2.0 / std::sqrt(3.0);
@@ -160,6 +181,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Rotation Around Line") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Line;
 
         const double s = std::sqrt(2.0);
         const Line line(-1.0, -1.0, -1.0, -1.0, -1.0, 1.0);
@@ -178,6 +203,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Change Basis") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point o0(0, 0, 0);
         const Vector x0(1, 0, 0);
@@ -202,6 +231,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "From Change Of Basis") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
 
         const Polyline rect0({
             Point(0.0, 0.0, 0.0),
@@ -218,6 +250,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Plane To Plane") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
 
         const Plane pf(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
         const Plane pt(Point(2, 0, 0), Vector(0, 1, 0), Vector(-1, 0, 0));
@@ -236,6 +273,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "World To Frame") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point origin(1.0, 2.0, 3.0);
         const Vector x_axis(0.0, 1.0, 0.0);
@@ -250,6 +290,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Frame To World") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point origin(1.0, 2.0, 3.0);
         const Vector x_axis(0.0, 1.0, 0.0);
@@ -264,6 +307,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "To Frame") {
+        // using session_cpp::Xform;
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Plane frame(Point(1, 2, 3), Vector(0, 1, 0), Vector(-1, 0, 0));
         const Xform xf = Xform::to_frame(frame);
@@ -275,6 +322,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Scale XYZ") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Xform xf = Xform::scale_xyz(1.5, 1.2, 1.8);
         const Mesh mesh = Mesh::create_box(2, 2, 2);
@@ -291,6 +341,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Scale Uniform") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Point c(0, 0, 0);
         const Xform xf = Xform::scale_uniform(c, 2.0);
@@ -308,6 +361,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Scale Non Uniform") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Point c(0, 0, 0);
         const Xform xf = Xform::scale_non_uniform(c, 1.5, 1.2, 1.8);
@@ -325,6 +381,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Axis Rotation") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Xform xf = Xform::axis_rotation(90.0, Vector(0, 0, 1), true);
         const Point p = Point(1, 0, 0).transformed(xf);
@@ -333,6 +392,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Look At Right Handed") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point eye(0, 3, 0);
         const Point target(0, 0, 0);
@@ -351,6 +414,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Look To Right Handed") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Point eye(0, 3, 0);
         const Vector direction(0, -1, 0);
@@ -369,6 +436,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Perspective") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const double t = 1.0 / 3.0;
         const Xform view = Xform::translation(0, 0, -2);
@@ -388,6 +458,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Orthographic") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Xform view = Xform::translation(0, 0, -2);
         const Xform proj = Xform::orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, 3.0);
@@ -406,6 +479,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Project To Plane") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
+        // using session_cpp::Polyline;
 
         const Plane plane(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
         const Xform shift = Xform::translation(0, 0, 1);
@@ -428,6 +506,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Project To Plane By Axis") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
+        // using session_cpp::Polyline;
 
         const Plane plane(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0));
         const Vector direction(1, 0, 1);
@@ -451,6 +534,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Transform Point") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
 
         const Xform t = Xform::translation(10.0, 20.0, 30.0);
         const Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
@@ -471,6 +556,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Transform Vector") {
+        // using session_cpp::Xform;
+        // using session_cpp::Vector;
 
         const Xform t = Xform::translation(10.0, 20.0, 30.0);
         const Xform s = Xform::scale_xyz(2.0, 3.0, 4.0);
@@ -484,6 +571,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Transform Geometry") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Line;
+        // using session_cpp::Plane;
+        // using session_cpp::Polyline;
 
         const Xform t = Xform::translation(10.0, 20.0, 30.0);
         const Point pt(1.0, 2.0, 3.0);
@@ -508,6 +601,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Inverse") {
+        // using session_cpp::Xform;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
 
         const Xform t = Xform::translation(1.0, 0.5, 0.5);
         const Xform s = Xform::scale_xyz(1.5, 1.2, 1.3);
@@ -538,6 +634,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "To Cols") {
+        // using session_cpp::Xform;
 
         const Xform xf = Xform::translation(1.0, 2.0, 3.0);
         const std::array<std::array<double, 4>, 4> cols = xf.to_cols();
@@ -552,12 +649,16 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Uniform Scale") {
+        // using session_cpp::Xform;
 
         MINI_CHECK(TOLERANCE.is_close(Xform::scale_xyz(2.0, 2.0, 2.0).uniform_scale(), 2.0));
         MINI_CHECK(TOLERANCE.is_close(Xform::translation(1.0, 2.0, 3.0).uniform_scale(), 1.0));
     }
 
     MINI_TEST("Xform", "Eye") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Xform view = Xform::look_at_right_handed(Point(1.0, 2.0, 5.0), Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0));
         const Xform perspective = Xform::perspective(Tolerance::PI / 2.0, 1.0, 1.0, 10.0) * view;
@@ -568,6 +669,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Ortho Half Height") {
+        // using session_cpp::Xform;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Xform view = Xform::look_at_right_handed(Point(1.0, 2.0, 5.0), Point(0.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0));
         const Xform perspective = Xform::perspective(Tolerance::PI / 2.0, 1.0, 1.0, 10.0) * view;
@@ -578,6 +682,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Json Roundtrip") {
+        // using session_cpp::Xform;
 
         Xform xform = Xform::translation(1.0, 2.0, 3.0);
         xform.name = "test_xform";
@@ -597,6 +702,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Xform", "Protobuf Roundtrip") {
+        // using session_cpp::Xform;
 
         Xform xform = Xform::translation(1.0, 2.0, 3.0);
         xform.name = "test_xform_proto";

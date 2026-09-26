@@ -13,6 +13,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Quaternion", "Constructor") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q0;
         Quaternion q = Quaternion::from_components(2.0, Vector(1.0, 0.0, 0.0));
@@ -60,6 +62,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Identity") {
+        // using session_cpp::Quaternion;
 
         const Quaternion q = Quaternion::identity();
 
@@ -70,6 +73,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "From Components") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_components(2.0, Vector(1.0, 2.0, 3.0));
 
@@ -98,6 +103,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "From Axis Angle") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
 
@@ -110,6 +117,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "From Arc") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Vector src(1.0, 0.0, 0.0);
         const Vector dst(0.0, 1.0, 0.0);
@@ -130,6 +139,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "From Euler") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q_euler = Quaternion::from_euler(0.0, 0.0, Tolerance::PI / 2.0);
         const Quaternion q_axis = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
@@ -139,6 +150,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "From Rotation") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
 
         const Plane plane_a = Plane::xy_plane();
         const Plane plane_b = Plane::from_frame(
@@ -156,6 +171,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Rotate Vector") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
         const Vector rotated = q.rotate_vector(Vector(1.0, 0.0, 0.0));
@@ -166,6 +183,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Get Rotation") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
         const Plane p = q.get_rotation();
@@ -177,6 +197,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Magnitude") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 4.0);
 
@@ -184,6 +206,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Magnitude Squared") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 4.0);
 
@@ -191,6 +215,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Normalized") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_components(2.0, Vector(0.0, 0.0, 2.0));
         const Quaternion n = q.normalized();
@@ -199,6 +225,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Conjugate") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 4.0);
         const Quaternion r = q.conjugate();
@@ -209,6 +237,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Invert") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 3.0);
         const Quaternion result = q * q.invert();
@@ -220,6 +250,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Dot") {
+        // using session_cpp::Quaternion;
 
         const Quaternion q = Quaternion::identity();
 
@@ -227,6 +258,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Slerp") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q1 = Quaternion::identity();
         const Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
@@ -250,6 +283,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Nlerp") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         const Quaternion q1 = Quaternion::identity();
         const Quaternion q2 = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
@@ -261,6 +296,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Json Roundtrip") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
         q.name = "test_quaternion";
@@ -281,6 +318,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Quaternion", "Protobuf Roundtrip") {
+        // using session_cpp::Quaternion;
+        // using session_cpp::Vector;
 
         Quaternion q = Quaternion::from_axis_angle(Vector(0.0, 0.0, 1.0), Tolerance::PI / 2.0);
         q.name = "test_quaternion";

@@ -15,6 +15,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Vector", "Constructor") {
+        // using session_cpp::Vector;
+        // using session_cpp::Point;
 
         Vector v(1.0, 2.0, 3.0);
         const Point p0(1.0, 2.0, 3.0);
@@ -83,6 +85,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Transformation") {
+        // using session_cpp::Vector;
+        // using session_cpp::Xform;
 
         Vector v(1.0, 2.0, 3.0);
         const Xform xform = Xform::translation(10.0, 20.0, 30.0);
@@ -99,6 +103,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Magnitude") {
+        // using session_cpp::Vector;
 
         const Vector v(3.0, 4.0, 0.0);
         const double length = v.magnitude();
@@ -109,6 +114,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Normalize") {
+        // using session_cpp::Vector;
 
         Vector v0(3.0, 4.0, 0.0);
         const bool ok = v0.normalize_self();
@@ -125,6 +131,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Reverse") {
+        // using session_cpp::Vector;
 
         Vector v(1.0, -2.0, 3.0);
         v.reverse();
@@ -133,6 +140,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Dot Product") {
+        // using session_cpp::Vector;
 
         const Vector v1(1.0, 0.0, 0.0);
         const Vector v2(0.0, 1.0, 0.0);
@@ -153,6 +161,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Cross Product") {
+        // using session_cpp::Vector;
 
         const Vector v1(1.0, 0.0, 0.0);
         const Vector v2(0.0, 1.0, 0.0);
@@ -167,6 +176,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Angle") {
+        // using session_cpp::Vector;
 
         const Vector v1(1.0, 0.0, 0.0);
         const Vector v2(0.0, 1.0, 0.0);
@@ -204,6 +214,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Projection") {
+        // using session_cpp::Vector;
 
         const Vector v(1.0, 1.0, 1.0);
         const Vector x = Vector::x_axis();
@@ -231,6 +242,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Is Parallel To") {
+        // using session_cpp::Vector;
 
         const Vector v1(2.0, 2.0, 2.0);
         const Vector v2(4.0, 4.0, 4.0);
@@ -243,6 +255,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Is Perpendicular To") {
+        // using session_cpp::Vector;
 
         const Vector v1(1.0, 0.0, 0.0);
         const Vector v2(0.0, 1.0, 0.0);
@@ -265,6 +278,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Get Leveled Vector") {
+        // using session_cpp::Vector;
 
         const Vector v(1.0, 1.0, 1.0);
         const double vertical_height = 1.0;
@@ -275,6 +289,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Cos Sin Laws") {
+        // using session_cpp::Vector;
 
         const double a = 3.0;
         const double b = 4.0;
@@ -315,6 +330,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Sum Of Vectors") {
+        // using session_cpp::Vector;
 
         const std::vector<Vector> vecs = {
             Vector(1.0, 1.0, 1.0),
@@ -331,6 +347,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Average") {
+        // using session_cpp::Vector;
 
         const std::vector<Vector> vecs = {
             Vector(1.0, 2.0, 3.0),
@@ -347,6 +364,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Is Zero") {
+        // using session_cpp::Vector;
 
         const Vector zero(0.0, 0.0, 0.0);
         const Vector nonzero(1.0, 0.0, 0.0);
@@ -358,6 +376,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Scale") {
+        // using session_cpp::Vector;
 
         Vector v_up(1.0, 2.0, 3.0);
         v_up.scale_up();
@@ -371,6 +390,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Reflect") {
+        // using session_cpp::Vector;
 
         const Vector v(1.0, 2.0, 3.0);
         const Vector n = Vector::x_axis();
@@ -382,6 +402,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Average Normal") {
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const std::vector<Point> square = {
             Point(0.0, 0.0, 0.0),
@@ -399,6 +421,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Average Normal Polyline") {
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Vector;
 
         const Polyline square({
             Point(0.0, 0.0, 0.0),
@@ -416,6 +441,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Json Roundtrip") {
+        // using session_cpp::Vector;
 
         Vector v(42.1, 84.2, 126.3);
         v.name = "test_vector";
@@ -436,6 +462,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Vector", "Protobuf Roundtrip") {
+        // using session_cpp::Vector;
 
         Vector v(42.1, 84.2, 126.3);
         v.name = "test_vector";

@@ -9,6 +9,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("NurbsKnot", "Nurbsknot Count") {
+    // using session_cpp::nurbsknot;
 
     MINI_CHECK(nurbsknot::nurbsknot_count(4, 5) == 7);
     MINI_CHECK(nurbsknot::nurbsknot_count(0, 0) == 0);
@@ -18,6 +19,7 @@ MINI_TEST("NurbsKnot", "Nurbsknot Count") {
 }
 
 MINI_TEST("NurbsKnot", "Domain Tolerance") {
+    // using session_cpp::nurbsknot;
 
     MINI_CHECK(nurbsknot::domain_tolerance(1.0, 1.0) == 0.0);
     MINI_CHECK(TOLERANCE.is_close(nurbsknot::domain_tolerance(0.0, 1.0), 2.980232238769531e-08));
@@ -25,6 +27,7 @@ MINI_TEST("NurbsKnot", "Domain Tolerance") {
 }
 
 MINI_TEST("NurbsKnot", "Compute Clamped Uniform") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -37,6 +40,7 @@ MINI_TEST("NurbsKnot", "Compute Clamped Uniform") {
 }
 
 MINI_TEST("NurbsKnot", "Compute Periodic Uniform") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -48,6 +52,7 @@ MINI_TEST("NurbsKnot", "Compute Periodic Uniform") {
 }
 
 MINI_TEST("NurbsKnot", "Clamp") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -68,6 +73,7 @@ MINI_TEST("NurbsKnot", "Clamp") {
 }
 
 MINI_TEST("NurbsKnot", "Is Valid") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -83,6 +89,7 @@ MINI_TEST("NurbsKnot", "Is Valid") {
 }
 
 MINI_TEST("NurbsKnot", "Is Clamped") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -98,6 +105,7 @@ MINI_TEST("NurbsKnot", "Is Clamped") {
 }
 
 MINI_TEST("NurbsKnot", "Is Periodic") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -113,6 +121,7 @@ MINI_TEST("NurbsKnot", "Is Periodic") {
 }
 
 MINI_TEST("NurbsKnot", "Get Domain") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -132,6 +141,7 @@ MINI_TEST("NurbsKnot", "Get Domain") {
 }
 
 MINI_TEST("NurbsKnot", "Set Domain") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -145,6 +155,7 @@ MINI_TEST("NurbsKnot", "Set Domain") {
 }
 
 MINI_TEST("NurbsKnot", "Reverse") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -164,6 +175,7 @@ MINI_TEST("NurbsKnot", "Reverse") {
 }
 
 MINI_TEST("NurbsKnot", "Multiplicity") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -179,6 +191,7 @@ MINI_TEST("NurbsKnot", "Multiplicity") {
 }
 
 MINI_TEST("NurbsKnot", "Span Count") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -192,6 +205,7 @@ MINI_TEST("NurbsKnot", "Span Count") {
 }
 
 MINI_TEST("NurbsKnot", "Find Span") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -207,6 +221,7 @@ MINI_TEST("NurbsKnot", "Find Span") {
 }
 
 MINI_TEST("NurbsKnot", "Get Greville Abcissae") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -223,6 +238,7 @@ MINI_TEST("NurbsKnot", "Get Greville Abcissae") {
 }
 
 MINI_TEST("NurbsKnot", "Solve Tridiagonal") {
+    // using session_cpp::nurbsknot;
 
     std::vector<double> lo = {0.0, 1.0};
     std::vector<double> di = {2.0, 2.0};
@@ -245,6 +261,9 @@ MINI_TEST("NurbsKnot", "Solve Tridiagonal") {
 }
 
 MINI_TEST("NurbsKnot", "Compute Parameters") {
+    // using session_cpp::nurbsknot;
+    // using session_cpp::CurveNurbsKnotStyle;
+    // using session_cpp::CurveInterpStyle;
 
     const std::vector<double> pts = {0.0, 0.0, 4.0, 0.0, 4.0, 9.0};
     const std::vector<double> uniform = nurbsknot::compute_parameters(pts.data(), 3, 2, CurveNurbsKnotStyle::Uniform);
@@ -261,6 +280,7 @@ MINI_TEST("NurbsKnot", "Compute Parameters") {
 }
 
 MINI_TEST("NurbsKnot", "Build Interp Nurbsknots") {
+    // using session_cpp::nurbsknot;
 
     std::vector<double> params = {0.0, 1.0, 2.0, 3.0};
     const int degree = 3;
@@ -275,6 +295,7 @@ MINI_TEST("NurbsKnot", "Build Interp Nurbsknots") {
 }
 
 MINI_TEST("NurbsKnot", "Eval Basis") {
+    // using session_cpp::nurbsknot;
 
     const int order = 4;
     const int cv_count = 5;
@@ -292,6 +313,8 @@ MINI_TEST("NurbsKnot", "Eval Basis") {
 }
 
 MINI_TEST("NurbsKnot", "Build Fitted Nurbsknots Adaptive") {
+    // using session_cpp::nurbsknot;
+    // using session_cpp::CurveNurbsKnotStyle;
 
     const std::vector<double> pts = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 4.0, 0.0, 0.0};
     const std::vector<double> params = nurbsknot::compute_parameters(pts.data(), 5, 3, CurveNurbsKnotStyle::Chord);
@@ -307,6 +330,7 @@ MINI_TEST("NurbsKnot", "Build Fitted Nurbsknots Adaptive") {
 }
 
 MINI_TEST("NurbsKnot", "Build Fitted Nurbsknots Periodic Adaptive") {
+    // using session_cpp::nurbsknot;
 
     const std::vector<double> pts = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0};
     const std::vector<double> params = {0.0, 1.0, 2.0, 3.0, 4.0};
@@ -322,6 +346,7 @@ MINI_TEST("NurbsKnot", "Build Fitted Nurbsknots Periodic Adaptive") {
 }
 
 MINI_TEST("NurbsKnot", "Solve Banded SPD") {
+    // using session_cpp::nurbsknot;
 
     std::vector<double> band = {4.0, 0.0, 5.0, 2.0, 3.0, 1.0};
     std::vector<double> rhs = {8.0, 13.0, 5.0};

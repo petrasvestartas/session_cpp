@@ -11,6 +11,8 @@ using namespace session_cpp::mini_test;
 // TreeNode
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("TreeNode", "Constructor") {
+    // using session_cpp::TreeNode;
+    // using session_cpp::Color;
 
     std::shared_ptr<TreeNode> n0 = std::make_shared<TreeNode>();
     std::shared_ptr<TreeNode> n = std::make_shared<TreeNode>("my_named_node");
@@ -28,6 +30,8 @@ MINI_TEST("TreeNode", "Constructor") {
 }
 
 MINI_TEST("TreeNode", "Json Roundtrip") {
+    // using session_cpp::TreeNode;
+    // using session_cpp::file_encoders::file_json_dump;
 
     std::shared_ptr<TreeNode> original = std::make_shared<TreeNode>("test_node");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child_node");
@@ -43,6 +47,7 @@ MINI_TEST("TreeNode", "Json Roundtrip") {
 }
 
 MINI_TEST("TreeNode", "Is Root") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child");
@@ -53,6 +58,7 @@ MINI_TEST("TreeNode", "Is Root") {
 }
 
 MINI_TEST("TreeNode", "Is Leaf") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> parent = std::make_shared<TreeNode>("parent");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child");
@@ -63,6 +69,7 @@ MINI_TEST("TreeNode", "Is Leaf") {
 }
 
 MINI_TEST("TreeNode", "Add") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> parent = std::make_shared<TreeNode>("parent");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child");
@@ -74,6 +81,7 @@ MINI_TEST("TreeNode", "Add") {
 }
 
 MINI_TEST("TreeNode", "Remove") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> parent = std::make_shared<TreeNode>("parent");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child");
@@ -86,6 +94,7 @@ MINI_TEST("TreeNode", "Remove") {
 }
 
 MINI_TEST("TreeNode", "Parent") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
     std::shared_ptr<TreeNode> child = std::make_shared<TreeNode>("child");
@@ -96,6 +105,7 @@ MINI_TEST("TreeNode", "Parent") {
 }
 
 MINI_TEST("TreeNode", "Ancestors") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
     std::shared_ptr<TreeNode> mid = std::make_shared<TreeNode>("mid");
@@ -111,6 +121,7 @@ MINI_TEST("TreeNode", "Ancestors") {
 }
 
 MINI_TEST("TreeNode", "Descendants") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
     std::shared_ptr<TreeNode> mid = std::make_shared<TreeNode>("mid");
@@ -126,6 +137,7 @@ MINI_TEST("TreeNode", "Descendants") {
 }
 
 MINI_TEST("TreeNode", "Children") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> parent = std::make_shared<TreeNode>("parent");
     std::shared_ptr<TreeNode> c1 = std::make_shared<TreeNode>("c1");
@@ -141,6 +153,7 @@ MINI_TEST("TreeNode", "Children") {
 }
 
 MINI_TEST("TreeNode", "Traverse") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
     std::shared_ptr<TreeNode> a = std::make_shared<TreeNode>("a");
@@ -158,6 +171,7 @@ MINI_TEST("TreeNode", "Traverse") {
 }
 
 MINI_TEST("TreeNode", "Set Dead") {
+    // using session_cpp::TreeNode;
 
     std::shared_ptr<TreeNode> p = std::make_shared<TreeNode>("p");
     std::shared_ptr<TreeNode> a = std::make_shared<TreeNode>("a");
@@ -194,6 +208,8 @@ MINI_TEST("TreeNode", "Set Dead") {
 }
 
 MINI_TEST("TreeNode", "Compact") {
+    // using session_cpp::TreeNode;
+    // using session_cpp::Tomb;
 
     std::shared_ptr<TreeNode> p = std::make_shared<TreeNode>("p");
     std::vector<std::shared_ptr<TreeNode>> kids;
@@ -224,6 +240,8 @@ MINI_TEST("TreeNode", "Compact") {
 }
 
 MINI_TEST("TreeNode", "Add Moves") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree tree("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -259,6 +277,7 @@ MINI_TEST("TreeNode", "Add Moves") {
 // Tree
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Tree", "Constructor") {
+    // using session_cpp::Tree;
 
     Tree t0;
     Tree t("my_named_tree");
@@ -271,6 +290,8 @@ MINI_TEST("Tree", "Constructor") {
 }
 
 MINI_TEST("Tree", "Json Roundtrip") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree original("test_tree");
     std::shared_ptr<TreeNode> root_node = std::make_shared<TreeNode>("root_node");
@@ -285,6 +306,8 @@ MINI_TEST("Tree", "Json Roundtrip") {
 }
 
 MINI_TEST("Tree", "Protobuf Roundtrip") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree original("test_tree");
     std::shared_ptr<TreeNode> root_node = std::make_shared<TreeNode>("root_node");
@@ -299,6 +322,8 @@ MINI_TEST("Tree", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Tree", "Root") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -308,6 +333,8 @@ MINI_TEST("Tree", "Root") {
 }
 
 MINI_TEST("Tree", "Add") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -319,6 +346,8 @@ MINI_TEST("Tree", "Add") {
 }
 
 MINI_TEST("Tree", "Nodes") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -334,6 +363,8 @@ MINI_TEST("Tree", "Nodes") {
 }
 
 MINI_TEST("Tree", "Remove") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -346,6 +377,8 @@ MINI_TEST("Tree", "Remove") {
 }
 
 MINI_TEST("Tree", "Leaves") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -363,6 +396,8 @@ MINI_TEST("Tree", "Leaves") {
 }
 
 MINI_TEST("Tree", "Traverse") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -380,6 +415,8 @@ MINI_TEST("Tree", "Traverse") {
 }
 
 MINI_TEST("Tree", "Get Node By Name") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -394,6 +431,8 @@ MINI_TEST("Tree", "Get Node By Name") {
 }
 
 MINI_TEST("Tree", "Get Nodes By Name") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -409,6 +448,8 @@ MINI_TEST("Tree", "Get Nodes By Name") {
 }
 
 MINI_TEST("Tree", "Find Node By Guid") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -422,6 +463,8 @@ MINI_TEST("Tree", "Find Node By Guid") {
 }
 
 MINI_TEST("Tree", "Add Child By Guid") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -439,6 +482,8 @@ MINI_TEST("Tree", "Add Child By Guid") {
 }
 
 MINI_TEST("Tree", "Get Children Guids") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree t("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");
@@ -456,6 +501,8 @@ MINI_TEST("Tree", "Get Children Guids") {
 }
 
 MINI_TEST("Tree", "Dead Nodes") {
+    // using session_cpp::Tree;
+    // using session_cpp::TreeNode;
 
     Tree tree("t");
     std::shared_ptr<TreeNode> root = std::make_shared<TreeNode>("root");

@@ -31,6 +31,7 @@ static std::shared_ptr<Mesh> grid_mesh(size_t n) {
 }
 
 MINI_TEST("History", "Constructor") {
+    // using session_cpp::History;
 
     History history;
     const std::string hstr = history.str();
@@ -44,6 +45,10 @@ MINI_TEST("History", "Constructor") {
 }
 
 MINI_TEST("History", "Begin Commit") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::History;
+    // using session_cpp::AddOp;
 
     Session session;
     History& history = session.history;
@@ -64,6 +69,8 @@ MINI_TEST("History", "Begin Commit") {
 }
 
 MINI_TEST("History", "Undo Redo") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
     const std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -87,6 +94,8 @@ MINI_TEST("History", "Undo Redo") {
 }
 
 MINI_TEST("History", "Clear") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
 
     Session session;
 
@@ -117,6 +126,11 @@ MINI_TEST("History", "Clear") {
 }
 
 MINI_TEST("History", "Undo Definition") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::AddOp;
+    // using session_cpp::ReplaceOp;
+    // using session_cpp::RemoveOp;
 
     Session session;
     const std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
@@ -160,6 +174,9 @@ MINI_TEST("History", "Undo Definition") {
 }
 
 MINI_TEST("History", "Budget") {
+    // using session_cpp::Session;
+    // using session_cpp::Mesh;
+    // using session_cpp::Transaction;
 
     Session session;
     session.history.budget = 1 << 20;
@@ -195,6 +212,11 @@ MINI_TEST("History", "Budget") {
 }
 
 MINI_TEST("History", "Weight") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::RECORD;
+    // using session_cpp::weight;
+    // using session_cpp::Mesh;
 
     const Item point = Geometry(std::make_shared<Point>(0.0, 0.0, 0.0));
     const Item small = Geometry(grid_mesh(32));
@@ -226,6 +248,10 @@ MINI_TEST("History", "Weight") {
 }
 
 MINI_TEST("History", "Abort") {
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::Xform;
+    // using session_cpp::TreeNode;
 
     Session session;
     const std::shared_ptr<TreeNode> group = session.add_group("g");

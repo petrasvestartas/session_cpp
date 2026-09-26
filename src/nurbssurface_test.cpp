@@ -26,6 +26,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("NurbsSurface", "Constructor") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -123,6 +126,11 @@ MINI_TEST("NurbsSurface", "Constructor") {
 }
 
 MINI_TEST("NurbsSurface", "Create From Parameters") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Plane;
+    // using session_cpp::Vector;
+    // using session_cpp::Line;
 
     std::vector<std::vector<Point>> grid = {
         {Point(0, 0, 0), Point(1, 0, 0), Point(2, 0, 0), Point(3, 0, 0)},
@@ -170,6 +178,9 @@ MINI_TEST("NurbsSurface", "Create From Parameters") {
 }
 
 MINI_TEST("NurbsSurface", "Booleans Queries") {
+    // using session_cpp::Plane;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 5.0);
 
@@ -200,6 +211,8 @@ MINI_TEST("NurbsSurface", "Booleans Queries") {
 }
 
 MINI_TEST("NurbsSurface", "Attributes") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -252,6 +265,8 @@ MINI_TEST("NurbsSurface", "Attributes") {
 }
 
 MINI_TEST("NurbsSurface", "Control Vertices Access") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -313,6 +328,8 @@ MINI_TEST("NurbsSurface", "Control Vertices Access") {
 }
 
 MINI_TEST("NurbsSurface", "NurbsKnot Access") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -374,6 +391,8 @@ MINI_TEST("NurbsSurface", "NurbsKnot Access") {
 }
 
 MINI_TEST("NurbsSurface", "Domain") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -419,6 +438,10 @@ MINI_TEST("NurbsSurface", "Domain") {
 }
 
 MINI_TEST("NurbsSurface", "Division") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Plane;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -728,6 +751,10 @@ MINI_TEST("NurbsSurface", "Division") {
 }
 
 MINI_TEST("NurbsSurface", "Evaluation") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsCurve;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -779,6 +806,8 @@ MINI_TEST("NurbsSurface", "Evaluation") {
 }
 
 MINI_TEST("NurbsSurface", "Modification") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -860,6 +889,9 @@ MINI_TEST("NurbsSurface", "Modification") {
 }
 
 MINI_TEST("NurbsSurface", "Transformations") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -906,6 +938,12 @@ MINI_TEST("NurbsSurface", "Transformations") {
 }
 
 MINI_TEST("NurbsSurface", "Meshing") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 3.0);
     const Mesh mesh_sphere = sphere.mesh();
@@ -1018,6 +1056,13 @@ MINI_TEST("NurbsSurface", "Meshing") {
 }
 
 MINI_TEST("NurbsSurface", "Split By Plane") {
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 4.0);
     const Point plane_origin(0.0, 0.0, 2.0);
@@ -1046,6 +1091,12 @@ MINI_TEST("NurbsSurface", "Split By Plane") {
 }
 
 MINI_TEST("NurbsSurface", "Split By Curves") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     const NurbsSurface wave = Primitives::wave_surface(10.0, 1.0);
     std::vector<Point> lift_pts;
@@ -1076,6 +1127,11 @@ MINI_TEST("NurbsSurface", "Split By Curves") {
 }
 
 MINI_TEST("NurbsSurface", "Split By Line") {
+    // using session_cpp::Line;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     const NurbsSurface wave = Primitives::wave_surface(10.0, 1.0);
     const Line line = Line::from_points(Point(-1.0, 5.0, 0.0), Point(11.0, 5.0, 0.0));
@@ -1088,6 +1144,11 @@ MINI_TEST("NurbsSurface", "Split By Line") {
 }
 
 MINI_TEST("NurbsSurface", "Split By Surface") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
     const NurbsSurface flat = NurbsSurface::create(
@@ -1118,6 +1179,11 @@ MINI_TEST("NurbsSurface", "Split By Surface") {
 }
 
 MINI_TEST("NurbsSurface", "Split By Brep") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::BRep;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Mesh;
 
     const NurbsSurface flat = NurbsSurface::create(
         false,
@@ -1148,6 +1214,8 @@ MINI_TEST("NurbsSurface", "Split By Brep") {
 }
 
 MINI_TEST("NurbsSurface", "Json Roundtrip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -1188,6 +1256,8 @@ MINI_TEST("NurbsSurface", "Json Roundtrip") {
 }
 
 MINI_TEST("NurbsSurface", "Protobuf Roundtrip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0.0, 0.0, 0.0),
@@ -1226,6 +1296,9 @@ MINI_TEST("NurbsSurface", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("NurbsSurface", "Closest Point") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 2.0);
     const Point cp = sphere.closest_point(Point(5, 0, 0));
@@ -1234,6 +1307,8 @@ MINI_TEST("NurbsSurface", "Closest Point") {
 }
 
 MINI_TEST("NurbsSurface", "Curvature") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const double R = 2.0;
     const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, R);

@@ -13,6 +13,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Point", "Constructor") {
+        // using session_cpp::Color;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         Point p(1.0, 2.0, 3.0);
 
@@ -82,6 +85,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Transformation") {
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
 
         Point p(1.0, 2.0, 3.0);
         const Xform xform = Xform::translation(1.0, 2.0, 3.0);
@@ -93,6 +98,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Json Roundtrip") {
+        // using session_cpp::Color;
+        // using session_cpp::Point;
 
         Point p(1.5, 2.5, 3.5, "test_point");
         p.width = 2.0;
@@ -129,6 +136,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Protobuf Roundtrip") {
+        // using session_cpp::Color;
+        // using session_cpp::Point;
 
         const Point fresh;
         const session_proto::Point fresh_proto = fresh.to_proto();
@@ -161,6 +170,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Is Ccw") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 0.0, 0.0);
         const Point p1(1.0, 0.0, 0.0);
@@ -173,6 +183,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Mid Point") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 2.0, 1.0);
         const Point p1(1.0, 5.0, 3.0);
@@ -182,6 +193,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Distance") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 2.0, 1.0);
         const Point p1(1.0, 5.0, 3.0);
@@ -191,6 +203,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Squared Distance") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 2.0, 1.0);
         const Point p1(1.0, 5.0, 3.0);
@@ -200,6 +213,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Interpolate") {
+        // using session_cpp::Point;
 
         const Point a(0.0, 0.0, 0.0);
         const Point b(4.0, 8.0, 12.0);
@@ -218,6 +232,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Area") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 0.0, 0.0);
         const Point p1(2.0, 0.0, 0.0);
@@ -229,6 +244,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid Quad") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 0.0, 0.0);
         const Point p1(2.0, 0.0, 1.0);
@@ -242,6 +258,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Centroid") {
+        // using session_cpp::Point;
 
         const Point p0(0.0, 0.0, 0.0);
         const Point p1(2.0, 0.0, 0.0);
@@ -255,6 +272,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Point", "Dihedral Angle Deg") {
+        // using session_cpp::Point;
 
         const Point p(0.0, 0.0, 0.0);
         const Point q(1.0, 0.0, 0.0);

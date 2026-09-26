@@ -15,6 +15,8 @@ namespace session_cpp {
 using namespace session_cpp::mini_test;
 
 MINI_TEST("Collection", "Constructor") {
+    // using session_cpp::Collection;
+    // using session_cpp::Point;
 
     const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
     const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -36,6 +38,8 @@ MINI_TEST("Collection", "Constructor") {
 }
 
 MINI_TEST("Collection", "Set Dead") {
+    // using session_cpp::Collection;
+    // using session_cpp::Point;
 
     const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
     const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
@@ -61,6 +65,8 @@ MINI_TEST("Collection", "Set Dead") {
 }
 
 MINI_TEST("Collection", "Index Skips Dead") {
+    // using session_cpp::Collection;
+    // using session_cpp::Point;
 
     std::vector<std::shared_ptr<Point>> e;
 
@@ -89,6 +95,9 @@ MINI_TEST("Collection", "Index Skips Dead") {
 }
 
 MINI_TEST("Collection", "Compact") {
+    // using session_cpp::Collection;
+    // using session_cpp::Point;
+    // using session_cpp::Tomb;
 
     std::vector<std::shared_ptr<Point>> e;
 
@@ -122,6 +131,9 @@ MINI_TEST("Collection", "Compact") {
 }
 
 MINI_TEST("Collection", "Compact Step") {
+    // using session_cpp::Collection;
+    // using session_cpp::Point;
+    // using session_cpp::Tomb;
 
     Collection<std::shared_ptr<Point>> points;
     std::vector<std::pair<std::shared_ptr<Point>, bool>> model;
@@ -195,6 +207,8 @@ MINI_TEST("Collection", "Compact Step") {
 }
 
 MINI_TEST("Collection", "Json Roundtrip") {
+    // using session_cpp::Point;
+    // using session_cpp::Objects;
 
     Objects objects;
     objects.points->push_back(std::make_shared<Point>(0.0, 0.0, 0.0));

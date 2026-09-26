@@ -22,6 +22,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("AABB", "Constructor") {
+        // using session_cpp::AABB;
+        // using session_cpp::Point;
+        // using session_cpp::Line;
 
         const AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
         const AABB empty;
@@ -68,6 +71,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("AABB", "Empty") {
+        // using session_cpp::AABB;
+        // using session_cpp::Point;
 
         AABB a = AABB::empty();
         const bool empty_valid = a.is_valid();
@@ -102,6 +107,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("AABB", "Transform") {
+        // using session_cpp::AABB;
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
 
         AABB a(0.0, 0.0, 0.0, 1.0, 2.0, 3.0);
         const AABB moved = a.transformed(Xform::translation(1.0, 2.0, 3.0));
@@ -118,6 +126,17 @@ namespace session_cpp {
     }
 
     MINI_TEST("AABB", "From Geometry") {
+        // using session_cpp::AABB;
+        // using session_cpp::Color;
+        // using session_cpp::Line;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::Point;
+        // using session_cpp::PointCloud;
+        // using session_cpp::Polyline;
+        // using session_cpp::Primitives;
+        // using session_cpp::Vector;
+        // using session_cpp::Mesh;
 
         const AABB a_pt = AABB::from_point(Point(1.0, 2.0, 3.0), 0.5);
 
@@ -215,6 +234,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("AABB", "From Nurbscurve Tight") {
+        // using session_cpp::AABB;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const NurbsCurve bulge = NurbsCurve::create(
             false,

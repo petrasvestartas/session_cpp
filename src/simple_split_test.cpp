@@ -27,6 +27,10 @@ static Point mapped(const NurbsSurface& surface, double x, double y) {
 }
 
 MINI_TEST("SimpleSplit", "Split Curve By Curves") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::simple_split::split_curve_by_curves;
 
     const NurbsCurve curve = NurbsCurve::create(false, 1, {Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
@@ -89,6 +93,14 @@ MINI_TEST("SimpleSplit", "Split Curve By Curves") {
 }
 
 MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
+    // using session_cpp::BRep;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::simple_split::split_brep_face_by_curves;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
+    // using session_cpp::BRepFace;
 
     const BRep box = BRep::create_box(10.0, 10.0, 10.0);
     const NurbsSurface surface = box.m_surfaces[0];
@@ -212,6 +224,11 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
 }
 
 MINI_TEST("SimpleSplit", "Split Surface By Curves") {
+    // using session_cpp::BRep;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::simple_split::split_surface_by_curves;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface surface = BRep::create_box(10.0, 10.0, 10.0).m_surfaces[0];
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {mapped(surface, 0.5, -1.0), mapped(surface, 0.5, 2.0)});
@@ -240,6 +257,11 @@ MINI_TEST("SimpleSplit", "Split Surface By Curves") {
 }
 
 MINI_TEST("SimpleSplit", "Split Line By Curves") {
+    // using session_cpp::Arrowhead;
+    // using session_cpp::Line;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::simple_split::split_line_by_curves;
 
     Line line = Line::from_points(Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0));
     line.name = "retained";
@@ -259,6 +281,11 @@ MINI_TEST("SimpleSplit", "Split Line By Curves") {
 }
 
 MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
+    // using session_cpp::Arrowhead;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::simple_split::split_polyline_by_curves;
 
     Polyline polyline({Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0), Point(2.0, 3.0, 0.0)});
     polyline.name = "retained";

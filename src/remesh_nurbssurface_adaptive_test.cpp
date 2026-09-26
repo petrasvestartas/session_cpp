@@ -8,6 +8,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Constructor") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     const RemeshNurbsSurfaceAdaptive ta(s);
@@ -19,6 +22,9 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Constructor") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Parameters") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     RemeshNurbsSurfaceAdaptive ta(s);
@@ -32,6 +38,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Parameters") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Mesh") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::sphere_surface(0, 0, 0, 1.0);
     const RemeshNurbsSurfaceAdaptive ta(s);
@@ -42,6 +52,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Mesh") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
     const Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
@@ -51,6 +65,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Torus") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     const Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
@@ -60,6 +78,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cylinder") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
     const Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
@@ -69,6 +91,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Cone") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::wave_surface(1.0, 0.5);
     const Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
@@ -78,6 +104,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Doubly Curved") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Flat") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = Primitives::wave_surface(1.0, 0.0);
     const Mesh m = RemeshNurbsSurfaceAdaptive(s).mesh();
@@ -87,6 +117,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Flat") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Singular Triangle") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = NurbsSurface::create(
         false,
@@ -111,6 +145,10 @@ MINI_TEST("RemeshNurbsSurfaceAdaptive", "Singular Triangle") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceAdaptive", "Double-Curved Triangle") {
+    // using session_cpp::RemeshNurbsSurfaceAdaptive;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const NurbsSurface s = NurbsSurface::create(
         false,

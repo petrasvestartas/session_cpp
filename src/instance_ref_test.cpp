@@ -10,6 +10,11 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("InstanceRef", "Constructor") {
+        // using session_cpp::ElementFeature;
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Xform;
 
         const Xform x = Xform::translation(10.0, 20.0, 30.0);
         const InstanceRef inst("def-123", x);
@@ -48,6 +53,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("InstanceRef", "Transformation") {
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Xform;
 
         InstanceRef inst("def", Xform::translation(1.0, 0.0, 0.0));
         const InstanceRef moved = inst.transformed(Xform::translation(5.0, 0.0, 0.0));
@@ -58,6 +65,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("InstanceRef", "Json Roundtrip") {
+        // using session_cpp::ElementFeature;
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Xform;
 
         InstanceRef inst("def-abc", Xform::translation(1.0, 2.0, 3.0));
         inst.name = "test_ref";
@@ -100,6 +112,12 @@ namespace session_cpp {
     }
 
     MINI_TEST("InstanceRef", "Protobuf Roundtrip") {
+        // using session_cpp::Color;
+        // using session_cpp::ElementFeature;
+        // using session_cpp::InstanceRef;
+        // using session_cpp::Point;
+        // using session_cpp::Polyline;
+        // using session_cpp::Xform;
 
         const InstanceRef fresh;
         const session_proto::InstanceRef fresh_proto = fresh.to_proto();

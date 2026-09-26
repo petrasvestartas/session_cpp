@@ -18,6 +18,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("NurbsCurve", "Constructor") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -55,6 +58,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Create Interpolated") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::CurveNurbsKnotStyle;
+        // using session_cpp::CurveInterpStyle;
 
         const std::vector<Point> points = {
             Point(14, 9, 0),
@@ -110,6 +117,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Create From Parameters") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> p4 = {
             Point(0, 0, 0),
@@ -171,6 +180,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Create Fitted") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         std::vector<Point> pts;
 
@@ -202,6 +213,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Join") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Primitives;
 
         const NurbsCurve arc1 = Primitives::arc(Point(-1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 0.0, 0.0));
         NurbsCurve arc2 = Primitives::arc(Point(1.0, 0.0, 0.0), Point(1.5, -1.0, 0.0), Point(1.0, -2.0, 0.0));
@@ -232,6 +246,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Attributes") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Plane;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -395,6 +412,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Conversions") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -431,6 +450,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Evaluation") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+        // using session_cpp::Plane;
 
         const std::vector<Point> points = {
             Point(1.957614, 1.140253, -0.191281),
@@ -542,6 +565,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Modifications") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -644,6 +670,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Transformations") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -677,6 +707,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Json Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -706,6 +739,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Protobuf Roundtrip") {
+        // using session_cpp::Arrowhead;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0.0, 0.0, 0.0),
@@ -734,6 +770,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Curvature") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Primitives;
 
         const double R = 2.0;
         const NurbsCurve circle = Primitives::circle(0, 0, 0, R);
@@ -759,6 +798,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Closest Point") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::Primitives;
+        // using session_cpp::CurveNurbsKnotStyle;
+        // using session_cpp::CurveInterpStyle;
 
         const NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
         const Point cp = circle.closest_point(Point(5, 0, 0));
@@ -804,6 +848,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Length Repeated Knot") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0, 0, 0),
@@ -823,6 +869,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Insert Knot Keeps Shape") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0, 0, 0),
@@ -849,6 +897,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Insert Knot Periodic Wrap") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(2, 0, 0),
@@ -895,6 +945,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Insert Knot Multiplicity Limit") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const std::vector<Point> points = {
             Point(0, 0, 0),
@@ -926,6 +978,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Span Vector Empty") {
+        // using session_cpp::NurbsCurve;
 
         const NurbsCurve curve;
 
@@ -933,6 +986,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Periodic Too Few Points") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         NurbsCurve curve;
         const bool ok = curve.create_periodic_uniform(3, 4, {Point(0, 0, 0), Point(1, 0, 0)});
@@ -941,6 +996,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Polyline Adaptive Closed") {
+        // using session_cpp::Primitives;
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
 
         const NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
         const std::pair<std::vector<Point>, std::vector<double>> polyline = circle.to_polyline_adaptive(0.1, 0.0, 0.0);
@@ -950,6 +1008,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("NurbsCurve", "Circle Length") {
+        // using session_cpp::Primitives;
+        // using session_cpp::NurbsCurve;
 
         const NurbsCurve circle = Primitives::circle(0, 0, 0, 2.0);
 

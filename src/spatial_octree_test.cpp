@@ -8,6 +8,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialOctree", "Constructor") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -22,6 +24,8 @@ MINI_TEST("SpatialOctree", "Constructor") {
 }
 
 MINI_TEST("SpatialOctree", "Node Count") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -34,6 +38,8 @@ MINI_TEST("SpatialOctree", "Node Count") {
 }
 
 MINI_TEST("SpatialOctree", "Node Cube") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -51,6 +57,8 @@ MINI_TEST("SpatialOctree", "Node Cube") {
 }
 
 MINI_TEST("SpatialOctree", "Node Level") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -65,6 +73,8 @@ MINI_TEST("SpatialOctree", "Node Level") {
 }
 
 MINI_TEST("SpatialOctree", "Node Spacing") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -79,6 +89,8 @@ MINI_TEST("SpatialOctree", "Node Spacing") {
 }
 
 MINI_TEST("SpatialOctree", "Node Range") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -93,6 +105,8 @@ MINI_TEST("SpatialOctree", "Node Range") {
 }
 
 MINI_TEST("SpatialOctree", "Children") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -106,6 +120,8 @@ MINI_TEST("SpatialOctree", "Children") {
 }
 
 MINI_TEST("SpatialOctree", "Order") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialOctree;
 
     std::vector<Point> pts;
 
@@ -118,6 +134,7 @@ MINI_TEST("SpatialOctree", "Order") {
 }
 
 MINI_TEST("SpatialOctree", "From Coords") {
+    // using session_cpp::SpatialOctree;
 
     std::vector<double> coords;
 

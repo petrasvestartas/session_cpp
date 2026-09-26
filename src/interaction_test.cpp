@@ -42,6 +42,7 @@ std::shared_ptr<Interaction> named_interaction(const std::string&) {
 } // namespace
 
 MINI_TEST("Interaction", "Constructor") {
+    // using session_cpp::Interaction;
 
     const NamedInteraction unnamed;
     const NamedInteraction glue("glue");
@@ -62,6 +63,7 @@ MINI_TEST("Interaction", "Constructor") {
 }
 
 MINI_TEST("Interaction", "Abstract Base") {
+    // using session_cpp::Interaction;
 
     const std::shared_ptr<Interaction> glue = std::make_shared<NamedInteraction>("glue");
 
@@ -70,6 +72,7 @@ MINI_TEST("Interaction", "Abstract Base") {
 }
 
 MINI_TEST("Interaction", "Json Roundtrip") {
+    // using session_cpp::Interaction;
 
     Interaction::register_type("NamedInteraction", named_interaction);
     const NamedInteraction glue("glue");
@@ -90,6 +93,7 @@ MINI_TEST("Interaction", "Json Roundtrip") {
 }
 
 MINI_TEST("Interaction", "Protobuf Roundtrip") {
+    // using session_cpp::Interaction;
 
     Interaction::register_type("NamedInteraction", named_interaction);
     const NamedInteraction glue("glue");
@@ -110,6 +114,8 @@ MINI_TEST("Interaction", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Interaction", "Registry Unknown Type") {
+    // using session_cpp::Interaction;
+    // using session_cpp::InteractionUnknown;
 
     session_proto::Interaction proto = NamedInteraction("mystery").to_proto();
     proto.set_interaction_type("NeverRegistered");

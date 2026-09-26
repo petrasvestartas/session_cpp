@@ -29,6 +29,10 @@ Mesh empty_mesh(Mesh) {
 } // namespace
 
 MINI_TEST("Element", "Constructor") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -66,6 +70,11 @@ MINI_TEST("Element", "Constructor") {
 }
 
 MINI_TEST("Element", "Place") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::VertexData;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -94,6 +103,13 @@ MINI_TEST("Element", "Place") {
 }
 
 MINI_TEST("Element", "Place Moves Features") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -119,6 +135,11 @@ MINI_TEST("Element", "Place Moves Features") {
 }
 
 MINI_TEST("Element", "Add Geometry Op") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -142,6 +163,10 @@ MINI_TEST("Element", "Add Geometry Op") {
 }
 
 MINI_TEST("Element", "AABB") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::OBB;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -167,6 +192,10 @@ MINI_TEST("Element", "AABB") {
 }
 
 MINI_TEST("Element", "OBB") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::OBB;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -185,6 +214,10 @@ MINI_TEST("Element", "OBB") {
 }
 
 MINI_TEST("Element", "Session Geometry Mesh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -205,6 +238,10 @@ MINI_TEST("Element", "Session Geometry Mesh") {
 }
 
 MINI_TEST("Element", "Element Geometry Mesh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
     const Element element(mesh);
@@ -217,6 +254,9 @@ MINI_TEST("Element", "Element Geometry Mesh") {
 }
 
 MINI_TEST("Element", "Element Geometry Brep") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
 
     const BRep brep = BRep::create_box(1.0, 1.0, 1.0);
     const Element element(brep);
@@ -229,6 +269,10 @@ MINI_TEST("Element", "Element Geometry Brep") {
 }
 
 MINI_TEST("Element", "Model Geometry Mesh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
     Element element(mesh);
@@ -258,6 +302,10 @@ MINI_TEST("Element", "Model Geometry Mesh") {
 }
 
 MINI_TEST("Element", "Model Geometry Brep") {
+    // using session_cpp::BRep;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     Element element(BRep::create_box(1.0, 1.0, 1.0));
     const BRep& model = element.model_geometry_brep();
@@ -278,6 +326,10 @@ MINI_TEST("Element", "Model Geometry Brep") {
 }
 
 MINI_TEST("Element", "Geometry Mesh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
     const Element element(mesh);
@@ -292,6 +344,9 @@ MINI_TEST("Element", "Geometry Mesh") {
 }
 
 MINI_TEST("Element", "Geometry Brep") {
+    // using session_cpp::Mesh;
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
 
     const Element element(BRep::create_box(1.0, 1.0, 1.0));
     const Element empty;
@@ -305,6 +360,9 @@ MINI_TEST("Element", "Geometry Brep") {
 }
 
 MINI_TEST("Element", "Session Geometry Brep") {
+    // using session_cpp::BRep;
+    // using session_cpp::Xform;
+    // using session_cpp::Element;
 
     const Element element(BRep::create_box(1.0, 1.0, 1.0));
     const Xform xform = Xform::translation(10.0, 20.0, 30.0);
@@ -317,6 +375,9 @@ MINI_TEST("Element", "Session Geometry Brep") {
 }
 
 MINI_TEST("Element", "Compute Geometry Mesh") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh mesh = Mesh::from_vertices_and_faces({Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0)}, {{0, 1, 2}});
     Element element(mesh);
@@ -338,6 +399,8 @@ MINI_TEST("Element", "Compute Geometry Mesh") {
 }
 
 MINI_TEST("Element", "Compute Geometry Brep") {
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
 
     Element element(BRep::create_box(1.0, 1.0, 1.0));
     element.compute_geometry_brep();
@@ -355,6 +418,9 @@ MINI_TEST("Element", "Compute Geometry Brep") {
 }
 
 MINI_TEST("Element", "Reset") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -378,6 +444,9 @@ MINI_TEST("Element", "Reset") {
 }
 
 MINI_TEST("Element", "Compute Point") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -397,6 +466,10 @@ MINI_TEST("Element", "Compute Point") {
 }
 
 MINI_TEST("Element", "Brep Aabb") {
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     const BRep b = BRep::create_box(2.0, 3.0, 4.0);
     Element e(b, "brep_element");
@@ -412,6 +485,9 @@ MINI_TEST("Element", "Brep Aabb") {
 }
 
 MINI_TEST("Element", "Json Roundtrip") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -434,6 +510,8 @@ MINI_TEST("Element", "Json Roundtrip") {
 }
 
 MINI_TEST("Element", "Protobuf Roundtrip") {
+    // using session_cpp::BRep;
+    // using session_cpp::Element;
 
     const BRep b = BRep::create_box(2.0, 3.0, 4.0);
     const Element e(b, "proto_test");
@@ -452,6 +530,10 @@ MINI_TEST("Element", "Protobuf Roundtrip") {
 // Element - Polylines
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Element", "Polylines") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -479,6 +561,11 @@ MINI_TEST("Element", "Polylines") {
 }
 
 MINI_TEST("Element", "Set Polylines Sticks") {
+    // using session_cpp::Mesh;
+    // using session_cpp::Element;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Mesh m = Mesh::from_vertices_and_faces(
         {
@@ -499,12 +586,15 @@ MINI_TEST("Element", "Set Polylines Sticks") {
 }
 
 MINI_TEST("Element", "Polylines Empty Without Mesh") {
+    // using session_cpp::Element;
 
     MINI_CHECK(Element("no_geometry").polylines().empty());
     MINI_CHECK(Element("no_geometry").planes().empty());
 }
 
 MINI_TEST("Element", "Planes Without Geometry Call") {
+    // using session_cpp::Element;
+    // using session_cpp::Mesh;
 
     Element e(Mesh::create_box(1.0, 1.0, 1.0));
     const bool before = e.geometry_synced();
@@ -604,6 +694,7 @@ std::shared_ptr<Element> explode(const std::string&) {
 } // namespace
 
 MINI_TEST("Element", "Registry Round Trip") {
+    // using session_cpp::Element;
 
     TestPlate::register_with_kernel();
 
@@ -629,6 +720,7 @@ MINI_TEST("Element", "Registry Round Trip") {
 }
 
 MINI_TEST("Element", "Registry Unknown Type Degrades") {
+    // using session_cpp::Element;
 
     MINI_CHECK(!Element::is_registered("NeverRegistered"));
 
@@ -647,6 +739,11 @@ MINI_TEST("Element", "Registry Unknown Type Degrades") {
 }
 
 MINI_TEST("Element", "Features Round Trip") {
+    // using session_cpp::Element;
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     Element e(unit_quad(), "plate_0");
     e.set_insertion_vectors({Vector(0, 0, 1), Vector(1, 0, 0)});
@@ -672,6 +769,9 @@ MINI_TEST("Element", "Features Round Trip") {
 }
 
 MINI_TEST("Element", "Dimensions Are Nominal Not Measured") {
+    // using session_cpp::Element;
+    // using session_cpp::Vector;
+    // using session_cpp::OBB;
 
     Element e(unit_quad(), "plate");
 
@@ -685,6 +785,7 @@ MINI_TEST("Element", "Dimensions Are Nominal Not Measured") {
 }
 
 MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
+    // using session_cpp::Element;
 
     const Element e(unit_quad(), "plain");
     session_proto::Element proto;
@@ -697,6 +798,7 @@ MINI_TEST("Element", "Registry Leaves Base Bytes Unchanged") {
 }
 
 MINI_TEST("Element", "Registry Json Round Trip") {
+    // using session_cpp::Element;
 
     TestPlate::register_with_kernel();
 
@@ -714,6 +816,7 @@ MINI_TEST("Element", "Registry Json Round Trip") {
 }
 
 MINI_TEST("Element", "Throwing Factory Degrades To Base") {
+    // using session_cpp::Element;
 
     Element::register_type("Exploding", explode);
 
@@ -731,6 +834,7 @@ MINI_TEST("Element", "Throwing Factory Degrades To Base") {
 }
 
 MINI_TEST("Element", "Unknown Type Survives Resave") {
+    // using session_cpp::Element;
 
     session_proto::Element proto;
 
@@ -754,6 +858,9 @@ MINI_TEST("Element", "Unknown Type Survives Resave") {
 }
 
 MINI_TEST("Element", "Duplicate Keeps Every Field") {
+    // using session_cpp::Element;
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Vector;
 
     Element e(unit_quad(), "original");
     e.set_insertion_vectors({Vector(0, 0, 1)});
@@ -772,6 +879,8 @@ MINI_TEST("Element", "Duplicate Keeps Every Field") {
 }
 
 MINI_TEST("Element", "Equality Compares Carried Fields") {
+    // using session_cpp::Element;
+    // using session_cpp::Vector;
 
     Element a(unit_quad(), "same");
     Element b(unit_quad(), "same");
@@ -787,6 +896,9 @@ MINI_TEST("Element", "Equality Compares Carried Fields") {
 // ElementFeature
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("ElementFeature", "Constructor") {
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline outline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)});
     const ElementFeature f("cut", 2, {outline}, "notch");
@@ -822,6 +934,9 @@ MINI_TEST("ElementFeature", "Constructor") {
 }
 
 MINI_TEST("ElementFeature", "Json Roundtrip") {
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     ElementFeature f("cut", 2, {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "notch");
     f.visible = false;
@@ -839,6 +954,9 @@ MINI_TEST("ElementFeature", "Json Roundtrip") {
 }
 
 MINI_TEST("ElementFeature", "Protobuf Roundtrip") {
+    // using session_cpp::ElementFeature;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     ElementFeature f("drill", 5, {Polyline({Point(0, 0, 0), Point(1, 0, 0), Point(1, 1, 0), Point(0, 0, 0)})}, "hole");
     f.visible = false;

@@ -8,6 +8,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialKDTree", "Constructor") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialKDTree;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -23,6 +25,8 @@ MINI_TEST("SpatialKDTree", "Constructor") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialKDTree;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -41,6 +45,8 @@ MINI_TEST("SpatialKDTree", "Nearest") {
 }
 
 MINI_TEST("SpatialKDTree", "Nearest K") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialKDTree;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),
@@ -61,6 +67,8 @@ MINI_TEST("SpatialKDTree", "Nearest K") {
 }
 
 MINI_TEST("SpatialKDTree", "Radius Search") {
+    // using session_cpp::Point;
+    // using session_cpp::SpatialKDTree;
 
     const std::vector<Point> pts = {
         Point(0.0, 0.0, 0.0),

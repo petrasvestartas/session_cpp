@@ -19,6 +19,12 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Point;
+    // using session_cpp::TrimLoops;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     NurbsSurfaceTrimmed trimmed;
     trimmed.m_surface = NurbsSurface::create(
@@ -56,6 +62,12 @@ MINI_TEST("NurbsSurfaceTrimmed", "Singular Planar Normal") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Point;
+    // using session_cpp::TrimLoops;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     NurbsSurfaceTrimmed ts;
     ts.m_surface = NurbsSurface::create(
@@ -135,6 +147,13 @@ MINI_TEST("NurbsSurfaceTrimmed", "Crease Loops") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::TrimLoops;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     const NurbsSurface planar = NurbsSurface::create(
         false,
@@ -230,6 +249,10 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh Loops") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0.0, 0.0, 0.0));
@@ -270,6 +293,9 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Constructor Planar") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     std::vector<Point> pts = {
         Point(0, 0, 0),
@@ -379,6 +405,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Planar") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Constructor Hole") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Primitives;
 
     int n = 8;
     std::vector<Point> pts;
@@ -416,6 +447,10 @@ MINI_TEST("NurbsSurfaceTrimmed", "Constructor Hole") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Accessors") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -451,6 +486,10 @@ MINI_TEST("NurbsSurfaceTrimmed", "Accessors") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -506,6 +545,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Add Inner Loop") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Point At") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Vector;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -541,6 +585,12 @@ MINI_TEST("NurbsSurfaceTrimmed", "Point At") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -611,6 +661,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Mesh") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Split By UV Curves") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurfaceTrimmed;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
 
     const NurbsSurface srf = Primitives::wave_surface(10.0, 1.0);
     const std::pair<double, double> dom_u = srf.domain(0);
@@ -643,6 +698,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Split By UV Curves") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -675,6 +735,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Transformation") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Json Roundtrip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Color;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));
@@ -717,6 +782,11 @@ MINI_TEST("NurbsSurfaceTrimmed", "Json Roundtrip") {
 }
 
 MINI_TEST("NurbsSurfaceTrimmed", "Protobuf Roundtrip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Color;
+    // using session_cpp::NurbsSurfaceTrimmed;
 
     NurbsSurface srf(3, false, 2, 2, 2, 2);
     srf.set_cv(0, 0, Point(0, 0, 0));

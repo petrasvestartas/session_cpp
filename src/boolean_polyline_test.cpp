@@ -13,6 +13,9 @@ namespace session_cpp {
 static constexpr double PI2 = 6.283185307179586476;
 
 MINI_TEST("Boolean Polyline", "Overlapping Squares") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline a({
         Point(-1, -1, 0),
@@ -62,6 +65,8 @@ MINI_TEST("Boolean Polyline", "Overlapping Squares") {
 }
 
 MINI_TEST("Boolean Polyline", "Circle Vs Rectangle") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Point> pts;
 
@@ -92,6 +97,8 @@ MINI_TEST("Boolean Polyline", "Circle Vs Rectangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Star Vs Circle") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Point> star_pts;
 
@@ -125,6 +132,8 @@ MINI_TEST("Boolean Polyline", "Star Vs Circle") {
 }
 
 MINI_TEST("Boolean Polyline", "L Shape Vs Rectangle") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline l_shape({
         Point(15, -1, 0),
@@ -155,6 +164,8 @@ MINI_TEST("Boolean Polyline", "L Shape Vs Rectangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Two Large Circles") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Point> pts_a;
     std::vector<Point> pts_b;
@@ -182,6 +193,8 @@ MINI_TEST("Boolean Polyline", "Two Large Circles") {
 }
 
 MINI_TEST("Boolean Polyline", "Diamond Vs Triangle") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline diamond({
         Point(28, 0, 0),
@@ -209,6 +222,8 @@ MINI_TEST("Boolean Polyline", "Diamond Vs Triangle") {
 }
 
 MINI_TEST("Boolean Polyline", "Star Vs Star") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Point> pts_a;
 
@@ -243,6 +258,8 @@ MINI_TEST("Boolean Polyline", "Star Vs Star") {
 }
 
 MINI_TEST("Boolean Polyline", "Cross Shape") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline narrow({
         Point(42, -2, 0),
@@ -271,6 +288,8 @@ MINI_TEST("Boolean Polyline", "Cross Shape") {
 }
 
 MINI_TEST("Boolean Polyline", "Concave Arrow Vs Circle") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline arrow({
         Point(49, 0, 0),
@@ -304,6 +323,8 @@ MINI_TEST("Boolean Polyline", "Concave Arrow Vs Circle") {
 }
 
 MINI_TEST("Boolean Polyline", "Two Large Circles 1000") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     std::vector<Point> pts_a;
     std::vector<Point> pts_b;
@@ -331,6 +352,8 @@ MINI_TEST("Boolean Polyline", "Two Large Circles 1000") {
 }
 
 MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline a({
         Point(64e6, 1e6, 0),
@@ -359,6 +382,11 @@ MINI_TEST("Boolean Polyline", "Large Coords Auto Scale") {
 }
 
 MINI_TEST("Boolean Polyline", "Regions") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Plane plane = Plane::xy_plane();
     const Polyline outer = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 10.0, 10.0);
@@ -383,6 +411,11 @@ MINI_TEST("Boolean Polyline", "Regions") {
 }
 
 MINI_TEST("Boolean Polyline", "Regions Orientation") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Plane plane = Plane::xy_plane();
     const Polyline outer = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 10.0, 10.0);
@@ -401,6 +434,10 @@ MINI_TEST("Boolean Polyline", "Regions Orientation") {
 }
 
 MINI_TEST("Boolean Polyline", "Adjacent Rectangles") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 1.0);
     const Polyline b = Polyline::rectangle(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 1.0);
@@ -418,6 +455,10 @@ MINI_TEST("Boolean Polyline", "Adjacent Rectangles") {
 }
 
 MINI_TEST("Boolean Polyline", "Partial Shared Edge") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 2.0);
     const Polyline b = Polyline::rectangle(Point(2.0, 1.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 2.0);
@@ -435,6 +476,10 @@ MINI_TEST("Boolean Polyline", "Partial Shared Edge") {
 }
 
 MINI_TEST("Boolean Polyline", "Collinear Overlap") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 1.0);
     const Polyline b = Polyline::rectangle(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 1.0);
@@ -459,6 +504,10 @@ MINI_TEST("Boolean Polyline", "Collinear Overlap") {
 }
 
 MINI_TEST("Boolean Polyline", "T Junction") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
+    // using session_cpp::Vector;
 
     const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 4.0, 1.0);
     const Polyline b = Polyline::rectangle(Point(1.0, 1.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 2.0);
@@ -476,6 +525,9 @@ MINI_TEST("Boolean Polyline", "T Junction") {
 }
 
 MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline open_line({
         Point(-2, 0, 0),
@@ -503,6 +555,9 @@ MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
 }
 
 MINI_TEST("Boolean Polyline Open", "Diagonal Line Vs Unit Square") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline open_line({
         Point(-2, -2, 0),
@@ -528,6 +583,9 @@ MINI_TEST("Boolean Polyline Open", "Diagonal Line Vs Unit Square") {
 }
 
 MINI_TEST("Boolean Polyline Open", "Interior Open Path Passes Through") {
+    // using session_cpp::BooleanPolyline;
+    // using session_cpp::Point;
+    // using session_cpp::Polyline;
 
     const Polyline open_path({
         Point(-2, 0, 0),

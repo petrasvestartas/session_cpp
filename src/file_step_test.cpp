@@ -24,6 +24,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsCurve Round Trip") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_step_nurbscurve.step");
         const std::vector<Point> pts = {
@@ -74,6 +77,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsCurve Rational Round Trip") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_step_nurbscurve_rat.step");
         NurbsCurve nc(3, true, 3, 3);
@@ -131,6 +136,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsSurface Round Trip") {
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::Point;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_step_nurbssurface.step");
         std::vector<Point> pts;
@@ -188,6 +196,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsSurface Rational Round Trip") {
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_step_nurbssurface_rat.step");
         NurbsSurface srf(3, true, 3, 3, 3, 3);
@@ -248,6 +258,11 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsSurfaceTrimmed Round Trip") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::NurbsSurfaceTrimmed;
+        // using session_cpp::Point;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_step_nurbssurface_trimmed.step");
         std::vector<Point> pts;
@@ -302,6 +317,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "NurbsSurfaceTrimmed Read Vertex") {
+        // using session_cpp::file_step;
+        // using session_cpp::NurbsSurfaceTrimmed;
+        // using session_cpp::Point;
 
         const std::string path = serialization_path("test_step_trimmed_vertex.step");
         const std::string text =
@@ -344,6 +362,10 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "BRep Read Schoring") {
+        // using session_cpp::file_step;
+        // using session_cpp::BRep;
+        // using session_cpp::BRepEdge;
+        // using session_cpp::Point;
 
         const std::filesystem::path step_path = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() /
             "session_data" / "elements" / "schoring_foot_0.step";
@@ -385,6 +407,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("FileStep", "BRep Round Trip") {
+        // using session_cpp::BRep;
+        // using session_cpp::file_step;
 
         const std::string path = serialization_path("test_brep_roundtrip.step");
         BRep cyl = BRep::create_cylinder(1.0, 2.0);

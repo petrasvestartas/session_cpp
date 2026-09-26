@@ -13,6 +13,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialBVH", "Constructor") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -27,6 +30,7 @@ MINI_TEST("SpatialBVH", "Constructor") {
 }
 
 MINI_TEST("SpatialBVH", "Expand Bits") {
+    // using session_cpp::expand_bits;
 
     MINI_CHECK(expand_bits(0) == 0);
     MINI_CHECK(expand_bits(1) == 1);
@@ -39,6 +43,7 @@ MINI_TEST("SpatialBVH", "Expand Bits") {
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Origin") {
+    // using session_cpp::calculate_morton_code;
 
     const uint32_t code = calculate_morton_code(0.0, 0.0, 0.0, 100.0);
 
@@ -46,6 +51,7 @@ MINI_TEST("SpatialBVH", "Morton Code Origin") {
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Corners") {
+    // using session_cpp::calculate_morton_code;
 
     const uint32_t code_min = calculate_morton_code(-50.0, -50.0, -50.0, 100.0);
 
@@ -57,6 +63,7 @@ MINI_TEST("SpatialBVH", "Morton Code Corners") {
 }
 
 MINI_TEST("SpatialBVH", "Morton Code Spatial Locality") {
+    // using session_cpp::calculate_morton_code;
 
     const uint32_t code1 = calculate_morton_code(10.0, 10.0, 10.0);
     const uint32_t code2 = calculate_morton_code(10.1, 10.1, 10.1);
@@ -68,6 +75,7 @@ MINI_TEST("SpatialBVH", "Morton Code Spatial Locality") {
 }
 
 MINI_TEST("SpatialBVH", "Node Creation") {
+    // using session_cpp::SpatialBVH::Node;
 
     const SpatialBVH::Node node;
 
@@ -78,6 +86,7 @@ MINI_TEST("SpatialBVH", "Node Creation") {
 }
 
 MINI_TEST("SpatialBVH", "Node Leaf") {
+    // using session_cpp::SpatialBVH::Node;
 
     SpatialBVH::Node node;
 
@@ -89,6 +98,7 @@ MINI_TEST("SpatialBVH", "Node Leaf") {
 }
 
 MINI_TEST("SpatialBVH", "Creation") {
+    // using session_cpp::SpatialBVH;
 
     const SpatialBVH bvh(100.0);
 
@@ -99,6 +109,8 @@ MINI_TEST("SpatialBVH", "Creation") {
 }
 
 MINI_TEST("SpatialBVH", "Build Empty") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes;
     const SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
@@ -107,6 +119,9 @@ MINI_TEST("SpatialBVH", "Build Empty") {
 }
 
 MINI_TEST("SpatialBVH", "Build Single") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0))};
     const SpatialBVH bvh = SpatialBVH::from_boxes(boxes, 100.0);
@@ -117,6 +132,9 @@ MINI_TEST("SpatialBVH", "Build Single") {
 }
 
 MINI_TEST("SpatialBVH", "Build Multiple") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(-10.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -132,6 +150,9 @@ MINI_TEST("SpatialBVH", "Build Multiple") {
 }
 
 MINI_TEST("SpatialBVH", "Aabb Intersect") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const SpatialBVH bvh(100.0);
     const OBB bbox1 = OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0));
@@ -144,6 +165,9 @@ MINI_TEST("SpatialBVH", "Aabb Intersect") {
 }
 
 MINI_TEST("SpatialBVH", "Check All Collisions") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -165,6 +189,9 @@ MINI_TEST("SpatialBVH", "Check All Collisions") {
 }
 
 MINI_TEST("SpatialBVH", "Nearest Neighbors") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -187,6 +214,9 @@ MINI_TEST("SpatialBVH", "Nearest Neighbors") {
 }
 
 MINI_TEST("SpatialBVH", "Merge Aabb") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const SpatialBVH bvh(100.0);
     const OBB bbox1 = OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0));
@@ -198,6 +228,10 @@ MINI_TEST("SpatialBVH", "Merge Aabb") {
 }
 
 MINI_TEST("SpatialBVH", "Fixed 100 Boxes") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
 
     const std::vector<std::array<double, 6>> corners = {
         {-53.1254, -0.98185, 20.5516, -46.8089, 5.89927, 26.5331},
@@ -326,6 +360,9 @@ MINI_TEST("SpatialBVH", "Fixed 100 Boxes") {
 }
 
 MINI_TEST("SpatialBVH", "Query Aabb") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -345,6 +382,9 @@ MINI_TEST("SpatialBVH", "Query Aabb") {
 }
 
 MINI_TEST("SpatialBVH", "Build From Boxes") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -361,6 +401,8 @@ MINI_TEST("SpatialBVH", "Build From Boxes") {
 }
 
 MINI_TEST("SpatialBVH", "Build From Aabbs") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
 
     const std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 2.0, 2.0, 2.0),
@@ -377,6 +419,9 @@ MINI_TEST("SpatialBVH", "Build From Aabbs") {
 }
 
 MINI_TEST("SpatialBVH", "Build With Guids") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<std::pair<OBB, std::string>> boxes_with_guids = {
         {OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)), "a"},
@@ -392,6 +437,9 @@ MINI_TEST("SpatialBVH", "Build With Guids") {
 }
 
 MINI_TEST("SpatialBVH", "Check All Collisions Guids") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -413,6 +461,9 @@ MINI_TEST("SpatialBVH", "Check All Collisions Guids") {
 }
 
 MINI_TEST("SpatialBVH", "Find Collisions") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
@@ -429,6 +480,11 @@ MINI_TEST("SpatialBVH", "Find Collisions") {
 }
 
 MINI_TEST("SpatialBVH", "Ray Cast") {
+    // using session_cpp::SpatialBVH;
+    // using session_cpp::AABB;
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
 
     const std::vector<OBB> boxes = {
         OBB::from_aabb(AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),

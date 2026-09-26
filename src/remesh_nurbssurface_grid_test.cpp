@@ -14,6 +14,11 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     const NurbsSurface surface = NurbsSurface::create(
         false,
@@ -51,6 +56,11 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Singular Planar Normal") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Crease Normals") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     const NurbsSurface surface = NurbsSurface::create(
         false,
@@ -95,6 +105,11 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Crease Normals") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Analytic Normals") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     const std::vector<NurbsSurface> surfaces = {
         Primitives::sphere_surface(0.0, 0.0, 0.0, 1.0),
@@ -124,6 +139,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Analytic Normals") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::sphere_surface(0, 0, 0, 1.0);
     const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
@@ -134,6 +153,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere Few Rows") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::sphere_surface(0, 0, 0, 1.0);
     const Mesh one = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 1);
@@ -148,6 +171,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Sphere Few Rows") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::torus_surface(0, 0, 0, 3.0, 1.0);
     const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
@@ -158,6 +185,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Torus") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cylinder") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
@@ -168,6 +199,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Cylinder") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Cone") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::cone_surface(0, 0, 0, 1.0, 5.0);
     const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
@@ -178,6 +213,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Cone") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Doubly Curved") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::wave_surface(1.0, 0.5);
     const Mesh mesh = RemeshNurbsSurfaceGrid::from_u_v(surface, 0, 0);
@@ -188,6 +227,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Doubly Curved") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = Primitives::wave_surface(1.0, 0.5);
     const Mesh mesh_lo = RemeshNurbsSurfaceGrid::from_u_v(surface, 8, 8);
@@ -200,6 +243,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Grid Target") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = NurbsSurface::create(
         false,
@@ -223,6 +270,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Quad") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = NurbsSurface::create(
         false,
@@ -246,6 +297,10 @@ MINI_TEST("RemeshNurbsSurfaceGrid", "Flat Triangle") {
 }
 
 MINI_TEST("RemeshNurbsSurfaceGrid", "Double-Curved Triangle") {
+    // using session_cpp::RemeshNurbsSurfaceGrid;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Mesh;
 
     const NurbsSurface surface = NurbsSurface::create(
         false,

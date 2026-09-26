@@ -14,6 +14,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
     MINI_TEST("Plane", "Constructor") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Plane pl;
 
@@ -86,6 +89,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Is Valid") {
+        // using session_cpp::Plane;
 
         const Plane pl = Plane::xy_plane();
         const Plane invalid = Plane::invalid();
@@ -95,6 +99,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Reverse") {
+        // using session_cpp::Plane;
 
         Plane pl = Plane::xy_plane();
         pl.reverse();
@@ -107,6 +112,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Rotate") {
+        // using session_cpp::Plane;
 
         Plane pl = Plane::xy_plane();
         pl.rotate(Tolerance::PI / 2.0);
@@ -115,6 +121,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Is Right Hand") {
+        // using session_cpp::Plane;
 
         const Plane xy = Plane::xy_plane();
         const Plane yz = Plane::yz_plane();
@@ -126,6 +133,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Is Same Direction") {
+        // using session_cpp::Plane;
 
         const Plane p1 = Plane::xy_plane();
         const Plane p2 = Plane::xy_plane();
@@ -138,6 +146,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Is Same Position") {
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         const Plane p1 = Plane::xy_plane();
         Plane p2 = Plane::xy_plane();
@@ -148,6 +158,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Is Coplanar") {
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         const Plane p1 = Plane::xy_plane();
         const Plane p2 = Plane::xy_plane();
@@ -159,6 +171,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Translate By Normal") {
+        // using session_cpp::Plane;
 
         const Plane pl = Plane::xy_plane();
         const Plane moved = pl.translate_by_normal(5.0);
@@ -168,6 +181,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Base1 Base2") {
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
 
         const Plane xy = Plane::xy_plane();
         const Vector b1 = xy.base1();
@@ -181,6 +196,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Transform") {
+        // using session_cpp::Plane;
+        // using session_cpp::Xform;
 
         Plane pl = Plane::xy_plane();
         const Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
@@ -192,6 +209,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Transformed") {
+        // using session_cpp::Plane;
+        // using session_cpp::Xform;
 
         const Plane pl = Plane::xy_plane();
         const Xform pl_xf = Xform::translation(1.0, 2.0, 3.0);
@@ -204,6 +223,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Json Roundtrip") {
+        // using session_cpp::Plane;
 
         Plane pl = Plane::xy_plane();
         pl.name = "test_plane";
@@ -223,6 +243,7 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Protobuf Roundtrip") {
+        // using session_cpp::Plane;
 
         const Plane fresh;
         const session_proto::Plane fresh_proto = fresh.to_proto();
@@ -249,6 +270,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Has On Negative Side") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
 
         const Plane pl = Plane::xy_plane();
         const Point above(0.0, 0.0, 1.0);
@@ -259,6 +282,8 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Squared Distance") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
 
         const Plane pl = Plane::xy_plane();
         const Point above(1.0, 2.0, 3.0);
@@ -269,6 +294,9 @@ namespace session_cpp {
     }
 
     MINI_TEST("Plane", "Axis Point") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
 
         const Plane pl = Plane::from_point_normal(Point(1.0, 2.0, 3.0), Vector(0.0, 0.0, 1.0));
         const Point p = pl.axis_point();

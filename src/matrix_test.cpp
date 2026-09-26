@@ -17,6 +17,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Matrix", "Constructor") {
+    // using session_cpp::Matrix;
 
     const Matrix m = Matrix::zeros(2, 3);
     const Matrix eye = Matrix::identity(3);
@@ -51,6 +52,7 @@ MINI_TEST("Matrix", "Constructor") {
 }
 
 MINI_TEST("Matrix", "Properties") {
+    // using session_cpp::Matrix;
 
     const Matrix m1 = Matrix::identity(3);
     const Matrix m2 = Matrix::zeros(2, 3);
@@ -70,6 +72,7 @@ MINI_TEST("Matrix", "Properties") {
 }
 
 MINI_TEST("Matrix", "Add") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     const Matrix b = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
@@ -80,6 +83,7 @@ MINI_TEST("Matrix", "Add") {
 }
 
 MINI_TEST("Matrix", "Subtract") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {5.0, 6.0, 7.0, 8.0});
     const Matrix b = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
@@ -90,6 +94,7 @@ MINI_TEST("Matrix", "Subtract") {
 }
 
 MINI_TEST("Matrix", "Scale") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {1.0, 2.0, 3.0, 4.0});
     const Matrix b = a * 2.0;
@@ -100,6 +105,7 @@ MINI_TEST("Matrix", "Scale") {
 }
 
 MINI_TEST("Matrix", "Multiply") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     const Matrix b = Matrix::from_vec(3, 2, {7.0, 8.0, 9.0, 10.0, 11.0, 12.0});
@@ -111,6 +117,7 @@ MINI_TEST("Matrix", "Multiply") {
 }
 
 MINI_TEST("Matrix", "Transpose") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     const Matrix t = a.transpose();
@@ -121,6 +128,7 @@ MINI_TEST("Matrix", "Transpose") {
 }
 
 MINI_TEST("Matrix", "Determinant") {
+    // using session_cpp::Matrix;
 
     const Matrix a1 = Matrix::from_vec(1, 1, {5.0});
     const Matrix a2 = Matrix::from_vec(2, 2, {4.0, 7.0, 2.0, 6.0});
@@ -134,6 +142,7 @@ MINI_TEST("Matrix", "Determinant") {
 }
 
 MINI_TEST("Matrix", "Inverse") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {4.0, 7.0, 2.0, 6.0});
     const std::optional<Matrix> inv = a.inverse();
@@ -152,6 +161,7 @@ MINI_TEST("Matrix", "Inverse") {
 }
 
 MINI_TEST("Matrix", "Solve") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {2.0, 1.0, 1.0, 3.0});
     const Matrix b = Matrix::from_vec(2, 1, {5.0, 10.0});
@@ -169,6 +179,7 @@ MINI_TEST("Matrix", "Solve") {
 }
 
 MINI_TEST("Matrix", "Lu Decompose") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(3, 3, {2.0, 1.0, 1.0, 4.0, 3.0, 3.0, 8.0, 7.0, 9.0});
     Matrix lower;
@@ -186,6 +197,7 @@ MINI_TEST("Matrix", "Lu Decompose") {
 }
 
 MINI_TEST("Matrix", "Qr Decompose") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(3, 3, {12.0, -51.0, 4.0, 6.0, 167.0, -68.0, -4.0, 24.0, -41.0});
     Matrix q;
@@ -205,6 +217,7 @@ MINI_TEST("Matrix", "Qr Decompose") {
 }
 
 MINI_TEST("Matrix", "Cholesky") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(3, 3, {4.0, 2.0, 2.0, 2.0, 5.0, 3.0, 2.0, 3.0, 6.0});
     const std::optional<Matrix> lower = a.cholesky();
@@ -223,6 +236,7 @@ MINI_TEST("Matrix", "Cholesky") {
 }
 
 MINI_TEST("Matrix", "Eigenvalues") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(3, 3, {3.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0});
     std::vector<double> evs = a.eigenvalues();
@@ -238,6 +252,7 @@ MINI_TEST("Matrix", "Eigenvalues") {
 }
 
 MINI_TEST("Matrix", "Svd") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(3, 3, {1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0});
     std::vector<double> sv;
@@ -252,6 +267,7 @@ MINI_TEST("Matrix", "Svd") {
 }
 
 MINI_TEST("Matrix", "Norms") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::from_vec(2, 2, {1.0, -2.0, 3.0, -4.0});
     const double nf = a.norm_frobenius();
@@ -264,6 +280,7 @@ MINI_TEST("Matrix", "Norms") {
 }
 
 MINI_TEST("Matrix", "Rank") {
+    // using session_cpp::Matrix;
 
     const Matrix a = Matrix::identity(3);
     const Matrix b = Matrix::from_vec(3, 3, {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0});
@@ -275,6 +292,7 @@ MINI_TEST("Matrix", "Rank") {
 }
 
 MINI_TEST("Matrix", "Json Roundtrip") {
+    // using session_cpp::Matrix;
 
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
@@ -290,6 +308,7 @@ MINI_TEST("Matrix", "Json Roundtrip") {
 }
 
 MINI_TEST("Matrix", "Protobuf Roundtrip") {
+    // using session_cpp::Matrix;
 
     const Matrix fresh;
     const session_proto::Matrix fresh_proto = fresh.to_proto();
@@ -313,6 +332,7 @@ MINI_TEST("Matrix", "Protobuf Roundtrip") {
 }
 
 MINI_TEST("Matrix", "Serialization Errors") {
+    // using session_cpp::Matrix;
 
     const Matrix matrix;
     bool malformed_json = false;
@@ -351,6 +371,7 @@ MINI_TEST("Matrix", "Serialization Errors") {
 }
 
 MINI_TEST("Matrix", "Shape Errors") {
+    // using session_cpp::Matrix;
 
     bool negative = false;
     bool overflow = false;

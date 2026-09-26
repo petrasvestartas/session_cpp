@@ -13,6 +13,8 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("SpatialAABBTree", "Constructor") {
+    // using session_cpp::AABB;
+    // using session_cpp::Closest;
 
     const std::vector<AABB> boxes = {
         AABB(0.0, 0.0, 0.0, 0.5, 0.5, 0.5),
@@ -35,6 +37,7 @@ MINI_TEST("SpatialAABBTree", "Constructor") {
 }
 
 MINI_TEST("SpatialAABBTree", "Build Empty") {
+    // using session_cpp::SpatialAABBTree;
 
     SpatialAABBTree tree;
     tree.build(nullptr, 0);
@@ -43,6 +46,8 @@ MINI_TEST("SpatialAABBTree", "Build Empty") {
 }
 
 MINI_TEST("SpatialAABBTree", "Build Single") {
+    // using session_cpp::AABB;
+    // using session_cpp::SpatialAABBTree;
 
     const AABB aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 
@@ -54,6 +59,8 @@ MINI_TEST("SpatialAABBTree", "Build Single") {
 }
 
 MINI_TEST("SpatialAABBTree", "Build Multiple") {
+    // using session_cpp::AABB;
+    // using session_cpp::SpatialAABBTree;
 
     const std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
@@ -69,6 +76,8 @@ MINI_TEST("SpatialAABBTree", "Build Multiple") {
 }
 
 MINI_TEST("SpatialAABBTree", "Node Count") {
+    // using session_cpp::AABB;
+    // using session_cpp::SpatialAABBTree;
 
     std::vector<AABB> aabbs;
 
@@ -82,6 +91,10 @@ MINI_TEST("SpatialAABBTree", "Node Count") {
 }
 
 MINI_TEST("SpatialAABBTree", "Mesh Point Aabb") {
+    // using session_cpp::Closest;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh m = Primitives::cube(2.0);
 
@@ -98,6 +111,10 @@ MINI_TEST("SpatialAABBTree", "Mesh Point Aabb") {
 }
 
 MINI_TEST("SpatialAABBTree", "Mesh Point Aabb Matches Bvh") {
+    // using session_cpp::Closest;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh m = Primitives::cube(2.0);
     const Point tp(0.3, 0.7, 1.5);
@@ -117,6 +134,8 @@ MINI_TEST("SpatialAABBTree", "Mesh Point Aabb Matches Bvh") {
 }
 
 MINI_TEST("SpatialAABBTree", "Query Aabb") {
+    // using session_cpp::AABB;
+    // using session_cpp::SpatialAABBTree;
 
     const std::vector<AABB> aabbs = {
         AABB(0.0, 0.0, 0.0, 0.5, 0.5, 0.5),

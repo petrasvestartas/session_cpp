@@ -11,6 +11,9 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("MeshOffset", "From Mesh") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -31,6 +34,9 @@ MINI_TEST("MeshOffset", "From Mesh") {
 }
 
 MINI_TEST("MeshOffset", "From Mesh Grid") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -59,6 +65,9 @@ MINI_TEST("MeshOffset", "From Mesh Grid") {
 }
 
 MINI_TEST("MeshOffset", "From Mesh Layers") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -80,6 +89,10 @@ MINI_TEST("MeshOffset", "From Mesh Layers") {
 }
 
 MINI_TEST("MeshOffset", "Offset Planes") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Plane;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -102,6 +115,10 @@ MINI_TEST("MeshOffset", "Offset Planes") {
 }
 
 MINI_TEST("MeshOffset", "Offset Vertices") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Plane;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -135,6 +152,9 @@ MINI_TEST("MeshOffset", "Offset Vertices") {
 }
 
 MINI_TEST("MeshOffset", "Json Roundtrip") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),
@@ -157,6 +177,9 @@ MINI_TEST("MeshOffset", "Json Roundtrip") {
 }
 
 MINI_TEST("MeshOffset", "Protobuf Roundtrip") {
+    // using session_cpp::MeshOffset;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
 
     const std::vector<Point> points = {
         Point(0, 0, 0),

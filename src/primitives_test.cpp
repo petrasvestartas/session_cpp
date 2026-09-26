@@ -19,6 +19,9 @@ namespace session_cpp {
 // Mesh primitives
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Primitives", "Mesh Arrow") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
 
     const Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     const Mesh mesh = Primitives::arrow_mesh(line, 1.0);
@@ -28,6 +31,9 @@ MINI_TEST("Primitives", "Mesh Arrow") {
 }
 
 MINI_TEST("Primitives", "Mesh Cylinder") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Line;
+    // using session_cpp::Mesh;
 
     const Line line(0.0, 0.0, 0.0, 0.0, 0.0, 8.0);
     const Mesh mesh = Primitives::cylinder_mesh(line, 1.0);
@@ -37,6 +43,10 @@ MINI_TEST("Primitives", "Mesh Cylinder") {
 }
 
 MINI_TEST("Primitives", "Mesh Edge Pipes") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
+    // using session_cpp::Point;
+    // using session_cpp::Color;
 
     Mesh mesh;
     const size_t v0 = mesh.add_vertex(Point(0.0, 0.0, 0.0));
@@ -56,6 +66,8 @@ MINI_TEST("Primitives", "Mesh Edge Pipes") {
 // NurbsCurve primitives
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Primitives", "Nurbscurve Polyline") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
 
     const NurbsCurve curve =
         NurbsCurve::create(false, 1, {Point(0, 0, 0), Point(1, 2, 0), Point(2, 0, 0), Point(3, 2, 0), Point(4, 0, 0)});
@@ -69,6 +81,8 @@ MINI_TEST("Primitives", "Nurbscurve Polyline") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Circle") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     const NurbsCurve curve = Primitives::circle(0.0, 0.0, 0.0, 1.0);
 
@@ -78,6 +92,8 @@ MINI_TEST("Primitives", "Nurbscurve Circle") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Ellipse") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     const NurbsCurve curve = Primitives::ellipse(0.0, 0.0, 0.0, 2.0, 1.0);
 
@@ -87,6 +103,9 @@ MINI_TEST("Primitives", "Nurbscurve Ellipse") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Arc") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsCurve;
 
     const Point start(0.0, 0.0, 0.0);
     const Point mid(1.0, 1.0, 0.0);
@@ -99,6 +118,9 @@ MINI_TEST("Primitives", "Nurbscurve Arc") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Parabola") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsCurve;
 
     const Point p0(-1.0, 1.0, 0.0);
     const Point p1(0.0, 0.0, 0.0);
@@ -111,6 +133,9 @@ MINI_TEST("Primitives", "Nurbscurve Parabola") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Hyperbola") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsCurve;
 
     const Point center(0.0, 0.0, 0.0);
     const NurbsCurve curve = Primitives::hyperbola(center, 1.0, 1.0, 1.0);
@@ -121,6 +146,8 @@ MINI_TEST("Primitives", "Nurbscurve Hyperbola") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Spiral") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
 
     const NurbsCurve curve = Primitives::spiral(1.0, 2.0, 1.0, 5.0);
 
@@ -133,6 +160,9 @@ MINI_TEST("Primitives", "Nurbscurve Spiral") {
 // NurbsSurface primitives
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Primitives", "Nurbssurface Cylinder") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const NurbsSurface surface = Primitives::cylinder_surface(0.0, 0.0, 0.0, 1.0, 5.0);
 
@@ -163,6 +193,9 @@ MINI_TEST("Primitives", "Nurbssurface Cylinder") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Cone") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const NurbsSurface surface = Primitives::cone_surface(0.0, 0.0, 0.0, 1.0, 5.0);
 
@@ -193,6 +226,9 @@ MINI_TEST("Primitives", "Nurbssurface Cone") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Torus") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const NurbsSurface surface = Primitives::torus_surface(0.0, 0.0, 0.0, 3.0, 1.0);
 
@@ -223,6 +259,9 @@ MINI_TEST("Primitives", "Nurbssurface Torus") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Sphere") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const NurbsSurface surface = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
 
@@ -259,6 +298,9 @@ MINI_TEST("Primitives", "Nurbssurface Sphere") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const double radius = 5.0;
     const std::vector<NurbsSurface> faces = Primitives::quad_sphere(0.0, 0.0, 0.0, radius);
@@ -325,6 +367,12 @@ MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
 // NurbsSurface factory methods
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Primitives", "Nurbssurface Ruled") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> pts_a = {
         Point(3.0, 0.0, 0.0),
@@ -449,6 +497,11 @@ MINI_TEST("Primitives", "Nurbssurface Ruled") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Planar") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     TOLERANCE.set_absolute(1e-6);
     const double c1 = std::cos(0.7);
@@ -562,6 +615,13 @@ MINI_TEST("Primitives", "Nurbssurface Planar") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Extrusion") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
+    // using session_cpp::VertexData;
 
     const Vector dir(0, 1, 5);
 
@@ -656,6 +716,10 @@ MINI_TEST("Primitives", "Nurbssurface Extrusion") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Loft") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
 
     const NurbsCurve c1 = Primitives::circle(0, 0, 0.0, 2.0);
     const NurbsCurve c2 = Primitives::circle(0, 0, 2.0, 1.0);
@@ -862,6 +926,10 @@ MINI_TEST("Primitives", "Nurbssurface Loft") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Loft Mixed Knots") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
 
     const std::vector<Point> pts_bottom = {
         Point(2.0, 0.0, 0.0),
@@ -920,6 +988,10 @@ MINI_TEST("Primitives", "Nurbssurface Loft Mixed Knots") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Loft Periodic Sections") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
 
     const std::vector<Point> pts_bottom = {
         Point(2.0, 0.0, 0.0),
@@ -953,6 +1025,12 @@ MINI_TEST("Primitives", "Nurbssurface Loft Periodic Sections") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Revolve") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsCurve pa = NurbsCurve::create(
         false,
@@ -1072,6 +1150,11 @@ MINI_TEST("Primitives", "Nurbssurface Revolve") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Sweep") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsCurve rail = NurbsCurve::create(false, 2, {Point(0, 0, 0), Point(0, 5, 0), Point(2, 9, 0)});
     const NurbsCurve profile = Primitives::circle(0, 0, 0, 1.0);
@@ -1334,6 +1417,11 @@ MINI_TEST("Primitives", "Nurbssurface Sweep") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Edge") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const std::vector<Point> pts_south = {
         Point(1, 20.569076, 0),
@@ -1391,6 +1479,9 @@ MINI_TEST("Primitives", "Nurbssurface Edge") {
 // Surface-to-mesh subdivision
 // ═══════════════════════════════════════════════════════════════════════════
 MINI_TEST("Primitives", "Mesh Quad Mesh") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     const Mesh m1 = Primitives::quad_mesh(cyl, 8, 4);
@@ -1408,6 +1499,9 @@ MINI_TEST("Primitives", "Mesh Quad Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Diamond Mesh") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     const Mesh m1 = Primitives::diamond_mesh(cyl, 8, 4);
@@ -1425,6 +1519,9 @@ MINI_TEST("Primitives", "Mesh Diamond Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Hex Mesh") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cyl = Primitives::cylinder_surface(0, 0, 0, 1.0, 5.0);
     const Mesh m1 = Primitives::hex_mesh(cyl, 6, 4, 1.0 / 3.0);
@@ -1442,6 +1539,9 @@ MINI_TEST("Primitives", "Mesh Hex Mesh") {
 }
 
 MINI_TEST("Primitives", "Mesh Cone Subdivisions") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Mesh;
 
     const NurbsSurface cone = Primitives::cone_surface(0, 0, 0, 3.0, 5.0);
 
@@ -1465,6 +1565,10 @@ MINI_TEST("Primitives", "Mesh Cone Subdivisions") {
 }
 
 MINI_TEST("Primitives", "Nurbscurve Interpolated") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Point;
+    // using session_cpp::CurveNurbsKnotStyle;
+    // using session_cpp::NurbsCurve;
 
     const std::vector<Point> points = {
         Point(14, 9, 0),
@@ -1521,6 +1625,8 @@ MINI_TEST("Primitives", "Nurbscurve Interpolated") {
 }
 
 MINI_TEST("Primitives", "Mesh Tetrahedron") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh mesh = Primitives::tetrahedron(2.0);
 
@@ -1530,6 +1636,8 @@ MINI_TEST("Primitives", "Mesh Tetrahedron") {
 }
 
 MINI_TEST("Primitives", "Mesh Cube") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh mesh = Primitives::cube(2.0);
 
@@ -1539,6 +1647,8 @@ MINI_TEST("Primitives", "Mesh Cube") {
 }
 
 MINI_TEST("Primitives", "Mesh Octahedron") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh mesh = Primitives::octahedron(2.0);
 
@@ -1548,6 +1658,8 @@ MINI_TEST("Primitives", "Mesh Octahedron") {
 }
 
 MINI_TEST("Primitives", "Mesh Icosahedron") {
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
 
     const Mesh mesh = Primitives::icosahedron(2.0);
 
@@ -1557,6 +1669,9 @@ MINI_TEST("Primitives", "Mesh Icosahedron") {
 }
 
 MINI_TEST("Primitives", "Nurbssurface Wave") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
 
     const NurbsSurface srf = Primitives::wave_surface(10.0, 2.0);
 
