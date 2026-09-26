@@ -5893,13 +5893,36 @@ static double sphere_refine_v(const NurbsSurface& srf, const AxisFrame& f, doubl
     return v;
 }
 
-/// Degree-1 pcurves of (u, v) samples with u unwrapped, split where u crosses the seam.
-static std::vector<NurbsCurve> split_pullback_u(const std::vector<std::array<double, 2>>& uv, double u0, double range_u) {
+/// Seam-free run of pull-back samples with the 3D curve parameter of each.
+struct PullbackRun {
+    std::vector<Point> uv; // Samples in surface parameters.
+    std::vector<double> ts; // 3D curve parameter of each sample.
+};
 
-    std::vector<NurbsCurve> out;
-    std::vector<Point> seg;
+/// Append the sample (u, v) at 3D curve parameter t to the run.
+static void push_run_sample(PullbackRun& run, double u, double v, double t) {
+
+    run.uv.push_back(Point(u, v, 0.0));
+    run.ts.push_back(t);
+}
+
+/// Drop an end run shorter than a hundredth of the sample step: an end sample lying just across a seam.
+static void drop_seam_slivers(std::vector<PullbackRun>& runs, double step) {
+
+    if (runs.size() > 1 && runs.back().ts.back() - runs.back().ts.front() < step * 0.01)
+        runs.pop_back();
+
+    if (runs.size() > 1 && runs.front().ts.back() - runs.front().ts.front() < step * 0.01)
+        runs.erase(runs.begin());
+}
+
+/// Runs of (u, v, t) samples with u unwrapped, split where u crosses the seam.
+static std::vector<PullbackRun> split_pullback_u(const std::vector<std::array<double, 3>>& uv, double u0, double range_u) {
+
+    std::vector<PullbackRun> out;
+    PullbackRun seg;
     int cur_k = period_index(uv[0][0], u0, range_u);
-    seg.push_back(Point(uv[0][0] - cur_k * range_u, uv[0][1], 0.0));
+    push_run_sample(seg, uv[0][0] - cur_k * range_u, uv[0][1], uv[0][2]);
 
     for (size_t i = 1; i < uv.size(); ++i) {
         int ki = period_index(uv[i][0], u0, range_u);
@@ -5912,27 +5935,30 @@ static std::vector<NurbsCurve> split_pullback_u(const std::vector<std::array<dou
             double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i - 1][0]) / denom : 0.0;
             f = std::min(std::max(f, 0.0), 1.0);
             double vc = uv[i - 1][1] + (uv[i][1] - uv[i - 1][1]) * f;
-            seg.push_back(Point(seam_cont - cur_k * range_u, vc, 0.0));
+            double tc = uv[i - 1][2] + (uv[i][2] - uv[i - 1][2]) * f;
+            push_run_sample(seg, seam_cont - cur_k * range_u, vc, tc);
 
-            if (seg.size() >= 2)
-                out.push_back(NurbsCurve::create(false, 1, seg));
+            if (seg.uv.size() >= 2)
+                out.push_back(seg);
 
-            seg.clear();
-            seg.push_back(Point(seam_cont - nk * range_u, vc, 0.0));
+            seg = PullbackRun();
+            push_run_sample(seg, seam_cont - nk * range_u, vc, tc);
             cur_k = nk;
         }
 
-        seg.push_back(Point(uv[i][0] - cur_k * range_u, uv[i][1], 0.0));
+        push_run_sample(seg, uv[i][0] - cur_k * range_u, uv[i][1], uv[i][2]);
     }
 
-    if (seg.size() >= 2)
-        out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.uv.size() >= 2)
+        out.push_back(seg);
+
+    drop_seam_slivers(out, (uv.back()[2] - uv.front()[2]) / (uv.size() - 1));
 
     return out;
 }
 
 /// Pull a 3D curve back to sphere parameters through longitude and latitude.
-static std::vector<NurbsCurve> analytic_sphere_pullback(
+static std::vector<PullbackRun> analytic_sphere_pullback(
     const NurbsSurface& srf,
     const RecogSurface& recog,
     const NurbsCurve& c3d
@@ -5974,11 +6000,12 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
     const double t0 = domain.first;
     const double t1 = domain.second;
     int n = std::max(c3d.cv_count() * 8, 120);
-    std::vector<std::array<double, 2>> uv;
+    std::vector<std::array<double, 3>> uv;
     double prev_u = 0.0;
 
     for (int i = 0; i <= n; ++i) {
-        Point p = c3d.point_at(t0 + (t1 - t0) * i / n);
+        double t = t0 + (t1 - t0) * i / n;
+        Point p = c3d.point_at(t);
         double h = axis_height(p, frame.o, frame.z);
         double u = map_parameter(lon_map, frame_longitude(frame, p));
         double v = sphere_refine_v(srf, frame, um, clamped_table(tv, th, h), h, v0, v1);
@@ -5987,14 +6014,52 @@ static std::vector<NurbsCurve> analytic_sphere_pullback(
             u = unwrap_period(u, prev_u, range_u);
 
         prev_u = u;
-        uv.push_back({u, v});
+        uv.push_back({u, v, t});
     }
 
     return split_pullback_u(uv, u0, range_u);
 }
 
-/// Samples (u, v) of a curve on a cone or cylinder, u unwrapped and v linear in the axial height.
-static std::vector<std::array<double, 2>> cone_pullback_samples(
+/// Samples (u, v, t) with u unwrapped; an apex sample (u NaN) takes the u of the generator it lies on.
+static std::vector<std::array<double, 3>> fill_apex_samples(const std::vector<std::array<double, 3>>& raw, double u0, double range_u) {
+
+    std::vector<std::array<double, 3>> uv;
+
+    for (size_t i = 0; i < raw.size(); ++i) {
+        const std::array<double, 3>& s = raw[i];
+
+        if (!std::isnan(s[0])) {
+            uv.push_back({uv.empty() ? s[0] : unwrap_period(s[0], uv.back()[0], range_u), s[1], s[2]});
+            continue;
+        }
+
+        size_t j = i + 1;
+
+        while (j < raw.size() && std::isnan(raw[j][0]))
+            ++j;
+
+        if (uv.empty()) {
+            uv.push_back({j < raw.size() ? raw[j][0] : u0, s[1], s[2]});
+            continue;
+        }
+
+        double u_prev = uv.back()[0];
+        uv.push_back({u_prev, s[1], s[2]});
+
+        if (j != i + 1 || j == raw.size())
+            continue;
+
+        double u_next = raw[j][0] + (period_index(u_prev, u0, range_u) - period_index(raw[j][0], u0, range_u)) * range_u;
+
+        if (std::abs(u_next - u_prev) > range_u * 1e-12)
+            uv.push_back({u_next, s[1], s[2]});
+    }
+
+    return uv;
+}
+
+/// Samples (u, v, t) of a curve on a cone or cylinder, u unwrapped and v linear in the axial height.
+static std::vector<std::array<double, 3>> cone_pullback_samples(
     const NurbsCurve& c3d,
     const AxisFrame& frame,
     const AngleMap& lon_map,
@@ -6007,35 +6072,27 @@ static std::vector<std::array<double, 2>> cone_pullback_samples(
     const std::pair<double, double> domain = c3d.domain();
     const double t0 = domain.first;
     const double t1 = domain.second;
-    const double range_u = lon_map.hi - lon_map.lo;
+    const double apex_tol = std::abs(h1 - h0) * 1e-9;
     int n = std::max(c3d.cv_count() * 8, 120);
-    double prev_lon = 0.0;
-    std::vector<std::array<double, 2>> uv;
-    double prev_u = 0.0;
+    std::vector<std::array<double, 3>> raw;
 
     for (int i = 0; i <= n; ++i) {
-        Point p = c3d.point_at(t0 + (t1 - t0) * i / n);
+        double t = t0 + (t1 - t0) * i / n;
+        Point p = c3d.point_at(t);
         std::array<double, 3> r{p[0] - frame.o[0], p[1] - frame.o[1], p[2] - frame.o[2]};
         double rx = ssi_dot(r, frame.x);
         double ry = ssi_dot(r, frame.y);
-        double rad = std::sqrt(std::max(0.0, rx * rx + ry * ry));
-        double lon = (rad > 1e-12) ? std::atan2(ry, rx) : prev_lon;
-        prev_lon = lon;
-        double u = (rad > 1e-12) ? map_parameter(lon_map, lon) : inverse_table(lon_map.xs, lon_map.ys, lon);
+        double rad = std::sqrt(rx * rx + ry * ry);
+        double u = (rad > apex_tol) ? map_parameter(lon_map, std::atan2(ry, rx)) : std::nan("");
         double v = v0 + (ssi_dot(r, frame.z) - h0) / (h1 - h0) * (v1 - v0);
-
-        if (i > 0)
-            u = unwrap_period(u, prev_u, range_u);
-
-        prev_u = u;
-        uv.push_back({u, v});
+        raw.push_back({u, v, t});
     }
 
-    return uv;
+    return fill_apex_samples(raw, lon_map.lo, lon_map.hi - lon_map.lo);
 }
 
 /// Analytic pull-back of a 3D curve onto a recognized cone or cylinder.
-static std::vector<NurbsCurve> analytic_cone_pullback(
+static std::vector<PullbackRun> analytic_cone_pullback(
     const NurbsSurface& srf,
     const RecogSurface& recog,
     const NurbsCurve& c3d
@@ -6070,7 +6127,7 @@ static std::vector<NurbsCurve> analytic_cone_pullback(
         return {};
 
     AngleMap lon_map = angle_map(AngleProbe{srf, frame, v_ref, true, false, 0.0, 0.0}, u0, u1);
-    std::vector<std::array<double, 2>> uv = cone_pullback_samples(c3d, frame, lon_map, h0, h1, v0, v1);
+    std::vector<std::array<double, 3>> uv = cone_pullback_samples(c3d, frame, lon_map, h0, h1, v0, v1);
 
     return split_pullback_u(uv, u0, range_u);
 }
@@ -6084,23 +6141,23 @@ struct PeriodGrid {
     bool swapped; // Whether a is the surface v.
 };
 
-/// Append the point (a, b) shifted into cell (ka, kb) in surface (u, v) order.
-static void push_pullback_point(const PeriodGrid& g, std::vector<Point>& seg, double a, double b, int ka, int kb) {
+/// Append the sample (a, b, t) shifted into cell (ka, kb) in surface (u, v) order.
+static void push_pullback_point(const PeriodGrid& g, PullbackRun& seg, const std::array<double, 3>& p, int ka, int kb) {
 
-    double uu = a - ka * g.range_a;
-    double vv = b - kb * g.range_b;
-    seg.push_back(g.swapped ? Point(vv, uu, 0.0) : Point(uu, vv, 0.0));
+    double uu = p[0] - ka * g.range_a;
+    double vv = p[1] - kb * g.range_b;
+    push_run_sample(seg, g.swapped ? vv : uu, g.swapped ? uu : vv, p[2]);
 }
 
 /// Split the step p -> q at its first cell boundary, advancing p; false when q is in the current cell.
 static bool cross_period(
     const PeriodGrid& g,
-    std::array<double, 2>& p,
-    const std::array<double, 2>& q,
+    std::array<double, 3>& p,
+    const std::array<double, 3>& q,
     int& ka,
     int& kb,
-    std::vector<Point>& seg,
-    std::vector<NurbsCurve>& out
+    PullbackRun& seg,
+    std::vector<PullbackRun>& out
 ) {
 
     int kqa = period_index(q[0], g.a0, g.range_a);
@@ -6128,52 +6185,55 @@ static bool cross_period(
         fb = std::abs(den) > 1e-15 ? (bound - p[1]) / den : 0.0;
     }
 
-    std::array<double, 2> c;
+    double f = std::min(std::max(std::min(fa, fb), 0.0), 1.0);
+    std::array<double, 3> c{p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f, p[2] + (q[2] - p[2]) * f};
 
     if (fa <= fb)
-        c = {g.a0 + (sa > 0 ? ka + 1 : ka) * g.range_a, p[1] + (q[1] - p[1]) * std::min(std::max(fa, 0.0), 1.0)};
+        c[0] = g.a0 + (sa > 0 ? ka + 1 : ka) * g.range_a;
     else
-        c = {p[0] + (q[0] - p[0]) * std::min(std::max(fb, 0.0), 1.0), g.b0 + (sb > 0 ? kb + 1 : kb) * g.range_b};
+        c[1] = g.b0 + (sb > 0 ? kb + 1 : kb) * g.range_b;
 
-    push_pullback_point(g, seg, c[0], c[1], ka, kb);
+    push_pullback_point(g, seg, c, ka, kb);
 
-    if (seg.size() >= 2)
-        out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.uv.size() >= 2)
+        out.push_back(seg);
 
-    seg.clear();
+    seg = PullbackRun();
 
     if (fa <= fb)
         ka += sa;
     else
         kb += sb;
 
-    push_pullback_point(g, seg, c[0], c[1], ka, kb);
+    push_pullback_point(g, seg, c, ka, kb);
     p = c;
 
     return true;
 }
 
-/// Degree-1 pcurves of (a, b) samples with a and b unwrapped, split at both seams.
-static std::vector<NurbsCurve> split_pullback_ab(const std::vector<std::array<double, 2>>& ab, const PeriodGrid& g) {
+/// Runs of (a, b, t) samples with a and b unwrapped, split at both seams.
+static std::vector<PullbackRun> split_pullback_ab(const std::vector<std::array<double, 3>>& ab, const PeriodGrid& g) {
 
-    std::vector<NurbsCurve> out;
-    std::vector<Point> seg;
+    std::vector<PullbackRun> out;
+    PullbackRun seg;
     int ka = period_index(ab[0][0], g.a0, g.range_a);
     int kb = period_index(ab[0][1], g.b0, g.range_b);
-    push_pullback_point(g, seg, ab[0][0], ab[0][1], ka, kb);
+    push_pullback_point(g, seg, ab[0], ka, kb);
 
     for (size_t i = 1; i < ab.size(); ++i) {
-        std::array<double, 2> p = ab[i - 1];
+        std::array<double, 3> p = ab[i - 1];
 
         for (int guard = 0; guard < 8; ++guard)
             if (!cross_period(g, p, ab[i], ka, kb, seg, out))
                 break;
 
-        push_pullback_point(g, seg, ab[i][0], ab[i][1], ka, kb);
+        push_pullback_point(g, seg, ab[i], ka, kb);
     }
 
-    if (seg.size() >= 2)
-        out.push_back(NurbsCurve::create(false, 1, seg));
+    if (seg.uv.size() >= 2)
+        out.push_back(seg);
+
+    drop_seam_slivers(out, (ab.back()[2] - ab.front()[2]) / (ab.size() - 1));
 
     return out;
 }
@@ -6245,7 +6305,7 @@ static double farthest_on_line(const AngleProbe& probe, double lo, double hi) {
 }
 
 /// Analytic pull-back of a 3D curve onto a recognized torus.
-static std::vector<NurbsCurve> analytic_torus_pullback(
+static std::vector<PullbackRun> analytic_torus_pullback(
     const NurbsSurface& srf,
     const RecogSurface& recog,
     const NurbsCurve& c3d
@@ -6283,12 +6343,13 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
     const double t0 = domain.first;
     const double t1 = domain.second;
     int n = std::max(c3d.cv_count() * 8, 4000);
-    std::vector<std::array<double, 2>> ab;
+    std::vector<std::array<double, 3>> ab;
     double prev_a = 0.0;
     double prev_b = 0.0;
 
     for (int i = 0; i <= n; ++i) {
-        Point q = c3d.point_at(t0 + (t1 - t0) * i / n);
+        double t = t0 + (t1 - t0) * i / n;
+        Point q = c3d.point_at(t);
         double a = map_parameter(lon_map, frame_longitude(frame, q));
         double b = map_parameter(tube_map, frame_tube_angle(frame, rmaj, rmin, q));
 
@@ -6299,14 +6360,14 @@ static std::vector<NurbsCurve> analytic_torus_pullback(
 
         prev_a = a;
         prev_b = b;
-        ab.push_back({a, b});
+        ab.push_back({a, b, t});
     }
 
     return split_pullback_ab(ab, PeriodGrid{a0, a1 - a0, b0, b1 - b0, swapped});
 }
 
 /// Analytic pull-back matching the recognized kind: sphere, cone or cylinder, torus.
-static std::vector<NurbsCurve> analytic_pullback(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d) {
+static std::vector<PullbackRun> analytic_pullback(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d) {
 
     if (recog.kind == RecogSurface::TORUS)
         return analytic_torus_pullback(srf, recog, c3d);
@@ -6318,6 +6379,75 @@ static std::vector<NurbsCurve> analytic_pullback(const NurbsSurface& srf, const 
         return analytic_cone_pullback(srf, recog, c3d);
 
     return {};
+}
+
+/// Degree-1 pcurves of the pull-back runs.
+static std::vector<NurbsCurve> run_curves(const std::vector<PullbackRun>& runs) {
+
+    std::vector<NurbsCurve> out;
+
+    for (const PullbackRun& run : runs)
+        out.push_back(NurbsCurve::create(false, 1, run.uv));
+
+    return out;
+}
+
+/// Run sample interpolated at 3D curve parameter t.
+static Point run_point(const PullbackRun& run, double t) {
+
+    for (size_t i = 0; i + 1 < run.ts.size(); ++i) {
+        if (t > run.ts[i + 1])
+            continue;
+
+        double dt = run.ts[i + 1] - run.ts[i];
+        double f = dt > 0.0 ? std::min(std::max((t - run.ts[i]) / dt, 0.0), 1.0) : 0.0;
+
+        return Point(run.uv[i][0] + (run.uv[i + 1][0] - run.uv[i][0]) * f, run.uv[i][1] + (run.uv[i + 1][1] - run.uv[i][1]) * f, 0.0);
+    }
+
+    return run.uv.back();
+}
+
+/// Samples of the run covering the 3D curve span [lo, hi], empty when none does.
+static std::vector<Point> run_span_points(const std::vector<PullbackRun>& runs, double lo, double hi) {
+
+    const double mid = 0.5 * (lo + hi);
+
+    for (const PullbackRun& run : runs) {
+        if (mid < run.ts.front() || mid > run.ts.back())
+            continue;
+
+        std::vector<Point> pts{run_point(run, lo)};
+
+        for (size_t i = 0; i < run.ts.size(); ++i)
+            if (run.ts[i] > lo && run.ts[i] < hi)
+                pts.push_back(run.uv[i]);
+
+        pts.push_back(run_point(run, hi));
+
+        return pts;
+    }
+
+    return {};
+}
+
+/// Degree-1 pcurve of the runs over [lo, hi]; a span past the domain end wraps onto the start of the closed curve.
+static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain, double lo, double hi) {
+
+    const double period = domain.second - domain.first;
+    std::vector<Point> pts = run_span_points(runs, lo, std::min(hi, domain.second));
+
+    if (hi > domain.second) {
+        std::vector<Point> head = run_span_points(runs, domain.first, hi - period);
+
+        if (!head.empty())
+            pts.insert(pts.end(), head.begin() + 1, head.end());
+    }
+
+    if (pts.size() < 2)
+        return NurbsCurve();
+
+    return NurbsCurve::create(false, 1, pts);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7158,26 +7288,98 @@ static bool analytic_curves(
     return quadric_section_curves(a, ra, b, rb, out);
 }
 
-/// Pcurve of an exact section on one recognized surface: analytic, pulled back, then projected.
-static NurbsCurve analytic_side_pcurve(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3) {
+/// Pull-back runs of an exact section on one recognized surface, empty when the analytic pcurve applies.
+static std::vector<PullbackRun> analytic_side_runs(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3) {
 
-    NurbsCurve pc = analytic_pcurve(srf, recog, c3);
+    if (analytic_pcurve(srf, recog, c3).is_valid())
+        return {};
+
+    return analytic_pullback(srf, recog, c3);
+}
+
+/// One recognized surface of an exact section with the pull-back runs of the section curve.
+struct SectionSide {
+    const NurbsSurface& srf; // Recognized surface.
+    const RecogSurface& recog; // Its recognized kind and parameters.
+    std::vector<PullbackRun> runs; // Pull-back runs, empty when the analytic pcurve applies.
+};
+
+/// Pcurve of the piece over [lo, hi] of a section curve with this domain: its pull-back runs, else analytic, then projected.
+static NurbsCurve analytic_side_pcurve(
+    const SectionSide& side,
+    const NurbsCurve& piece,
+    const std::pair<double, double>& domain,
+    double lo,
+    double hi
+) {
+
+    if (!side.runs.empty())
+        return run_span(side.runs, domain, lo, hi);
+
+    NurbsCurve pc = analytic_pcurve(side.srf, side.recog, piece);
 
     if (!pc.is_valid()) {
-        std::vector<NurbsCurve> v = analytic_pullback(srf, recog, c3);
-
-        if (!v.empty())
-            pc = v[0];
-    }
-
-    if (!pc.is_valid()) {
-        std::vector<NurbsCurve> v = Closest::surface_curve(srf, c3);
+        std::vector<NurbsCurve> v = Closest::surface_curve(side.srf, piece);
 
         if (!v.empty())
             pc = v[0];
     }
 
     return pc;
+}
+
+/// Parameters of c3 that cut it at every seam crossing of both sides' runs, the domain ends included.
+static std::vector<double> seam_cuts(const NurbsCurve& c3, const std::vector<PullbackRun>& runs_a, const std::vector<PullbackRun>& runs_b) {
+
+    const std::pair<double, double> domain = c3.domain();
+    const double eps = (domain.second - domain.first) * 1e-9;
+    std::vector<double> ts{domain.first, domain.second};
+
+    for (const std::vector<PullbackRun>* runs : {&runs_a, &runs_b})
+        for (size_t k = 1; k < runs->size(); ++k)
+            ts.push_back((*runs)[k].ts.front());
+
+    std::sort(ts.begin(), ts.end());
+    std::vector<double> cuts{ts[0]};
+
+    for (size_t i = 1; i < ts.size(); ++i)
+        if (ts[i] - cuts.back() > eps)
+            cuts.push_back(ts[i]);
+
+    cuts.back() = domain.second;
+
+    return cuts;
+}
+
+/// Whether the runs end where they start, so the end piece of a closed curve continues onto its first.
+static bool runs_close(const std::vector<PullbackRun>& runs) {
+    return runs.empty() || runs.front().uv.front().distance(runs.back().uv.back()) < 1e-9;
+}
+
+/// Push the piece of c3 over [lo, hi] with both pcurves; hi past the domain end wraps the closed curve onto its start.
+static void push_section_piece(
+    const SectionSide& sa,
+    const SectionSide& sb,
+    const NurbsCurve& c3,
+    double lo,
+    double hi,
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples
+) {
+
+    const std::pair<double, double> domain = c3.domain();
+    NurbsCurve piece = c3;
+
+    if (hi > domain.second && !piece.change_closed_curve_seam(lo))
+        return;
+
+    if (!piece.trim(lo, hi))
+        return;
+
+    NurbsCurve pa = analytic_side_pcurve(sa, piece, domain, lo, hi);
+    NurbsCurve pb = analytic_side_pcurve(sb, piece, domain, lo, hi);
+
+    if (pa.is_valid() && pb.is_valid())
+        triples.push_back(std::make_tuple(piece, pa, pb));
 }
 
 /// Exact section of two recognized analytic surfaces, empty when no case applies.
@@ -7197,11 +7399,18 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         return res;
 
     for (const NurbsCurve& cc3 : c3_list) {
-        NurbsCurve pa = analytic_side_pcurve(a, ra, cc3);
-        NurbsCurve pb = analytic_side_pcurve(b, rb, cc3);
+        const SectionSide sa{a, ra, analytic_side_runs(a, ra, cc3)};
+        const SectionSide sb{b, rb, analytic_side_runs(b, rb, cc3)};
+        const std::vector<double> cuts = seam_cuts(cc3, sa.runs, sb.runs);
+        const bool wrap = cuts.size() > 2 && cc3.is_closed() && runs_close(sa.runs) && runs_close(sb.runs);
+        const size_t first = wrap ? 1 : 0;
+        const size_t last = cuts.size() - (wrap ? 2 : 1);
 
-        if (pa.is_valid() && pb.is_valid())
-            res.triples.push_back(std::make_tuple(cc3, pa, pb));
+        for (size_t k = first; k < last; ++k)
+            push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], res.triples);
+
+        if (wrap)
+            push_section_piece(sa, sb, cc3, cuts[last], cuts[first] + cuts.back() - cuts.front(), res.triples);
     }
 
     res.status = AnalyticResult::HIT;
@@ -7529,6 +7738,9 @@ public:
         const std::array<double, 3>& pp
     ) const;
 
+    /// Newton-project x onto the section with parameter k held fixed; x is kept when it fails.
+    bool correct_on_seam(std::array<double, 4>& x, int k) const;
+
     /// Unit 3D section tangent at x in direction dir_sign, with both surfaces' derivatives.
     bool tangent(
         const std::array<double, 4>& x,
@@ -7724,6 +7936,63 @@ bool SurfaceSurfaceField::correct(
     double g = std::sqrt((sa[0] - sb[0]) * (sa[0] - sb[0]) + (sa[1] - sb[1]) * (sa[1] - sb[1]) + (sa[2] - sb[2]) * (sa[2] - sb[2]));
 
     return g < conv_tol * 10.0;
+}
+
+bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k) const {
+
+    std::array<double, 4> y = x;
+    std::array<int, 3> free;
+    Vector sa;
+    Vector sau;
+    Vector sav;
+    Vector sb;
+    Vector sbu;
+    Vector sbv;
+
+    for (int c = 0, j = 0; c < 4; c++)
+        if (c != k)
+            free[j++] = c;
+
+    for (int it = 0; it < 8; it++) {
+        eval_a(y[0], y[1], sa, sau, sav);
+        eval_b(y[2], y[3], sb, sbu, sbv);
+        std::vector<double> res = {sa[0] - sb[0], sa[1] - sb[1], sa[2] - sb[2]};
+
+        if (std::sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2]) < conv_tol) {
+            x = y;
+
+            return true;
+        }
+
+        const Vector cols[4] = {sau, sav, -sbu, -sbv};
+        std::vector<std::vector<double>> jac(3, std::vector<double>(3));
+
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++)
+                jac[r][c] = cols[free[c]][r];
+
+        std::vector<double> dx;
+
+        if (!solve_gauss(jac, res, 3, dx))
+            return false;
+
+        for (int c = 0; c < 3; c++)
+            y[free[c]] -= dx[c];
+
+        clamp_open(y);
+    }
+
+    eval_a(y[0], y[1], sa, sau, sav);
+    eval_b(y[2], y[3], sb, sbu, sbv);
+
+    double g = std::sqrt((sa[0] - sb[0]) * (sa[0] - sb[0]) + (sa[1] - sb[1]) * (sa[1] - sb[1]) + (sa[2] - sb[2]) * (sa[2] - sb[2]));
+
+    if (g >= conv_tol * 10.0)
+        return false;
+
+    x = y;
+
+    return true;
 }
 
 bool SurfaceSurfaceField::tangent(
@@ -8257,7 +8526,6 @@ void split_quad_at_seams(
     std::vector<int>& cross_idx
 ) {
 
-    const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
     out_pts.push_back(quad[0]);
 
     for (size_t i = 1; i < quad.size(); i++) {
@@ -8272,7 +8540,7 @@ void split_quad_at_seams(
                 cp[k] = pa[k] + (pb[k] - pa[k]) * t;
 
             cp[std::get<1>(crossing)] = std::get<2>(crossing);
-            field.correct(cp, false, dummy3, dummy3);
+            field.correct_on_seam(cp, std::get<1>(crossing));
             out_pts.push_back(cp);
             cross_idx.push_back((int)out_pts.size() - 1);
         }
@@ -8857,7 +9125,7 @@ std::vector<NurbsCurve> target_pcurves(
         return Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
     }
 
-    std::vector<NurbsCurve> pcs = analytic_pullback(target, rt, c3d);
+    std::vector<NurbsCurve> pcs = run_curves(analytic_pullback(target, rt, c3d));
 
     if (pcs.empty())
         pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);

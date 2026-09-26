@@ -137,6 +137,31 @@ static double distance_slanted(const Point& p) {
     return std::abs(-2.0 * p[0] + p[1] + 10.0 * p[2] - 3.0) / std::sqrt(105.0);
 }
 
+static double pcurve_end_gap(const NurbsCurve& curve3d, const NurbsCurve& pcurve, const NurbsSurface& surface) {
+
+    const Point uv0 = pcurve.point_at_start();
+    const Point uv1 = pcurve.point_at_end();
+
+    return std::max(surface.point_at(uv0[0], uv0[1]).distance(curve3d.point_at_start()), surface.point_at(uv1[0], uv1[1]).distance(curve3d.point_at_end()));
+}
+
+static double pcurve_line_deviation(const NurbsCurve& line, const NurbsCurve& pcurve, const NurbsSurface& surface) {
+
+    const std::pair<double, double> domain = pcurve.domain();
+    const Point a = line.point_at_start();
+    const Vector d = line.point_at_end() - a;
+    double worst = pcurve_end_gap(line, pcurve, surface);
+
+    for (int i = 0; i <= 32; i++) {
+        for (double f : {i / 640.0, 1.0 - i / 640.0}) {
+            Point uv = pcurve.point_at(domain.first + (domain.second - domain.first) * f);
+            worst = std::max(worst, (surface.point_at(uv[0], uv[1]) - a).cross(d).magnitude() / d.magnitude());
+        }
+    }
+
+    return worst;
+}
+
 MINI_TEST("Intersection", "Line Line") {
 
     Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -1244,11 +1269,12 @@ MINI_TEST("Intersection", "Surface Surface Cylinders") {
 
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ellipses = Intersection::surface_surface(cyl, across);
 
-    MINI_CHECK(ellipses.size() == 2);
+    MINI_CHECK(ellipses.size() == 3);
 
     for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& ellipse : ellipses) {
-        MINI_CHECK(std::get<0>(ellipse).is_closed());
         MINI_CHECK(on_both(std::get<0>(ellipse), distance_unit_cylinder, distance_x_cylinder) < 1e-9);
+        MINI_CHECK(pcurve_end_gap(std::get<0>(ellipse), std::get<1>(ellipse), cyl) < 1e-4);
+        MINI_CHECK(pcurve_end_gap(std::get<0>(ellipse), std::get<2>(ellipse), across) < 1e-4);
     }
 }
 
@@ -1327,6 +1353,67 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Tori") {
     }
 }
 
+MINI_TEST("Intersection", "Surface Surface Cone Apex") {
+
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface axial = bilinear(Point(0.0, -3.0, -3.0), Point(0.0, -3.0, 4.0), Point(0.0, 3.0, -3.0), Point(0.0, 3.0, 4.0));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);
+
+    MINI_CHECK(lines.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& line : lines)
+        MINI_CHECK(pcurve_line_deviation(std::get<0>(line), std::get<1>(line), cone) < 1e-9);
+}
+
+MINI_TEST("Intersection", "Surface Surface Seam Pieces") {
+
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    NurbsSurface slanted = bilinear(Point(-3.0, -3.0, 0.0), Point(-3.0, 3.0, -0.6), Point(3.0, -3.0, 1.2), Point(3.0, 3.0, 0.6));
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(sphere, wall);
+    double length = 0.0;
+
+    MINI_CHECK(circle.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : circle) {
+        length += std::get<0>(t).length();
+
+        MINI_CHECK(pcurve_end_gap(std::get<0>(t), std::get<1>(t), sphere) < 1e-9);
+        MINI_CHECK(lifted_distance(std::get<1>(t), sphere, distance_wall) < 5e-3);
+    }
+
+    MINI_CHECK(std::abs(length - 2.0 * Tolerance::PI * std::sqrt(3.96)) < 1e-4);
+
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> conic = Intersection::surface_surface(cone, slanted);
+
+    MINI_CHECK(conic.size() == 2);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : conic) {
+        MINI_CHECK(pcurve_end_gap(std::get<0>(t), std::get<1>(t), cone) < 1e-4);
+        MINI_CHECK(lifted_distance(std::get<1>(t), cone, distance_slanted) < 1e-3);
+    }
+}
+
+MINI_TEST("Intersection", "Surface Surface Seam Crossings") {
+
+    NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(sphere, cyl);
+    double seam_gap = 0.0;
+
+    MINI_CHECK(tr.size() == 4);
+
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : tr) {
+        for (const Point& uv : {std::get<1>(t).point_at_start(), std::get<1>(t).point_at_end()})
+            seam_gap = std::max(seam_gap, std::min(std::abs(uv[0]), std::abs(uv[0] - 4.0)));
+
+        MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_cylinder) < 1e-5);
+    }
+
+    MINI_CHECK(seam_gap < 1e-8);
+}
+
 MINI_TEST("Intersection", "Cut Curves On Surface") {
 
     NurbsSurface flat = NurbsSurface::create(
@@ -1369,7 +1456,7 @@ MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
     NurbsSurface square = bilinear(Point(-1.6, -1.6, 0.5), Point(-1.6, 1.6, 0.5), Point(1.6, -1.6, 0.5), Point(1.6, 1.6, 0.5));
     std::vector<NurbsCurve> sphere_cuts = Intersection::cut_curves_on_surface(sphere, wall);
 
-    MINI_CHECK(sphere_cuts.size() == 3);
+    MINI_CHECK(sphere_cuts.size() == 2);
 
     for (const NurbsCurve& pc : sphere_cuts)
         MINI_CHECK(lifted_distance(pc, sphere, distance_wall) < 5e-3);
@@ -1395,7 +1482,7 @@ MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
     std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(torus, wall);
 
-    MINI_CHECK(cuts.size() == 4);
+    MINI_CHECK(cuts.size() == 2);
 
     for (const NurbsCurve& pc : cuts)
         MINI_CHECK(lifted_distance(pc, torus, distance_wall) < 1e-5);
