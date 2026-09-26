@@ -5442,12 +5442,13 @@ static std::vector<size_t> arrangement_faces(Mesh& mesh, const std::map<size_t, 
     std::vector<size_t> outer;
 
     for (const size_t face : mesh.faces()) {
+        const std::vector<size_t> vertices = *mesh.face_vertices(face); // Held: before GCC 15 a range-for frees the temporary optional first.
         std::vector<std::pair<double, double>> ring;
 
-        for (const size_t key : *mesh.face_vertices(face))
+        for (const size_t key : vertices)
             ring.push_back({(*mesh.vertex_point(key))[0], (*mesh.vertex_point(key))[1]});
 
-        owner[face] = roots.at(mesh.face_vertices(face)->front());
+        owner[face] = roots.at(vertices.front());
 
         if (ring_area_2d(ring) <= -tolerance * tolerance)
             outer.push_back(face);
