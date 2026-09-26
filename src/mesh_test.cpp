@@ -1674,6 +1674,47 @@ MINI_TEST("Mesh", "Section By Plane Open") {
     MINI_CHECK(section[1].point_count() == 3);
 }
 
+MINI_TEST("Mesh", "Section By Plane Vertex Ring") {
+
+    const std::vector<Point> vertices = {
+        Point(0.0, 0.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(2.0, 2.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(0.0, 0.0, 1.0),
+        Point(2.0, 0.0, 1.0),
+        Point(2.0, 2.0, 1.0),
+        Point(0.0, 2.0, 1.0),
+        Point(0.0, 0.0, 2.0),
+        Point(2.0, 0.0, 2.0),
+        Point(2.0, 2.0, 2.0),
+        Point(0.0, 2.0, 2.0),
+    };
+    std::vector<std::vector<size_t>> faces = {{0, 3, 2, 1}, {8, 9, 10, 11}};
+
+    for (size_t k = 0; k < 4; k++) {
+        faces.push_back({k, (k + 1) % 4, 4 + (k + 1) % 4, 4 + k});
+        faces.push_back({4 + k, 4 + (k + 1) % 4, 8 + (k + 1) % 4, 8 + k});
+    }
+
+    const Mesh prism = Mesh::from_vertices_and_faces(vertices, faces);
+    const std::vector<Polyline> ring = prism.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)));
+
+    MINI_CHECK(ring.size() == 1);
+    MINI_CHECK(ring[0].is_closed());
+    MINI_CHECK(ring[0].point_count() == 5);
+}
+
+MINI_TEST("Mesh", "Section By Plane Diagonal") {
+
+    const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
+    const std::vector<Polyline> diagonal = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(1.0, -1.0, 0.0)));
+
+    MINI_CHECK(diagonal.size() == 1);
+    MINI_CHECK(diagonal[0].is_closed());
+    MINI_CHECK(diagonal[0].point_count() == 5);
+}
+
 MINI_TEST("Mesh", "Volume Far From Origin") {
 
     const Xform far = Xform::translation(1000000.1, 1000000.2, 1000000.3);

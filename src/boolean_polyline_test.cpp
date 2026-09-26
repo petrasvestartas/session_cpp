@@ -389,14 +389,15 @@ MINI_TEST("Boolean Polyline", "Regions Orientation") {
     const Polyline inner = Polyline::rectangle(Point(3.0, 3.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 4.0, 4.0);
     const std::vector<Polyline> frame = BooleanPolyline::compute_regions({outer, inner}, {}, 1);
     const std::vector<Polyline> turned = BooleanPolyline::compute_regions({outer.reversed(), inner}, {}, 1);
-    int clockwise = 0;
-
-    for (const Polyline& ring : frame)
-        clockwise += ring.is_clockwise(plane) ? 1 : 0;
 
     MINI_CHECK(frame.size() == 2);
-    MINI_CHECK(clockwise == 1);
     MINI_CHECK(turned.size() == 2);
+
+    for (const Polyline& ring : frame)
+        MINI_CHECK(ring.is_clockwise(plane) == (ring.get_point(0)[0] > 1.0 && ring.get_point(0)[0] < 9.0));
+
+    for (const Polyline& ring : turned)
+        MINI_CHECK(ring.is_clockwise(plane) == (ring.get_point(0)[0] > 1.0 && ring.get_point(0)[0] < 9.0));
 }
 
 MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {

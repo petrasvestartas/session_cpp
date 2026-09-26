@@ -5125,15 +5125,15 @@ static int section_sign(double distance) {
 /// True when the ring passes from one side of the plane to the other through the on-plane run starting at vertex i.
 static bool section_flips(const std::vector<size_t>& ring, const std::map<size_t, double>& distance, size_t i) {
 
-    const size_t n = ring.size();
+    const size_t count = ring.size();
     int before = 0;
     int after = 0;
 
-    for (size_t k = 1; k < n && before == 0; ++k)
-        before = section_sign(distance.at(ring[(i + n - k) % n]));
+    for (size_t k = 1; k < count && before == 0; ++k)
+        before = section_sign(distance.at(ring[(i + count - k) % count]));
 
-    for (size_t k = 1; k < n && after == 0; ++k)
-        after = section_sign(distance.at(ring[(i + k) % n]));
+    for (size_t k = 1; k < count && after == 0; ++k)
+        after = section_sign(distance.at(ring[(i + k) % count]));
 
     return before * after < 0;
 }
@@ -5150,11 +5150,11 @@ static std::vector<std::pair<size_t, size_t>> section_events(
     std::vector<std::pair<double, std::pair<size_t, size_t>>> events;
 
     for (const std::vector<size_t>& ring : rings) {
-        const size_t n = ring.size();
+        const size_t count = ring.size();
 
-        for (size_t i = 0; i < n; ++i) {
+        for (size_t i = 0; i < count; ++i) {
             const size_t current = ring[i];
-            const size_t following = ring[(i + 1) % n];
+            const size_t following = ring[(i + 1) % count];
             const int side = section_sign(distance.at(current));
 
             if (side * section_sign(distance.at(following)) < 0) {
@@ -5164,7 +5164,7 @@ static std::vector<std::pair<size_t, size_t>> section_events(
                 events.push_back({(found[key] - points.at(ring[0])).dot(direction), key});
             }
 
-            if (side == 0 && section_sign(distance.at(ring[(i + n - 1) % n])) != 0 && section_flips(ring, distance, i)) {
+            if (side == 0 && section_sign(distance.at(ring[(i + count - 1) % count])) != 0 && section_flips(ring, distance, i)) {
                 found[{current, current}] = points.at(current);
                 events.push_back({(points.at(current) - points.at(ring[0])).dot(direction), {current, current}});
             }
@@ -5231,7 +5231,26 @@ static std::pair<std::vector<std::vector<std::pair<size_t, size_t>>>, std::vecto
     return chains;
 }
 
-/// The section graph: every pair of events of a face crossing the plane linked, faces on one side or in the plane skipped.
+/// Links first and second once.
+static void section_link(std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& links, const std::pair<size_t, size_t>& first, const std::pair<size_t, size_t>& second) {
+
+    if (first == second || std::find(links[first].begin(), links[first].end(), second) != links[first].end())
+        return;
+
+    links[first].push_back(second);
+    links[second].push_back(first);
+}
+
+/// The ring edges lying in the plane marked with the sides the face reaches: 1 below, 2 above.
+static void section_edges(const std::vector<std::vector<size_t>>& rings, const std::map<size_t, double>& distance, int sides, std::map<std::pair<size_t, size_t>, int>& edges) {
+
+    for (const std::vector<size_t>& ring : rings)
+        for (size_t i = 0; i < ring.size(); ++i)
+            if (distance.at(ring[i]) == 0.0 && distance.at(ring[(i + 1) % ring.size()]) == 0.0)
+                edges[std::minmax(ring[i], ring[(i + 1) % ring.size()])] |= sides;
+}
+
+/// The section graph: the events of every face crossing the plane linked in pairs, then every edge in the plane where faces from both sides meet; faces lying in the plane skipped.
 static std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> section_links(
     const std::map<size_t, std::vector<size_t>>& faces,
     const std::map<size_t, std::vector<std::vector<size_t>>>& holes,
@@ -5242,6 +5261,7 @@ static std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>
 ) {
 
     std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> links;
+    std::map<std::pair<size_t, size_t>, int> edges;
 
     for (const std::pair<const size_t, std::vector<size_t>>& entry : faces) {
         const Vector normal = newell_normal(cut_points(entry.second, points));
@@ -5255,6 +5275,7 @@ static std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>
                 high = std::max(high, section_sign(distance.at(key)));
             }
 
+        section_edges(rings, distance, (low < 0 ? 1 : 0) | (high > 0 ? 2 : 0), edges);
         Vector direction = axis.cross(normal);
 
         if (low == 0 || high == 0 || !direction.normalize_self())
@@ -5262,11 +5283,16 @@ static std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>
 
         const std::vector<std::pair<size_t, size_t>> events = section_events(rings, distance, points, direction, found);
 
-        for (size_t i = 0; i + 1 < events.size(); i += 2) {
-            links[events[i]].push_back(events[i + 1]);
-            links[events[i + 1]].push_back(events[i]);
-        }
+        for (size_t i = 0; i + 1 < events.size(); i += 2)
+            section_link(links, events[i], events[i + 1]);
     }
+
+    for (const std::pair<const std::pair<size_t, size_t>, int>& entry : edges)
+        if (entry.second == 3) {
+            found[{entry.first.first, entry.first.first}] = points.at(entry.first.first);
+            found[{entry.first.second, entry.first.second}] = points.at(entry.first.second);
+            section_link(links, {entry.first.first, entry.first.first}, {entry.first.second, entry.first.second});
+        }
 
     return links;
 }
@@ -5339,6 +5365,8 @@ std::vector<Polyline> Mesh::section_by_plane(const Plane& plane) const {
 
     return section_polylines(section_chains(links), found, plane);
 }
+
+static constexpr double ARRANGEMENT_PRECISION = 0.1; // Vertex weld of from_lines as a share of the tolerance.
 
 /// Union-find root of a vertex key.
 static size_t arrangement_root(std::map<size_t, size_t>& parent, size_t key) {
@@ -5471,7 +5499,7 @@ static void arrangement_holes(Mesh& mesh, const std::vector<size_t>& outer, cons
 Mesh Mesh::from_arrangement(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge) {
 
     const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, tolerance, merge);
-    Mesh mesh = from_lines(split.first, false, tolerance * 0.1);
+    Mesh mesh = from_lines(split.first, false, tolerance * ARRANGEMENT_PRECISION);
     const std::map<std::pair<size_t, size_t>, double> sources = arrangement_sources(mesh, split, tolerance);
     const std::map<size_t, size_t> roots = arrangement_roots(mesh);
     std::set<size_t> lined;

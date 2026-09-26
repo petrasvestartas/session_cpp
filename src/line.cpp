@@ -543,6 +543,197 @@ void Line::scale(double dist) {
     _z1 = e[2];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// JSON
+// ═══════════════════════════════════════════════════════════════════════════
+nlohmann::ordered_json Line::jsondump() const {
+
+    nlohmann::ordered_json data;
+    data["dash"] = dash;
+    data["guid"] = guid();
+    data["linecolor"] = linecolor.jsondump();
+    data["name"] = name;
+    data["type"] = "Line";
+    data["width"] = width;
+    data["x0"] = _x0;
+    data["x1"] = _x1;
+    data["y0"] = _y0;
+    data["y1"] = _y1;
+    data["z0"] = _z0;
+    data["z1"] = _z1;
+
+    return data;
+}
+
+Line Line::jsonload(const nlohmann::json& data) {
+
+    Line line(data.at("x0"), data.at("y0"), data.at("z0"), data.at("x1"), data.at("y1"), data.at("z1"));
+    line.guid() = data.at("guid");
+    line.name = data.at("name");
+
+    if (data.contains("dash"))
+        line.dash = data["dash"].get<std::vector<double>>();
+
+    if (data.contains("linecolor"))
+        line.linecolor = Color::jsonload(data["linecolor"]);
+
+    if (data.contains("width"))
+        line.width = data["width"].get<double>();
+
+    return line;
+}
+
+std::string Line::file_json_dumps() const {
+    return jsondump().dump();
+}
+
+Line Line::file_json_loads(const std::string& json_string) {
+    return jsonload(nlohmann::ordered_json::parse(json_string));
+}
+
+void Line::file_json_dump(const std::string& filename) const {
+
+    std::ofstream file(filename);
+    file << jsondump().dump(4);
+}
+
+Line Line::file_json_load(const std::string& filename) {
+
+    std::ifstream file(filename);
+
+    return jsonload(nlohmann::json::parse(file));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Protobuf
+// ═══════════════════════════════════════════════════════════════════════════
+session_proto::Line Line::to_proto() const {
+
+    session_proto::Line proto;
+
+    if (has_guid())
+        proto.set_guid(guid());
+
+    proto.set_name(name);
+    proto.set_width(width);
+
+    for (int i = 0; i < 6; i++)
+        proto.add_coords((*this)[i]);
+
+    for (double d : dash)
+        proto.add_dash(d);
+
+    proto.add_linecolor_rgba(linecolor.r);
+    proto.add_linecolor_rgba(linecolor.g);
+    proto.add_linecolor_rgba(linecolor.b);
+    proto.add_linecolor_rgba(linecolor.a);
+    proto.set_linecolor_name(linecolor.name);
+
+    return proto;
+}
+
+Line Line::from_proto(const session_proto::Line& proto) {
+
+    Line line;
+
+    if (proto.coords_size() == 6)
+        line = Line(proto.coords(0), proto.coords(1), proto.coords(2), proto.coords(3), proto.coords(4), proto.coords(5));
+
+    if (!proto.guid().empty())
+        line.guid() = proto.guid();
+
+    line.name = proto.name();
+
+    if (proto.width() > 0.0)
+        line.width = proto.width();
+
+    line.dash.assign(proto.dash().begin(), proto.dash().end());
+
+    if (proto.linecolor_rgba_size() == 4) {
+        line.linecolor.r = proto.linecolor_rgba(0);
+        line.linecolor.g = proto.linecolor_rgba(1);
+        line.linecolor.b = proto.linecolor_rgba(2);
+        line.linecolor.a = proto.linecolor_rgba(3);
+
+        if (!proto.linecolor_name().empty())
+            line.linecolor.name = proto.linecolor_name();
+    }
+
+    return line;
+}
+
+std::string Line::pb_dumps() const {
+    return to_proto().SerializeAsString();
+}
+
+Line Line::pb_loads(const std::string& data) {
+
+    session_proto::Line proto;
+
+    if (!proto.ParseFromString(data))
+        throw std::runtime_error("Failed to parse Line protobuf data");
+
+    return from_proto(proto);
+}
+
+void Line::pb_dump(const std::string& filename) const {
+
+    const std::string data = pb_dumps();
+    std::ofstream file(filename, std::ios::binary);
+    file.write(data.data(), data.size());
+}
+
+Line Line::pb_load(const std::string& filename) {
+
+    std::ifstream file(filename, std::ios::binary);
+    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    return pb_loads(data);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// String
+// ═══════════════════════════════════════════════════════════════════════════
+std::string Line::str() const {
+
+    const int prec = Tolerance::ROUNDING;
+
+    return fmt::format(
+        "{}, {}, {}, {}, {}, {}",
+        TOLERANCE.format_number(_x0, prec),
+        TOLERANCE.format_number(_y0, prec),
+        TOLERANCE.format_number(_z0, prec),
+        TOLERANCE.format_number(_x1, prec),
+        TOLERANCE.format_number(_y1, prec),
+        TOLERANCE.format_number(_z1, prec)
+    );
+}
+
+std::string Line::repr() const {
+
+    const int prec = Tolerance::ROUNDING;
+
+    return fmt::format(
+        "Line({}, {}, {}, {}, {}, {}, {}, {}, {})",
+        name,
+        TOLERANCE.format_number(_x0, prec),
+        TOLERANCE.format_number(_y0, prec),
+        TOLERANCE.format_number(_z0, prec),
+        TOLERANCE.format_number(_x1, prec),
+        TOLERANCE.format_number(_y1, prec),
+        TOLERANCE.format_number(_z1, prec),
+        linecolor.repr(),
+        TOLERANCE.format_number(width, prec)
+    );
+}
+
+std::ostream& operator<<(std::ostream& os, const Line& line) {
+    return os << line.str();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Crossings
+// ═══════════════════════════════════════════════════════════════════════════
 /// A piece of an input line while the crossings are computed.
 struct SplitSegment {
     Point start; // Start at z 0.
@@ -765,194 +956,6 @@ std::pair<std::vector<Line>, std::vector<size_t>> Line::split_at_crossings(const
     }
 
     return result;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// JSON
-// ═══════════════════════════════════════════════════════════════════════════
-nlohmann::ordered_json Line::jsondump() const {
-
-    nlohmann::ordered_json data;
-    data["dash"] = dash;
-    data["guid"] = guid();
-    data["linecolor"] = linecolor.jsondump();
-    data["name"] = name;
-    data["type"] = "Line";
-    data["width"] = width;
-    data["x0"] = _x0;
-    data["x1"] = _x1;
-    data["y0"] = _y0;
-    data["y1"] = _y1;
-    data["z0"] = _z0;
-    data["z1"] = _z1;
-
-    return data;
-}
-
-Line Line::jsonload(const nlohmann::json& data) {
-
-    Line line(data.at("x0"), data.at("y0"), data.at("z0"), data.at("x1"), data.at("y1"), data.at("z1"));
-    line.guid() = data.at("guid");
-    line.name = data.at("name");
-
-    if (data.contains("dash"))
-        line.dash = data["dash"].get<std::vector<double>>();
-
-    if (data.contains("linecolor"))
-        line.linecolor = Color::jsonload(data["linecolor"]);
-
-    if (data.contains("width"))
-        line.width = data["width"].get<double>();
-
-    return line;
-}
-
-std::string Line::file_json_dumps() const {
-    return jsondump().dump();
-}
-
-Line Line::file_json_loads(const std::string& json_string) {
-    return jsonload(nlohmann::ordered_json::parse(json_string));
-}
-
-void Line::file_json_dump(const std::string& filename) const {
-
-    std::ofstream file(filename);
-    file << jsondump().dump(4);
-}
-
-Line Line::file_json_load(const std::string& filename) {
-
-    std::ifstream file(filename);
-
-    return jsonload(nlohmann::json::parse(file));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Protobuf
-// ═══════════════════════════════════════════════════════════════════════════
-session_proto::Line Line::to_proto() const {
-
-    session_proto::Line proto;
-
-    if (has_guid())
-        proto.set_guid(guid());
-
-    proto.set_name(name);
-    proto.set_width(width);
-
-    for (int i = 0; i < 6; i++)
-        proto.add_coords((*this)[i]);
-
-    for (double d : dash)
-        proto.add_dash(d);
-
-    proto.add_linecolor_rgba(linecolor.r);
-    proto.add_linecolor_rgba(linecolor.g);
-    proto.add_linecolor_rgba(linecolor.b);
-    proto.add_linecolor_rgba(linecolor.a);
-    proto.set_linecolor_name(linecolor.name);
-
-    return proto;
-}
-
-Line Line::from_proto(const session_proto::Line& proto) {
-
-    Line line;
-
-    if (proto.coords_size() == 6)
-        line = Line(proto.coords(0), proto.coords(1), proto.coords(2), proto.coords(3), proto.coords(4), proto.coords(5));
-
-    if (!proto.guid().empty())
-        line.guid() = proto.guid();
-
-    line.name = proto.name();
-
-    if (proto.width() > 0.0)
-        line.width = proto.width();
-
-    line.dash.assign(proto.dash().begin(), proto.dash().end());
-
-    if (proto.linecolor_rgba_size() == 4) {
-        line.linecolor.r = proto.linecolor_rgba(0);
-        line.linecolor.g = proto.linecolor_rgba(1);
-        line.linecolor.b = proto.linecolor_rgba(2);
-        line.linecolor.a = proto.linecolor_rgba(3);
-
-        if (!proto.linecolor_name().empty())
-            line.linecolor.name = proto.linecolor_name();
-    }
-
-    return line;
-}
-
-std::string Line::pb_dumps() const {
-    return to_proto().SerializeAsString();
-}
-
-Line Line::pb_loads(const std::string& data) {
-
-    session_proto::Line proto;
-
-    if (!proto.ParseFromString(data))
-        throw std::runtime_error("Failed to parse Line protobuf data");
-
-    return from_proto(proto);
-}
-
-void Line::pb_dump(const std::string& filename) const {
-
-    const std::string data = pb_dumps();
-    std::ofstream file(filename, std::ios::binary);
-    file.write(data.data(), data.size());
-}
-
-Line Line::pb_load(const std::string& filename) {
-
-    std::ifstream file(filename, std::ios::binary);
-    const std::string data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-
-    return pb_loads(data);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// String
-// ═══════════════════════════════════════════════════════════════════════════
-std::string Line::str() const {
-
-    const int prec = Tolerance::ROUNDING;
-
-    return fmt::format(
-        "{}, {}, {}, {}, {}, {}",
-        TOLERANCE.format_number(_x0, prec),
-        TOLERANCE.format_number(_y0, prec),
-        TOLERANCE.format_number(_z0, prec),
-        TOLERANCE.format_number(_x1, prec),
-        TOLERANCE.format_number(_y1, prec),
-        TOLERANCE.format_number(_z1, prec)
-    );
-}
-
-std::string Line::repr() const {
-
-    const int prec = Tolerance::ROUNDING;
-
-    return fmt::format(
-        "Line({}, {}, {}, {}, {}, {}, {}, {}, {})",
-        name,
-        TOLERANCE.format_number(_x0, prec),
-        TOLERANCE.format_number(_y0, prec),
-        TOLERANCE.format_number(_z0, prec),
-        TOLERANCE.format_number(_x1, prec),
-        TOLERANCE.format_number(_y1, prec),
-        TOLERANCE.format_number(_z1, prec),
-        linecolor.repr(),
-        TOLERANCE.format_number(width, prec)
-    );
-}
-
-std::ostream& operator<<(std::ostream& os, const Line& line) {
-    return os << line.str();
 }
 
 } // namespace session_cpp

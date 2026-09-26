@@ -2809,13 +2809,13 @@ session_cpp::BooleanPolyline::clip_open_against_closed(const Polyline& open_subj
 // ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
-/// Signed xy area of the first n points of flat coordinates, positive counter-clockwise.
-static double v_ring_area(const double* c, int n) {
+/// Signed xy area of the first count points of flat coordinates, positive counter-clockwise.
+static double v_ring_area(const double* coords, int count) {
 
     double area = 0.0;
 
-    for (int i = 0; i < n; i++)
-        area += c[i * 3] * c[((i + 1) % n) * 3 + 1] - c[((i + 1) % n) * 3] * c[i * 3 + 1];
+    for (int i = 0; i < count; i++)
+        area += coords[i * 3] * coords[((i + 1) % count) * 3 + 1] - coords[((i + 1) % count) * 3] * coords[i * 3 + 1];
 
     return area / 2.0;
 }
@@ -2826,18 +2826,18 @@ static std::vector<std::vector<double>> v_oriented(const std::vector<Polyline>& 
     std::vector<std::vector<double>> flat;
 
     for (const Polyline& ring : rings) {
-        int n = (int)(ring._coords.size() / 3);
-        v_strip_closing(ring._coords.data(), n);
+        int count = (int)(ring._coords.size() / 3);
+        v_strip_closing(ring._coords.data(), count);
 
-        if (n >= 3)
-            flat.emplace_back(ring._coords.begin(), ring._coords.begin() + n * 3);
+        if (count >= 3)
+            flat.emplace_back(ring._coords.begin(), ring._coords.begin() + count * 3);
     }
 
     std::vector<std::vector<double>> oriented = flat;
 
     for (size_t i = 0; i < flat.size(); i++) {
-        const int n = (int)(flat[i].size() / 3);
-        const double area = v_ring_area(flat[i].data(), n);
+        const int count = (int)(flat[i].size() / 3);
+        const double area = v_ring_area(flat[i].data(), count);
         const double dx = flat[i][3] - flat[i][0];
         const double dy = flat[i][4] - flat[i][1];
         const double side = area > 0.0 ? Tolerance::RELATIVE : -Tolerance::RELATIVE;
@@ -2851,9 +2851,9 @@ static std::vector<std::vector<double>> v_oriented(const std::vector<Polyline>& 
         if ((area > 0.0) == (depth % 2 == 0))
             continue;
 
-        for (int k = 0; k < n; k++)
+        for (int k = 0; k < count; k++)
             for (int axis = 0; axis < 3; axis++)
-                oriented[i][k * 3 + axis] = flat[i][(n - 1 - k) * 3 + axis];
+                oriented[i][k * 3 + axis] = flat[i][(count - 1 - k) * 3 + axis];
     }
 
     return oriented;
