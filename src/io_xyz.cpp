@@ -1,8 +1,8 @@
 #include "io_xyz.h"
+#include "fmt/core.h"
 #include <fstream>
-#include <iomanip>
-#include <limits>
 #include <sstream>
+#include <stdexcept>
 
 namespace session_cpp {
 namespace io_xyz {
@@ -12,21 +12,20 @@ namespace io_xyz {
 // ═══════════════════════════════════════════════════════════════════════════
 std::string write_xyz_to_string(const PointCloud& cloud) {
 
-    std::ostringstream out;
-    out << std::setprecision(std::numeric_limits<double>::max_digits10);
+    std::string out;
 
     for (const Point& p : cloud.get_points())
-        out << p[0] << " " << p[1] << " " << p[2] << "\n";
+        out += fmt::format("{} {} {}\n", p[0], p[1], p[2]);
 
-    return out.str();
+    return out;
 }
 
 void write_xyz(const PointCloud& cloud, const std::string& filepath) {
 
-    std::ofstream out(filepath);
+    std::ofstream out(filepath, std::ios::binary);
 
-    if (!out.is_open())
-        return;
+    if (!out)
+        throw std::runtime_error("Failed to open XYZ file: " + filepath);
 
     out << write_xyz_to_string(cloud);
 }
@@ -60,7 +59,11 @@ PointCloud read_xyz_from_str(const std::string& content) {
 
 PointCloud read_xyz(const std::string& filepath) {
 
-    std::ifstream in(filepath);
+    std::ifstream in(filepath, std::ios::binary);
+
+    if (!in)
+        throw std::runtime_error("Failed to open XYZ file: " + filepath);
+
     std::stringstream buffer;
     buffer << in.rdbuf();
 
