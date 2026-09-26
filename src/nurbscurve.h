@@ -601,6 +601,12 @@ private:
     /// Insert one nurbsknot by Boehm, U the padded nurbsknots.
     void insert_nurbsknot_once(double nurbsknot_value, const std::vector<double>& U);
 
+    /// True when the last degree CVs repeat the first and the nurbsknot spacing repeats every period.
+    bool is_wrapped() const;
+
+    /// Insert one nurbsknot into a wrapped curve at every period, by Boehm on the periodic sequence.
+    void insert_wrapped_nurbsknot_once(double nurbsknot_value);
+
     /// Return the (t, point) samples of the chord-deviation bisection, sorted by t.
     std::vector<std::pair<double, Point>> adaptive_samples(double angle_tolerance, double min_edge_length, double max_edge_length) const;
 

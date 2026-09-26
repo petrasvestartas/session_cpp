@@ -961,7 +961,7 @@ double NurbsCurve::superfluous_nurbsknot(int end) const {
 
 bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity) {
 
-    if (!is_valid())
+    if (!is_valid() || !std::isfinite(nurbsknot_value))
         return false;
 
     const int p = degree();
@@ -971,6 +971,34 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
 
     const double d0 = domain_start();
     const double d1 = domain_end();
+    const double tol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * SQRT_EPSILON;
+
+    if (is_wrapped()) {
+        double t = nurbsknot_value - std::floor((nurbsknot_value - d0) / (d1 - d0)) * (d1 - d0);
+
+        if (t > d1 - tol)
+            t = d0;
+
+        if (std::abs(t - d0) <= tol) {
+            if (nurbsknot_multiplicity == p)
+                return clamp_end(2);
+
+            return nurbsknot_multiplicity == 1;
+        }
+
+        int mult = 0;
+
+        for (int i = p - 1; i < m_cv_count - 1; i++)
+            if (std::abs(m_nurbsknot[i] - t) <= tol) {
+                t = m_nurbsknot[i];
+                mult++;
+            }
+
+        for (int i = mult; i < nurbsknot_multiplicity; i++)
+            insert_wrapped_nurbsknot_once(t);
+
+        return true;
+    }
 
     if (nurbsknot_value < d0 || nurbsknot_value > d1)
         return false;
@@ -988,8 +1016,6 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
 
         return nurbsknot_multiplicity == 1;
     }
-
-    const double tol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * SQRT_EPSILON;
 
     for (int insert_iter = 0; insert_iter < nurbsknot_multiplicity; ++insert_iter) {
         const std::vector<double> U = full_nurbsknots();
@@ -3693,6 +3719,78 @@ void NurbsCurve::insert_nurbsknot_once(double nurbsknot_value, const std::vector
     for (int i = 0; i < kc; ++i)
         nurbsknot_new[i] = U_new[i + 1];
 
+    m_nurbsknot = std::move(nurbsknot_new);
+}
+
+bool NurbsCurve::is_wrapped() const {
+
+    const int p = degree();
+    const int period_cv_count = m_cv_count - p;
+    const double period = domain_end() - domain_start();
+    const double tol = (std::abs(domain_start()) + std::abs(domain_end()) + period) * SQRT_EPSILON;
+
+    if (p < 2 || period_cv_count < p || period <= 0.0)
+        return false;
+
+    for (int i = 0; i < p; i++)
+        for (int d = 0; d < cv_size(); d++) {
+            const double a = m_cv[i * m_cv_stride + d];
+            const double b = m_cv[(i + period_cv_count) * m_cv_stride + d];
+
+            if (std::abs(a - b) > Tolerance::ZERO_TOLERANCE)
+                return false;
+        }
+
+    for (int i = 0; i < nurbsknot_count() - period_cv_count; i++)
+        if (std::abs(m_nurbsknot[i + period_cv_count] - m_nurbsknot[i] - period) > tol)
+            return false;
+
+    return true;
+}
+
+void NurbsCurve::insert_wrapped_nurbsknot_once(double nurbsknot_value) {
+
+    const int p = degree();
+    const int period_cv_count = m_cv_count - p;
+    const int new_period_cv_count = period_cv_count + 1;
+    const double period = domain_end() - domain_start();
+    const std::vector<double> nurbsknot = m_nurbsknot;
+    const std::vector<double> cv = m_cv;
+    const int stride = m_cv_stride;
+    const auto floor_div = [](int a, int b) {
+        return a >= 0 ? a / b : -((b - 1 - a) / b);
+    };
+    const auto knot_at = [&](int i) {
+        return nurbsknot[(i - 1) % period_cv_count] + ((i - 1) / period_cv_count) * period;
+    };
+    int k = p;
+
+    while (k < m_cv_count - 1 && knot_at(k + 1) <= nurbsknot_value)
+        k++;
+
+    std::vector<double> nurbsknot_new(new_period_cv_count + 2 * p - 1);
+
+    for (int i = 0; i < static_cast<int>(nurbsknot_new.size()); i++) {
+        const int q = floor_div(i - k, new_period_cv_count);
+        const int r = i - k - q * new_period_cv_count;
+        nurbsknot_new[i] = (r == 0 ? nurbsknot_value : knot_at(k + r)) + q * period;
+    }
+
+    std::vector<double> cv_new((new_period_cv_count + p) * stride);
+
+    for (int i = 0; i < new_period_cv_count + p; i++) {
+        const int idx = i - floor_div(i - (k - p + 1), new_period_cv_count) * new_period_cv_count;
+        const double denom = knot_at(idx + p) - knot_at(idx);
+        const double alpha = idx <= k && denom > 0.0 ? (nurbsknot_value - knot_at(idx)) / denom : 0.0;
+        const double* a = &cv[((idx - 1) % period_cv_count) * stride];
+        const double* b = &cv[(idx % period_cv_count) * stride];
+
+        for (int d = 0; d < stride; d++)
+            cv_new[i * stride + d] = (1.0 - alpha) * a[d] + alpha * b[d];
+    }
+
+    m_cv_count = new_period_cv_count + p;
+    m_cv = std::move(cv_new);
     m_nurbsknot = std::move(nurbsknot_new);
 }
 

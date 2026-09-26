@@ -861,6 +861,97 @@ MINI_TEST("Primitives", "Nurbssurface Loft") {
     );
 }
 
+MINI_TEST("Primitives", "Nurbssurface Loft Mixed Knots") {
+
+    const std::vector<Point> pts_bottom = {
+        Point(2.0, 0.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(-2.0, 0.0, 0.0),
+        Point(0.0, -2.0, 0.0),
+    };
+    const std::vector<Point> pts_top = {
+        Point(2.0, 0.0, 3.0),
+        Point(0.0, 2.0, 3.0),
+        Point(-2.0, 0.0, 3.0),
+        Point(0.0, -2.0, 3.0),
+    };
+    NurbsCurve periodic = NurbsCurve::create(true, 3, pts_bottom);
+    NurbsCurve clamped = NurbsCurve::create(true, 3, pts_top);
+    periodic.set_domain(0.0, 1.0);
+    clamped.set_domain(0.0, 1.0);
+    clamped.clamp_end(2);
+
+    const std::vector<Point> pts_a = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 1.0, 0.0),
+        Point(2.0, 0.0, 0.0),
+        Point(3.0, 1.0, 0.0),
+        Point(4.0, 0.0, 0.0),
+    };
+    const std::vector<Point> pts_b = {
+        Point(0.0, 0.0, 3.0),
+        Point(1.0, 1.0, 3.0),
+        Point(2.0, 0.0, 3.0),
+        Point(3.0, 1.0, 3.0),
+        Point(4.0, 0.0, 3.0),
+    };
+    NurbsCurve single = NurbsCurve::create(false, 3, pts_a);
+    NurbsCurve doubled = NurbsCurve::create(false, 3, pts_b);
+    single.set_domain(0.0, 1.0);
+    doubled.set_domain(0.0, 1.0);
+    doubled.insert_nurbsknot(0.5, 2);
+
+    const NurbsSurface srf_closed = Primitives::create_loft({periodic, clamped}, 1);
+    const NurbsSurface srf_open = Primitives::create_loft({single, doubled}, 1);
+
+    MINI_CHECK(srf_closed.is_valid());
+    MINI_CHECK(srf_closed.cv_count(0) == 7);
+    MINI_CHECK(srf_open.is_valid());
+    MINI_CHECK(srf_open.cv_count(0) == 6);
+
+    for (int i = 0; i <= 4; i++) {
+        const double t = i / 4.0;
+
+        MINI_CHECK(TOLERANCE.is_point_close(srf_closed.point_at(t, 0.0), periodic.point_at(t)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf_closed.point_at(t, 1.0), clamped.point_at(t)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf_open.point_at(t, 0.0), single.point_at(t)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf_open.point_at(t, 1.0), doubled.point_at(t)));
+    }
+}
+
+MINI_TEST("Primitives", "Nurbssurface Loft Periodic Sections") {
+
+    const std::vector<Point> pts_bottom = {
+        Point(2.0, 0.0, 0.0),
+        Point(0.0, 2.0, 0.0),
+        Point(-2.0, 0.0, 0.0),
+        Point(0.0, -2.0, 0.0),
+    };
+    const std::vector<Point> pts_top = {
+        Point(2.0, 0.0, 3.0),
+        Point(1.0, 1.0, 3.0),
+        Point(0.0, 2.0, 3.0),
+        Point(-2.0, 0.0, 3.0),
+        Point(0.0, -2.0, 3.0),
+    };
+    NurbsCurve bottom = NurbsCurve::create(true, 3, pts_bottom);
+    NurbsCurve top = NurbsCurve::create(true, 3, pts_top);
+    bottom.set_domain(0.0, 1.0);
+    top.set_domain(0.0, 1.0);
+
+    const NurbsSurface srf = Primitives::create_loft({bottom, top}, 1);
+
+    MINI_CHECK(srf.is_valid());
+    MINI_CHECK(srf.cv_count(0) == 11);
+
+    for (int i = 0; i < 5; i++) {
+        const double t = 0.1 + 0.2 * i;
+
+        MINI_CHECK(TOLERANCE.is_point_close(srf.point_at(t, 0.0), bottom.point_at(t)));
+        MINI_CHECK(TOLERANCE.is_point_close(srf.point_at(t, 1.0), top.point_at(t)));
+    }
+}
+
 MINI_TEST("Primitives", "Nurbssurface Revolve") {
 
     const NurbsCurve pa = NurbsCurve::create(

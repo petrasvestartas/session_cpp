@@ -9,6 +9,7 @@
 #include "primitives.h"
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -819,6 +820,103 @@ namespace session_cpp {
 
         MINI_CHECK(curve.span_count() == 4);
         MINI_CHECK(TOLERANCE.is_close(curve.length(), length));
+    }
+
+    MINI_TEST("NurbsCurve", "Insert Knot Keeps Shape") {
+
+        const std::vector<Point> points = {
+            Point(0, 0, 0),
+            Point(1, 2, 0),
+            Point(3, 2, 1),
+            Point(4, 0, 0),
+            Point(6, 1, 2),
+            Point(7, 3, 0)
+        };
+
+        const NurbsCurve curve = NurbsCurve::create(false, 3, points);
+        NurbsCurve inserted = curve;
+        const bool ok = inserted.insert_nurbsknot(1.5, 1);
+
+        MINI_CHECK(ok);
+        MINI_CHECK(inserted.cv_count() == 7);
+        MINI_CHECK(inserted.nurbsknot_count() == inserted.cv_count() + inserted.order() - 2);
+
+        for (int i = 0; i < 5; i++) {
+            const double t = curve.domain_end() * i / 4.0;
+
+            MINI_CHECK(TOLERANCE.is_point_close(inserted.point_at(t), curve.point_at(t)));
+        }
+    }
+
+    MINI_TEST("NurbsCurve", "Insert Knot Periodic Wrap") {
+
+        const std::vector<Point> points = {
+            Point(2, 0, 0),
+            Point(0, 2, 0),
+            Point(-2, 0, 0),
+            Point(0, -2, 0)
+        };
+
+        NurbsCurve curve = NurbsCurve::create(true, 3, points);
+        curve.set_domain(0.0, 1.0);
+        NurbsCurve inside = curve;
+        NurbsCurve outside = curve;
+        NurbsCurve open_curve = NurbsCurve::create(false, 3, points);
+        const bool ok_inside = inside.insert_nurbsknot(0.3, 1);
+        const bool ok_outside = outside.insert_nurbsknot(2.3, 1);
+        const bool ok_open = open_curve.insert_nurbsknot(open_curve.domain_end() + 0.5, 1);
+
+        MINI_CHECK(ok_inside);
+        MINI_CHECK(ok_outside);
+        MINI_CHECK(!ok_open);
+        MINI_CHECK(outside.cv_count() == 8);
+        MINI_CHECK(open_curve.cv_count() == 4);
+
+        for (int i = 0; i < outside.nurbsknot_count(); i++)
+            MINI_CHECK(TOLERANCE.is_close(outside.nurbsknot(i), inside.nurbsknot(i)));
+
+        for (int i = 0; i < outside.nurbsknot_count() - 5; i++)
+            MINI_CHECK(TOLERANCE.is_close(outside.nurbsknot(i + 5) - outside.nurbsknot(i), 1.0));
+
+        for (int i = 0; i < 3; i++)
+            MINI_CHECK(TOLERANCE.is_point_close(outside.get_cv(i), outside.get_cv(i + 5)));
+
+        for (int i = 0; i < 5; i++) {
+            const double t = 0.1 + 0.2 * i;
+
+            MINI_CHECK(TOLERANCE.is_point_close(outside.point_at(t), curve.point_at(t)));
+        }
+    }
+
+    MINI_TEST("NurbsCurve", "Insert Knot Multiplicity Limit") {
+
+        const std::vector<Point> points = {
+            Point(0, 0, 0),
+            Point(1, 2, 0),
+            Point(3, 2, 1),
+            Point(4, 0, 0),
+            Point(6, 1, 2),
+            Point(7, 3, 0)
+        };
+
+        NurbsCurve curve = NurbsCurve::create(false, 3, points);
+        NurbsCurve periodic = NurbsCurve::create(true, 3, points);
+        const Point point = curve.point_at(1.5);
+        const bool ok_over = curve.insert_nurbsknot(1.5, 4);
+        const bool ok_nan = curve.insert_nurbsknot(std::numeric_limits<double>::quiet_NaN(), 1);
+        const bool ok_full = curve.insert_nurbsknot(1.5, 3);
+        const bool ok_again = curve.insert_nurbsknot(1.5, 3);
+        const bool ok_seam = periodic.insert_nurbsknot(periodic.domain_end(), 2);
+
+        MINI_CHECK(!ok_over);
+        MINI_CHECK(!ok_nan);
+        MINI_CHECK(ok_full);
+        MINI_CHECK(ok_again);
+        MINI_CHECK(!ok_seam);
+        MINI_CHECK(curve.cv_count() == 9);
+        MINI_CHECK(curve.nurbsknot_multiplicity(3) == 3);
+        MINI_CHECK(periodic.cv_count() == 9);
+        MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(1.5), point));
     }
 
     MINI_TEST("NurbsCurve", "Span Vector Empty") {

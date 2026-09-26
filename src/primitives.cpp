@@ -193,27 +193,56 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
     if (compatible)
         return true;
 
-    for (NurbsCurve& c : curves)
+    bool periodic = true;
+
+    for (NurbsCurve& c : curves) {
         if (!c.set_domain(0.0, 1.0))
             return false;
 
-    std::vector<double> unified = curves[0].get_nurbsknots();
+        periodic = periodic && c.is_periodic();
+    }
+
+    for (NurbsCurve& c : curves)
+        if (!periodic && !c.is_clamped(2) && !c.clamp_end(2))
+            return false;
+
+    const auto span_nurbsknots = [periodic](const NurbsCurve& c) {
+        const std::vector<double> nurbsknots = c.get_nurbsknots();
+
+        if (!periodic)
+            return nurbsknots;
+
+        return std::vector<double>(nurbsknots.begin() + c.degree() - 1, nurbsknots.begin() + c.cv_count() - 1);
+    };
+
+    std::vector<double> unified = span_nurbsknots(curves[0]);
 
     for (size_t i = 1; i < curves.size(); i++)
-        unified = merge_nurbsknot_vectors(unified, curves[i].get_nurbsknots());
+        unified = merge_nurbsknot_vectors(unified, span_nurbsknots(curves[i]));
 
     const double tol = 1e-10;
 
     for (NurbsCurve& c : curves) {
-        const std::vector<double> nurbsknots = c.get_nurbsknots();
+        const std::vector<double> nurbsknots = span_nurbsknots(c);
         size_t ci = 0;
+        int mult = 0;
 
-        for (size_t ui = 0; ui < unified.size(); ui++)
+        for (size_t ui = 0; ui < unified.size(); ui++) {
+            if (ui == 0 || std::abs(unified[ui] - unified[ui - 1]) >= tol)
+                mult = 0;
+
+            mult++;
+
             if (ci < nurbsknots.size() && std::abs(nurbsknots[ci] - unified[ui]) < tol)
                 ci++;
-            else
-                c.insert_nurbsknot(unified[ui], 1);
+            else if (!c.insert_nurbsknot(unified[ui], mult))
+                return false;
+        }
     }
+
+    for (const NurbsCurve& c : curves)
+        if (!nurbsknot_vectors_equal(c.get_nurbsknots(), curves[0].get_nurbsknots()))
+            return false;
 
     return true;
 }
