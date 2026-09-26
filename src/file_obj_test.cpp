@@ -13,10 +13,12 @@ namespace session_cpp {
 
     MINI_TEST("FileObj", "Read Bunny") {
 
-        if (!std::filesystem::exists("session_data/bunny.obj"))
-            return;
+        const std::filesystem::path bunny_path = std::filesystem::path(__FILE__).parent_path().parent_path() /
+            "session_data" / "bunny.obj";
 
-        const Mesh mesh = file_obj::read_file_obj("session_data/bunny.obj");
+        MINI_CHECK(std::filesystem::exists(bunny_path));
+
+        const Mesh mesh = file_obj::read_file_obj(bunny_path.string());
         const std::pair<std::vector<Point>, std::vector<std::vector<size_t>>> indexed = mesh.to_vertices_and_faces();
         const std::vector<Point>& vertices = indexed.first;
         const std::vector<std::vector<size_t>>& faces = indexed.second;
