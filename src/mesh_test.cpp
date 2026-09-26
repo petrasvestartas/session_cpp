@@ -200,7 +200,7 @@ MINI_TEST("Mesh", "From Arrangement") {
         Line::from_points(Point(10.0, 10.0, 0.0), Point(0.0, 10.0, 0.0)),
         Line::from_points(Point(0.0, 10.0, 0.0), Point(0.0, 0.0, 0.0)),
     };
-    Mesh mesh = Mesh::from_arrangement(lines, boundary, 0.01, 0.5);
+    const Mesh mesh = Mesh::from_arrangement(lines, boundary, 0.01, 0.5);
     int horizontal = 0;
     int diagonal = 0;
     int sides = 0;
@@ -217,6 +217,37 @@ MINI_TEST("Mesh", "From Arrangement") {
     MINI_CHECK(horizontal == 2);
     MINI_CHECK(diagonal == 1);
     MINI_CHECK(sides == 8);
+}
+
+MINI_TEST("Mesh", "From Arrangement Components") {
+
+    const std::vector<Line> lines = {
+        Line::from_points(Point(-2.0, 8.5, 0.0), Point(12.0, 8.5, 0.0)),
+        Line::from_points(Point(25.0, -2.0, 0.0), Point(25.0, 12.0, 0.0)),
+    };
+    const std::vector<Line> boundary = {
+        Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)),
+        Line::from_points(Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0)),
+        Line::from_points(Point(10.0, 10.0, 0.0), Point(0.0, 10.0, 0.0)),
+        Line::from_points(Point(0.0, 10.0, 0.0), Point(0.0, 0.0, 0.0)),
+        Line::from_points(Point(20.0, 0.0, 0.0), Point(30.0, 0.0, 0.0)),
+        Line::from_points(Point(30.0, 0.0, 0.0), Point(30.0, 10.0, 0.0)),
+        Line::from_points(Point(30.0, 10.0, 0.0), Point(20.0, 10.0, 0.0)),
+        Line::from_points(Point(20.0, 10.0, 0.0), Point(20.0, 0.0, 0.0)),
+        Line::from_points(Point(3.0, 3.0, 0.0), Point(7.0, 3.0, 0.0)),
+        Line::from_points(Point(7.0, 3.0, 0.0), Point(7.0, 7.0, 0.0)),
+        Line::from_points(Point(7.0, 7.0, 0.0), Point(3.0, 7.0, 0.0)),
+        Line::from_points(Point(3.0, 7.0, 0.0), Point(3.0, 3.0, 0.0)),
+    };
+    const Mesh mesh = Mesh::from_arrangement(lines, boundary, 0.01, 0.5);
+    size_t rings = 0;
+
+    for (const std::pair<const size_t, std::vector<std::vector<size_t>>>& entry : mesh.get_face_holes())
+        rings += entry.second.size();
+
+    MINI_CHECK(mesh.number_of_faces() == 4);
+    MINI_CHECK(mesh.get_face_holes().size() == 1);
+    MINI_CHECK(rings == 1);
 }
 
 MINI_TEST("Mesh", "From Polygon With Holes") {
@@ -1582,10 +1613,10 @@ MINI_TEST("Mesh", "Cut By Plane") {
 MINI_TEST("Mesh", "Section By Plane") {
 
     const Plane plane = Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0));
-    Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
-    std::vector<Polyline> middle = box.section_by_plane(plane);
-    std::vector<Polyline> down = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, -1.0)));
-    std::vector<Polyline> above = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 5.0), Vector(0.0, 0.0, 1.0)));
+    const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
+    const std::vector<Polyline> middle = box.section_by_plane(plane);
+    const std::vector<Polyline> down = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, -1.0)));
+    const std::vector<Polyline> above = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 5.0), Vector(0.0, 0.0, 1.0)));
 
     MINI_CHECK(middle.size() == 1);
     MINI_CHECK(middle[0].point_count() == 5);
@@ -1602,13 +1633,45 @@ MINI_TEST("Mesh", "Section By Plane") {
         Polyline::rectangle(Point(0.0, 0.0, 2.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 4.0, 4.0),
         Polyline::rectangle(Point(1.0, 1.0, 2.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 2.0).reversed(),
     };
-    Mesh tube = Mesh::loft(bottom, top);
-    std::vector<Polyline> rings = tube.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)));
+    const Mesh tube = Mesh::loft(bottom, top);
+    const std::vector<Polyline> rings = tube.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)));
 
     MINI_CHECK(rings.size() == 2);
     MINI_CHECK(!rings[0].is_clockwise(plane));
     MINI_CHECK(rings[1].is_clockwise(plane));
     MINI_CHECK(TOLERANCE.is_close(rings[1].get_point(0)[2], 1.0));
+}
+
+MINI_TEST("Mesh", "Section By Plane Coplanar") {
+
+    const Mesh box = Mesh::create_box(2.0, 2.0, 2.0);
+    const std::vector<Polyline> top = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0)));
+    const std::vector<Polyline> bottom = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, -1.0), Vector(0.0, 0.0, 1.0)));
+    const std::vector<Polyline> flipped = box.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, -1.0)));
+
+    MINI_CHECK(top.empty());
+    MINI_CHECK(bottom.empty());
+    MINI_CHECK(flipped.empty());
+}
+
+MINI_TEST("Mesh", "Section By Plane Open") {
+
+    Mesh mesh = Mesh::create_box(2.0, 2.0, 2.0);
+    const size_t low_start = mesh.add_vertex(Point(5.0, 0.0, -1.0));
+    const size_t low_corner = mesh.add_vertex(Point(7.0, 0.0, -1.0));
+    const size_t low_end = mesh.add_vertex(Point(7.0, 2.0, -1.0));
+    const size_t high_start = mesh.add_vertex(Point(5.0, 0.0, 1.0));
+    const size_t high_corner = mesh.add_vertex(Point(7.0, 0.0, 1.0));
+    const size_t high_end = mesh.add_vertex(Point(7.0, 2.0, 1.0));
+    MINI_CHECK(mesh.add_face({low_start, low_corner, high_corner, high_start}).has_value());
+    MINI_CHECK(mesh.add_face({low_corner, low_end, high_end, high_corner}).has_value());
+    const std::vector<Polyline> section = mesh.section_by_plane(Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 1.0)));
+
+    MINI_CHECK(section.size() == 2);
+    MINI_CHECK(section[0].is_closed());
+    MINI_CHECK(section[0].point_count() == 5);
+    MINI_CHECK(!section[1].is_closed());
+    MINI_CHECK(section[1].point_count() == 3);
 }
 
 MINI_TEST("Mesh", "Volume Far From Origin") {

@@ -418,4 +418,26 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(split.first[4].start()[1], 0.0));
     }
 
+    MINI_TEST("Line", "Split At Crossings Zero Length") {
+
+        const std::vector<Line> lines = {
+            Line::from_points(Point(-2.0, 5.0, 0.0), Point(12.0, 5.0, 0.0)),
+            Line::from_points(Point(5.0, 5.0, 0.0), Point(5.0, 5.0, 0.0)),
+        };
+        const std::vector<Line> boundary = {
+            Line::from_points(Point(0.0, 0.0, 0.0), Point(10.0, 0.0, 0.0)),
+            Line::from_points(Point(10.0, 0.0, 0.0), Point(10.0, 10.0, 0.0)),
+            Line::from_points(Point(10.0, 10.0, 0.0), Point(0.0, 10.0, 0.0)),
+            Line::from_points(Point(0.0, 10.0, 0.0), Point(0.0, 0.0, 0.0)),
+        };
+        const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, 0.01, 0.5);
+        int zero = 0;
+
+        for (size_t i = 0; i < split.second.size(); i++)
+            zero += split.second[i] == 1 ? 1 : 0;
+
+        MINI_CHECK(split.first.size() == 7);
+        MINI_CHECK(zero == 0);
+    }
+
 }

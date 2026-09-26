@@ -1026,8 +1026,8 @@ namespace session_cpp {
             Point(0.0, 1.0, 0.0),
             Point(0.0, 0.0, 0.0),
         });
-        Polyline moved = square.offset_sides({1.0, 0.0, 0.0, 0.0});
-        Polyline stepped = split.offset_sides({1.0, 2.0, 0.0, 0.0, 0.0});
+        const Polyline moved = square.offset_sides({1.0, 0.0, 0.0, 0.0});
+        const Polyline stepped = split.offset_sides({1.0, 2.0, 0.0, 0.0, 0.0});
 
         MINI_CHECK(moved.point_count() == 5);
         MINI_CHECK(moved.is_closed());
@@ -1038,6 +1038,22 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(stepped.get_point(0)[1], -1.0));
         MINI_CHECK(TOLERANCE.is_close(stepped.get_point(1)[1], -2.0));
         MINI_CHECK(TOLERANCE.is_close(stepped.get_point(2)[1], -2.0));
+    }
+
+    MINI_TEST("Polyline", "Offset Sides Degenerate") {
+
+        const Polyline square(std::vector<Point>{
+            Point(0.0, 0.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(2.0, 2.0, 0.0),
+            Point(0.0, 2.0, 0.0),
+            Point(0.0, 0.0, 0.0),
+        });
+        const Polyline empty = Polyline().offset_sides({1.0});
+        const Polyline short_distances = square.offset_sides({1.0, 1.0});
+
+        MINI_CHECK(empty.point_count() == 0);
+        MINI_CHECK(short_distances.point_count() == 0);
     }
 
 } // namespace session_cpp

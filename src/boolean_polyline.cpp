@@ -2563,48 +2563,6 @@ std::vector<Polyline> session_cpp::BooleanPolyline::compute(const Polyline& a, c
     return v_extract(sc, 1.0 / bool_scale);
 }
 
-std::vector<Polyline> session_cpp::BooleanPolyline::compute_regions(const std::vector<Polyline>& a, const std::vector<Polyline>& b, int clip_type) {
-
-    std::vector<double> ca;
-    std::vector<double> cb;
-
-    for (const Polyline& ring : a)
-        ca.insert(ca.end(), ring._coords.begin(), ring._coords.end());
-
-    for (const Polyline& ring : b)
-        cb.insert(cb.end(), ring._coords.begin(), ring._coords.end());
-
-    const double bool_scale = v_bool_scale(ca.data(), (int)(ca.size() / 3), cb.data(), (int)(cb.size() / 3));
-    VattiScratch& sc = vtls;
-    sc.reset(ca.size() / 3 + cb.size() / 3);
-    int64_t min_x = 0;
-    int64_t max_x = 0;
-    int64_t min_y = 0;
-    int64_t max_y = 0;
-
-    for (const Polyline& ring : a) {
-        int n = (int)(ring._coords.size() / 3);
-        v_strip_closing(ring._coords.data(), n);
-        v_add_path_from_doubles(ring._coords.data(), n, 0, v_scale(bool_scale), sc, min_x, max_x, min_y, max_y);
-    }
-
-    for (const Polyline& ring : b) {
-        int n = (int)(ring._coords.size() / 3);
-        v_strip_closing(ring._coords.data(), n);
-        v_add_path_from_doubles(ring._coords.data(), n, 1, v_scale(bool_scale), sc, min_x, max_x, min_y, max_y);
-    }
-
-    if (!v_execute_internal(sc, clip_type))
-        return {};
-
-    std::vector<Polyline> rings = v_extract(sc, 1.0 / bool_scale);
-
-    for (Polyline& ring : rings)
-        ring.add_point(ring.get_point(0));
-
-    return rings;
-}
-
 int session_cpp::BooleanPolyline::compute_count(const Polyline& a, const Polyline& b, int clip_type) {
 
     const double* ca = a._coords.data();
@@ -2844,4 +2802,99 @@ session_cpp::BooleanPolyline::clip_open_against_closed(const Polyline& open_subj
     v_flush(cur, result);
 
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Ring sets
+// ═══════════════════════════════════════════════════════════════════════════
+namespace {
+
+/// Signed xy area of the first n points of flat coordinates, positive counter-clockwise.
+static double v_ring_area(const double* c, int n) {
+
+    double area = 0.0;
+
+    for (int i = 0; i < n; i++)
+        area += c[i * 3] * c[((i + 1) % n) * 3 + 1] - c[((i + 1) % n) * 3] * c[i * 3 + 1];
+
+    return area / 2.0;
+}
+
+/// The rings of one operand as flat coordinates without closing points, outer counter-clockwise and holes clockwise by how many other rings hold a point just inside each.
+static std::vector<std::vector<double>> v_oriented(const std::vector<Polyline>& rings) {
+
+    std::vector<std::vector<double>> flat;
+
+    for (const Polyline& ring : rings) {
+        int n = (int)(ring._coords.size() / 3);
+        v_strip_closing(ring._coords.data(), n);
+
+        if (n >= 3)
+            flat.emplace_back(ring._coords.begin(), ring._coords.begin() + n * 3);
+    }
+
+    std::vector<std::vector<double>> oriented = flat;
+
+    for (size_t i = 0; i < flat.size(); i++) {
+        const int n = (int)(flat[i].size() / 3);
+        const double area = v_ring_area(flat[i].data(), n);
+        const double dx = flat[i][3] - flat[i][0];
+        const double dy = flat[i][4] - flat[i][1];
+        const double side = area > 0.0 ? Tolerance::RELATIVE : -Tolerance::RELATIVE;
+        const double px = (flat[i][0] + flat[i][3]) * 0.5 - dy * side;
+        const double py = (flat[i][1] + flat[i][4]) * 0.5 + dx * side;
+        int depth = 0;
+
+        for (size_t j = 0; j < flat.size(); j++)
+            depth += j != i && v_point_in_poly(flat[j].data(), (int)(flat[j].size() / 3), px, py) ? 1 : 0;
+
+        if ((area > 0.0) == (depth % 2 == 0))
+            continue;
+
+        for (int k = 0; k < n; k++)
+            for (int axis = 0; axis < 3; axis++)
+                oriented[i][k * 3 + axis] = flat[i][(n - 1 - k) * 3 + axis];
+    }
+
+    return oriented;
+}
+
+} // anonymous namespace
+
+std::vector<Polyline> session_cpp::BooleanPolyline::compute_regions(const std::vector<Polyline>& a, const std::vector<Polyline>& b, int clip_type) {
+
+    const std::vector<std::vector<double>> rings_a = v_oriented(a);
+    const std::vector<std::vector<double>> rings_b = v_oriented(b);
+    std::vector<double> ca;
+    std::vector<double> cb;
+
+    for (const std::vector<double>& ring : rings_a)
+        ca.insert(ca.end(), ring.begin(), ring.end());
+
+    for (const std::vector<double>& ring : rings_b)
+        cb.insert(cb.end(), ring.begin(), ring.end());
+
+    const double bool_scale = v_bool_scale(ca.data(), (int)(ca.size() / 3), cb.data(), (int)(cb.size() / 3));
+    VattiScratch& sc = vtls;
+    sc.reset(ca.size() / 3 + cb.size() / 3);
+    int64_t min_x = 0;
+    int64_t max_x = 0;
+    int64_t min_y = 0;
+    int64_t max_y = 0;
+
+    for (const std::vector<double>& ring : rings_a)
+        v_add_path_from_doubles(ring.data(), (int)(ring.size() / 3), 0, v_scale(bool_scale), sc, min_x, max_x, min_y, max_y);
+
+    for (const std::vector<double>& ring : rings_b)
+        v_add_path_from_doubles(ring.data(), (int)(ring.size() / 3), 1, v_scale(bool_scale), sc, min_x, max_x, min_y, max_y);
+
+    if (!v_execute_internal(sc, clip_type))
+        return {};
+
+    std::vector<Polyline> rings = v_extract(sc, 1.0 / bool_scale);
+
+    for (Polyline& ring : rings)
+        ring.add_point(ring.get_point(0));
+
+    return rings;
 }

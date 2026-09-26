@@ -541,50 +541,6 @@ Mesh Mesh::from_lines(const std::vector<Line>& lines, bool delete_boundary_face,
     return mesh;
 }
 
-/// Signed xy area of a face loop.
-static double arrangement_area(const std::vector<Point>& points) {
-
-    double area = 0.0;
-
-    for (size_t i = 0; i < points.size(); i++)
-        area += points[i][0] * points[(i + 1) % points.size()][1] - points[(i + 1) % points.size()][0] * points[i][1];
-
-    return area / 2.0;
-}
-
-/// Integer xy key of a point on the tolerance grid.
-static std::pair<int64_t, int64_t> arrangement_key(const Point& point, double tolerance) {
-    return {std::llround(point[0] / tolerance), std::llround(point[1] / tolerance)};
-}
-
-Mesh Mesh::from_arrangement(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge) {
-
-    const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, tolerance, merge);
-    Mesh mesh = from_lines(split.first, true, tolerance * 0.1);
-
-    for (const size_t face : mesh.faces()) {
-        std::vector<Point> points;
-
-        for (const size_t key : *mesh.face_vertices(face))
-            points.push_back(*mesh.vertex_point(key));
-
-        if (std::abs(arrangement_area(points)) < tolerance * tolerance)
-            mesh.remove_face(face);
-    }
-
-    std::map<std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>>, size_t> lookup;
-
-    for (size_t i = 0; i < split.first.size(); i++)
-        lookup[std::minmax(arrangement_key(split.first[i].start(), tolerance), arrangement_key(split.first[i].end(), tolerance))] = split.second[i];
-
-    for (const std::pair<size_t, size_t>& edge : mesh.edges()) {
-        const std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>> key = std::minmax(arrangement_key(*mesh.vertex_point(edge.first), tolerance), arrangement_key(*mesh.vertex_point(edge.second), tolerance));
-        mesh.set_edge_attribute(edge, "line", lookup.count(key) ? static_cast<double>(lookup.at(key)) : -1.0);
-    }
-
-    return mesh;
-}
-
 Mesh Mesh::from_polygon_with_holes(const std::vector<std::vector<Point>>& polylines, bool sort_by_bbox) {
 
     if (polylines.empty())
@@ -5134,40 +5090,405 @@ Mesh Mesh::cut_by_plane(const Plane& plane) const {
     return result;
 }
 
-std::vector<Polyline> Mesh::section_by_plane(const Plane& plane) const {
+/// Even-odd test of a 2D point against a 2D ring.
+static bool ring_inside_2d(const std::pair<double, double>& point, const std::vector<std::pair<double, double>>& ring) {
 
-    const Mesh below = cut_by_plane(Plane::from_point_normal(plane.origin(), plane.z_axis() * -1.0));
-    std::vector<Polyline> loops;
+    bool inside = false;
 
-    for (const std::pair<const size_t, std::vector<size_t>>& entry : below.face) {
-        std::vector<std::vector<size_t>> rings = {entry.second};
-        bool flat = true;
+    for (size_t i = 0; i < ring.size(); ++i) {
+        const std::pair<double, double>& first = ring[i];
+        const std::pair<double, double>& second = ring[(i + 1) % ring.size()];
 
-        if (below.face_holes.count(entry.first))
-            rings.insert(rings.end(), below.face_holes.at(entry.first).begin(), below.face_holes.at(entry.first).end());
+        if ((first.second > point.second) != (second.second > point.second) && point.first < first.first + (point.second - first.second) * (second.first - first.first) / (second.second - first.second))
+            inside = !inside;
+    }
 
-        for (const std::vector<size_t>& ring : rings)
-            for (const size_t key : ring)
-                flat = flat && std::abs((below.vertex.at(key).position() - plane.origin()).dot(plane.z_axis())) <= Tolerance::APPROXIMATION;
+    return inside;
+}
 
-        if (!flat)
-            continue;
+/// Signed area of a 2D ring, positive counter-clockwise.
+static double ring_area_2d(const std::vector<std::pair<double, double>>& ring) {
 
-        for (size_t i = 0; i < rings.size(); i++) {
-            std::vector<Point> points;
+    double area = 0.0;
 
-            for (const size_t key : rings[i])
-                points.push_back(below.vertex.at(key).position());
+    for (size_t i = 0; i < ring.size(); ++i)
+        area += ring[i].first * ring[(i + 1) % ring.size()].second - ring[(i + 1) % ring.size()].first * ring[i].second;
 
-            if ((newell_normal(points).dot(plane.z_axis()) > 0.0) != (i == 0))
-                std::reverse(points.begin(), points.end());
+    return area / 2.0;
+}
 
-            points.push_back(points.front());
-            loops.emplace_back(points);
+/// Sign of a snapped plane distance: -1, 0 or 1.
+static int section_sign(double distance) {
+    return distance > 0.0 ? 1 : distance < 0.0 ? -1 : 0;
+}
+
+/// True when the ring passes from one side of the plane to the other through the on-plane run starting at vertex i.
+static bool section_flips(const std::vector<size_t>& ring, const std::map<size_t, double>& distance, size_t i) {
+
+    const size_t n = ring.size();
+    int before = 0;
+    int after = 0;
+
+    for (size_t k = 1; k < n && before == 0; ++k)
+        before = section_sign(distance.at(ring[(i + n - k) % n]));
+
+    for (size_t k = 1; k < n && after == 0; ++k)
+        after = section_sign(distance.at(ring[(i + k) % n]));
+
+    return before * after < 0;
+}
+
+/// Where the rings of one crossing face change side of the plane, keyed (v, v) for a vertex on the plane and (low, high) for a crossed edge, sorted along direction.
+static std::vector<std::pair<size_t, size_t>> section_events(
+    const std::vector<std::vector<size_t>>& rings,
+    const std::map<size_t, double>& distance,
+    const std::map<size_t, Point>& points,
+    const Vector& direction,
+    std::map<std::pair<size_t, size_t>, Point>& found
+) {
+
+    std::vector<std::pair<double, std::pair<size_t, size_t>>> events;
+
+    for (const std::vector<size_t>& ring : rings) {
+        const size_t n = ring.size();
+
+        for (size_t i = 0; i < n; ++i) {
+            const size_t current = ring[i];
+            const size_t following = ring[(i + 1) % n];
+            const int side = section_sign(distance.at(current));
+
+            if (side * section_sign(distance.at(following)) < 0) {
+                const std::pair<size_t, size_t> key = std::minmax(current, following);
+                const double ratio = distance.at(key.first) / (distance.at(key.first) - distance.at(key.second));
+                found[key] = points.at(key.first) + (points.at(key.second) - points.at(key.first)) * ratio;
+                events.push_back({(found[key] - points.at(ring[0])).dot(direction), key});
+            }
+
+            if (side == 0 && section_sign(distance.at(ring[(i + n - 1) % n])) != 0 && section_flips(ring, distance, i)) {
+                found[{current, current}] = points.at(current);
+                events.push_back({(points.at(current) - points.at(ring[0])).dot(direction), {current, current}});
+            }
         }
     }
 
-    return loops;
+    std::sort(events.begin(), events.end());
+    std::vector<std::pair<size_t, size_t>> keys;
+
+    for (const std::pair<double, std::pair<size_t, size_t>>& event : events)
+        keys.push_back(event.second);
+
+    return keys;
+}
+
+/// The walk from start along unused links, marking each link used.
+static std::vector<std::pair<size_t, size_t>> section_walk(
+    const std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& links,
+    std::pair<size_t, size_t> start,
+    std::set<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>>& used
+) {
+
+    std::vector<std::pair<size_t, size_t>> chain = {start};
+
+    for (size_t step = 0; step < links.size(); ++step) {
+        std::optional<std::pair<size_t, size_t>> next;
+
+        for (const std::pair<size_t, size_t>& other : links.at(chain.back()))
+            if (!next && !used.count(std::minmax(chain.back(), other)))
+                next = other;
+
+        if (!next)
+            break;
+
+        used.insert(std::minmax(chain.back(), *next));
+        chain.push_back(*next);
+    }
+
+    return chain;
+}
+
+/// The chains of a section graph: the open ones from every dead end, then the closed ones round what is left, each closed on its first key.
+static std::pair<std::vector<std::vector<std::pair<size_t, size_t>>>, std::vector<std::vector<std::pair<size_t, size_t>>>> section_chains(
+    const std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& links
+) {
+
+    std::set<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>> used;
+    std::pair<std::vector<std::vector<std::pair<size_t, size_t>>>, std::vector<std::vector<std::pair<size_t, size_t>>>> chains;
+
+    for (const std::pair<const std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& entry : links) {
+        const std::vector<std::pair<size_t, size_t>> chain = entry.second.size() == 1 ? section_walk(links, entry.first, used) : std::vector<std::pair<size_t, size_t>>();
+
+        if (chain.size() > 1)
+            chains.second.push_back(chain);
+    }
+
+    for (const std::pair<const std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& entry : links) {
+        const std::vector<std::pair<size_t, size_t>> chain = section_walk(links, entry.first, used);
+
+        if (chain.size() > 3 && chain.front() == chain.back())
+            chains.first.push_back(chain);
+    }
+
+    return chains;
+}
+
+/// The section graph: every pair of events of a face crossing the plane linked, faces on one side or in the plane skipped.
+static std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> section_links(
+    const std::map<size_t, std::vector<size_t>>& faces,
+    const std::map<size_t, std::vector<std::vector<size_t>>>& holes,
+    const std::map<size_t, double>& distance,
+    const std::map<size_t, Point>& points,
+    const Vector& axis,
+    std::map<std::pair<size_t, size_t>, Point>& found
+) {
+
+    std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> links;
+
+    for (const std::pair<const size_t, std::vector<size_t>>& entry : faces) {
+        const Vector normal = newell_normal(cut_points(entry.second, points));
+        const std::vector<std::vector<size_t>> rings = cut_rings(entry.first, entry.second, holes, normal, points);
+        int low = 0;
+        int high = 0;
+
+        for (const std::vector<size_t>& ring : rings)
+            for (const size_t key : ring) {
+                low = std::min(low, section_sign(distance.at(key)));
+                high = std::max(high, section_sign(distance.at(key)));
+            }
+
+        Vector direction = axis.cross(normal);
+
+        if (low == 0 || high == 0 || !direction.normalize_self())
+            continue;
+
+        const std::vector<std::pair<size_t, size_t>> events = section_events(rings, distance, points, direction, found);
+
+        for (size_t i = 0; i + 1 < events.size(); i += 2) {
+            links[events[i]].push_back(events[i + 1]);
+            links[events[i + 1]].push_back(events[i]);
+        }
+    }
+
+    return links;
+}
+
+/// The chains as polylines: closed loops turned counter-clockwise about the plane normal at even nesting depth and clockwise at odd, then the open chains.
+static std::vector<Polyline> section_polylines(
+    const std::pair<std::vector<std::vector<std::pair<size_t, size_t>>>, std::vector<std::vector<std::pair<size_t, size_t>>>>& chains,
+    const std::map<std::pair<size_t, size_t>, Point>& found,
+    const Plane& plane
+) {
+
+    const LoftFrame frame = {plane.origin(), plane.x_axis(), plane.y_axis()};
+    std::vector<std::vector<std::pair<double, double>>> flat;
+    std::vector<std::vector<Point>> loops;
+
+    for (const std::vector<std::pair<size_t, size_t>>& chain : chains.first) {
+        loops.emplace_back();
+        flat.emplace_back();
+
+        for (size_t i = 0; i + 1 < chain.size(); ++i) {
+            loops.back().push_back(found.at(chain[i]));
+            flat.back().push_back(loft_project(frame, found.at(chain[i])));
+        }
+    }
+
+    std::vector<Polyline> section;
+
+    for (size_t i = 0; i < loops.size(); ++i) {
+        int depth = 0;
+
+        for (size_t j = 0; j < loops.size(); ++j)
+            depth += j != i && ring_inside_2d(flat[i][0], flat[j]) ? 1 : 0;
+
+        if ((ring_area_2d(flat[i]) > 0.0) != (depth % 2 == 0))
+            std::reverse(loops[i].begin(), loops[i].end());
+
+        loops[i].push_back(loops[i].front());
+        section.emplace_back(loops[i]);
+    }
+
+    for (const std::vector<std::pair<size_t, size_t>>& chain : chains.second) {
+        std::vector<Point> open;
+
+        for (const std::pair<size_t, size_t>& key : chain)
+            open.push_back(found.at(key));
+
+        section.emplace_back(open);
+    }
+
+    return section;
+}
+
+std::vector<Polyline> Mesh::section_by_plane(const Plane& plane) const {
+
+    std::map<size_t, Point> points;
+
+    for (const std::pair<const size_t, VertexData>& entry : vertex)
+        points[entry.first] = entry.second.position();
+
+    const double tolerance = cut_tolerance(points);
+    std::map<size_t, double> distance;
+
+    for (const std::pair<const size_t, Point>& entry : points) {
+        const double offset = (entry.second - plane.origin()).dot(plane.z_axis());
+        distance[entry.first] = std::abs(offset) <= tolerance ? 0.0 : offset;
+    }
+
+    std::map<std::pair<size_t, size_t>, Point> found;
+    const std::map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> links = section_links(face, face_holes, distance, points, plane.z_axis(), found);
+
+    return section_polylines(section_chains(links), found, plane);
+}
+
+/// Union-find root of a vertex key.
+static size_t arrangement_root(std::map<size_t, size_t>& parent, size_t key) {
+
+    for (size_t step = 0; step < parent.size() && parent[key] != key; ++step)
+        key = parent[key] = parent[parent[key]];
+
+    return key;
+}
+
+/// Integer xy key of a point on the tolerance grid.
+static std::pair<int64_t, int64_t> arrangement_key(const Point& point, double tolerance) {
+    return {std::llround(point[0] / tolerance), std::llround(point[1] / tolerance)};
+}
+
+/// The source of every edge: the input line of the split piece it lies on, -1 when none.
+static std::map<std::pair<size_t, size_t>, double> arrangement_sources(const Mesh& mesh, const std::pair<std::vector<Line>, std::vector<size_t>>& split, double tolerance) {
+
+    std::map<std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>>, size_t> lookup;
+    std::map<std::pair<size_t, size_t>, double> sources;
+
+    for (size_t i = 0; i < split.first.size(); i++)
+        lookup[std::minmax(arrangement_key(split.first[i].start(), tolerance), arrangement_key(split.first[i].end(), tolerance))] = split.second[i];
+
+    for (const std::pair<size_t, size_t>& edge : mesh.edges()) {
+        const std::pair<std::pair<int64_t, int64_t>, std::pair<int64_t, int64_t>> key = std::minmax(arrangement_key(*mesh.vertex_point(edge.first), tolerance), arrangement_key(*mesh.vertex_point(edge.second), tolerance));
+        sources[edge] = lookup.count(key) ? static_cast<double>(lookup.at(key)) : -1.0;
+    }
+
+    return sources;
+}
+
+/// The smallest face of another component whose ring holds the point, none when no face does.
+static std::optional<size_t> arrangement_container(
+    const std::pair<double, double>& point,
+    size_t component,
+    const std::map<size_t, std::vector<std::pair<double, double>>>& rings,
+    const std::map<size_t, size_t>& owner,
+    const std::set<size_t>& skipped
+) {
+
+    std::optional<size_t> container;
+
+    for (const std::pair<const size_t, std::vector<std::pair<double, double>>>& entry : rings)
+        if (owner.at(entry.first) != component && !skipped.count(entry.first) && ring_inside_2d(point, entry.second) &&
+            (!container || ring_area_2d(entry.second) < ring_area_2d(rings.at(*container))))
+            container = entry.first;
+
+    return container;
+}
+
+/// The component root of every vertex, the vertices joined along the face edges.
+static std::map<size_t, size_t> arrangement_roots(const Mesh& mesh) {
+
+    std::map<size_t, size_t> parent;
+    std::map<size_t, size_t> roots;
+
+    for (const size_t key : mesh.vertices())
+        parent[key] = key;
+
+    for (const std::pair<size_t, size_t>& edge : mesh.edges())
+        parent[arrangement_root(parent, edge.first)] = arrangement_root(parent, edge.second);
+
+    for (const size_t key : mesh.vertices())
+        roots[key] = arrangement_root(parent, key);
+
+    return roots;
+}
+
+/// Faces sorted by winding: slivers under tolerance squared removed, every clockwise outer face of a component listed, every other face's xy ring kept with its component.
+static std::vector<size_t> arrangement_faces(Mesh& mesh, const std::map<size_t, size_t>& roots, double tolerance, std::map<size_t, std::vector<std::pair<double, double>>>& rings, std::map<size_t, size_t>& owner) {
+
+    std::vector<size_t> outer;
+
+    for (const size_t face : mesh.faces()) {
+        std::vector<std::pair<double, double>> ring;
+
+        for (const size_t key : *mesh.face_vertices(face))
+            ring.push_back({(*mesh.vertex_point(key))[0], (*mesh.vertex_point(key))[1]});
+
+        owner[face] = roots.at(mesh.face_vertices(face)->front());
+
+        if (ring_area_2d(ring) <= -tolerance * tolerance)
+            outer.push_back(face);
+        else if (std::abs(ring_area_2d(ring)) < tolerance * tolerance)
+            mesh.remove_face(face);
+        else
+            rings[face] = ring;
+    }
+
+    return outer;
+}
+
+/// Every outer face removed, made a hole of the face holding it, and the faces of a boundary-only component inside a face removed as a void.
+static void arrangement_holes(Mesh& mesh, const std::vector<size_t>& outer, const std::map<size_t, std::vector<std::pair<double, double>>>& rings, const std::map<size_t, size_t>& owner, const std::set<size_t>& lined) {
+
+    std::map<size_t, Point> points;
+    std::set<size_t> voids;
+    std::map<size_t, std::vector<std::vector<size_t>>> holes;
+
+    for (const size_t key : mesh.vertices())
+        points[key] = *mesh.vertex_point(key);
+
+    for (const size_t face : outer)
+        if (!lined.count(owner.at(face)) && arrangement_container({points[mesh.face_vertices(face)->front()][0], points[mesh.face_vertices(face)->front()][1]}, owner.at(face), rings, owner, voids))
+            for (const std::pair<const size_t, size_t>& entry : owner)
+                if (entry.second == owner.at(face) && rings.count(entry.first))
+                    voids.insert(entry.first);
+
+    for (const size_t face : outer) {
+        const std::optional<size_t> container = arrangement_container({points[mesh.face_vertices(face)->front()][0], points[mesh.face_vertices(face)->front()][1]}, owner.at(face), rings, owner, voids);
+
+        if (container)
+            holes[*container].push_back(*mesh.face_vertices(face));
+
+        mesh.remove_face(face);
+    }
+
+    for (const size_t face : voids)
+        mesh.remove_face(face);
+
+    for (const std::pair<const size_t, std::vector<std::vector<size_t>>>& entry : holes) {
+        CutFace piece = {{*mesh.face_vertices(entry.first)}, entry.first};
+        piece.rings.insert(piece.rings.end(), entry.second.begin(), entry.second.end());
+        mesh.set_face_holes(entry.first, entry.second);
+        mesh.set_face_triangulation(entry.first, cut_triangulation(piece, points));
+    }
+}
+
+Mesh Mesh::from_arrangement(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge) {
+
+    const std::pair<std::vector<Line>, std::vector<size_t>> split = Line::split_at_crossings(lines, boundary, tolerance, merge);
+    Mesh mesh = from_lines(split.first, false, tolerance * 0.1);
+    const std::map<std::pair<size_t, size_t>, double> sources = arrangement_sources(mesh, split, tolerance);
+    const std::map<size_t, size_t> roots = arrangement_roots(mesh);
+    std::set<size_t> lined;
+
+    for (const std::pair<const std::pair<size_t, size_t>, double>& entry : sources)
+        if (entry.second < static_cast<double>(lines.size()))
+            lined.insert(roots.at(entry.first.first));
+
+    std::map<size_t, std::vector<std::pair<double, double>>> rings;
+    std::map<size_t, size_t> owner;
+    const std::vector<size_t> outer = arrangement_faces(mesh, roots, tolerance, rings, owner);
+    arrangement_holes(mesh, outer, rings, owner, lined);
+
+    for (const std::pair<size_t, size_t>& edge : mesh.edges())
+        mesh.set_edge_attribute(edge, "line", sources.at(edge));
+
+    return mesh;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

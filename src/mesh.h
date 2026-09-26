@@ -348,7 +348,7 @@ public:
         std::optional<double> precision = std::nullopt
     );
 
-    /// Construct the planar faces of lines and boundary lines in xy split by Line::split_at_crossings, the outer face and faces under tolerance squared in area dropped; edge attribute line holds the index of the line an edge lies on, boundary lines numbered after lines, -1 when none.
+    /// Construct the planar faces of lines and boundary lines in xy split by Line::split_at_crossings: the outer face of every connected component and faces under tolerance squared in area dropped, a component inside a face becoming a hole of it, a void when it holds only boundary lines; edge attribute line holds the index of the line an edge lies on, boundary lines numbered after lines, -1 when none.
     static Mesh from_arrangement(const std::vector<Line>& lines, const std::vector<Line>& boundary, double tolerance, double merge);
 
     /// Construct from a polygon boundary with optional holes; sort_by_bbox picks the largest polyline as boundary.
@@ -917,7 +917,7 @@ public:
     /// Return the part on the side the plane normal points to, every section loop capped by one n-gon face, so a closed mesh stays closed; empty when nothing lies on that side, a copy when everything does.
     Mesh cut_by_plane(const Plane& plane) const;
 
-    /// Return the closed loops where the plane cuts the mesh: outer loops counter-clockwise about the plane normal, holes clockwise; empty when the mesh does not reach the plane.
+    /// Return where the plane cuts the faces crossing it: closed loops first, outer loops counter-clockwise about the plane normal and holes clockwise, then the open chains of an open surface; faces lying in the plane are skipped; empty when the mesh does not cross the plane.
     std::vector<Polyline> section_by_plane(const Plane& plane) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
