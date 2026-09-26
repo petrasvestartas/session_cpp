@@ -2,6 +2,7 @@
 #include "session.h"
 #include "file_encoders.h"
 #include "session.pb.h"
+#include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/util/message_differencer.h>
 #include "tolerance.h"
 #include <algorithm>
@@ -2546,6 +2547,61 @@ MINI_TEST("Session", "Purge Clears History") {
     MINI_CHECK(session.objects.points->number_of_slots() == 2);
     MINI_CHECK(session.number_of_dead() == 0);
     MINI_CHECK(session.tree.nodes().size() == 3);
+}
+
+MINI_TEST("Session", "Checkpoint Tags") {
+
+    auto first = [](const std::string& bytes) {
+        google::protobuf::io::CodedInputStream input(reinterpret_cast<const uint8_t*>(bytes.data()), static_cast<int>(bytes.size()));
+
+        return static_cast<int>(input.ReadTag() >> 3);
+    };
+
+    session_proto::Session objects;
+    objects.mutable_objects();
+    session_proto::Session tree;
+    tree.mutable_tree();
+    session_proto::Session graph;
+    graph.mutable_graph();
+    session_proto::Session definitions;
+    definitions.mutable_definitions();
+    const std::array<int, 7> sections = {
+        0,
+        first(objects.SerializeAsString()),
+        first(tree.SerializeAsString()),
+        first(graph.SerializeAsString()),
+        0,
+        first(definitions.SerializeAsString()),
+        0,
+    };
+    session_proto::Tree root;
+    root.mutable_root();
+    session_proto::TreeNode children;
+    children.add_children();
+    std::array<session_proto::Objects, 13> lists;
+    lists[0].add_points();
+    lists[1].add_lines();
+    lists[2].add_planes();
+    lists[3].add_bboxes();
+    lists[4].add_polylines();
+    lists[5].add_pointclouds();
+    lists[6].add_meshes();
+    lists[7].add_nurbscurves();
+    lists[8].add_nurbssurfaces();
+    lists[9].add_breps();
+    lists[10].add_elements();
+    lists[11].add_components();
+    lists[12].add_instances();
+
+    MINI_CHECK(TAGS.sections == sections);
+    MINI_CHECK(TAGS.root == first(root.SerializeAsString()));
+    MINI_CHECK(TAGS.children == first(children.SerializeAsString()));
+    std::array<int, 13> tags = {};
+
+    for (size_t i = 0; i < lists.size(); ++i)
+        tags[i] = first(lists[i].SerializeAsString());
+
+    MINI_CHECK(TAGS.lists == tags);
 }
 
 MINI_TEST("Session", "Checkpoint After Purge Steps") {

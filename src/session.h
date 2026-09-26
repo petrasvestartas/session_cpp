@@ -21,6 +21,7 @@
 #include "history.h"
 #include "interaction.h"
 #include "spatial_bvh.h"
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -59,6 +60,16 @@ inline const std::vector<std::pair<std::string, std::string>> COLLECTIONS = {
 };
 
 inline constexpr size_t PURGE_WORK = 16384; // Work units of one idle purge or checkpoint step, about 2 ms: one raw slot, child, vertex or entry each.
+
+/// Field numbers the checkpoint writer frames by hand, from the generated messages.
+struct Tags {
+    std::array<int, 7> sections; // Session field per section, 0 for one written framed: head, objects, tree, graph, xforms, definitions, interactions.
+    int root;                    // Tree.root
+    int children;                // TreeNode.children
+    std::array<int, 13> lists;   // Objects field per COLLECTIONS entry.
+};
+
+extern const Tags TAGS; // The checkpoint writer's field numbers; the tests check them against the generated messages.
 
 /// A session containing geometry objects.
 class Session {

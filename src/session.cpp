@@ -14,29 +14,7 @@
 
 namespace session_cpp {
 
-namespace {
-
-constexpr uint64_t LENGTH_DELIMITED = 2; // Protobuf wire type of a message or string field.
-constexpr size_t HEAD = 0;               // Checkpoint phase: the session name and guid.
-constexpr size_t OBJECTS = 1;            // Checkpoint phases 1..=13: the objects lists.
-constexpr size_t TREE = 14;              // Checkpoint phase: the tree, depth first.
-constexpr size_t VERTICES = 15;          // Checkpoint phase: the graph vertices.
-constexpr size_t EDGES = 16;             // Checkpoint phase: the graph edges.
-constexpr size_t ORDERED = 17;           // Checkpoint phases 17..=27: xforms in order() sequence.
-constexpr size_t REST = 28;              // Checkpoint phase: xforms outside order(), by guid.
-constexpr size_t DEFINITIONS = 29;       // Checkpoint phases 29..=41: the definitions lists.
-constexpr size_t INTERACTIONS = 42;      // Checkpoint phase: the interactions, by edge guid.
-constexpr size_t ASSEMBLY = 43;          // Checkpoint phase: the sections joined into one message.
-
-/// Field numbers the checkpoint writer frames by hand, from the generated messages.
-struct Tags {
-    std::array<int, 7> sections; // Session field per section, 0 for one written framed: head, objects, tree, graph, xforms, definitions, interactions.
-    int root;                    // Tree.root
-    int children;                // TreeNode.children
-    std::array<int, 13> lists;   // Objects field per COLLECTIONS entry.
-};
-
-constexpr Tags TAGS = {
+const Tags TAGS = {
     {
         0,
         session_proto::Session::kObjectsFieldNumber,
@@ -64,6 +42,20 @@ constexpr Tags TAGS = {
         session_proto::Objects::kInstancesFieldNumber,
     },
 };
+
+namespace {
+
+constexpr uint64_t LENGTH_DELIMITED = 2; // Protobuf wire type of a message or string field.
+constexpr size_t HEAD = 0;               // Checkpoint phase: the session name and guid.
+constexpr size_t OBJECTS = 1;            // Checkpoint phases 1..=13: the objects lists.
+constexpr size_t TREE = 14;              // Checkpoint phase: the tree, depth first.
+constexpr size_t VERTICES = 15;          // Checkpoint phase: the graph vertices.
+constexpr size_t EDGES = 16;             // Checkpoint phase: the graph edges.
+constexpr size_t ORDERED = 17;           // Checkpoint phases 17..=27: xforms in order() sequence.
+constexpr size_t REST = 28;              // Checkpoint phase: xforms outside order(), by guid.
+constexpr size_t DEFINITIONS = 29;       // Checkpoint phases 29..=41: the definitions lists.
+constexpr size_t INTERACTIONS = 42;      // Checkpoint phase: the interactions, by edge guid.
+constexpr size_t ASSEMBLY = 43;          // Checkpoint phase: the sections joined into one message.
 
 /// Append the key and length of a length-delimited field.
 void frame(std::string& out, int tag, size_t length) {
