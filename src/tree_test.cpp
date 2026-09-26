@@ -474,30 +474,41 @@ MINI_TEST("Tree", "Dead Nodes") {
     const std::string b_guid = b->guid();
     const std::string c_guid = c->guid();
     const std::string g_guid = g->guid();
-    auto names = [](const std::vector<std::shared_ptr<TreeNode>>& nodes) {
-        std::vector<std::string> result;
-
-        for (const std::shared_ptr<TreeNode>& node : nodes)
-            result.push_back(node->name);
-
-        return result;
-    };
     const std::string json = tree.jsondump().dump();
     const Tree from_json = Tree::file_json_loads(json);
     const Tree from_pb = Tree::pb_loads(tree.pb_dumps());
     const std::vector<std::string> expected{"root", "group", "alpha", "delta"};
+    const std::vector<std::vector<std::shared_ptr<TreeNode>>> orders{
+        tree.nodes(),
+        tree.traverse("depthfirst", "preorder"),
+        tree.traverse("breadthfirst", "preorder"),
+        from_json.nodes(),
+        from_pb.nodes(),
+    };
+    bool ordered = true;
 
-    MINI_CHECK(names(tree.nodes()) == expected);
-    MINI_CHECK((names(tree.leaves()) == std::vector<std::string>{"alpha", "delta"}));
+    for (const std::vector<std::shared_ptr<TreeNode>>& nodes : orders) {
+        std::vector<std::string> names;
+
+        for (const std::shared_ptr<TreeNode>& node : nodes)
+            names.push_back(node->name);
+
+        ordered = ordered && names == expected;
+    }
+
+    std::vector<std::string> leaves;
+
+    for (const std::shared_ptr<TreeNode>& node : tree.leaves())
+        leaves.push_back(node->name);
+
+    MINI_CHECK(ordered);
+    MINI_CHECK((leaves == std::vector<std::string>{"alpha", "delta"}));
     MINI_CHECK(tree.get_node_by_name("beta") == nullptr && tree.get_nodes_by_name("gamma").empty());
     MINI_CHECK(tree.find_node_by_guid(b_guid) == nullptr && tree.find_node_by_guid(c_guid) == nullptr);
     MINI_CHECK(tree.get_children_guids(g_guid).size() == 2);
-    MINI_CHECK(names(tree.traverse("depthfirst", "preorder")) == expected);
-    MINI_CHECK(names(tree.traverse("breadthfirst", "preorder")) == expected);
     MINI_CHECK(tree.str().find("beta") == std::string::npos && tree.str().find("gamma") == std::string::npos);
     MINI_CHECK(tree.repr() == "Tree(t, 4 nodes)" && g->str() == "TreeNode(group, 2 children)");
     MINI_CHECK(json.find("beta") == std::string::npos && json.find("gamma") == std::string::npos);
-    MINI_CHECK(names(from_json.nodes()) == expected && names(from_pb.nodes()) == expected);
 }
 
 } // namespace session_cpp

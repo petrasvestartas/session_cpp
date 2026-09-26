@@ -542,6 +542,9 @@ private:
     /// The node-only tomb pinned on a node, reused while a record still holds it.
     std::shared_ptr<Tomb> _node_tomb(const std::shared_ptr<TreeNode>& node);
 
+    /// Record a tree add of node, which left ghost at its old parent or revived when was_dead; outside a transaction it only counts a dropped move.
+    void _record_add(const std::shared_ptr<TreeNode>& node, const std::shared_ptr<TreeNode>& ghost, bool was_dead);
+
     /// A slot-only tomb on the live slot of guid in the list of that name, reused while a record still holds it; a map-only entry is pushed first; nullptr for no such guid.
     std::shared_ptr<Tomb> _half(bool definition, const std::string& collection, const std::string& guid);
 
@@ -590,10 +593,13 @@ private:
     void _place(const std::string& guid, const std::optional<Xform>& xform, const std::shared_ptr<TreeNode>& node);
 
     /// The xforms in canonical order() sequence, identity entries omitted, the exact sequence jsondump and pb_dumps write.
-    std::vector<std::pair<std::string, Xform>> _xforms_ordered() const;
+    std::vector<std::pair<std::string, const Xform*>> _xforms_ordered() const;
 
     /// Run the purge cycle for at most work units, starting one when idle; returns the work left.
     size_t _purge(size_t work);
+
+    /// Compact the list of a purge phase (objects below 13, definitions from 13) for at most work slots, stepping to the next phase once it is done; returns the work left.
+    size_t _purge_list(size_t phase, size_t work);
 
     /// Advance a checkpoint writer for at most work units; true once its message is complete.
     bool _write(Checkpoint& writer, size_t work) const;
@@ -615,6 +621,9 @@ private:
 
     /// Write the non-identity xforms of guids outside order() in guid order, after a scan of xforms in slices of work that runs only when order() missed some; returns the entries examined or written.
     size_t _write_rest(Checkpoint& writer, size_t work) const;
+
+    /// Scan a slice of at most work xforms for non-identity ones whose guid order() misses, into the rest set; returns the entries scanned.
+    size_t _scan_rest(Checkpoint& writer, size_t work) const;
 
     /// Append one XformEntry to the xforms section.
     void _write_xform(Checkpoint& writer, const std::string& guid, const Xform& xform) const;

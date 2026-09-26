@@ -643,6 +643,10 @@ MINI_TEST("Session", "Json Roundtrip") {
     session.add_point(p1);
     session.add_point(p2);
     session.add_edge(p1->guid(), p2->guid(), "connection");
+    session.set_xform(p1->guid(), Xform::translation(1.0, 0.0, 0.0));
+    const std::string definition = session.add_definition(std::make_shared<Point>(0.0, 0.0, 0.0));
+    std::shared_ptr<InstanceRef> instance = std::make_shared<InstanceRef>(definition, Xform::translation(0.0, 1.0, 0.0));
+    session.add_instance(instance, Xform::translation(2.0, 0.0, 0.0));
 
     std::string fname = "serialization/test_session.json";
     session.file_json_dump(fname);
@@ -651,6 +655,9 @@ MINI_TEST("Session", "Json Roundtrip") {
     MINI_CHECK(loaded.name == session.name);
     MINI_CHECK(loaded.lookup.size() == session.lookup.size());
     MINI_CHECK(loaded.graph.number_of_vertices() == session.graph.number_of_vertices());
+    MINI_CHECK(loaded.xforms.at(p1->guid()).guid() == session.xforms.at(p1->guid()).guid());
+    MINI_CHECK(loaded.xforms.at(instance->guid()).guid() == session.xforms.at(instance->guid()).guid());
+    MINI_CHECK(loaded.objects.instances->at(0)->xform.guid() == instance->xform.guid());
 }
 
 MINI_TEST("Session", "Protobuf Roundtrip") {
@@ -2551,12 +2558,6 @@ MINI_TEST("Session", "Purge Clears History") {
 
 MINI_TEST("Session", "Checkpoint Tags") {
 
-    auto first = [](const std::string& bytes) {
-        google::protobuf::io::CodedInputStream input(reinterpret_cast<const uint8_t*>(bytes.data()), static_cast<int>(bytes.size()));
-
-        return static_cast<int>(input.ReadTag() >> 3);
-    };
-
     session_proto::Session objects;
     objects.mutable_objects();
     session_proto::Session tree;
@@ -2565,15 +2566,6 @@ MINI_TEST("Session", "Checkpoint Tags") {
     graph.mutable_graph();
     session_proto::Session definitions;
     definitions.mutable_definitions();
-    const std::array<int, 7> sections = {
-        0,
-        first(objects.SerializeAsString()),
-        first(tree.SerializeAsString()),
-        first(graph.SerializeAsString()),
-        0,
-        first(definitions.SerializeAsString()),
-        0,
-    };
     session_proto::Tree root;
     root.mutable_root();
     session_proto::TreeNode children;
@@ -2592,15 +2584,34 @@ MINI_TEST("Session", "Checkpoint Tags") {
     lists[10].add_elements();
     lists[11].add_components();
     lists[12].add_instances();
+    std::vector<std::string> messages = {
+        objects.SerializeAsString(),
+        tree.SerializeAsString(),
+        graph.SerializeAsString(),
+        definitions.SerializeAsString(),
+        root.SerializeAsString(),
+        children.SerializeAsString(),
+    };
 
-    MINI_CHECK(TAGS.sections == sections);
-    MINI_CHECK(TAGS.root == first(root.SerializeAsString()));
-    MINI_CHECK(TAGS.children == first(children.SerializeAsString()));
+    for (const session_proto::Objects& list : lists)
+        messages.push_back(list.SerializeAsString());
+
+    std::vector<int> fields;
+
+    for (const std::string& bytes : messages) {
+        google::protobuf::io::CodedInputStream input(reinterpret_cast<const uint8_t*>(bytes.data()), static_cast<int>(bytes.size()));
+        fields.push_back(static_cast<int>(input.ReadTag() >> 3));
+    }
+
+    const std::array<int, 7> sections = {0, fields[0], fields[1], fields[2], 0, fields[3], 0};
     std::array<int, 13> tags = {};
 
-    for (size_t i = 0; i < lists.size(); ++i)
-        tags[i] = first(lists[i].SerializeAsString());
+    for (size_t i = 0; i < tags.size(); ++i)
+        tags[i] = fields[6 + i];
 
+    MINI_CHECK(TAGS.sections == sections);
+    MINI_CHECK(TAGS.root == fields[4]);
+    MINI_CHECK(TAGS.children == fields[5]);
     MINI_CHECK(TAGS.lists == tags);
 }
 

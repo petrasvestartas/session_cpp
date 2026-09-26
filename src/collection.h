@@ -85,6 +85,25 @@ private:
         return held;
     }
 
+    /// Move the entry of slot r down to slot w with its dead flag and the pins a record holds.
+    void _move(size_t r, size_t w, const std::vector<std::shared_ptr<Tomb>>& held) {
+
+        std::swap(_items[w], _items[r]);
+        const bool dead = _dead[r];
+        _dead[r] = _dead[w];
+        _dead[w] = dead;
+        _tombs.erase(r);
+
+        for (const std::shared_ptr<Tomb>& tomb : held)
+            this->_repin(tomb, w);
+
+        if (!held.empty())
+            _tombs[w] = std::vector<std::weak_ptr<Tomb>>(held.begin(), held.end());
+
+        if (!_dead[w])
+            _slots[guid_of(_items[w])] = w;
+    }
+
 public:
     using value_type = E;
 
@@ -477,22 +496,8 @@ public:
                 _tombs.erase(r);
                 --_count;
             } else {
-                if (w != r) {
-                    std::swap(_items[w], _items[r]);
-                    const bool dead = _dead[r];
-                    _dead[r] = _dead[w];
-                    _dead[w] = dead;
-                    _tombs.erase(r);
-
-                    for (const std::shared_ptr<Tomb>& tomb : held)
-                        this->_repin(tomb, w);
-
-                    if (!held.empty())
-                        _tombs[w] = std::vector<std::weak_ptr<Tomb>>(held.begin(), held.end());
-
-                    if (!_dead[w])
-                        _slots[guid_of(_items[w])] = w;
-                }
+                if (w != r)
+                    _move(r, w, held);
 
                 if (_dead[w])
                     _low = std::min(_low, w);

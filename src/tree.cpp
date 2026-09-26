@@ -581,7 +581,7 @@ void Tree::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent)
         throw std::invalid_argument("Cannot add null node");
 
     if (parent) {
-        parent->add(node);
+        (void)parent->add(node);
 
         return;
     }
@@ -631,8 +631,8 @@ bool Tree::add_child_by_guid(const std::string& parent_guid, const std::string& 
     if (!current)
         return false;
 
-    current->remove(child);
-    parent->add(child);
+    (void)current->remove(child);
+    (void)parent->add(child);
 
     return true;
 }

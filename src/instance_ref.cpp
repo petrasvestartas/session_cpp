@@ -128,7 +128,9 @@ nlohmann::ordered_json InstanceRef::jsondump() const {
 
 InstanceRef InstanceRef::jsonload(const nlohmann::json& data) {
 
-    InstanceRef ref(data.at("definition_guid"), Xform::jsonload(data.at("xform")));
+    InstanceRef ref;
+    ref.definition_guid = data.at("definition_guid");
+    ref.xform = Xform::jsonload(data.at("xform"));
     ref.color = Color::jsonload(data.at("color"));
     ref.flags = data.value("flags", 0u);
     ref.guid() = data.at("guid");

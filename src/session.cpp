@@ -551,6 +551,30 @@ std::optional<Point> ray_mesh(const Line& ray, const Mesh& mesh, double toleranc
     return placement.transform_point(hits[0]);
 }
 
+/// The vertices of a BRep and a 3x3 sample of each of its surfaces.
+std::vector<Point> brep_points(const BRep& brep) {
+
+    std::vector<Point> points;
+
+    for (const BRepVertex& vertex : brep.m_vertices)
+        points.push_back(vertex.point);
+
+    for (const NurbsSurface& surface : brep.m_surfaces) {
+
+        const std::pair<double, double> u = surface.domain(0);
+        const std::pair<double, double> v = surface.domain(1);
+
+        for (int i = 0; i <= 2; ++i)
+            for (int j = 0; j <= 2; ++j)
+                points.push_back(surface.point_at(
+                    u.first + (u.second - u.first) * i / 2.0,
+                    v.first + (v.second - v.first) * j / 2.0
+                ));
+    }
+
+    return points;
+}
+
 /// The points whose box bounds a geometry: vertices, control points or surface samples.
 std::vector<Point> box_points(const Geometry& geometry) {
 
@@ -567,21 +591,7 @@ std::vector<Point> box_points(const Geometry& geometry) {
         for (const std::pair<const size_t, VertexData>& vertex : (*mesh)->vertex)
             points.push_back(vertex.second.position());
     } else if (const std::shared_ptr<BRep>* brep = std::get_if<std::shared_ptr<BRep>>(&geometry)) {
-        for (const BRepVertex& vertex : (*brep)->m_vertices)
-            points.push_back(vertex.point);
-
-        for (const NurbsSurface& surface : (*brep)->m_surfaces) {
-
-            const std::pair<double, double> u = surface.domain(0);
-            const std::pair<double, double> v = surface.domain(1);
-
-            for (int i = 0; i <= 2; ++i)
-                for (int j = 0; j <= 2; ++j)
-                    points.push_back(surface.point_at(
-                        u.first + (u.second - u.first) * i / 2.0,
-                        v.first + (v.second - v.first) * j / 2.0
-                    ));
-        }
+        points = brep_points(**brep);
     } else if (const std::shared_ptr<NurbsCurve>* nurbscurve = std::get_if<std::shared_ptr<NurbsCurve>>(&geometry)) {
         for (int i = 0; i < (*nurbscurve)->cv_count(); ++i)
             points.push_back((*nurbscurve)->get_cv(i));
@@ -1075,15 +1085,7 @@ void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> pare
     if (_is_live(name))
         node_lookup[name] = node;
 
-    if (!history.current) {
-        history.dropped += ghost ? 1 : 0;
-
-        return;
-    }
-
-    const std::shared_ptr<Tomb> tomb = _node_tomb(ghost ? ghost : node);
-    const bool dead_before = was_dead || !ghost;
-    history.record(TreeOp(name, node, tomb, ghost, name, name, node->color, node->color, dead_before, false), RECORD);
+    _record_add(node, ghost, was_dead);
 }
 
 std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
@@ -1374,7 +1376,7 @@ bool Session::to_instance(const std::string& guid, const std::string& definition
     _pair(guid, from, "instances", node, removed, added, RECORD + weight(object));
 
     if (placement.is_identity())
-        remove_xform(guid);
+        (void)remove_xform(guid);
     else
         set_xform(guid, placement);
 
@@ -1809,11 +1811,11 @@ nlohmann::ordered_json Session::jsondump() const {
 
     nlohmann::ordered_json xforms_json = nlohmann::ordered_json::array();
 
-    for (const std::pair<std::string, Xform>& entry : _xforms_ordered()) {
+    for (const std::pair<std::string, const Xform*>& entry : _xforms_ordered()) {
 
         nlohmann::ordered_json item;
         item["guid"] = entry.first;
-        item["xform"] = entry.second.jsondump();
+        item["xform"] = entry.second->jsondump();
         xforms_json.push_back(item);
     }
 
@@ -1922,11 +1924,11 @@ session_proto::Session Session::to_proto() const {
 
     *proto.mutable_graph() = graph.to_proto();
 
-    for (const std::pair<std::string, Xform>& entry : _xforms_ordered()) {
+    for (const std::pair<std::string, const Xform*>& entry : _xforms_ordered()) {
 
         session_proto::XformEntry* item = proto.add_xforms();
         item->set_guid(entry.first);
-        *item->mutable_xform() = entry.second.to_proto();
+        *item->mutable_xform() = entry.second->to_proto();
     }
 
     if (!definition_lookup.empty())
@@ -2170,6 +2172,20 @@ std::shared_ptr<Tomb> Session::_node_tomb(const std::shared_ptr<TreeNode>& node)
     node->set_tomb(tomb);
 
     return tomb;
+}
+
+void Session::_record_add(const std::shared_ptr<TreeNode>& node, const std::shared_ptr<TreeNode>& ghost, bool was_dead) {
+
+    if (!history.current) {
+        history.dropped += ghost ? 1 : 0;
+
+        return;
+    }
+
+    const std::string& name = node->name;
+    const std::shared_ptr<Tomb> tomb = _node_tomb(ghost ? ghost : node);
+    const bool dead_before = was_dead || !ghost;
+    history.record(TreeOp(name, node, tomb, ghost, name, name, node->color, node->color, dead_before, false), RECORD);
 }
 
 std::shared_ptr<Tomb> Session::_half(bool definition, const std::string& collection, const std::string& guid) {
@@ -2567,14 +2583,14 @@ void Session::_place(const std::string& guid, const std::optional<Xform>& xform,
     revision++;
 }
 
-std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {
+std::vector<std::pair<std::string, const Xform*>> Session::_xforms_ordered() const {
 
-    std::vector<std::pair<std::string, Xform>> ordered;
-    std::map<std::string, Xform> rest;
+    std::vector<std::pair<std::string, const Xform*>> ordered;
+    std::map<std::string, const Xform*> rest;
 
     for (const std::pair<const std::string, Xform>& entry : xforms)
         if (!entry.second.is_identity())
-            rest.emplace(entry.first, entry.second);
+            rest.emplace(entry.first, &entry.second);
 
     for (const std::string& obj_guid : order()) {
 
@@ -2587,7 +2603,7 @@ std::vector<std::pair<std::string, Xform>> Session::_xforms_ordered() const {
         rest.erase(it);
     }
 
-    for (const std::pair<const std::string, Xform>& entry : rest)
+    for (const std::pair<const std::string, const Xform*>& entry : rest)
         ordered.emplace_back(entry.first, entry.second);
 
     return ordered;
@@ -2605,21 +2621,7 @@ size_t Session::_purge(size_t work) {
         const size_t phase = *_purging;
 
         if (phase < 26) {
-
-            size_t spent = 0;
-            bool done = true;
-
-            with_collection(phase < 13 ? objects : definitions, COLLECTIONS[phase % 13].first, [&](auto& items) {
-                if (items.number_of_dead() > 0 || items.is_compacting()) {
-                    spent = items.compact_step(work);
-                    done = !items.is_compacting();
-                }
-            });
-            work -= std::min(spent, work);
-
-            if (done)
-                _purging = phase + 1;
-
+            work = _purge_list(phase, work);
             continue;
         }
 
@@ -2651,6 +2653,24 @@ size_t Session::_purge(size_t work) {
     }
 
     return work;
+}
+
+size_t Session::_purge_list(size_t phase, size_t work) {
+
+    size_t spent = 0;
+    bool done = true;
+
+    with_collection(phase < 13 ? objects : definitions, COLLECTIONS[phase % 13].first, [&](auto& items) {
+        if (items.number_of_dead() > 0 || items.is_compacting()) {
+            spent = items.compact_step(work);
+            done = !items.is_compacting();
+        }
+    });
+
+    if (done)
+        _purging = phase + 1;
+
+    return work - std::min(spent, work);
 }
 
 bool Session::_write(Checkpoint& writer, size_t work) const {
@@ -2886,31 +2906,8 @@ size_t Session::_write_ordered(Checkpoint& writer, size_t work) const {
 
 size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
 
-    if (writer.hits < xforms.size()) {
-
-        const size_t start = writer.cursor;
-        const size_t end = std::min(xforms.size(), start + std::min(work, xforms.size()));
-        auto it = std::next(xforms.begin(), start);
-
-        for (size_t i = start; i < end; ++i, ++it) {
-
-            auto held = lookup.find(it->first);
-            const bool ordered = held != lookup.end()
-                && slot_of(objects, collection_of(objects, held->second).first, it->first).has_value();
-
-            if (!ordered && !it->second.is_identity())
-                writer.rest.insert(it->first);
-        }
-
-        writer.cursor = end;
-
-        if (end >= xforms.size()) {
-            writer.hits = xforms.size();
-            writer.cursor = 0;
-        }
-
-        return end - start;
-    }
+    if (writer.hits < xforms.size())
+        return _scan_rest(writer, work);
 
     size_t spent = 0;
     auto it = writer.cursor > 0 ? writer.rest.upper_bound(writer.key) : writer.rest.begin();
@@ -2935,6 +2932,32 @@ size_t Session::_write_rest(Checkpoint& writer, size_t work) const {
     }
 
     return spent;
+}
+
+size_t Session::_scan_rest(Checkpoint& writer, size_t work) const {
+
+    const size_t start = writer.cursor;
+    const size_t end = std::min(xforms.size(), start + std::min(work, xforms.size()));
+    auto it = std::next(xforms.begin(), start);
+
+    for (size_t i = start; i < end; ++i, ++it) {
+
+        auto held = lookup.find(it->first);
+        const bool ordered = held != lookup.end()
+            && slot_of(objects, collection_of(objects, held->second).first, it->first).has_value();
+
+        if (!ordered && !it->second.is_identity())
+            writer.rest.insert(it->first);
+    }
+
+    writer.cursor = end;
+
+    if (end >= xforms.size()) {
+        writer.hits = xforms.size();
+        writer.cursor = 0;
+    }
+
+    return end - start;
 }
 
 void Session::_write_xform(Checkpoint& writer, const std::string& guid, const Xform& xform) const {
