@@ -400,6 +400,81 @@ MINI_TEST("Boolean Polyline", "Regions Orientation") {
         MINI_CHECK(ring.is_clockwise(plane) == (ring.get_point(0)[0] > 1.0 && ring.get_point(0)[0] < 9.0));
 }
 
+MINI_TEST("Boolean Polyline", "Adjacent Rectangles") {
+
+    const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 1.0);
+    const Polyline b = Polyline::rectangle(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 1.0);
+    const std::vector<Polyline> isect = BooleanPolyline::compute(a, b, 0);
+    const std::vector<Polyline> uni = BooleanPolyline::compute(a, b, 1);
+    const std::vector<Polyline> diff = BooleanPolyline::compute(a, b, 2);
+
+    MINI_CHECK(isect.empty());
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(uni[0].point_count() == 4);
+    MINI_CHECK(uni[0].center() == Point(1.0, 0.5, 0.0));
+    MINI_CHECK(diff.size() == 1);
+    MINI_CHECK(diff[0].point_count() == 4);
+    MINI_CHECK(diff[0].center() == Point(0.5, 0.5, 0.0));
+}
+
+MINI_TEST("Boolean Polyline", "Partial Shared Edge") {
+
+    const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 2.0);
+    const Polyline b = Polyline::rectangle(Point(2.0, 1.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 2.0);
+    const std::vector<Polyline> isect = BooleanPolyline::compute(a, b, 0);
+    const std::vector<Polyline> uni = BooleanPolyline::compute(a, b, 1);
+    const std::vector<Polyline> diff = BooleanPolyline::compute(a, b, 2);
+
+    MINI_CHECK(isect.empty());
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(uni[0].point_count() == 8);
+    MINI_CHECK(uni[0].center() == Point(1.75, 1.5, 0.0));
+    MINI_CHECK(diff.size() == 1);
+    MINI_CHECK(diff[0].point_count() == 4);
+    MINI_CHECK(diff[0].center() == Point(1.0, 1.0, 0.0));
+}
+
+MINI_TEST("Boolean Polyline", "Collinear Overlap") {
+
+    const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 1.0);
+    const Polyline b = Polyline::rectangle(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 2.0, 1.0);
+    const Polyline corner = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 1.0);
+    const std::vector<Polyline> isect = BooleanPolyline::compute(a, b, 0);
+    const std::vector<Polyline> uni = BooleanPolyline::compute(a, b, 1);
+    const std::vector<Polyline> diff = BooleanPolyline::compute(a, b, 2);
+    const std::vector<Polyline> notch = BooleanPolyline::compute(a, corner, 2);
+
+    MINI_CHECK(isect.size() == 1);
+    MINI_CHECK(isect[0].point_count() == 4);
+    MINI_CHECK(isect[0].center() == Point(1.5, 0.5, 0.0));
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(uni[0].point_count() == 4);
+    MINI_CHECK(uni[0].center() == Point(1.5, 0.5, 0.0));
+    MINI_CHECK(diff.size() == 1);
+    MINI_CHECK(diff[0].point_count() == 4);
+    MINI_CHECK(diff[0].center() == Point(0.5, 0.5, 0.0));
+    MINI_CHECK(notch.size() == 1);
+    MINI_CHECK(notch[0].point_count() == 4);
+    MINI_CHECK(notch[0].center() == Point(1.5, 0.5, 0.0));
+}
+
+MINI_TEST("Boolean Polyline", "T Junction") {
+
+    const Polyline a = Polyline::rectangle(Point(0.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 4.0, 1.0);
+    const Polyline b = Polyline::rectangle(Point(1.0, 1.0, 0.0), Vector(1.0, 0.0, 0.0), Vector(0.0, 1.0, 0.0), 1.0, 2.0);
+    const std::vector<Polyline> isect = BooleanPolyline::compute(a, b, 0);
+    const std::vector<Polyline> uni = BooleanPolyline::compute(a, b, 1);
+    const std::vector<Polyline> diff = BooleanPolyline::compute(a, b, 2);
+
+    MINI_CHECK(isect.empty());
+    MINI_CHECK(uni.size() == 1);
+    MINI_CHECK(uni[0].point_count() == 8);
+    MINI_CHECK(uni[0].center() == Point(1.75, 1.25, 0.0));
+    MINI_CHECK(diff.size() == 1);
+    MINI_CHECK(diff[0].point_count() == 4);
+    MINI_CHECK(diff[0].center() == Point(2.0, 0.5, 0.0));
+}
+
 MINI_TEST("Boolean Polyline Open", "Horizontal Line Vs Unit Square") {
 
     const Polyline open_line({

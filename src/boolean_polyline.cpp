@@ -401,10 +401,6 @@ inline double v_cross_product(BIVec2 p1, BIVec2 p2, BIVec2 p3) {
     return double(p2.x - p1.x) * double(p3.y - p2.y) - double(p2.y - p1.y) * double(p3.x - p2.x);
 }
 
-inline double v_dot_product(BIVec2 p1, BIVec2 p2, BIVec2 p3) {
-    return double(p2.x - p1.x) * double(p3.x - p2.x) + double(p2.y - p1.y) * double(p3.y - p2.y);
-}
-
 #if (defined(__clang__) || defined(__GNUC__)) && UINTPTR_MAX >= UINT64_MAX
 inline bool v_products_equal(int64_t a, int64_t b, int64_t c, int64_t d) {
     return static_cast<__int128_t>(a) * static_cast<__int128_t>(b) ==
@@ -505,6 +501,11 @@ inline int v_sign_d(double v) {
 inline bool v_segs_intersect(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d) {
     return (v_sign_d(v_cross_product(a, c, d)) * v_sign_d(v_cross_product(b, c, d)) < 0) &&
         (v_sign_d(v_cross_product(c, a, b)) * v_sign_d(v_cross_product(d, a, b)) < 0);
+}
+
+inline bool v_segs_touch(BIVec2 a, BIVec2 b, BIVec2 c, BIVec2 d) {
+    return (v_sign_d(v_cross_product(a, c, d)) * v_sign_d(v_cross_product(b, c, d)) <= 0) &&
+        (v_sign_d(v_cross_product(c, a, b)) * v_sign_d(v_cross_product(d, a, b)) <= 0);
 }
 
 inline double v_area_outpt(VOutPt* op) {
@@ -2120,9 +2121,7 @@ static void v_clean_collinear(VattiScratch& sc, VOutRec* outrec) {
     const size_t max_iter = (count + 1) * (count + 1);
 
     for (size_t iter = 0; iter < max_iter; iter++) {
-        if (v_is_collinear(op2->prev->pt, op2->pt, op2->next->pt) &&
-            (op2->pt == op2->prev->pt || op2->pt == op2->next->pt ||
-             v_dot_product(op2->prev->pt, op2->pt, op2->next->pt) < 0)) {
+        if (v_is_collinear(op2->prev->pt, op2->pt, op2->next->pt)) {
             if (op2 == outrec->pts)
                 outrec->pts = op2->prev;
 
@@ -2314,7 +2313,7 @@ static void v_bounds(const std::vector<BIVec2>& v, int64_t& min_x, int64_t& max_
     }
 }
 
-static bool v_any_cross(const std::vector<BIVec2>& va, const std::vector<BIVec2>& vb) {
+static bool v_any_touch(const std::vector<BIVec2>& va, const std::vector<BIVec2>& vb) {
 
     int na = (int)va.size();
     int nb = (int)vb.size();
@@ -2335,7 +2334,7 @@ static bool v_any_cross(const std::vector<BIVec2>& va, const std::vector<BIVec2>
                 std::min(b1.y, b2.y) > aymax)
                 continue;
 
-            if (v_segs_intersect(a1, a2, b1, b2))
+            if (v_segs_touch(a1, a2, b1, b2))
                 return true;
         }
     }
@@ -2343,49 +2342,7 @@ static bool v_any_cross(const std::vector<BIVec2>& va, const std::vector<BIVec2>
     return false;
 }
 
-static BIVec2 v_centroid(const std::vector<BIVec2>& v) {
-
-    BIVec2 c{0, 0};
-
-    for (size_t i = 0; i < v.size(); i++) {
-        c.x += v[i].x;
-        c.y += v[i].y;
-    }
-
-    c.x /= (int64_t)v.size();
-    c.y /= (int64_t)v.size();
-
-    return c;
-}
-
-/// Containment of non-crossing polygons by vertex, centroid and nudged centroid tests.
-static void v_contains(const std::vector<BIVec2>& va, const std::vector<BIVec2>& vb, bool& a_in_b, bool& b_in_a) {
-
-    a_in_b = pip_i(va[0], vb);
-    b_in_a = pip_i(vb[0], va);
-    BIVec2 ca_cen = v_centroid(va);
-    BIVec2 cb_cen = v_centroid(vb);
-
-    if (a_in_b && !pip_i(ca_cen, vb))
-        a_in_b = false;
-
-    if (b_in_a && !pip_i(cb_cen, va))
-        b_in_a = false;
-
-    if (a_in_b || b_in_a)
-        return;
-
-    a_in_b = pip_i(ca_cen, vb);
-    b_in_a = pip_i(cb_cen, va);
-
-    if (a_in_b || b_in_a)
-        return;
-
-    a_in_b = pip_i({ca_cen.x + 1, ca_cen.y + 1}, vb);
-    b_in_a = pip_i({cb_cen.x + 1, cb_cen.y + 1}, va);
-}
-
-/// Add both inputs through an integer copy, or return the result when they do not cross.
+/// Add both inputs through an integer copy, or return the result when their boundaries do not touch.
 static std::optional<std::vector<Polyline>> v_add_small_paths(
     const Polyline& a,
     const Polyline& b,
@@ -2421,13 +2378,8 @@ static std::optional<std::vector<Polyline>> v_add_small_paths(
     if (a_max_x < b_min_x || b_max_x < a_min_x || a_max_y < b_min_y || b_max_y < a_min_y)
         return v_select(a, b, pip_i(va[0], vb), pip_i(vb[0], va), clip_type);
 
-    if (!v_any_cross(va, vb)) {
-        bool a_in_b;
-        bool b_in_a;
-        v_contains(va, vb, a_in_b, b_in_a);
-
-        return v_select(a, b, a_in_b, b_in_a, clip_type);
-    }
+    if (!v_any_touch(va, vb))
+        return v_select(a, b, pip_i(va[0], vb), pip_i(vb[0], va), clip_type);
 
     v_add_path(va, na, 0, sc);
     v_add_path(vb, nb, 1, sc);
