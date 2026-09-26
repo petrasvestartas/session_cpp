@@ -580,6 +580,16 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), halves.first.point_at_end()));
         MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(split_t), halves.second.point_at_start()));
 
+        NurbsCurve curve_arrow = curve;
+        curve_arrow.arrowhead = Arrowhead::BOTH;
+        const std::pair<NurbsCurve, NurbsCurve> arrow_halves = curve_arrow.split(split_t);
+
+        MINI_CHECK(arrow_halves.first.arrowhead == Arrowhead::START);
+        MINI_CHECK(arrow_halves.second.arrowhead == Arrowhead::END);
+        const std::vector<NurbsCurve> arrow_joined = NurbsCurve::join({arrow_halves.first, arrow_halves.second});
+
+        MINI_CHECK(arrow_joined[0].arrowhead == Arrowhead::BOTH);
+
         NurbsCurve curve_extended = curve;
         curve_extended.extend(curve.domain_start() - 0.5, curve.domain_end() + 0.5);
 

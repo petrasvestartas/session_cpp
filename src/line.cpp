@@ -23,7 +23,26 @@ Arrowhead arrowhead_flipped(Arrowhead arrowhead) {
     return arrowhead;
 }
 
-std::string arrowhead_name(Arrowhead arrowhead) {
+Arrowhead arrowhead_joined(Arrowhead first, Arrowhead last) {
+
+    const bool start = first == Arrowhead::START || first == Arrowhead::BOTH;
+    const bool end = last == Arrowhead::END || last == Arrowhead::BOTH;
+
+    if (start && end)
+        return Arrowhead::BOTH;
+
+    if (start)
+        return Arrowhead::START;
+
+    return end ? Arrowhead::END : Arrowhead::NONE;
+}
+
+Arrowhead arrowhead_piece(Arrowhead arrowhead, bool first, bool last) {
+
+    return arrowhead_joined(first ? arrowhead : Arrowhead::NONE, last ? arrowhead : Arrowhead::NONE);
+}
+
+std::string arrowhead_to_string(Arrowhead arrowhead) {
 
     switch (arrowhead) {
     case Arrowhead::START:
@@ -37,7 +56,7 @@ std::string arrowhead_name(Arrowhead arrowhead) {
     }
 }
 
-Arrowhead arrowhead_from_name(const std::string& name) {
+Arrowhead arrowhead_from_string(const std::string& name) {
 
     if (name == "start")
         return Arrowhead::START;
@@ -602,7 +621,7 @@ nlohmann::ordered_json Line::jsondump() const {
     nlohmann::ordered_json data;
 
     if (arrowhead != Arrowhead::NONE)
-        data["arrowhead"] = arrowhead_name(arrowhead);
+        data["arrowhead"] = arrowhead_to_string(arrowhead);
 
     data["dash"] = dash;
     data["guid"] = guid();
@@ -636,7 +655,7 @@ Line Line::jsonload(const nlohmann::json& data) {
         line.width = data["width"].get<double>();
 
     if (data.contains("arrowhead"))
-        line.arrowhead = arrowhead_from_name(data["arrowhead"].get<std::string>());
+        line.arrowhead = arrowhead_from_string(data["arrowhead"].get<std::string>());
 
     return line;
 }

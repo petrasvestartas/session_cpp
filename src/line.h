@@ -30,11 +30,17 @@ enum class Arrowhead : int {
 /// Return the arrowhead with start and end swapped.
 Arrowhead arrowhead_flipped(Arrowhead arrowhead);
 
+/// Return the start head of first combined with the end head of last.
+Arrowhead arrowhead_joined(Arrowhead first, Arrowhead last);
+
+/// Return the heads a split piece keeps: the start head when first, the end head when last.
+Arrowhead arrowhead_piece(Arrowhead arrowhead, bool first, bool last);
+
 /// Return the lowercase name.
-std::string arrowhead_name(Arrowhead arrowhead);
+std::string arrowhead_to_string(Arrowhead arrowhead);
 
 /// Return the arrowhead named name, none when unknown.
-Arrowhead arrowhead_from_name(const std::string& name);
+Arrowhead arrowhead_from_string(const std::string& name);
 
 /// A 3D line segment with display width, dash pattern and color.
 class Line {

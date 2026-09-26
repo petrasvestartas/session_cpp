@@ -1305,8 +1305,11 @@ std::vector<NurbsCurve> split_curve_by_curves(
 
     std::vector<NurbsCurve> result;
 
-    for (size_t i = 1; i < cuts.size(); ++i)
-        result.push_back(interval(curve, cuts[i - 1], cuts[i]));
+    for (size_t i = 1; i < cuts.size(); ++i) {
+        NurbsCurve piece = interval(curve, cuts[i - 1], cuts[i]);
+        piece.arrowhead = arrowhead_piece(curve.arrowhead, i == 1, i + 1 == cuts.size());
+        result.push_back(std::move(piece));
+    }
 
     if (curve.is_closed() && result.size() > 1 && !cut_at_seam) {
         const std::vector<NurbsCurve> joined = NurbsCurve::join({result.back(), result.front()}, tolerance);
@@ -1410,7 +1413,8 @@ std::vector<Line> split_line_by_curves(
     double tolerance
 ) {
 
-    const NurbsCurve curve = NurbsCurve::create(false, 1, {line.point_at(0), line.point_at(1)});
+    NurbsCurve curve = NurbsCurve::create(false, 1, {line.point_at(0), line.point_at(1)});
+    curve.arrowhead = line.arrowhead;
     std::vector<Line> result;
 
     for (const NurbsCurve& piece : split_curve_by_curves(curve, cutters, tolerance)) {
@@ -1419,6 +1423,7 @@ std::vector<Line> split_line_by_curves(
         next.width = line.width;
         next.dash = line.dash;
         next.linecolor = line.linecolor;
+        next.arrowhead = piece.arrowhead;
         result.push_back(std::move(next));
     }
 
@@ -1431,7 +1436,8 @@ std::vector<Polyline> split_polyline_by_curves(
     double tolerance
 ) {
 
-    const NurbsCurve curve = NurbsCurve::create(false, 1, polyline.get_points());
+    NurbsCurve curve = NurbsCurve::create(false, 1, polyline.get_points());
+    curve.arrowhead = polyline.arrowhead;
     std::vector<Polyline> result;
 
     for (const NurbsCurve& piece : split_curve_by_curves(curve, cutters, tolerance)) {
@@ -1445,6 +1451,7 @@ std::vector<Polyline> split_polyline_by_curves(
         next.width = polyline.width;
         next.dash = polyline.dash;
         next.linecolor = polyline.linecolor;
+        next.arrowhead = piece.arrowhead;
         result.push_back(std::move(next));
     }
 

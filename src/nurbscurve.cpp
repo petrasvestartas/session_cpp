@@ -1848,6 +1848,8 @@ bool NurbsCurve::split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve
 
     left_curve = *this;
     right_curve = *this;
+    left_curve.arrowhead = arrowhead_piece(arrowhead, true, false);
+    right_curve.arrowhead = arrowhead_piece(arrowhead, false, true);
 
     if (!left_curve.trim(t0, t))
         return false;
@@ -2274,7 +2276,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     }
 
     if (arrowhead != Arrowhead::NONE)
-        j["arrowhead"] = arrowhead_name(arrowhead);
+        j["arrowhead"] = arrowhead_to_string(arrowhead);
 
     j["control_points"] = cps;
     j["cv_count"] = m_cv_count;
@@ -2328,7 +2330,7 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     curve.guid() = data.value("guid", ::guid());
     curve.name = data.value("name", "my_nurbscurve");
     curve.width = data.value("width", 1.0);
-    curve.arrowhead = arrowhead_from_name(data.value("arrowhead", "none"));
+    curve.arrowhead = arrowhead_from_string(data.value("arrowhead", "none"));
 
     if (data.contains("pointcolors") && data["pointcolors"].is_array()) {
         const nlohmann::json& arr = data["pointcolors"];
@@ -3548,6 +3550,7 @@ void NurbsCurve::join_chain(std::vector<NurbsCurve>& chain, std::vector<NurbsCur
     }
 
     NurbsCurve joined = chain[0];
+    joined.arrowhead = arrowhead_joined(chain.front().arrowhead, chain.back().arrowhead);
 
     if (aligned)
         for (size_t ci = 1; ci < chain.size(); ci++)

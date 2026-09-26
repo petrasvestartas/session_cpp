@@ -245,6 +245,7 @@ MINI_TEST("SimpleSplit", "Split Line By Curves") {
     line.name = "retained";
     line.width = 3.0;
     line.dash = {1.0, 2.0};
+    line.arrowhead = Arrowhead::BOTH;
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
     const std::vector<Line> pieces = simple_split::split_line_by_curves(line, {cutter}, 1e-6);
 
@@ -252,6 +253,8 @@ MINI_TEST("SimpleSplit", "Split Line By Curves") {
     MINI_CHECK(pieces[0].point_at(1.0).distance(Point(0.0, 0.0, 0.0)) < 1e-6);
     MINI_CHECK(pieces[1].point_at(0.0).distance(Point(0.0, 0.0, 0.0)) < 1e-6);
     MINI_CHECK(pieces[0].name == line.name && pieces[0].width == line.width && pieces[0].dash == line.dash);
+    MINI_CHECK(pieces[0].arrowhead == Arrowhead::START);
+    MINI_CHECK(pieces[1].arrowhead == Arrowhead::END);
     MINI_CHECK(line.length() == 4.0);
 }
 
@@ -261,6 +264,7 @@ MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
     polyline.name = "retained";
     polyline.width = 3.0;
     polyline.dash = {1.0, 2.0};
+    polyline.arrowhead = Arrowhead::END;
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
     const std::vector<Polyline> pieces = simple_split::split_polyline_by_curves(polyline, {cutter}, 1e-6);
 
@@ -269,6 +273,8 @@ MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
     MINI_CHECK(pieces[1].get_point(1).distance(Point(2.0, 0.0, 0.0)) < 1e-6);
     MINI_CHECK(pieces[1].get_point(2).distance(Point(2.0, 3.0, 0.0)) < 1e-6);
     MINI_CHECK(pieces[0].name == polyline.name && pieces[0].width == polyline.width && pieces[0].dash == polyline.dash);
+    MINI_CHECK(pieces[0].arrowhead == Arrowhead::NONE);
+    MINI_CHECK(pieces[1].arrowhead == Arrowhead::END);
     MINI_CHECK(polyline.point_count() == 3);
 }
 

@@ -1602,7 +1602,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
     nlohmann::ordered_json data;
 
     if (arrowhead != Arrowhead::NONE)
-        data["arrowhead"] = arrowhead_name(arrowhead);
+        data["arrowhead"] = arrowhead_to_string(arrowhead);
 
     data["coords"] = _coords;
     data["dash"] = dash;
@@ -1638,7 +1638,7 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
         polyline.linecolor = Color::jsonload(data["linecolor"]);
 
     if (data.contains("arrowhead"))
-        polyline.arrowhead = arrowhead_from_name(data["arrowhead"].get<std::string>());
+        polyline.arrowhead = arrowhead_from_string(data["arrowhead"].get<std::string>());
 
     polyline.recompute_plane_if_needed();
 
