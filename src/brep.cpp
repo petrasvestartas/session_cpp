@@ -188,6 +188,29 @@ double bbox_diagonal(const NurbsSurface& srf) {
     return hi.distance(lo);
 }
 
+/// Diagonal of the bounding box of every surface's control points: the size a chord tolerance and a face's share of the sampling are measured against
+double brep_diagonal(const BRep& b) {
+
+    Point lo(1e30, 1e30, 1e30);
+    Point hi(-1e30, -1e30, -1e30);
+
+    for (const NurbsSurface& srf : b.m_surfaces)
+        for (int i = 0; i < srf.cv_count(0); ++i)
+            for (int j = 0; j < srf.cv_count(1); ++j) {
+                const Point p = srf.get_cv(i, j);
+
+                for (int k = 0; k < 3; ++k) {
+                    lo[k] = std::min(lo[k], p[k]);
+                    hi[k] = std::max(hi[k], p[k]);
+                }
+            }
+
+    if (b.m_surfaces.empty())
+        return 0.0;
+
+    return hi.distance(lo);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Factory helpers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -839,11 +862,12 @@ bool boundary_turns(const NurbsSurface& surface, const NurbsCurve& curve, double
     return false;
 }
 
-/// Refine samples of a lifted pcurve until chord and angle hold; existing samples stay exact, eight split levels and 4096 added points per edge bound the work
+/// Refine samples of a lifted pcurve until chord and angle hold, the chord measured against the whole BRep's size `scale`; existing samples stay exact, eight split levels and 4096 added points per edge bound the work
 std::vector<std::tuple<double, Point, Point>> refine_surface_boundary(
     const NurbsSurface& surface,
     const NurbsCurve& curve,
     const std::vector<std::tuple<double, Point, Point>>& samples,
+    double scale,
     double angle,
     double chord
 ) {
@@ -851,7 +875,7 @@ std::vector<std::tuple<double, Point, Point>> refine_surface_boundary(
     if (samples.size() < 2)
         return samples;
 
-    const double tolerance = bbox_diagonal(surface) * chord;
+    const double tolerance = scale * chord;
     const double cosine = std::cos(std::clamp(angle, 0.1, 179.0) * Tolerance::PI / 180.0);
     std::vector<std::tuple<double, Point, Point>> result;
     int added = 0;
@@ -1157,6 +1181,7 @@ void refine_shared_boundaries(
     const std::vector<bool>& face_direct,
     std::vector<bool>& rebuild_grid,
     EdgeBoundary& boundary,
+    double scale,
     double angle,
     double chord
 ) {
@@ -1189,7 +1214,7 @@ void refine_shared_boundaries(
         if (b.m_edges[edge].start_vertex == b.m_edges[edge].end_vertex && !samples.empty() && std::get<0>(samples.back()) < end)
             samples.emplace_back(end, curve.point_at(end), std::get<2>(samples.front()));
 
-        const std::vector<std::tuple<double, Point, Point>> refined = refine_surface_boundary(surface, curve, samples, angle, chord);
+        const std::vector<std::tuple<double, Point, Point>> refined = refine_surface_boundary(surface, curve, samples, scale, angle, chord);
 
         if (refined.size() <= samples.size())
             continue;
@@ -1389,7 +1414,7 @@ void lift_canonical(
 }
 
 /// Phase 3: fresh samples of a pcurve nobody has sampled yet, its ends on the edge's vertices, refined to the face's angle and chord
-std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const std::pair<Point, Point>& ends, double angle, double chord) {
+std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const std::pair<Point, Point>& ends, double scale, double angle, double chord) {
 
     std::vector<Point> points;
     std::vector<double> parameters;
@@ -1413,7 +1438,7 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
 
     snap_sample_ends(samples, ends);
 
-    return refine_surface_boundary(srf, crv, samples, angle, chord);
+    return refine_surface_boundary(srf, crv, samples, scale, angle, chord);
 }
 
 /// Phase 3: samples of one edge use of a CDT face in traversal direction, a closed edge repeating its first point at the end; false when the edge has no pcurve
@@ -1422,6 +1447,7 @@ bool edge_use_samples(
     int fi,
     const BRepRef& er,
     EdgeBoundary& boundary,
+    double scale,
     double angle,
     double chord,
     std::vector<std::tuple<double, Point, Point>>& samples
@@ -1439,7 +1465,7 @@ bool edge_use_samples(
     if (boundary.points.count(ei)) {
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
-        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), angle, chord);
+        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), scale, angle, chord);
         std::vector<Point> positions;
 
         for (const std::tuple<double, Point, Point>& sample : samples)
@@ -1466,6 +1492,7 @@ bool trim_loops(
     const BRep& b,
     int fi,
     EdgeBoundary& boundary,
+    double scale,
     double angle,
     double chord,
     TrimLoops& loops,
@@ -1481,7 +1508,7 @@ bool trim_loops(
         for (const BRepRef& er : b.wire_edges(face.wires[wi])) {
             std::vector<std::tuple<double, Point, Point>> samples;
 
-            if (!edge_use_samples(b, fi, er, boundary, angle, chord, samples))
+            if (!edge_use_samples(b, fi, er, boundary, scale, angle, chord, samples))
                 return false;
 
             uses.push_back({er.index, wi, uv.size(), samples.size()});
@@ -1795,11 +1822,13 @@ int strip_steps(const NurbsSurface& srf, const NurbsCurve& crv) {
     return steps;
 }
 
-/// Phase 0: the steps of a strip: the angle's share of a turn and what the loops ask for, doubled until both loops sag within the chord tolerance
-int strip_count(const NurbsSurface& srf, const NurbsCurve& a, const NurbsCurve& c, double angle, double chord) {
+/// Phase 0: the steps of a strip: the angle's share of a turn and what the loops ask for, scaled by the face's size against the whole BRep so a small bore in a large body keeps few steps, never under sixteen, doubled until both loops sag within the chord tolerance measured against the BRep
+int strip_count(const NurbsSurface& srf, const NurbsCurve& a, const NurbsCurve& c, double scale, double angle, double chord) {
 
-    const double tolerance = bbox_diagonal(srf) * chord;
-    int count = std::max({strip_steps(srf, a), strip_steps(srf, c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
+    const double tolerance = scale * chord;
+    const int asked = std::max({strip_steps(srf, a), strip_steps(srf, c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
+    const double share = scale > 0.0 ? std::min(bbox_diagonal(srf) / scale, 1.0) : 1.0;
+    int count = std::max((int)std::ceil(asked * share), 16);
 
     while (count < 4096 && tolerance > 0.0 && std::max(strip_sag(srf, a, count), strip_sag(srf, c, count)) > tolerance)
         count *= 2;
@@ -1823,14 +1852,14 @@ size_t strip_vertex(const NurbsSurface& srf, Mesh& mesh, const std::tuple<double
 }
 
 /// Phase 0: the strip of a face: both loops sampled at the same steps, closed on their vertex, and made the canonical boundary of their edges, two triangles between every pair of steps, the vertices numbered as the keyhole polygon a CDT face runs (first loop, seam, second loop backwards, seam) so the edge uses tag as there; no surface refinement, no lifting
-Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double angle, double chord) {
+Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double scale, double angle, double chord) {
 
     const BRepFace& face = b.m_faces[fi];
     const NurbsSurface& srf = b.m_surfaces[face.surface_index];
     const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
     const NurbsCurve& a = b.m_curves_2d[b.pcurve_index(edges[0].index, fi, edges[0].orientation)];
     const NurbsCurve& c = b.m_curves_2d[b.pcurve_index(edges[2].index, fi, edges[2].orientation)];
-    const int count = strip_count(srf, a, c, angle, chord);
+    const int count = strip_count(srf, a, c, scale, angle, chord);
     std::vector<std::tuple<double, Point, Point>> first = strip_samples(srf, a, count);
     std::vector<std::tuple<double, Point, Point>> second = strip_samples(srf, c, count);
     snap_sample_ends(first, edge_ends(b, edges[0].index));
@@ -2830,6 +2859,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     const int nf = (int)m_faces.size();
     const double angle = has_quality ? max_angle_deg : 20.0;
     const double chord = has_quality ? chord_factor : 0.005;
+    const double scale = brep_diagonal(*this);
     std::vector<bool> face_strip(nf, false);
     std::vector<bool> face_direct(nf, false);
     std::vector<bool> rebuild_grid(nf, false);
@@ -2840,7 +2870,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         face_strip[fi] = strip_face(*this, fi, boundary);
 
         if (face_strip[fi])
-            fmesh[fi] = strip_mesh(*this, fi, boundary, angle, chord);
+            fmesh[fi] = strip_mesh(*this, fi, boundary, scale, angle, chord);
     }
 
     for (int fi = 0; fi < nf; ++fi)
@@ -2856,7 +2886,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         rebuild_grid[fi] = grid_boundaries(*this, fi, fmesh[fi], boundary);
     }
 
-    refine_shared_boundaries(*this, face_direct, rebuild_grid, boundary, angle, chord);
+    refine_shared_boundaries(*this, face_direct, rebuild_grid, boundary, scale, angle, chord);
 
     for (int fi = 0; fi < nf; ++fi)
         if (rebuild_grid[fi])
@@ -2874,7 +2904,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
 
         std::vector<std::tuple<int, size_t, size_t, size_t>> uses;
 
-        if (!trim_loops(*this, fi, boundary, angle, chord, loops, uses))
+        if (!trim_loops(*this, fi, boundary, scale, angle, chord, loops, uses))
             continue;
 
         if (loops.interior_uv.empty() && is_planar_patch(srf)) {

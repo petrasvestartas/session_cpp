@@ -968,10 +968,21 @@ namespace session_cpp {
         const double volume = bh.mesh().volume();
         const double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
 
-        MINI_CHECK(bore.face.size() == 72 && bore.vertex.size() == 74);
-        MINI_CHECK(round == 74 && rim == 37 && seam == 4 && shared == 74);
+        MINI_CHECK(bore.face.size() == 40 && bore.vertex.size() == 42);
+        MINI_CHECK(round == 42 && rim == 21 && seam == 4 && shared == 42);
         MINI_CHECK(body[0].face.size() == 72 && body[0].vertex.size() == 74);
         MINI_CHECK(std::abs(volume - ref) / ref < 0.005);
+    }
+
+    MINI_TEST("BRep", "Strip Step Share") {
+        const std::vector<Mesh> body = BRep::create_cylinder(150.0, 400.0).face_meshes_q(true, 5.0, 0.001);
+        const std::vector<Mesh> bore = BRep::create_block_with_hole(100.0, 100.0, 50.0, 10.0).face_meshes_q(true, 5.0, 0.001);
+        const std::vector<Mesh> rib = BRep::create_block_with_hole(4000.0, 200.0, 100.0, 10.0).face_meshes_q(true, 5.0, 0.001);
+
+        MINI_CHECK(body[0].face.size() == 144 && body[0].vertex.size() == 146);
+        MINI_CHECK(bore[4].face.size() == 56 && bore[4].vertex.size() == 58);
+        MINI_CHECK(rib[4].face.size() == 32 && rib[4].vertex.size() == 34);
+        MINI_CHECK(rib[5].vertex.size() == 20 && rib[6].vertex.size() == 20);
     }
 
     MINI_TEST("BRep", "Mesh Watertight") {
