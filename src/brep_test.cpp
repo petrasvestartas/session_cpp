@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <array>
+#include <map>
 #include <limits>
 #include <algorithm>
 #include <filesystem>
@@ -967,10 +968,81 @@ namespace session_cpp {
         const double volume = bh.mesh().volume();
         const double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
 
-        MINI_CHECK(bore.face.size() == 36 && bore.vertex.size() == 74);
+        MINI_CHECK(bore.face.size() == 72 && bore.vertex.size() == 74);
         MINI_CHECK(round == 74 && rim == 37 && seam == 4 && shared == 74);
-        MINI_CHECK(body[0].face.size() == 18 && body[0].vertex.size() == 38);
+        MINI_CHECK(body[0].face.size() == 72 && body[0].vertex.size() == 74);
         MINI_CHECK(std::abs(volume - ref) / ref < 0.005);
+    }
+
+    MINI_TEST("BRep", "Mesh Watertight") {
+        const std::vector<BRep> bodies = {
+            BRep::create_box(8.0, 6.0, 4.0),
+            BRep::create_cylinder(2.0, 5.0),
+            BRep::create_sphere(2.0),
+            BRep::create_cone(2.0, 5.0),
+            BRep::create_torus(4.0, 1.0),
+            BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5),
+        };
+        const auto key = [](const Point& p) { return std::array<double, 3>{p[0] + 0.0, p[1] + 0.0, p[2] + 0.0}; };
+        int empty = 0;
+        int open = 0;
+        int missing = 0;
+
+        for (const BRep& b : bodies) {
+            const std::vector<Mesh> fms = b.face_meshes_q(true, 10.0, 0.005);
+            std::map<std::pair<std::array<double, 3>, std::array<double, 3>>, int> edges;
+
+            for (const Mesh& fm : fms) {
+                if (fm.face.empty())
+                    ++empty;
+
+                std::map<std::pair<std::array<double, 3>, std::array<double, 3>>, int> local;
+
+                for (const std::pair<const size_t, std::vector<size_t>>& face : fm.face) {
+                    const size_t n = face.second.size();
+
+                    for (size_t i = 0; i < n; ++i) {
+                        const std::array<double, 3> a = key(fm.vertex.at(face.second[i]).position());
+                        const std::array<double, 3> c = key(fm.vertex.at(face.second[(i + 1) % n]).position());
+                        local[{a, c}] += 1;
+                        local[{c, a}] -= 1;
+                    }
+                }
+
+                for (const auto& entry : local)
+                    if (entry.second > 0)
+                        edges[entry.first] += entry.second;
+            }
+
+            for (const auto& entry : edges) {
+                const auto reverse = edges.find({entry.first.second, entry.first.first});
+
+                if ((reverse == edges.end() ? 0 : reverse->second) != entry.second)
+                    ++open;
+            }
+
+            for (int ei = 0; ei < b.edge_count(); ++ei) {
+                if (b.m_edges[ei].degenerated)
+                    continue;
+
+                for (const BRepRef& fr : b.edge_faces(ei)) {
+                    for (const int vi : {b.m_edges[ei].start_vertex, b.m_edges[ei].end_vertex}) {
+                        const std::array<double, 3> p = key(b.m_vertices[vi].point);
+                        bool found = false;
+
+                        for (const std::pair<const size_t, VertexData>& vd : fms[fr.index].vertex)
+                            found = found || key(vd.second.position()) == p;
+
+                        if (!found)
+                            ++missing;
+                    }
+                }
+            }
+        }
+
+        MINI_CHECK(empty == 0);
+        MINI_CHECK(open == 0);
+        MINI_CHECK(missing == 0);
     }
 
     MINI_TEST("BRep", "Mesh Orientation") {

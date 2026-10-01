@@ -723,28 +723,9 @@ double lifted_distance(const NurbsSurface& surface, const NurbsCurve& curve, con
     return surface.point_at(uv[0], uv[1]).distance(point);
 }
 
-/// Parameter of the lifted pcurve closest to `point`: a coarse scan then 64 golden-section steps in the best cell
-double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point) {
+/// Parameter and distance of the lifted pcurve closest to `point` within [left, right] by 64 golden-section steps
+std::pair<double, double> golden_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point, double left, double right) {
 
-    const double start = curve.domain().first;
-    const double end = curve.domain().second;
-    const int count = std::clamp(curve.cv_count() * 4, 32, 4096);
-    const double step = (end - start) / count;
-    double best = start;
-    double error = lifted_distance(surface, curve, point, start);
-
-    for (int index = 1; index <= count; ++index) {
-        const double t = index == count ? end : start + index * step;
-        const double candidate = lifted_distance(surface, curve, point, t);
-
-        if (candidate < error) {
-            best = t;
-            error = candidate;
-        }
-    }
-
-    double left = std::max(best - step, start);
-    double right = std::min(best + step, end);
     const double ratio = (std::sqrt(5.0) - 1.0) * 0.5;
     double a = right - ratio * (right - left);
     double b = left + ratio * (right - left);
@@ -767,13 +748,46 @@ double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, 
         }
     }
 
-    if (da < error) {
-        best = a;
-        error = da;
+    return da < db ? std::make_pair(a, da) : std::make_pair(b, db);
+}
+
+/// Parameter of the lifted pcurve closest to `point`: a coarse scan then golden-section steps in the best cell, and in the cell at the other end too when a closed pcurve scans best at an end, since both ends are one point
+double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point) {
+
+    const double start = curve.domain().first;
+    const double end = curve.domain().second;
+    const int count = std::clamp(curve.cv_count() * 4, 32, 4096);
+    const double step = (end - start) / count;
+    double best = start;
+    double error = lifted_distance(surface, curve, point, start);
+
+    for (int index = 1; index <= count; ++index) {
+        const double t = index == count ? end : start + index * step;
+        const double candidate = lifted_distance(surface, curve, point, t);
+
+        if (candidate < error) {
+            best = t;
+            error = candidate;
+        }
     }
 
-    if (db < error)
-        best = b;
+    std::vector<std::pair<double, double>> cells = {{std::max(best - step, start), std::min(best + step, end)}};
+    const bool closed = curve.point_at(start).distance(curve.point_at(end)) <= Tolerance::ZERO_TOLERANCE;
+
+    if (closed && best == start)
+        cells.push_back({end - step, end});
+
+    if (closed && best == end)
+        cells.push_back({start, start + step});
+
+    for (const std::pair<double, double>& cell : cells) {
+        const std::pair<double, double> found = golden_parameter(surface, curve, point, cell.first, cell.second);
+
+        if (found.second < error) {
+            best = found.first;
+            error = found.second;
+        }
+    }
 
     return best;
 }
@@ -880,6 +894,90 @@ std::vector<std::tuple<double, Point, Point>> refine_surface_boundary(
 bool same_boundary_point(const Point& a, const Point& b) {
 
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+}
+
+/// Planarity tolerance for a surface of any size: 1e-9 of its control-point bounding box diagonal, never below the zero tolerance
+double planar_patch_tolerance(const NurbsSurface& srf) {
+
+    double lo[3] = {1e300, 1e300, 1e300};
+    double hi[3] = {-1e300, -1e300, -1e300};
+
+    for (int i = 0; i < srf.cv_count(0); ++i)
+        for (int j = 0; j < srf.cv_count(1); ++j) {
+            const Point p = srf.get_cv(i, j);
+
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], p[k]);
+                hi[k] = std::max(hi[k], p[k]);
+            }
+        }
+
+    const double diagonal = std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
+
+    return std::max(1e-9 * diagonal, Tolerance::ZERO_TOLERANCE);
+}
+
+/// True for a surface flat within planar_patch_tolerance, whatever its coordinates
+bool is_planar_patch(const NurbsSurface& srf) {
+
+    return srf.is_planar(nullptr, planar_patch_tolerance(srf));
+}
+
+/// Positions of the start and end vertex of an edge: the one point every face must place at each end of the edge
+std::pair<Point, Point> edge_ends(const BRep& b, int ei) {
+
+    const BRepEdge& edge = b.m_edges[ei];
+
+    return {b.m_vertices[edge.start_vertex].point, b.m_vertices[edge.end_vertex].point};
+}
+
+/// Place the first and last sample of an edge on its vertices, so every incident face meets there bit for bit
+void snap_sample_ends(std::vector<std::tuple<double, Point, Point>>& samples, const std::pair<Point, Point>& ends) {
+
+    if (samples.empty())
+        return;
+
+    std::get<2>(samples.front()) = ends.first;
+    std::get<2>(samples.back()) = ends.second;
+}
+
+/// Phase 1: move the grid vertices of a direct face that sit on a pcurve end onto that edge's vertex, as every other face does
+void snap_grid_corners(const BRep& b, int fi, Mesh& grid) {
+
+    const BRepFace& face = b.m_faces[fi];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const std::pair<double, double> du = srf.domain(0);
+    const std::pair<double, double> dv = srf.domain(1);
+    const double utol = (du.second - du.first) * 1e-4;
+    const double vtol = (dv.second - dv.first) * 1e-4;
+    std::vector<std::pair<Point, Point>> corners;
+
+    for (const BRepRef& er : b.wire_edges(face.wires[0])) {
+        const int ci = b.pcurve_index(er.index, fi, er.orientation);
+
+        if (ci < 0)
+            continue;
+
+        const NurbsCurve& crv = b.m_curves_2d[ci];
+        const std::pair<Point, Point> ends = edge_ends(b, er.index);
+        corners.push_back({crv.get_cv(0), ends.first});
+        corners.push_back({crv.get_cv(crv.cv_count() - 1), ends.second});
+    }
+
+    for (std::pair<const size_t, VertexData>& entry : grid.vertex) {
+        const auto u = entry.second.attributes.find("u");
+        const auto v = entry.second.attributes.find("v");
+
+        if (u == entry.second.attributes.end() || v == entry.second.attributes.end())
+            continue;
+
+        for (const std::pair<Point, Point>& corner : corners) {
+            if (std::abs(corner.first[0] - u->second) <= utol && std::abs(corner.first[1] - v->second) <= vtol) {
+                entry.second.set_position(corner.second);
+                break;
+            }
+        }
+    }
 }
 
 /// Phase 1: the outer wire is the full UV rectangle (straight pcurves enclosing the whole domain, no holes), so the face meshes directly on the surface grid
@@ -1071,7 +1169,7 @@ void refine_shared_boundaries(
         for (const BRepRef& incident : b.edge_faces(edge)) {
             const int fi = incident.index;
             const bool cdt = !face_direct[fi] || rebuild_grid[fi];
-            curved_cdt = curved_cdt || (cdt && !b.m_surfaces[b.m_faces[fi].surface_index].is_planar(nullptr, 0.0));
+            curved_cdt = curved_cdt || (cdt && !is_planar_patch(b.m_surfaces[b.m_faces[fi].surface_index]));
         }
 
         if (!curved_cdt)
@@ -1135,33 +1233,6 @@ std::vector<Point> grid_interior_uv(const NurbsSurface& srf, const Mesh& grid) {
     return seeds;
 }
 
-/// Planarity tolerance for a surface of any size: 1e-9 of its control-point bounding box diagonal, never below the zero tolerance
-double planar_patch_tolerance(const NurbsSurface& srf) {
-
-    double lo[3] = {1e300, 1e300, 1e300};
-    double hi[3] = {-1e300, -1e300, -1e300};
-
-    for (int i = 0; i < srf.cv_count(0); ++i)
-        for (int j = 0; j < srf.cv_count(1); ++j) {
-            const Point p = srf.get_cv(i, j);
-
-            for (int k = 0; k < 3; ++k) {
-                lo[k] = std::min(lo[k], p[k]);
-                hi[k] = std::max(hi[k], p[k]);
-            }
-        }
-
-    const double diagonal = std::sqrt((hi[0] - lo[0]) * (hi[0] - lo[0]) + (hi[1] - lo[1]) * (hi[1] - lo[1]) + (hi[2] - lo[2]) * (hi[2] - lo[2]));
-
-    return std::max(1e-9 * diagonal, Tolerance::ZERO_TOLERANCE);
-}
-
-/// True for a surface flat within planar_patch_tolerance, whatever its coordinates
-bool is_planar_patch(const NurbsSurface& srf) {
-
-    return srf.is_planar(nullptr, planar_patch_tolerance(srf));
-}
-
 /// Surface parameters of a point on a degree-1 parallelogram patch by two dot products; false when the patch is not that shape
 bool planar_patch_uv(const NurbsSurface& srf, const Point& p, double& u, double& v) {
 
@@ -1216,8 +1287,59 @@ bool linear_pcurve_parameter(const NurbsCurve& crv, double u, double v, double& 
     return true;
 }
 
-/// Phase 3: map the canonical points of edge `ei` onto pcurve `ci` of face `fi`, checked in model space; false when a point cannot be lifted
-bool lift_canonical(
+/// Parameter of the pcurve closest to `uv` by Newton steps from `seed`, clamped to the domain; the model-space check of the caller decides whether it is the right one
+double pcurve_newton(const NurbsCurve& crv, const Point& uv, double seed) {
+
+    const std::pair<double, double> domain = crv.domain();
+    double t = std::clamp(seed, domain.first, domain.second);
+
+    for (int i = 0; i < 16; ++i) {
+        const std::vector<Vector> d = crv.evaluate(t, 2);
+
+        if (d.size() < 3)
+            break;
+
+        const double rx = d[0][0] - uv[0];
+        const double ry = d[0][1] - uv[1];
+        const double f = rx * d[1][0] + ry * d[1][1];
+        const double df = d[1][0] * d[1][0] + d[1][1] * d[1][1] + rx * d[2][0] + ry * d[2][1];
+
+        if (df == 0.0)
+            break;
+
+        const double next = std::clamp(t - f / df, domain.first, domain.second);
+        const double moved = std::abs(next - t);
+        t = next;
+
+        if (moved <= (domain.second - domain.first) * 1e-14)
+            break;
+    }
+
+    return t;
+}
+
+/// Phase 3: first guess of the pcurve parameter of a canonical point: two dot products on a planar patch with a straight pcurve, Newton from the seed when the previous points of the edge give one, else the full closest-point search
+double canonical_parameter(const NurbsSurface& srf, const NurbsCurve& crv, const Point& p, bool planar, bool seeded, double seed) {
+
+    double u = 0.0;
+    double v = 0.0;
+    double t = 0.0;
+    const bool on_patch = planar && planar_patch_uv(srf, p, u, v);
+
+    if (!on_patch)
+        std::tie(u, v) = srf.closest_parameters(p);
+
+    if (on_patch && linear_pcurve_parameter(crv, u, v, t))
+        return t;
+
+    if (seeded)
+        return pcurve_newton(crv, Point(u, v, 0.0), seed);
+
+    return crv.closest_parameter(Point(u, v, 0.0));
+}
+
+/// Phase 3: map the canonical points of edge `ei` onto pcurve `ci` of face `fi`, checked in model space, each point seeded by the parameters of the two before it since the points run along the edge; a point the pcurve cannot reach within tolerance keeps the nearest parameter, since the canonical position is what the face places and the parameter only orders the loop
+void lift_canonical(
     const BRep& b,
     int fi,
     int ei,
@@ -1233,9 +1355,12 @@ bool lift_canonical(
     const bool cached = boundary.basis.count(ei) && std::get<0>(boundary.basis[ei]) == fi && std::get<1>(boundary.basis[ei]) == ci && boundary.samples.count(ei);
     const std::vector<Point>& points = boundary.points[ei];
     const bool planar = is_planar_patch(srf);
+    std::vector<double> lifted;
 
     for (size_t index = 0; index < points.size(); ++index) {
         const Point& p = points[index];
+        const bool seeded = !lifted.empty();
+        const double seed = lifted.size() < 2 ? (seeded ? lifted[0] : 0.0) : 2.0 * lifted[lifted.size() - 1] - lifted[lifted.size() - 2];
         double t = 0.0;
         Point q;
 
@@ -1243,16 +1368,7 @@ bool lift_canonical(
             t = boundary.samples[ei][index].first;
             q = boundary.samples[ei][index].second;
         } else {
-            double u = 0.0;
-            double v = 0.0;
-            const bool on_patch = planar && planar_patch_uv(srf, p, u, v);
-
-            if (!on_patch)
-                std::tie(u, v) = srf.closest_parameters(p);
-
-            if (!on_patch || !linear_pcurve_parameter(crv, u, v, t))
-                t = crv.closest_parameter(Point(u, v, 0.0));
-
+            t = canonical_parameter(srf, crv, p, planar, seeded, seed);
             q = crv.point_at(t);
         }
 
@@ -1262,22 +1378,18 @@ bool lift_canonical(
         if (srf.point_at(q[0], q[1]).distance(p) > tolerance) {
             t = boundary_parameter(srf, crv, p);
             q = crv.point_at(t);
-
-            if (srf.point_at(q[0], q[1]).distance(p) > tolerance)
-                return false;
         }
 
+        lifted.push_back(t);
         samples.push_back({t, q, p});
     }
 
     std::sort(samples.begin(), samples.end(), sample_less);
     samples.erase(std::unique(samples.begin(), samples.end(), sample_equal), samples.end());
-
-    return true;
 }
 
-/// Phase 3: fresh samples of a pcurve nobody has sampled yet, refined to the face's angle and chord
-std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, double angle, double chord) {
+/// Phase 3: fresh samples of a pcurve nobody has sampled yet, its ends on the edge's vertices, refined to the face's angle and chord
+std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const std::pair<Point, Point>& ends, double angle, double chord) {
 
     std::vector<Point> points;
     std::vector<double> parameters;
@@ -1299,10 +1411,12 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
         samples.push_back({parameters[k], q, srf.point_at(q[0], q[1])});
     }
 
+    snap_sample_ends(samples, ends);
+
     return refine_surface_boundary(srf, crv, samples, angle, chord);
 }
 
-/// Phase 3: samples of one edge use of a CDT face in traversal direction, a closed edge repeating its first point at the end; false when the edge has no pcurve or cannot be lifted
+/// Phase 3: samples of one edge use of a CDT face in traversal direction, a closed edge repeating its first point at the end; false when the edge has no pcurve
 bool edge_use_samples(
     const BRep& b,
     int fi,
@@ -1323,10 +1437,9 @@ bool edge_use_samples(
     const NurbsCurve& crv = b.m_curves_2d[ci];
 
     if (boundary.points.count(ei)) {
-        if (!lift_canonical(b, fi, ei, ci, boundary, samples))
-            return false;
+        lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
-        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, angle, chord);
+        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), angle, chord);
         std::vector<Point> positions;
 
         for (const std::tuple<double, Point, Point>& sample : samples)
@@ -1530,8 +1643,24 @@ Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
     return mesh;
 }
 
+/// Vertex keys per boundary attribute name, so tagging edge uses touches only the vertices each sample owns
+std::map<std::string, std::vector<size_t>> boundary_lookup(const Mesh& mesh) {
+
+    std::map<std::string, std::vector<size_t>> lookup;
+
+    for (const std::pair<const size_t, VertexData>& entry : mesh.vertex)
+        for (const std::pair<const std::string, double>& attribute : entry.second.attributes)
+            if (attribute.first.rfind("boundary", 0) == 0)
+                lookup[attribute.first].push_back(entry.first);
+
+    return lookup;
+}
+
 /// Tag every boundary vertex of a CDT mesh with the edge use it samples; each use keeps both ends, including the next edge's start
 void tag_edge_uses(Mesh& mesh, const TrimLoops& loops, const std::vector<std::tuple<int, size_t, size_t, size_t>>& uses) {
+
+    const std::map<std::string, std::vector<size_t>> lookup = boundary_lookup(mesh);
+    const std::vector<size_t> none;
 
     for (size_t use_id = 0; use_id < uses.size(); ++use_id) {
         int edge = 0;
@@ -1548,9 +1677,10 @@ void tag_edge_uses(Mesh& mesh, const TrimLoops& loops, const std::vector<std::tu
             const std::string key = fmt::format("boundary/{}/{}", li, (start + sample) % length);
             const std::string tag = fmt::format("brep_edge/{}/{}/{}", edge, use_id, sample);
 
-            for (std::pair<const size_t, VertexData>& entry : mesh.vertex)
-                if (entry.second.attributes.count(key))
-                    entry.second.attributes[tag] = 1.0;
+            const auto tagged = lookup.find(key);
+
+            for (const size_t vk : tagged == lookup.end() ? none : tagged->second)
+                mesh.vertex[vk].attributes[tag] = 1.0;
 
             if (sample + 1 >= count)
                 continue;
@@ -1558,9 +1688,11 @@ void tag_edge_uses(Mesh& mesh, const TrimLoops& loops, const std::vector<std::tu
             const std::string interval = fmt::format("boundary_interval/{}/{}", li, (start + sample) % length);
             const std::string interval_tag = fmt::format("brep_edge_interval/{}/{}/{}", edge, use_id, sample);
 
-            for (std::pair<const size_t, VertexData>& entry : mesh.vertex)
-                if (entry.second.attributes.count(interval))
-                    entry.second.attributes[interval_tag] = entry.second.attributes[interval];
+            const auto crossed = lookup.find(interval);
+
+            for (const size_t vk : crossed == lookup.end() ? none : crossed->second)
+                if (mesh.vertex[vk].attributes.count(interval))
+                    mesh.vertex[vk].attributes[interval_tag] = mesh.vertex[vk].attributes[interval];
         }
     }
 }
@@ -1649,17 +1781,25 @@ double strip_sag(const NurbsSurface& srf, const NurbsCurve& crv, int count) {
     return sag;
 }
 
-/// Phase 0: the steps a pcurve asks for on its own: four per control point when curved, none when straight
-int strip_steps(const NurbsCurve& crv) {
+/// Phase 0: the steps a loop asks for on its own: four per control point of its pcurve when that is curved, and four per control point of the surface across u when that is curved, as fresh samples ask of a curve
+int strip_steps(const NurbsSurface& srf, const NurbsCurve& crv) {
 
-    return crv.degree() > 1 ? crv.cv_count() * 4 : 0;
+    int steps = 0;
+
+    if (crv.degree() > 1)
+        steps = crv.cv_count() * 4;
+
+    if (srf.degree(0) > 1)
+        steps = std::max(steps, srf.cv_count(0) * 4);
+
+    return steps;
 }
 
-/// Phase 0: the steps of a strip: the angle's share of a turn and what the pcurves ask for, doubled until both loops sag within the chord tolerance
+/// Phase 0: the steps of a strip: the angle's share of a turn and what the loops ask for, doubled until both loops sag within the chord tolerance
 int strip_count(const NurbsSurface& srf, const NurbsCurve& a, const NurbsCurve& c, double angle, double chord) {
 
     const double tolerance = bbox_diagonal(srf) * chord;
-    int count = std::max({strip_steps(a), strip_steps(c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
+    int count = std::max({strip_steps(srf, a), strip_steps(srf, c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
 
     while (count < 4096 && tolerance > 0.0 && std::max(strip_sag(srf, a, count), strip_sag(srf, c, count)) > tolerance)
         count *= 2;
@@ -1682,7 +1822,7 @@ size_t strip_vertex(const NurbsSurface& srf, Mesh& mesh, const std::tuple<double
     return key;
 }
 
-/// Phase 0: the strip of a face: both loops sampled at the same steps and made the canonical boundary of their edges, a quad between every pair of steps, the vertices numbered as the keyhole polygon a CDT face runs (first loop, seam, second loop backwards, seam) so the edge uses tag as there; no surface refinement, no lifting
+/// Phase 0: the strip of a face: both loops sampled at the same steps, closed on their vertex, and made the canonical boundary of their edges, two triangles between every pair of steps, the vertices numbered as the keyhole polygon a CDT face runs (first loop, seam, second loop backwards, seam) so the edge uses tag as there; no surface refinement, no lifting
 Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double angle, double chord) {
 
     const BRepFace& face = b.m_faces[fi];
@@ -1691,8 +1831,10 @@ Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double angle, dou
     const NurbsCurve& a = b.m_curves_2d[b.pcurve_index(edges[0].index, fi, edges[0].orientation)];
     const NurbsCurve& c = b.m_curves_2d[b.pcurve_index(edges[2].index, fi, edges[2].orientation)];
     const int count = strip_count(srf, a, c, angle, chord);
-    const std::vector<std::tuple<double, Point, Point>> first = strip_samples(srf, a, count);
-    const std::vector<std::tuple<double, Point, Point>> second = strip_samples(srf, c, count);
+    std::vector<std::tuple<double, Point, Point>> first = strip_samples(srf, a, count);
+    std::vector<std::tuple<double, Point, Point>> second = strip_samples(srf, c, count);
+    snap_sample_ends(first, edge_ends(b, edges[0].index));
+    snap_sample_ends(second, edge_ends(b, edges[2].index));
     Mesh mesh;
     TrimLoops loops;
     loops.uv.resize(1, std::vector<Point>(2 * count + 2));
@@ -1711,8 +1853,10 @@ Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double angle, dou
         boundary.points[edges[2].index].push_back(std::get<2>(second[k]));
     }
 
-    for (int k = 0; k < count; ++k)
-        mesh.add_face({bottom[k], bottom[k + 1], top[k + 1], top[k]});
+    for (int k = 0; k < count; ++k) {
+        mesh.add_face({bottom[k], bottom[k + 1], top[k + 1]});
+        mesh.add_face({bottom[k], top[k + 1], top[k]});
+    }
 
     const Point& start = std::get<1>(first[0]);
     wind_to_normal(mesh, srf.normal_at(start[0], start[1]));
@@ -2708,6 +2852,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
 
         const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
         fmesh[fi] = has_quality ? RemeshNurbsSurfaceGrid::from_u_v_q(srf, 0, 0, max_angle_deg, chord_factor) : srf.mesh();
+        snap_grid_corners(*this, fi, fmesh[fi]);
         rebuild_grid[fi] = grid_boundaries(*this, fi, fmesh[fi], boundary);
     }
 
