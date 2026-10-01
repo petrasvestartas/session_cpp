@@ -921,6 +921,24 @@ public:
     std::vector<Polyline> section_by_plane(const Plane& plane) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // Offset
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Top, bottom and side meshes of a shell.
+    struct OffsetLayers;
+
+    /// Return one closed shell: reversed bottom, offset top, one quad per naked edge.
+    Mesh offset(double distance) const;
+
+    /// Return the same shell as three meshes: top, bottom and sides.
+    OffsetLayers offset_layers(double distance) const;
+
+    /// Return the plane of each face translated by distance along its normal, by face key.
+    std::map<size_t, Plane> offset_planes(double distance) const;
+
+    /// Return the offset position of each vertex, the least-squares meet of its face planes, by vertex key.
+    std::map<size_t, Point> offset_vertices(const std::map<size_t, Plane>& planes) const;
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════
     /// Serialize to a JSON object.
@@ -983,6 +1001,13 @@ private:
 
     /// Return the face-derived halfedge connectivity, computed without mutating.
     std::map<size_t, std::map<size_t, std::optional<size_t>>> compute_halfedges() const;
+};
+
+/// Top, bottom and side meshes of a shell.
+struct Mesh::OffsetLayers {
+    Mesh top; // Offset faces.
+    Mesh bottom; // Reversed original faces.
+    Mesh sides; // One quad per naked edge.
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

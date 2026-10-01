@@ -63,8 +63,7 @@ set(UNITY_BUILD_EXCLUDE
     src/session.cpp
     src/element.cpp
     src/yaml/yaml.cpp
-    src/mesh_offset.cpp
-    src/io_xyz.cpp
+    src/file_xyz.cpp
 )
 
 #############################################################################################
@@ -183,7 +182,10 @@ else()
         GIT_TAG v${PROTOC_VERSION}
         GIT_SHALLOW TRUE
     )
+    # protobuf sets CMP0141 to OLD, which CMake reports as deprecated on every configure.
+    set(CMAKE_WARN_DEPRECATED OFF)
     FetchContent_MakeAvailable(protobuf)
+    unset(CMAKE_WARN_DEPRECATED)
 endif()
 
 # Suppress warnings from protobuf and absl third-party libraries
@@ -192,17 +194,34 @@ if(MSVC)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(THIRD_PARTY_COMPILE_OPTIONS -w)
 endif()
-if(THIRD_PARTY_COMPILE_OPTIONS AND NOT SESSION_PROTOBUF_PREFIX)
-    foreach(TGT IN ITEMS libprotobuf libprotobuf-lite utf8_validity utf8_range libupb)
-        if(TARGET ${TGT})
-            target_compile_options(${TGT} PRIVATE ${THIRD_PARTY_COMPILE_OPTIONS})
-        endif()
+# Every target defined in a directory and its subdirectories; abseil defines one per absl/<module>/.
+function(COLLECT_TARGETS DIR OUT)
+    get_property(FOUND DIRECTORY "${DIR}" PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(SUBDIRS DIRECTORY "${DIR}" PROPERTY SUBDIRECTORIES)
+    foreach(SUB IN LISTS SUBDIRS)
+        COLLECT_TARGETS("${SUB}" SUB_FOUND)
+        list(APPEND FOUND ${SUB_FOUND})
     endforeach()
-    get_property(ABSL_TARGETS DIRECTORY "${absl_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
-    foreach(TGT IN LISTS ABSL_TARGETS)
+    set(${OUT} ${FOUND} PARENT_SCOPE)
+endfunction()
+
+if(THIRD_PARTY_COMPILE_OPTIONS AND NOT SESSION_PROTOBUF_PREFIX)
+    set(THIRD_PARTY_TARGETS libprotobuf libprotobuf-lite utf8_validity utf8_range libupb)
+    COLLECT_TARGETS("${absl_SOURCE_DIR}" ABSL_TARGETS)
+    list(APPEND THIRD_PARTY_TARGETS ${ABSL_TARGETS})
+    foreach(TGT IN LISTS THIRD_PARTY_TARGETS)
+        if(NOT TARGET ${TGT})
+            continue()
+        endif()
         get_target_property(TGT_TYPE ${TGT} TYPE)
         if(TGT_TYPE STREQUAL "STATIC_LIBRARY" OR TGT_TYPE STREQUAL "OBJECT_LIBRARY")
             target_compile_options(${TGT} PRIVATE ${THIRD_PARTY_COMPILE_OPTIONS})
+        endif()
+        # -w above only quiets building these libraries; consumers that include their headers
+        # get them as system headers too, or -Wpedantic floods on absl/numeric/int128.h.
+        get_target_property(TGT_INCLUDES ${TGT} INTERFACE_INCLUDE_DIRECTORIES)
+        if(TGT_INCLUDES)
+            set_property(TARGET ${TGT} APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES ${TGT_INCLUDES})
         endif()
     endforeach()
 endif()
@@ -354,7 +373,7 @@ LINK_PROTOBUF(session_bench)
 set(MINITEST_SOURCES
     src/point_test.cpp src/color_test.cpp src/vector_test.cpp src/tolerance_test.cpp src/session_config_test.cpp
     src/line_test.cpp src/polyline_test.cpp src/plane_test.cpp src/pointcloud_test.cpp
-    src/simple_split_test.cpp
+    src/split_test.cpp
     src/xform_test.cpp src/mesh_test.cpp src/nurbsknot_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
     src/closest_test.cpp
     src/primitives_test.cpp
@@ -371,7 +390,7 @@ set(MINITEST_SOURCES
     src/graph_test.cpp
     src/intersection_test.cpp
     src/file_obj_test.cpp
-    src/io_xyz_test.cpp
+    src/file_xyz_test.cpp
     src/file_step_test.cpp
     src/objects_test.cpp
     src/collection_test.cpp
@@ -387,7 +406,6 @@ set(MINITEST_SOURCES
     src/spatial_octree_test.cpp
     src/boolean_polyline_test.cpp
     # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
-    src/mesh_offset_test.cpp
     src/instance_ref_test.cpp
     src/interaction_test.cpp
 )

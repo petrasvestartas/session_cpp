@@ -12,7 +12,7 @@ class Polyline;
 
 } // namespace session_cpp
 
-namespace session_cpp::simple_split {
+namespace session_cpp::split {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Split
@@ -53,4 +53,4 @@ std::vector<Polyline> split_polyline_by_curves(
     double tolerance
 );
 
-} // namespace session_cpp::simple_split
+} // namespace session_cpp::split

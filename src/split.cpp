@@ -1,4 +1,4 @@
-#include "simple_split.h"
+#include "split.h"
 #include "closest.h"
 #include "line.h"
 #include "polyline.h"
@@ -14,7 +14,7 @@
 #include <string_view>
 #include <tuple>
 
-namespace session_cpp::simple_split {
+namespace session_cpp::split {
 
 namespace {
 
@@ -1458,4 +1458,4 @@ std::vector<Polyline> split_polyline_by_curves(
     return result;
 }
 
-} // namespace session_cpp::simple_split
+} // namespace session_cpp::split

@@ -1,5 +1,5 @@
 #include "mini_test.h"
-#include "simple_split.h"
+#include "split.h"
 #include "brep.h"
 #include "line.h"
 #include "mesh.h"
@@ -26,15 +26,15 @@ static Point mapped(const NurbsSurface& surface, double x, double y) {
     return a + (surface.get_cv(1, 0) - a) * x + (surface.get_cv(0, 1) - a) * y;
 }
 
-MINI_TEST("SimpleSplit", "Split Curve By Curves") {
+MINI_TEST("Split", "Split Curve By Curves") {
     // using session_cpp::NurbsCurve;
     // using session_cpp::Point;
     // using session_cpp::Primitives;
-    // using session_cpp::simple_split::split_curve_by_curves;
+    // using session_cpp::split::split_curve_by_curves;
 
     const NurbsCurve curve = NurbsCurve::create(false, 1, {Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0)});
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
-    const std::vector<NurbsCurve> pieces = simple_split::split_curve_by_curves(curve, {cutter}, 1e-6);
+    const std::vector<NurbsCurve> pieces = split::split_curve_by_curves(curve, {cutter}, 1e-6);
 
     MINI_CHECK(pieces.size() == 2);
     MINI_CHECK(pieces[0].point_at_start().distance(Point(-2.0, 0.0, 0.0)) < 1e-6);
@@ -44,7 +44,7 @@ MINI_TEST("SimpleSplit", "Split Curve By Curves") {
 
     const NurbsCurve skew = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 1.0), Point(0.0, 2.0, 1.0)});
 
-    MINI_CHECK(simple_split::split_curve_by_curves(curve, {skew}, 1e-6).size() == 1);
+    MINI_CHECK(split::split_curve_by_curves(curve, {skew}, 1e-6).size() == 1);
 
     const NurbsCurve crossing = NurbsCurve::create(
         false,
@@ -58,23 +58,23 @@ MINI_TEST("SimpleSplit", "Split Curve By Curves") {
     );
     const NurbsCurve short_cut = NurbsCurve::create(false, 1, {Point(0.0, -0.2, 0.0), Point(0.0, 0.2, 0.0)});
 
-    MINI_CHECK(simple_split::split_curve_by_curves(crossing, {short_cut}, 1e-6).size() == 3);
+    MINI_CHECK(split::split_curve_by_curves(crossing, {short_cut}, 1e-6).size() == 3);
 
     const NurbsCurve circle = Primitives::circle(0.0, 0.0, 0.0, 1.0);
     const NurbsCurve chord = NurbsCurve::create(false, 1, {Point(-2.0, 0.5, 0.0), Point(2.0, 0.5, 0.0)});
-    const std::vector<NurbsCurve> arcs = simple_split::split_curve_by_curves(circle, {chord}, 1e-6);
+    const std::vector<NurbsCurve> arcs = split::split_curve_by_curves(circle, {chord}, 1e-6);
 
     MINI_CHECK(arcs.size() == 2);
     MINI_CHECK(arcs[0].is_rational() && arcs[1].is_rational());
 
     const NurbsCurve tangent = NurbsCurve::create(false, 1, {Point(-2.0, 1.0, 0.0), Point(2.0, 1.0, 0.0)});
 
-    MINI_CHECK(simple_split::split_curve_by_curves(circle, {tangent}, 1e-6).size() == 1);
+    MINI_CHECK(split::split_curve_by_curves(circle, {tangent}, 1e-6).size() == 1);
 
     bool rejected = false;
 
     try {
-        simple_split::split_curve_by_curves(curve, {curve}, 1e-6);
+        split::split_curve_by_curves(curve, {curve}, 1e-6);
     } catch (const std::invalid_argument&) {
         rejected = true;
     }
@@ -84,7 +84,7 @@ MINI_TEST("SimpleSplit", "Split Curve By Curves") {
     rejected = false;
 
     try {
-        simple_split::split_curve_by_curves(curve, {cutter}, std::numeric_limits<double>::quiet_NaN());
+        split::split_curve_by_curves(curve, {cutter}, std::numeric_limits<double>::quiet_NaN());
     } catch (const std::invalid_argument&) {
         rejected = true;
     }
@@ -92,12 +92,12 @@ MINI_TEST("SimpleSplit", "Split Curve By Curves") {
     MINI_CHECK(rejected);
 }
 
-MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
+MINI_TEST("Split", "Split BRep Face By Curves") {
     // using session_cpp::BRep;
     // using session_cpp::NurbsCurve;
     // using session_cpp::Point;
     // using session_cpp::Primitives;
-    // using session_cpp::simple_split::split_brep_face_by_curves;
+    // using session_cpp::split::split_brep_face_by_curves;
     // using session_cpp::NurbsSurface;
     // using session_cpp::Mesh;
     // using session_cpp::BRepFace;
@@ -105,7 +105,7 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
     const BRep box = BRep::create_box(10.0, 10.0, 10.0);
     const NurbsSurface surface = box.m_surfaces[0];
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {mapped(surface, 0.5, -1.0), mapped(surface, 0.5, 2.0)});
-    const BRep split = simple_split::split_brep_face_by_curves(box, 0, {cutter}, 1e-6);
+    const BRep split = split::split_brep_face_by_curves(box, 0, {cutter}, 1e-6);
 
     MINI_CHECK(split.face_count() == 7);
     MINI_CHECK(split.is_valid() && split.is_solid());
@@ -133,16 +133,16 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
             mapped(surface, 0.2, 0.3),
         }
     );
-    const BRep island = simple_split::split_brep_face_by_curves(box, 0, {closed}, 1e-6);
+    const BRep island = split::split_brep_face_by_curves(box, 0, {closed}, 1e-6);
 
     MINI_CHECK(island.face_count() == 7 && island.is_solid());
 
     const NurbsCurve crossing = NurbsCurve::create(false, 1, {mapped(surface, -1.0, 0.5), mapped(surface, 2.0, 0.5)});
-    const BRep quarters = simple_split::split_brep_face_by_curves(box, 0, {cutter, crossing}, 1e-6);
+    const BRep quarters = split::split_brep_face_by_curves(box, 0, {cutter, crossing}, 1e-6);
 
     MINI_CHECK(quarters.face_count() == 9 && quarters.is_solid());
 
-    const BRep repeated = simple_split::split_brep_face_by_curves(split, 0, {crossing}, 1e-6);
+    const BRep repeated = split::split_brep_face_by_curves(split, 0, {crossing}, 1e-6);
 
     MINI_CHECK(repeated.face_count() == 8 && repeated.is_solid());
 
@@ -157,7 +157,7 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
             mapped(surface, 0.2, 0.2),
         }
     );
-    const BRep regions = simple_split::split_brep_face_by_curves(box, 0, {loop}, 1e-6);
+    const BRep regions = split::split_brep_face_by_curves(box, 0, {loop}, 1e-6);
 
     MINI_CHECK(regions.face_count() == 7 && regions.is_solid());
 
@@ -193,12 +193,12 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
     );
     const BRep ring = BRep::from_nurbscurves({outer}, {{inner}});
     const NurbsCurve through = NurbsCurve::create(false, 1, {Point(5.0, -1.0, 0.0), Point(5.0, 11.0, 0.0)});
-    const BRep divided = simple_split::split_brep_face_by_curves(ring, 0, {through}, 1e-6);
+    const BRep divided = split::split_brep_face_by_curves(ring, 0, {through}, 1e-6);
 
     MINI_CHECK(divided.face_count() == 2);
 
     const NurbsCurve outside = NurbsCurve::create(false, 1, {Point(1.0, -1.0, 0.0), Point(1.0, 11.0, 0.0)});
-    const BRep preserved = simple_split::split_brep_face_by_curves(ring, 0, {outside}, 1e-6);
+    const BRep preserved = split::split_brep_face_by_curves(ring, 0, {outside}, 1e-6);
     int holes = 0;
 
     for (const BRepFace& face : preserved.m_faces)
@@ -208,7 +208,7 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
 
     const BRep disk = BRep::from_nurbscurves({Primitives::circle(0.0, 0.0, 0.0, 5.0)});
     const NurbsCurve chord = NurbsCurve::create(false, 1, {Point(-6.0, 1.2, 0.0), Point(6.0, 1.2, 0.0)});
-    const BRep halves = simple_split::split_brep_face_by_curves(disk, 0, {chord}, 1e-6);
+    const BRep halves = split::split_brep_face_by_curves(disk, 0, {chord}, 1e-6);
 
     MINI_CHECK(halves.face_count() == 2);
     MINI_CHECK(disk.face_count() == 1);
@@ -217,28 +217,28 @@ MINI_TEST("SimpleSplit", "Split BRep Face By Curves") {
     const NurbsSurface body = cylinder.m_surfaces[cylinder.m_faces[0].surface_index];
     const std::pair<double, double> domain = body.domain(0);
     const NurbsCurve generator = body.iso_curve(1, (domain.first + domain.second) * 0.5);
-    const BRep seamed = simple_split::split_brep_face_by_curves(cylinder, 0, {generator}, 1e-6);
+    const BRep seamed = split::split_brep_face_by_curves(cylinder, 0, {generator}, 1e-6);
 
     MINI_CHECK(seamed.face_count() == 4 && seamed.is_solid());
     MINI_CHECK(cylinder.face_count() == 3);
 }
 
-MINI_TEST("SimpleSplit", "Split Surface By Curves") {
+MINI_TEST("Split", "Split Surface By Curves") {
     // using session_cpp::BRep;
     // using session_cpp::NurbsCurve;
     // using session_cpp::Point;
-    // using session_cpp::simple_split::split_surface_by_curves;
+    // using session_cpp::split::split_surface_by_curves;
     // using session_cpp::NurbsSurface;
 
     const NurbsSurface surface = BRep::create_box(10.0, 10.0, 10.0).m_surfaces[0];
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {mapped(surface, 0.5, -1.0), mapped(surface, 0.5, 2.0)});
-    const BRep split = simple_split::split_surface_by_curves(surface, {cutter}, 1e-6);
+    const BRep split = split::split_surface_by_curves(surface, {cutter}, 1e-6);
 
     MINI_CHECK(split.face_count() == 2);
     MINI_CHECK(split.is_valid() && !split.is_solid());
 
     const NurbsCurve outside = NurbsCurve::create(false, 1, {mapped(surface, 2.0, -1.0), mapped(surface, 2.0, 2.0)});
-    const BRep untouched = simple_split::split_surface_by_curves(surface, {outside}, 1e-6);
+    const BRep untouched = split::split_surface_by_curves(surface, {outside}, 1e-6);
 
     MINI_CHECK(untouched.face_count() == 1);
     MINI_CHECK(surface.is_valid());
@@ -248,7 +248,7 @@ MINI_TEST("SimpleSplit", "Split Surface By Curves") {
     bool rejected = false;
 
     try {
-        simple_split::split_surface_by_curves(invalid, {outside}, 1e-6);
+        split::split_surface_by_curves(invalid, {outside}, 1e-6);
     } catch (const std::invalid_argument&) {
         rejected = true;
     }
@@ -256,12 +256,12 @@ MINI_TEST("SimpleSplit", "Split Surface By Curves") {
     MINI_CHECK(rejected);
 }
 
-MINI_TEST("SimpleSplit", "Split Line By Curves") {
+MINI_TEST("Split", "Split Line By Curves") {
     // using session_cpp::Arrowhead;
     // using session_cpp::Line;
     // using session_cpp::NurbsCurve;
     // using session_cpp::Point;
-    // using session_cpp::simple_split::split_line_by_curves;
+    // using session_cpp::split::split_line_by_curves;
 
     Line line = Line::from_points(Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0));
     line.name = "retained";
@@ -269,7 +269,7 @@ MINI_TEST("SimpleSplit", "Split Line By Curves") {
     line.dash = {1.0, 2.0};
     line.arrowhead = Arrowhead::BOTH;
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
-    const std::vector<Line> pieces = simple_split::split_line_by_curves(line, {cutter}, 1e-6);
+    const std::vector<Line> pieces = split::split_line_by_curves(line, {cutter}, 1e-6);
 
     MINI_CHECK(pieces.size() == 2);
     MINI_CHECK(pieces[0].point_at(1.0).distance(Point(0.0, 0.0, 0.0)) < 1e-6);
@@ -280,12 +280,12 @@ MINI_TEST("SimpleSplit", "Split Line By Curves") {
     MINI_CHECK(line.length() == 4.0);
 }
 
-MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
+MINI_TEST("Split", "Split Polyline By Curves") {
     // using session_cpp::Arrowhead;
     // using session_cpp::NurbsCurve;
     // using session_cpp::Point;
     // using session_cpp::Polyline;
-    // using session_cpp::simple_split::split_polyline_by_curves;
+    // using session_cpp::split::split_polyline_by_curves;
 
     Polyline polyline({Point(-2.0, 0.0, 0.0), Point(2.0, 0.0, 0.0), Point(2.0, 3.0, 0.0)});
     polyline.name = "retained";
@@ -293,7 +293,7 @@ MINI_TEST("SimpleSplit", "Split Polyline By Curves") {
     polyline.dash = {1.0, 2.0};
     polyline.arrowhead = Arrowhead::END;
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {Point(0.0, -2.0, 0.0), Point(0.0, 2.0, 0.0)});
-    const std::vector<Polyline> pieces = simple_split::split_polyline_by_curves(polyline, {cutter}, 1e-6);
+    const std::vector<Polyline> pieces = split::split_polyline_by_curves(polyline, {cutter}, 1e-6);
 
     MINI_CHECK(pieces.size() == 2);
     MINI_CHECK(pieces[0].point_count() == 2 && pieces[1].point_count() == 3);

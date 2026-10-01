@@ -3,7 +3,7 @@
 #include <string>
 
 namespace session_cpp {
-namespace io_xyz {
+namespace file_xyz {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Write
@@ -23,5 +23,5 @@ PointCloud read_xyz_from_str(const std::string& content);
 /// Return the cloud read from an .xyz file; throws if it cannot be opened.
 PointCloud read_xyz(const std::string& filepath);
 
-} // namespace io_xyz
+} // namespace file_xyz
 } // namespace session_cpp

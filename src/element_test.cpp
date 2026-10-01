@@ -892,6 +892,27 @@ MINI_TEST("Element", "Equality Compares Carried Fields") {
     MINI_CHECK(a != b);
 }
 
+MINI_TEST("Element", "Is Visible Round Trip") {
+    // using session_cpp::Element;
+
+    Element hidden(unit_quad(), "joint");
+
+    MINI_CHECK(hidden.is_visible);
+
+    hidden.is_visible = false;
+    const Element json = Element::file_json_loads(hidden.file_json_dumps());
+    const Element proto = Element::pb_loads(hidden.pb_dumps());
+
+    MINI_CHECK(!json.is_visible);
+    MINI_CHECK(!proto.is_visible);
+    MINI_CHECK(json == hidden);
+    MINI_CHECK(proto == hidden);
+
+    const Element shown(unit_quad(), "joint");
+
+    MINI_CHECK(shown != hidden);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature
 // ═══════════════════════════════════════════════════════════════════════════

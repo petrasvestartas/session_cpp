@@ -519,6 +519,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
     kGeometryDataFieldNumber = 4,
     kElementTypeFieldNumber = 10,
     kElementDataFieldNumber = 11,
+    kIsVisibleFieldNumber = 15,
   };
   // repeated double insertion_vectors = 12;
   [[nodiscard]] int insertion_vectors_size() const;
@@ -668,11 +669,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
   ::std::string* PROTOBUF_NONNULL _internal_mutable_element_data();
 
   public:
+  // optional bool is_visible = 15;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Element)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 9,
+      ::google::protobuf::internal::TcParseTable<4, 10,
                           1, 71,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -710,6 +722,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
     ::google::protobuf::internal::ArenaStringPtr geometry_data_;
     ::google::protobuf::internal::ArenaStringPtr element_type_;
     ::google::protobuf::internal::ArenaStringPtr element_data_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1569,6 +1582,34 @@ inline ::google::protobuf::RepeatedPtrField<::session_proto::ElementFeature>* PR
 Element::_internal_mutable_features() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.features_;
+}
+
+// optional bool is_visible = 15;
+inline bool Element::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000200U);
+  return value;
+}
+inline void Element::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
+}
+inline bool Element::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Element.is_visible)
+  return _internal_is_visible();
+}
+inline void Element::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  // @@protoc_insertion_point(field_set:session_proto.Element.is_visible)
+}
+inline bool Element::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Element::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

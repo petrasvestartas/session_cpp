@@ -13,7 +13,6 @@
 #include "polyline.h"
 #include "pointcloud.h"
 #include "mesh.h"
-#include "mesh_offset.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "brep.h"

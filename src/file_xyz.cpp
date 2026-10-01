@@ -1,11 +1,11 @@
-#include "io_xyz.h"
+#include "file_xyz.h"
 #include "fmt/core.h"
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 
 namespace session_cpp {
-namespace io_xyz {
+namespace file_xyz {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Write
@@ -70,5 +70,5 @@ PointCloud read_xyz(const std::string& filepath) {
     return read_xyz_from_str(buffer.str());
 }
 
-} // namespace io_xyz
+} // namespace file_xyz
 } // namespace session_cpp

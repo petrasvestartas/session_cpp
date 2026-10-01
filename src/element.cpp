@@ -219,7 +219,8 @@ Element::Element(const BRep& geometry, const std::string& name) : _geometry_brep
 Element::Element(const Element& other)
     : _geometry_mesh(other._geometry_mesh), _geometry_brep(other._geometry_brep), _geometry_synced(other._geometry_synced), _geometry_ops(other._geometry_ops),
       _features(other._features), _insertion_vectors(other._insertion_vectors), _dimensions(other._dimensions),
-      _element_type(other._element_type), _element_data(other._element_data), name(other.name) {}
+      _element_type(other._element_type), _element_data(other._element_data), name(other.name),
+      is_visible(other.is_visible) {}
 
 Element& Element::operator=(const Element& other) {
 
@@ -228,6 +229,7 @@ Element& Element::operator=(const Element& other) {
 
     _guid.clear();
     name = other.name;
+    is_visible = other.is_visible;
     _geometry_mesh = other._geometry_mesh;
     _geometry_brep = other._geometry_brep;
     _geometry_ops = other._geometry_ops;
@@ -526,7 +528,7 @@ bool Element::operator==(const Element& other) const {
     return name == other.name && geometry_type_name() == other.geometry_type_name() &&
         element_type_name() == other.element_type_name() && element_data_dumps() == other.element_data_dumps() &&
         _insertion_vectors == other._insertion_vectors && _dimensions == other._dimensions &&
-        _features == other._features;
+        _features == other._features && is_visible == other.is_visible;
 }
 
 bool Element::operator!=(const Element& other) const {
@@ -664,6 +666,7 @@ nlohmann::ordered_json Element::jsondump() const {
         {"geometry_type", geometry_type_name()},
         {"guid", guid()},
         {"insertion_vectors", ivs},
+        {"is_visible", is_visible},
         {"name", name},
         {"type", "Element"},
     };
@@ -687,6 +690,7 @@ Element Element::jsonload(const nlohmann::json& data) {
         elem.guid() = g;
 
     elem.name = data.value("name", elem.name);
+    elem.is_visible = data.value("is_visible", true);
 
     if (data.contains("dimensions") && !data["dimensions"].is_null())
         elem._dimensions = Vector::jsonload(data["dimensions"]);
@@ -763,6 +767,9 @@ session_proto::Element Element::to_proto() const {
     for (const ElementFeature& f : _features)
         *proto.add_features() = f.to_proto();
 
+    if (!is_visible)
+        proto.set_is_visible(false);
+
     return proto;
 }
 
@@ -774,6 +781,7 @@ Element Element::from_proto(const session_proto::Element& proto) {
         elem.guid() = proto.guid();
 
     elem.name = proto.name();
+    elem.is_visible = !proto.has_is_visible() || proto.is_visible();
 
     const bool has_data = !proto.geometry_data().empty();
 

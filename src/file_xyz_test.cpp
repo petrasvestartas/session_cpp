@@ -1,5 +1,5 @@
 #include "mini_test.h"
-#include "io_xyz.h"
+#include "file_xyz.h"
 #include "pointcloud.h"
 #include "tolerance.h"
 #include <filesystem>
@@ -13,15 +13,15 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
-    MINI_TEST("IoXyz", "Read Bunny") {
-        // using session_cpp::io_xyz::read_xyz;
+    MINI_TEST("FileXyz", "Read Bunny") {
+        // using session_cpp::file_xyz::read_xyz;
         // using session_cpp::PointCloud;
         // using session_cpp::Point;
 
         if (!std::filesystem::exists("session_data/bunny.xyz"))
             return;
 
-        const PointCloud cloud = io_xyz::read_xyz("session_data/bunny.xyz");
+        const PointCloud cloud = file_xyz::read_xyz("session_data/bunny.xyz");
         const std::vector<Point> points = cloud.get_points();
         bool has_non_zero = false;
 
@@ -34,11 +34,11 @@ namespace session_cpp {
         MINI_CHECK(has_non_zero);
     }
 
-    MINI_TEST("IoXyz", "Write Read Roundtrip") {
+    MINI_TEST("FileXyz", "Write Read Roundtrip") {
         // using session_cpp::Point;
         // using session_cpp::PointCloud;
-        // using session_cpp::io_xyz::read_xyz;
-        // using session_cpp::io_xyz::write_xyz;
+        // using session_cpp::file_xyz::read_xyz;
+        // using session_cpp::file_xyz::write_xyz;
 
         std::filesystem::create_directories("./serialization");
 
@@ -49,9 +49,9 @@ namespace session_cpp {
         original.add_point(Point(0.0, 0.0, 1.0));
 
         const std::string filepath = "./serialization/test_temp_roundtrip.xyz";
-        io_xyz::write_xyz(original, filepath);
+        file_xyz::write_xyz(original, filepath);
         const bool exists = std::filesystem::exists(filepath);
-        const PointCloud loaded = io_xyz::read_xyz(filepath);
+        const PointCloud loaded = file_xyz::read_xyz(filepath);
 
         MINI_CHECK(original.point_count() == 4);
         MINI_CHECK(exists);
@@ -60,11 +60,11 @@ namespace session_cpp {
         std::filesystem::remove(filepath);
     }
 
-    MINI_TEST("IoXyz", "String Roundtrip") {
+    MINI_TEST("FileXyz", "String Roundtrip") {
         // using session_cpp::Point;
         // using session_cpp::PointCloud;
-        // using session_cpp::io_xyz::read_xyz_from_str;
-        // using session_cpp::io_xyz::write_xyz_to_string;
+        // using session_cpp::file_xyz::read_xyz_from_str;
+        // using session_cpp::file_xyz::write_xyz_to_string;
 
         PointCloud original;
         original.add_point(Point(0.0, 0.0, 0.0));
@@ -72,19 +72,19 @@ namespace session_cpp {
         original.add_point(Point(0.0, 1.0, 0.0));
         original.add_point(Point(0.0, 0.0, 1.0));
 
-        const std::string content = io_xyz::write_xyz_to_string(original);
-        const PointCloud loaded = io_xyz::read_xyz_from_str(content);
+        const std::string content = file_xyz::write_xyz_to_string(original);
+        const PointCloud loaded = file_xyz::read_xyz_from_str(content);
 
         MINI_CHECK(loaded.point_count() == original.point_count());
         MINI_CHECK(TOLERANCE.is_close(loaded.get_points()[1][0], 1.0));
     }
 
-    MINI_TEST("IoXyz", "Write Exact Text") {
+    MINI_TEST("FileXyz", "Write Exact Text") {
         // using session_cpp::Point;
         // using session_cpp::PointCloud;
-        // using session_cpp::io_xyz::read_xyz;
-        // using session_cpp::io_xyz::write_xyz;
-        // using session_cpp::io_xyz::write_xyz_to_string;
+        // using session_cpp::file_xyz::read_xyz;
+        // using session_cpp::file_xyz::write_xyz;
+        // using session_cpp::file_xyz::write_xyz_to_string;
 
         std::filesystem::create_directories("./serialization");
 
@@ -95,36 +95,36 @@ namespace session_cpp {
         original.add_point(Point(7.120236347223045e-307, 6.386688990511104e+293, 0.0001220703125));
 
         const std::string filepath = "./serialization/test_temp_exact.xyz";
-        io_xyz::write_xyz(original, filepath);
+        file_xyz::write_xyz(original, filepath);
         std::ifstream file(filepath, std::ios::binary);
         const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
-        const PointCloud loaded = io_xyz::read_xyz(filepath);
+        const PointCloud loaded = file_xyz::read_xyz(filepath);
 
         MINI_CHECK(text == "1 2.5 -3\n0.1 1e-05 1e+16\n123456.789 -0 0.3333333333333333\n7.120236347223045e-307 6.386688990511104e+293 0.0001220703125\n");
-        MINI_CHECK(io_xyz::write_xyz_to_string(loaded) == text);
+        MINI_CHECK(file_xyz::write_xyz_to_string(loaded) == text);
         MINI_CHECK(loaded.get_points()[2][2] == 1.0 / 3.0);
 
         std::filesystem::remove(filepath);
     }
 
-    MINI_TEST("IoXyz", "File Errors") {
+    MINI_TEST("FileXyz", "File Errors") {
         // using session_cpp::PointCloud;
-        // using session_cpp::io_xyz::read_xyz;
-        // using session_cpp::io_xyz::write_xyz;
+        // using session_cpp::file_xyz::read_xyz;
+        // using session_cpp::file_xyz::write_xyz;
 
         const PointCloud cloud;
         bool read_failed = false;
         bool write_failed = false;
 
         try {
-            io_xyz::read_xyz("./serialization/test_temp_missing.xyz");
+            file_xyz::read_xyz("./serialization/test_temp_missing.xyz");
         } catch (const std::runtime_error&) {
             read_failed = true;
         }
 
         try {
-            io_xyz::write_xyz(cloud, "");
+            file_xyz::write_xyz(cloud, "");
         } catch (const std::runtime_error&) {
             write_failed = true;
         }
