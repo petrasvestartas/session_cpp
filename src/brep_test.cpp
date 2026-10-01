@@ -924,6 +924,55 @@ namespace session_cpp {
         MINI_CHECK(tagged == 8);
     }
 
+    MINI_TEST("BRep", "Strip Fast Path") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
+        // using session_cpp::Point;
+        // using session_cpp::VertexData;
+        // using session_cpp::Tolerance::PI;
+
+        const BRep bh = BRep::create_block_with_hole(8.0, 6.0, 4.0, 1.5);
+        const std::vector<Mesh> fm = bh.face_meshes_q(true, 10.0, 0.005);
+        const Mesh& bore = fm[4];
+        int round = 0;
+        int rim = 0;
+        int seam = 0;
+        int shared = 0;
+
+        for (const std::pair<const size_t, VertexData>& entry : bore.vertex) {
+            const Point p = entry.second.position();
+
+            if (std::abs(std::sqrt(p[0] * p[0] + p[1] * p[1]) - 1.5) < 1e-9 && entry.second.attributes.count("u") && entry.second.attributes.count("v"))
+                round++;
+
+            for (const std::pair<const std::string, double>& attribute : entry.second.attributes) {
+                if (attribute.first.rfind("brep_edge/12/0/", 0) == 0)
+                    rim++;
+
+                if (attribute.first.rfind("brep_edge/14/", 0) == 0)
+                    seam++;
+            }
+
+            bool on_cap = false;
+
+            for (const int cap : {5, 6})
+                for (const std::pair<const size_t, VertexData>& other : fm[cap].vertex)
+                    on_cap = on_cap || other.second.position().distance(p) == 0.0;
+
+            if (on_cap)
+                shared++;
+        }
+
+        const std::vector<Mesh> body = BRep::create_cylinder(1.0, 2.0).face_meshes();
+        const double volume = bh.mesh().volume();
+        const double ref = 8.0 * 6.0 * 4.0 - Tolerance::PI * 1.5 * 1.5 * 4.0;
+
+        MINI_CHECK(bore.face.size() == 36 && bore.vertex.size() == 74);
+        MINI_CHECK(round == 74 && rim == 37 && seam == 4 && shared == 74);
+        MINI_CHECK(body[0].face.size() == 18 && body[0].vertex.size() == 38);
+        MINI_CHECK(std::abs(volume - ref) / ref < 0.005);
+    }
+
     MINI_TEST("BRep", "Mesh Orientation") {
         // using session_cpp::BRep;
         // using session_cpp::Tolerance::PI;

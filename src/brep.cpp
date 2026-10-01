@@ -1565,6 +1565,168 @@ void tag_edge_uses(Mesh& mesh, const TrimLoops& loops, const std::vector<std::tu
     }
 }
 
+/// Phase 0: UV of a pcurve at a fraction of its domain
+Point strip_uv(const NurbsCurve& crv, double fraction) {
+
+    const std::pair<double, double> domain = crv.domain();
+
+    return crv.point_at(domain.first + fraction * (domain.second - domain.first));
+}
+
+/// Phase 0: a face ruled between two closed loops along one seam, as a cylinder body or a drilled bore: one wire of a loop forward, the seam forward, a loop reversed and the seam reversed, on a surface straight across its rulings, both loops crossing the whole u domain at the same pace and neither sampled yet
+bool strip_face(const BRep& b, int fi, const EdgeBoundary& boundary) {
+
+    const BRepFace& face = b.m_faces[fi];
+
+    if (face.wires.size() != 1)
+        return false;
+
+    const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
+
+    if (edges.size() != 4 || edges[1].index != edges[3].index || edges[1].orientation == edges[3].orientation || edges[0].index == edges[2].index)
+        return false;
+
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+
+    if (srf.degree(1) != 1 || srf.cv_count(1) != 2 || srf.is_singular(0) || srf.is_singular(2))
+        return false;
+
+    std::vector<const NurbsCurve*> loops;
+
+    for (const int k : {0, 2}) {
+        const BRepEdge& edge = b.m_edges[edges[k].index];
+        const int ci = b.pcurve_index(edges[k].index, fi, edges[k].orientation);
+
+        if (edge.degenerated || edge.start_vertex != edge.end_vertex || ci < 0 || boundary.points.count(edges[k].index))
+            return false;
+
+        loops.push_back(&b.m_curves_2d[ci]);
+    }
+
+    const std::pair<double, double> du = srf.domain(0);
+    const double tolerance = 1e-9 * (du.second - du.first);
+    const double u0 = strip_uv(*loops[0], 0.0)[0];
+    const double u1 = strip_uv(*loops[0], 1.0)[0];
+
+    if (std::abs(std::min(u0, u1) - du.first) > tolerance || std::abs(std::max(u0, u1) - du.second) > tolerance)
+        return false;
+
+    for (int k = 0; k <= 8; ++k)
+        if (std::abs(strip_uv(*loops[0], k / 8.0)[0] - strip_uv(*loops[1], k / 8.0)[0]) > tolerance)
+            return false;
+
+    return true;
+}
+
+/// Phase 0: a loop sampled at count equal parameter steps as (t, uv, point), closed on its first point
+std::vector<std::tuple<double, Point, Point>> strip_samples(const NurbsSurface& srf, const NurbsCurve& crv, int count) {
+
+    const std::pair<double, double> domain = crv.domain();
+    std::vector<std::tuple<double, Point, Point>> samples;
+
+    for (int k = 0; k <= count; ++k) {
+        const double t = domain.first + (domain.second - domain.first) * k / count;
+        const Point uv = crv.point_at(t);
+        samples.push_back({t, uv, k < count ? srf.point_at(uv[0], uv[1]) : std::get<2>(samples[0])});
+    }
+
+    return samples;
+}
+
+/// Phase 0: how far the chords of a loop at count steps sag from it
+double strip_sag(const NurbsSurface& srf, const NurbsCurve& crv, int count) {
+
+    const std::vector<std::tuple<double, Point, Point>> coarse = strip_samples(srf, crv, count);
+    const std::vector<std::tuple<double, Point, Point>> fine = strip_samples(srf, crv, 2 * count);
+    double sag = 0.0;
+
+    for (int k = 0; k < count; ++k) {
+        const Point& a = std::get<2>(coarse[k]);
+        const Point& z = std::get<2>(coarse[k + 1]);
+        sag = std::max(sag, std::get<2>(fine[2 * k + 1]).distance(a + (z - a) * 0.5));
+    }
+
+    return sag;
+}
+
+/// Phase 0: the steps a pcurve asks for on its own: four per control point when curved, none when straight
+int strip_steps(const NurbsCurve& crv) {
+
+    return crv.degree() > 1 ? crv.cv_count() * 4 : 0;
+}
+
+/// Phase 0: the steps of a strip: the angle's share of a turn and what the pcurves ask for, doubled until both loops sag within the chord tolerance
+int strip_count(const NurbsSurface& srf, const NurbsCurve& a, const NurbsCurve& c, double angle, double chord) {
+
+    const double tolerance = bbox_diagonal(srf) * chord;
+    int count = std::max({strip_steps(a), strip_steps(c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
+
+    while (count < 4096 && tolerance > 0.0 && std::max(strip_sag(srf, a, count), strip_sag(srf, c, count)) > tolerance)
+        count *= 2;
+
+    return count;
+}
+
+/// Phase 0: a strip vertex at a sample, tagged with its parameters, its normal and its index in the keyhole loop
+size_t strip_vertex(const NurbsSurface& srf, Mesh& mesh, const std::tuple<double, Point, Point>& sample, size_t index) {
+
+    const Point& uv = std::get<1>(sample);
+    const Vector normal = srf.normal_at(uv[0], uv[1]);
+    const size_t key = mesh.add_vertex(std::get<2>(sample));
+
+    mesh.vertex[key].attributes["u"] = uv[0];
+    mesh.vertex[key].attributes["v"] = uv[1];
+    mesh.vertex[key].attributes[fmt::format("boundary/0/{}", index)] = 1.0;
+    mesh.vertex[key].set_normal(normal[0], normal[1], normal[2]);
+
+    return key;
+}
+
+/// Phase 0: the strip of a face: both loops sampled at the same steps and made the canonical boundary of their edges, a quad between every pair of steps, the vertices numbered as the keyhole polygon a CDT face runs (first loop, seam, second loop backwards, seam) so the edge uses tag as there; no surface refinement, no lifting
+Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double angle, double chord) {
+
+    const BRepFace& face = b.m_faces[fi];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
+    const NurbsCurve& a = b.m_curves_2d[b.pcurve_index(edges[0].index, fi, edges[0].orientation)];
+    const NurbsCurve& c = b.m_curves_2d[b.pcurve_index(edges[2].index, fi, edges[2].orientation)];
+    const int count = strip_count(srf, a, c, angle, chord);
+    const std::vector<std::tuple<double, Point, Point>> first = strip_samples(srf, a, count);
+    const std::vector<std::tuple<double, Point, Point>> second = strip_samples(srf, c, count);
+    Mesh mesh;
+    TrimLoops loops;
+    loops.uv.resize(1, std::vector<Point>(2 * count + 2));
+    loops.xyz.resize(1, std::vector<Point>(2 * count + 2));
+    std::vector<size_t> bottom;
+    std::vector<size_t> top;
+
+    for (int k = 0; k <= count; ++k) {
+        bottom.push_back(strip_vertex(srf, mesh, first[k], k));
+        top.push_back(strip_vertex(srf, mesh, second[k], 2 * count + 1 - k));
+        loops.uv[0][k] = std::get<1>(first[k]);
+        loops.xyz[0][k] = std::get<2>(first[k]);
+        loops.uv[0][2 * count + 1 - k] = std::get<1>(second[k]);
+        loops.xyz[0][2 * count + 1 - k] = std::get<2>(second[k]);
+        boundary.points[edges[0].index].push_back(std::get<2>(first[k]));
+        boundary.points[edges[2].index].push_back(std::get<2>(second[k]));
+    }
+
+    for (int k = 0; k < count; ++k)
+        mesh.add_face({bottom[k], bottom[k + 1], top[k + 1], top[k]});
+
+    const Point& start = std::get<1>(first[0]);
+    wind_to_normal(mesh, srf.normal_at(start[0], start[1]));
+    const std::vector<std::tuple<int, size_t, size_t, size_t>> uses = {
+        {edges[0].index, 0, 0, (size_t)count + 1},
+        {edges[1].index, 0, (size_t)count, 2},
+        {edges[2].index, 0, (size_t)count + 1, (size_t)count + 1},
+        {edges[3].index, 0, 2 * (size_t)count + 1, 2},
+    };
+    tag_edge_uses(mesh, loops, uses);
+
+    return mesh;
+}
+
 /// Flip every face mesh of a face Reversed in its shell, vertex normals included
 void flip_reversed_faces(const BRep& b, std::vector<Mesh>& fmesh) {
 
@@ -2524,13 +2686,21 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     const int nf = (int)m_faces.size();
     const double angle = has_quality ? max_angle_deg : 20.0;
     const double chord = has_quality ? chord_factor : 0.005;
+    std::vector<bool> face_strip(nf, false);
     std::vector<bool> face_direct(nf, false);
     std::vector<bool> rebuild_grid(nf, false);
     std::vector<Mesh> fmesh(nf);
     EdgeBoundary boundary;
 
+    for (int fi = 0; fi < nf; ++fi) {
+        face_strip[fi] = strip_face(*this, fi, boundary);
+
+        if (face_strip[fi])
+            fmesh[fi] = strip_mesh(*this, fi, boundary, angle, chord);
+    }
+
     for (int fi = 0; fi < nf; ++fi)
-        face_direct[fi] = direct_face(*this, fi);
+        face_direct[fi] = !face_strip[fi] && direct_face(*this, fi);
 
     for (int fi = 0; fi < nf; ++fi) {
         if (!face_direct[fi])
@@ -2548,7 +2718,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
             face_direct[fi] = false;
 
     for (int fi = 0; fi < nf; ++fi) {
-        if (face_direct[fi])
+        if (face_strip[fi] || face_direct[fi])
             continue;
 
         const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
