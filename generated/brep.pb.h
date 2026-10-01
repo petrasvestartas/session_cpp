@@ -2157,6 +2157,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
     kNameFieldNumber = 2,
     kSurfacecolorFieldNumber = 13,
     kWidthFieldNumber = 12,
+    kIsVisibleFieldNumber = 15,
   };
   // repeated .session_proto.NurbsCurve curves_2d = 3;
   [[nodiscard]] int curves_2d_size() const;
@@ -2393,11 +2394,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
   void _internal_set_width(double value);
 
   public:
+  // optional bool is_visible = 15;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.BRep)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 13,
+      ::google::protobuf::internal::TcParseTable<4, 14,
                           10, 43,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -2439,6 +2451,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE surfacecolor_;
     double width_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -3989,6 +4002,34 @@ inline void BRep::set_allocated_surfacecolor(::session_proto::Color* PROTOBUF_NU
 
   _impl_.surfacecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.BRep.surfacecolor)
+}
+
+// optional bool is_visible = 15;
+inline bool BRep::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00002000U);
+  return value;
+}
+inline void BRep::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+}
+inline bool BRep::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRep.is_visible)
+  return _internal_is_visible();
+}
+inline void BRep::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  // @@protoc_insertion_point(field_set:session_proto.BRep.is_visible)
+}
+inline bool BRep::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void BRep::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

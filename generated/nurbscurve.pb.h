@@ -222,11 +222,12 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kDimensionFieldNumber = 3,
-    kIsRationalFieldNumber = 4,
     kOrderFieldNumber = 5,
     kCvCountFieldNumber = 6,
-    kWidthFieldNumber = 10,
     kCvStrideFieldNumber = 7,
+    kWidthFieldNumber = 10,
+    kIsRationalFieldNumber = 4,
+    kIsVisibleFieldNumber = 15,
     kArrowheadFieldNumber = 14,
   };
   // repeated double nurbsknots = 8;
@@ -347,16 +348,6 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
   void _internal_set_dimension(::int32_t value);
 
   public:
-  // bool is_rational = 4;
-  void clear_is_rational() ;
-  [[nodiscard]] bool is_rational() const;
-  void set_is_rational(bool value);
-
-  private:
-  bool _internal_is_rational() const;
-  void _internal_set_is_rational(bool value);
-
-  public:
   // int32 order = 5;
   void clear_order() ;
   [[nodiscard]] ::int32_t order() const;
@@ -377,6 +368,16 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
   void _internal_set_cv_count(::int32_t value);
 
   public:
+  // int32 cv_stride = 7;
+  void clear_cv_stride() ;
+  [[nodiscard]] ::int32_t cv_stride() const;
+  void set_cv_stride(::int32_t value);
+
+  private:
+  ::int32_t _internal_cv_stride() const;
+  void _internal_set_cv_stride(::int32_t value);
+
+  public:
   // double width = 10;
   void clear_width() ;
   [[nodiscard]] double width() const;
@@ -387,14 +388,25 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
   void _internal_set_width(double value);
 
   public:
-  // int32 cv_stride = 7;
-  void clear_cv_stride() ;
-  [[nodiscard]] ::int32_t cv_stride() const;
-  void set_cv_stride(::int32_t value);
+  // bool is_rational = 4;
+  void clear_is_rational() ;
+  [[nodiscard]] bool is_rational() const;
+  void set_is_rational(bool value);
 
   private:
-  ::int32_t _internal_cv_stride() const;
-  void _internal_set_cv_stride(::int32_t value);
+  bool _internal_is_rational() const;
+  void _internal_set_is_rational(bool value);
+
+  public:
+  // optional bool is_visible = 15;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
 
   public:
   // int32 arrowhead = 14;
@@ -411,7 +423,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 13,
+      ::google::protobuf::internal::TcParseTable<4, 14,
                           2, 49,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -447,11 +459,12 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::int32_t dimension_;
-    bool is_rational_;
     ::int32_t order_;
     ::int32_t cv_count_;
-    double width_;
     ::int32_t cv_stride_;
+    double width_;
+    bool is_rational_;
+    bool is_visible_;
     ::int32_t arrowhead_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -631,7 +644,7 @@ inline void NurbsCurve::_internal_set_dimension(::int32_t value) {
 inline void NurbsCurve::clear_is_rational() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_rational_ = false;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
 }
 inline bool NurbsCurve::is_rational() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.is_rational)
@@ -639,7 +652,7 @@ inline bool NurbsCurve::is_rational() const {
 }
 inline void NurbsCurve::set_is_rational(bool value) {
   _internal_set_is_rational(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.is_rational)
 }
 inline bool NurbsCurve::_internal_is_rational() const {
@@ -655,7 +668,7 @@ inline void NurbsCurve::_internal_set_is_rational(bool value) {
 inline void NurbsCurve::clear_order() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.order_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
 }
 inline ::int32_t NurbsCurve::order() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.order)
@@ -663,7 +676,7 @@ inline ::int32_t NurbsCurve::order() const {
 }
 inline void NurbsCurve::set_order(::int32_t value) {
   _internal_set_order(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.order)
 }
 inline ::int32_t NurbsCurve::_internal_order() const {
@@ -679,7 +692,7 @@ inline void NurbsCurve::_internal_set_order(::int32_t value) {
 inline void NurbsCurve::clear_cv_count() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_count_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
 }
 inline ::int32_t NurbsCurve::cv_count() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.cv_count)
@@ -687,7 +700,7 @@ inline ::int32_t NurbsCurve::cv_count() const {
 }
 inline void NurbsCurve::set_cv_count(::int32_t value) {
   _internal_set_cv_count(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.cv_count)
 }
 inline ::int32_t NurbsCurve::_internal_cv_count() const {
@@ -703,7 +716,7 @@ inline void NurbsCurve::_internal_set_cv_count(::int32_t value) {
 inline void NurbsCurve::clear_cv_stride() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_stride_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
 }
 inline ::int32_t NurbsCurve::cv_stride() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.cv_stride)
@@ -711,7 +724,7 @@ inline ::int32_t NurbsCurve::cv_stride() const {
 }
 inline void NurbsCurve::set_cv_stride(::int32_t value) {
   _internal_set_cv_stride(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.cv_stride)
 }
 inline ::int32_t NurbsCurve::_internal_cv_stride() const {
@@ -953,7 +966,7 @@ NurbsCurve::_internal_mutable_linecolors() {
 inline void NurbsCurve::clear_arrowhead() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.arrowhead_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
 }
 inline ::int32_t NurbsCurve::arrowhead() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.arrowhead)
@@ -961,7 +974,7 @@ inline ::int32_t NurbsCurve::arrowhead() const {
 }
 inline void NurbsCurve::set_arrowhead(::int32_t value) {
   _internal_set_arrowhead(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.arrowhead)
 }
 inline ::int32_t NurbsCurve::_internal_arrowhead() const {
@@ -971,6 +984,34 @@ inline ::int32_t NurbsCurve::_internal_arrowhead() const {
 inline void NurbsCurve::_internal_set_arrowhead(::int32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.arrowhead_ = value;
+}
+
+// optional bool is_visible = 15;
+inline bool NurbsCurve::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00001000U);
+  return value;
+}
+inline void NurbsCurve::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+}
+inline bool NurbsCurve::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.is_visible)
+  return _internal_is_visible();
+}
+inline void NurbsCurve::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.is_visible)
+}
+inline bool NurbsCurve::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void NurbsCurve::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

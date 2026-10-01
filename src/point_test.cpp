@@ -283,6 +283,21 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(angle, 90.0));
     }
 
+    MINI_TEST("Point", "Is Visible Round Trip") {
+        // using session_cpp::Point;
+
+        Point hidden = Point(1.0, 2.0, 3.0);
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const Point json = Point::file_json_loads(hidden.file_json_dumps());
+        const Point proto = Point::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 }
 
 int main() {

@@ -505,4 +505,19 @@ namespace session_cpp {
         MINI_CHECK(zero == 0);
     }
 
+    MINI_TEST("Line", "Is Visible Round Trip") {
+        // using session_cpp::Line;
+
+        Line hidden = Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const Line json = Line::file_json_loads(hidden.file_json_dumps());
+        const Line proto = Line::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 }

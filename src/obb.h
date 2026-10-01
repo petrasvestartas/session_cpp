@@ -39,6 +39,7 @@ public:
     Vector z_axis; // Unit z axis.
     Vector half_size; // Half extent along each axis.
     std::string name = "my_obb"; // Box name.
+    bool is_visible = true; // Whether a viewer draws it.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors

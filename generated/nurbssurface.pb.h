@@ -226,13 +226,14 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsSurface final : public ::googl
     kNameFieldNumber = 2,
     kCachedMeshFieldNumber = 21,
     kDimensionFieldNumber = 3,
-    kIsRationalFieldNumber = 4,
     kOrderUFieldNumber = 5,
     kOrderVFieldNumber = 6,
     kCvCountUFieldNumber = 7,
     kCvCountVFieldNumber = 8,
     kCvStrideUFieldNumber = 9,
     kCvStrideVFieldNumber = 10,
+    kIsRationalFieldNumber = 4,
+    kIsVisibleFieldNumber = 22,
     kWidthFieldNumber = 14,
   };
   // repeated double nurbsknots_u = 11;
@@ -407,16 +408,6 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsSurface final : public ::googl
   void _internal_set_dimension(::int32_t value);
 
   public:
-  // bool is_rational = 4;
-  void clear_is_rational() ;
-  [[nodiscard]] bool is_rational() const;
-  void set_is_rational(bool value);
-
-  private:
-  bool _internal_is_rational() const;
-  void _internal_set_is_rational(bool value);
-
-  public:
   // int32 order_u = 5;
   void clear_order_u() ;
   [[nodiscard]] ::int32_t order_u() const;
@@ -477,6 +468,27 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsSurface final : public ::googl
   void _internal_set_cv_stride_v(::int32_t value);
 
   public:
+  // bool is_rational = 4;
+  void clear_is_rational() ;
+  [[nodiscard]] bool is_rational() const;
+  void set_is_rational(bool value);
+
+  private:
+  bool _internal_is_rational() const;
+  void _internal_set_is_rational(bool value);
+
+  public:
+  // optional bool is_visible = 22;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // double width = 14;
   void clear_width() ;
   [[nodiscard]] double width() const;
@@ -491,7 +503,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsSurface final : public ::googl
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<5, 18,
+      ::google::protobuf::internal::TcParseTable<5, 19,
                           4, 59,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -530,13 +542,14 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsSurface final : public ::googl
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Mesh* PROTOBUF_NULLABLE cached_mesh_;
     ::int32_t dimension_;
-    bool is_rational_;
     ::int32_t order_u_;
     ::int32_t order_v_;
     ::int32_t cv_count_u_;
     ::int32_t cv_count_v_;
     ::int32_t cv_stride_u_;
     ::int32_t cv_stride_v_;
+    bool is_rational_;
+    bool is_visible_;
     double width_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -716,7 +729,7 @@ inline void NurbsSurface::_internal_set_dimension(::int32_t value) {
 inline void NurbsSurface::clear_is_rational() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_rational_ = false;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00010000U);
 }
 inline bool NurbsSurface::is_rational() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.is_rational)
@@ -724,7 +737,7 @@ inline bool NurbsSurface::is_rational() const {
 }
 inline void NurbsSurface::set_is_rational(bool value) {
   _internal_set_is_rational(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  SetHasBit(_impl_._has_bits_[0], 0x00010000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.is_rational)
 }
 inline bool NurbsSurface::_internal_is_rational() const {
@@ -740,7 +753,7 @@ inline void NurbsSurface::_internal_set_is_rational(bool value) {
 inline void NurbsSurface::clear_order_u() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.order_u_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
 }
 inline ::int32_t NurbsSurface::order_u() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.order_u)
@@ -748,7 +761,7 @@ inline ::int32_t NurbsSurface::order_u() const {
 }
 inline void NurbsSurface::set_order_u(::int32_t value) {
   _internal_set_order_u(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.order_u)
 }
 inline ::int32_t NurbsSurface::_internal_order_u() const {
@@ -764,7 +777,7 @@ inline void NurbsSurface::_internal_set_order_u(::int32_t value) {
 inline void NurbsSurface::clear_order_v() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.order_v_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
 }
 inline ::int32_t NurbsSurface::order_v() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.order_v)
@@ -772,7 +785,7 @@ inline ::int32_t NurbsSurface::order_v() const {
 }
 inline void NurbsSurface::set_order_v(::int32_t value) {
   _internal_set_order_v(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.order_v)
 }
 inline ::int32_t NurbsSurface::_internal_order_v() const {
@@ -788,7 +801,7 @@ inline void NurbsSurface::_internal_set_order_v(::int32_t value) {
 inline void NurbsSurface::clear_cv_count_u() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_count_u_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
 }
 inline ::int32_t NurbsSurface::cv_count_u() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.cv_count_u)
@@ -796,7 +809,7 @@ inline ::int32_t NurbsSurface::cv_count_u() const {
 }
 inline void NurbsSurface::set_cv_count_u(::int32_t value) {
   _internal_set_cv_count_u(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.cv_count_u)
 }
 inline ::int32_t NurbsSurface::_internal_cv_count_u() const {
@@ -812,7 +825,7 @@ inline void NurbsSurface::_internal_set_cv_count_u(::int32_t value) {
 inline void NurbsSurface::clear_cv_count_v() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_count_v_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
 }
 inline ::int32_t NurbsSurface::cv_count_v() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.cv_count_v)
@@ -820,7 +833,7 @@ inline ::int32_t NurbsSurface::cv_count_v() const {
 }
 inline void NurbsSurface::set_cv_count_v(::int32_t value) {
   _internal_set_cv_count_v(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.cv_count_v)
 }
 inline ::int32_t NurbsSurface::_internal_cv_count_v() const {
@@ -836,7 +849,7 @@ inline void NurbsSurface::_internal_set_cv_count_v(::int32_t value) {
 inline void NurbsSurface::clear_cv_stride_u() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_stride_u_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
 }
 inline ::int32_t NurbsSurface::cv_stride_u() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.cv_stride_u)
@@ -844,7 +857,7 @@ inline ::int32_t NurbsSurface::cv_stride_u() const {
 }
 inline void NurbsSurface::set_cv_stride_u(::int32_t value) {
   _internal_set_cv_stride_u(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.cv_stride_u)
 }
 inline ::int32_t NurbsSurface::_internal_cv_stride_u() const {
@@ -860,7 +873,7 @@ inline void NurbsSurface::_internal_set_cv_stride_u(::int32_t value) {
 inline void NurbsSurface::clear_cv_stride_v() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cv_stride_v_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00010000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
 }
 inline ::int32_t NurbsSurface::cv_stride_v() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.cv_stride_v)
@@ -868,7 +881,7 @@ inline ::int32_t NurbsSurface::cv_stride_v() const {
 }
 inline void NurbsSurface::set_cv_stride_v(::int32_t value) {
   _internal_set_cv_stride_v(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00010000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.cv_stride_v)
 }
 inline ::int32_t NurbsSurface::_internal_cv_stride_v() const {
@@ -1037,7 +1050,7 @@ NurbsSurface::_internal_mutable_cvs() {
 inline void NurbsSurface::clear_width() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.width_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00020000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00040000U);
 }
 inline double NurbsSurface::width() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.width)
@@ -1045,7 +1058,7 @@ inline double NurbsSurface::width() const {
 }
 inline void NurbsSurface::set_width(double value) {
   _internal_set_width(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00020000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00040000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.width)
 }
 inline double NurbsSurface::_internal_width() const {
@@ -1298,6 +1311,34 @@ inline void NurbsSurface::set_allocated_cached_mesh(::session_proto::Mesh* PROTO
 
   _impl_.cached_mesh_ = reinterpret_cast<::session_proto::Mesh*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.NurbsSurface.cached_mesh)
+}
+
+// optional bool is_visible = 22;
+inline bool NurbsSurface::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00020000U);
+  return value;
+}
+inline void NurbsSurface::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00020000U);
+}
+inline bool NurbsSurface::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.NurbsSurface.is_visible)
+  return _internal_is_visible();
+}
+inline void NurbsSurface::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00020000U);
+  // @@protoc_insertion_point(field_set:session_proto.NurbsSurface.is_visible)
+}
+inline bool NurbsSurface::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void NurbsSurface::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

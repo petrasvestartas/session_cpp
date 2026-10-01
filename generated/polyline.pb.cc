@@ -47,11 +47,11 @@ constexpr Polyline::ParseTableT_ Polyline::InternalGenerateParseTable_(const ::_
     {
       PROTOBUF_FIELD_OFFSET(Polyline, _impl_._has_bits_),
       0, // no _extensions_
-      8, 56,  // max_field_number, fast_idx_mask
+      9, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294967072,  // skipmap
+      4294966816,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      7,  // num_field_entries
+      8,  // num_field_entries
       1,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -61,10 +61,7 @@ constexpr Polyline::ParseTableT_ Polyline::InternalGenerateParseTable_(const ::_
       ::_pbi::TcParser::GetTable<::session_proto::Polyline>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      // int32 arrowhead = 8;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Polyline, _impl_.arrowhead_), 6>(),
-       {64, 6, 0,
-        PROTOBUF_FIELD_OFFSET(Polyline, _impl_.arrowhead_)}},
+      {::_pbi::TcParser::MiniParse, {}},
       // string guid = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 2, 0,
@@ -90,6 +87,20 @@ constexpr Polyline::ParseTableT_ Polyline::InternalGenerateParseTable_(const ::_
       {::_pbi::TcParser::FastF64P1,
        {58, 1, 0,
         PROTOBUF_FIELD_OFFSET(Polyline, _impl_.dash_)}},
+      // int32 arrowhead = 8;
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Polyline, _impl_.arrowhead_), 6>(),
+       {64, 6, 0,
+        PROTOBUF_FIELD_OFFSET(Polyline, _impl_.arrowhead_)}},
+      // optional bool is_visible = 9;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Polyline, _impl_.is_visible_), 7>(),
+       {72, 7, 0,
+        PROTOBUF_FIELD_OFFSET(Polyline, _impl_.is_visible_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
     }}, {{
       65535, 65535
     }}, {{
@@ -107,6 +118,8 @@ constexpr Polyline::ParseTableT_ Polyline::InternalGenerateParseTable_(const ::_
       {PROTOBUF_FIELD_OFFSET(Polyline, _impl_.dash_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
       // int32 arrowhead = 8;
       {PROTOBUF_FIELD_OFFSET(Polyline, _impl_.arrowhead_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      // optional bool is_visible = 9;
+      {PROTOBUF_FIELD_OFFSET(Polyline, _impl_.is_visible_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -116,7 +129,7 @@ constexpr Polyline::ParseTableT_ Polyline::InternalGenerateParseTable_(const ::_
         #endif
     }},
     {{
-      "\26\4\4\0\0\0\0\0"
+      "\26\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
       "session_proto.Polyline"
       "guid"
       "name"
@@ -146,7 +159,8 @@ inline constexpr Polyline::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         linecolor_{nullptr},
         width_{0},
-        arrowhead_{0} {}
+        arrowhead_{0},
+        is_visible_{false} {}
 
 template <typename>
 constexpr Polyline::Polyline(::_pbi::ConstantInitialized,
@@ -250,7 +264,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_._has_bits_),
-        10, // hasbit index offset
+        11, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.coords_),
@@ -258,6 +272,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.linecolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.dash_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.arrowhead_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Polyline, _impl_.is_visible_),
         2,
         3,
         0,
@@ -265,6 +280,7 @@ const ::uint32_t
         4,
         1,
         6,
+        7,
 };
 
 static const ::_pbi::MigrationSchema
@@ -278,10 +294,11 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_polyline_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\016polyline.proto\022\rsession_proto\032\013color.p"
-    "roto\"\225\001\n\010Polyline\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030"
+    "roto\"\275\001\n\010Polyline\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030"
     "\002 \001(\t\022\016\n\006coords\030\003 \003(\001\022\r\n\005width\030\004 \001(\001\022\'\n\t"
     "linecolor\030\005 \001(\0132\024.session_proto.Color\022\014\n"
-    "\004dash\030\007 \003(\001\022\021\n\tarrowhead\030\010 \001(\005J\004\010\006\020\007b\006pr"
+    "\004dash\030\007 \003(\001\022\021\n\tarrowhead\030\010 \001(\005\022\027\n\nis_vis"
+    "ible\030\t \001(\010H\000\210\001\001B\r\n\013_is_visibleJ\004\010\006\020\007b\006pr"
     "oto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
@@ -292,7 +309,7 @@ static ::absl::once_flag descriptor_table_polyline_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_polyline_2eproto = {
     false,
     false,
-    204,
+    244,
     descriptor_table_protodef_polyline_2eproto,
     "polyline.proto",
     &descriptor_table_polyline_2eproto_once,
@@ -366,9 +383,9 @@ Polyline::Polyline(
                offsetof(Impl_, width_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, width_),
-           offsetof(Impl_, arrowhead_) -
+           offsetof(Impl_, is_visible_) -
                offsetof(Impl_, width_) +
-               sizeof(Impl_::arrowhead_));
+               sizeof(Impl_::is_visible_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Polyline)
 }
@@ -393,9 +410,9 @@ inline void Polyline::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, linecolor_),
            0,
-           offsetof(Impl_, arrowhead_) -
+           offsetof(Impl_, is_visible_) -
                offsetof(Impl_, linecolor_) +
-               sizeof(Impl_::arrowhead_));
+               sizeof(Impl_::is_visible_));
 }
 Polyline::~Polyline() {
   // @@protoc_insertion_point(destructor:session_proto.Polyline)
@@ -465,12 +482,12 @@ PROTOBUF_NOINLINE void Polyline::Clear() {
       this_._impl_.linecolor_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000060U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000e0U)) {
     ::memset(&this_._impl_.width_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.arrowhead_) -
+                 reinterpret_cast<char*>(&this_._impl_.is_visible_) -
                  reinterpret_cast<char*>(&this_._impl_.width_)) +
-                 sizeof(_impl_.arrowhead_));
+                 sizeof(_impl_.is_visible_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -554,6 +571,13 @@ PROTOBUF_NOINLINE void Polyline::Clear() {
     }
   }
 
+  // optional bool is_visible = 9;
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        9, this_._internal_is_visible(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -577,6 +601,7 @@ PROTOBUF_NOINLINE void Polyline::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00000080U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // repeated double coords = 3;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -649,7 +674,7 @@ void Polyline::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_coords()->MergeFrom(from._internal_coords());
     }
@@ -692,6 +717,9 @@ void Polyline::MergeImpl(::google::protobuf::MessageLite& to_msg,
         _this->_impl_.arrowhead_ = from._impl_.arrowhead_;
       }
     }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      _this->_impl_.is_visible_ = from._impl_.is_visible_;
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -717,8 +745,8 @@ void Polyline::InternalSwap(Polyline* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) 
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Polyline, _impl_.arrowhead_)
-      + sizeof(Polyline::_impl_.arrowhead_)
+      PROTOBUF_FIELD_OFFSET(Polyline, _impl_.is_visible_)
+      + sizeof(Polyline::_impl_.is_visible_)
       - PROTOBUF_FIELD_OFFSET(Polyline, _impl_.linecolor_)>(
           reinterpret_cast<char*>(&_impl_.linecolor_),
           reinterpret_cast<char*>(&other->_impl_.linecolor_));

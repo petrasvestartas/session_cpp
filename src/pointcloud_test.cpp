@@ -414,4 +414,21 @@ namespace session_cpp {
         MINI_CHECK(converted.guid() == guid);
     }
 
+    MINI_TEST("PointCloud", "Is Visible Round Trip") {
+        // using session_cpp::PointCloud;
+        // using session_cpp::Point;
+
+        const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)};
+        PointCloud hidden = PointCloud(points, {}, {});
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const PointCloud json = PointCloud::file_json_loads(hidden.file_json_dumps());
+        const PointCloud proto = PointCloud::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 } // namespace session_cpp

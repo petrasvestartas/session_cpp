@@ -47,11 +47,11 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
     {
       PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_._has_bits_),
       0, // no _extensions_
-      21, 248,  // max_field_number, fast_idx_mask
+      22, 248,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4293099520,  // skipmap
+      4291002368,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      18,  // num_field_entries
+      19,  // num_field_entries
       4,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -75,32 +75,32 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
        {24, 9, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.dimension_)}},
       // bool is_rational = 4;
-      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsSurface, _impl_.is_rational_), 10>(),
-       {32, 10, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsSurface, _impl_.is_rational_), 16>(),
+       {32, 16, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.is_rational_)}},
       // int32 order_u = 5;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.order_u_), 11>(),
-       {40, 11, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.order_u_), 10>(),
+       {40, 10, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_u_)}},
       // int32 order_v = 6;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.order_v_), 12>(),
-       {48, 12, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.order_v_), 11>(),
+       {48, 11, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_v_)}},
       // int32 cv_count_u = 7;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_count_u_), 13>(),
-       {56, 13, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_count_u_), 12>(),
+       {56, 12, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_u_)}},
       // int32 cv_count_v = 8;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_count_v_), 14>(),
-       {64, 14, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_count_v_), 13>(),
+       {64, 13, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_v_)}},
       // int32 cv_stride_u = 9;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_stride_u_), 15>(),
-       {72, 15, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_stride_u_), 14>(),
+       {72, 14, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_u_)}},
       // int32 cv_stride_v = 10;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_stride_v_), 16>(),
-       {80, 16, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsSurface, _impl_.cv_stride_v_), 15>(),
+       {80, 15, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_v_)}},
       // repeated double nurbsknots_u = 11;
       {::_pbi::TcParser::FastF64P1,
@@ -116,7 +116,7 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cvs_)}},
       // double width = 14;
       {::_pbi::TcParser::FastF64S1,
-       {113, 17, 0,
+       {113, 18, 0,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.width_)}},
       // repeated .session_proto.Color pointcolors = 15;
       {::_pbi::TcParser::FastMtR1,
@@ -137,7 +137,10 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
       {::_pbi::TcParser::FastMtS2,
        {426, 8, 3,
         PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cached_mesh_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_visible = 22;
+      {::_pbi::TcParser::FastV8S2,
+       {432, 17, 0,
+        PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.is_visible_)}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
@@ -157,19 +160,19 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
       // int32 dimension = 3;
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.dimension_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // bool is_rational = 4;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.is_rational_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.is_rational_), _Internal::kHasBitsOffset + 16, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
       // int32 order_u = 5;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_u_), _Internal::kHasBitsOffset + 11, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_u_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 order_v = 6;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_v_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.order_v_), _Internal::kHasBitsOffset + 11, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_count_u = 7;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_u_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_u_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_count_v = 8;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_v_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_count_v_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_stride_u = 9;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_u_), _Internal::kHasBitsOffset + 15, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_u_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_stride_v = 10;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_v_), _Internal::kHasBitsOffset + 16, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cv_stride_v_), _Internal::kHasBitsOffset + 15, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // repeated double nurbsknots_u = 11;
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.nurbsknots_u_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
       // repeated double nurbsknots_v = 12;
@@ -177,7 +180,7 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
       // repeated double cvs = 13;
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cvs_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
       // double width = 14;
-      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.width_), _Internal::kHasBitsOffset + 17, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.width_), _Internal::kHasBitsOffset + 18, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
       // repeated .session_proto.Color pointcolors = 15;
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.pointcolors_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // repeated .session_proto.Color facecolors = 19;
@@ -186,6 +189,8 @@ constexpr NurbsSurface::ParseTableT_ NurbsSurface::InternalGenerateParseTable_(c
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.linecolors_), _Internal::kHasBitsOffset + 5, 2, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // .session_proto.Mesh cached_mesh = 21;
       {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.cached_mesh_), _Internal::kHasBitsOffset + 8, 3, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // optional bool is_visible = 22;
+      {PROTOBUF_FIELD_OFFSET(NurbsSurface, _impl_.is_visible_), _Internal::kHasBitsOffset + 17, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -260,13 +265,14 @@ inline constexpr NurbsSurface::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         cached_mesh_{nullptr},
         dimension_{0},
-        is_rational_{false},
         order_u_{0},
         order_v_{0},
         cv_count_u_{0},
         cv_count_v_{0},
         cv_stride_u_{0},
         cv_stride_v_{0},
+        is_rational_{false},
+        is_visible_{false},
         width_{0} {}
 
 template <typename>
@@ -371,7 +377,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_._has_bits_),
-        21, // hasbit index offset
+        22, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.dimension_),
@@ -390,24 +396,26 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.facecolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.linecolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.cached_mesh_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::NurbsSurface, _impl_.is_visible_),
         6,
         7,
         9,
+        16,
         10,
         11,
         12,
         13,
         14,
         15,
-        16,
         0,
         1,
         2,
-        17,
+        18,
         3,
         4,
         5,
         8,
+        17,
 };
 
 static const ::_pbi::MigrationSchema
@@ -421,7 +429,7 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_nurbssurface_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\022nurbssurface.proto\022\rsession_proto\032\013col"
-    "or.proto\032\nmesh.proto\"\275\003\n\014NurbsSurface\022\014\n"
+    "or.proto\032\nmesh.proto\"\345\003\n\014NurbsSurface\022\014\n"
     "\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\021\n\tdimension\030\003"
     " \001(\005\022\023\n\013is_rational\030\004 \001(\010\022\017\n\007order_u\030\005 \001"
     "(\005\022\017\n\007order_v\030\006 \001(\005\022\022\n\ncv_count_u\030\007 \001(\005\022"
@@ -432,7 +440,8 @@ const char descriptor_table_protodef_nurbssurface_2eproto[] ABSL_ATTRIBUTE_SECTI
     "sion_proto.Color\022(\n\nfacecolors\030\023 \003(\0132\024.s"
     "ession_proto.Color\022(\n\nlinecolors\030\024 \003(\0132\024"
     ".session_proto.Color\022(\n\013cached_mesh\030\025 \001("
-    "\0132\023.session_proto.MeshJ\004\010\020\020\021b\006proto3"
+    "\0132\023.session_proto.Mesh\022\027\n\nis_visible\030\026 \001"
+    "(\010H\000\210\001\001B\r\n\013_is_visibleJ\004\010\020\020\021b\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_nurbssurface_2eproto_deps[2] = {
@@ -443,7 +452,7 @@ static ::absl::once_flag descriptor_table_nurbssurface_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_nurbssurface_2eproto = {
     false,
     false,
-    516,
+    556,
     descriptor_table_protodef_nurbssurface_2eproto,
     "nurbssurface.proto",
     &descriptor_table_nurbssurface_2eproto_once,
@@ -694,15 +703,15 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   if (BatchCheckHasBit(cached_has_bits, 0x0000fe00U)) {
     ::memset(&this_._impl_.dimension_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.cv_stride_u_) -
+                 reinterpret_cast<char*>(&this_._impl_.cv_stride_v_) -
                  reinterpret_cast<char*>(&this_._impl_.dimension_)) +
-                 sizeof(_impl_.cv_stride_u_));
+                 sizeof(_impl_.cv_stride_v_));
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00030000U)) {
-    ::memset(&this_._impl_.cv_stride_v_, 0,
+  if (BatchCheckHasBit(cached_has_bits, 0x00070000U)) {
+    ::memset(&this_._impl_.is_rational_, 0,
              static_cast<::size_t>(
                  reinterpret_cast<char*>(&this_._impl_.width_) -
-                 reinterpret_cast<char*>(&this_._impl_.cv_stride_v_)) +
+                 reinterpret_cast<char*>(&this_._impl_.is_rational_)) +
                  sizeof(_impl_.width_));
   }
   _impl_._has_bits_.Clear();
@@ -758,7 +767,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // bool is_rational = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+  if (CheckHasBit(cached_has_bits, 0x00010000U)) {
     if (this_._internal_is_rational() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteBoolToArray(
@@ -767,7 +776,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 order_u = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000800U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000400U)) {
     if (this_._internal_order_u() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<5>(
@@ -776,7 +785,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 order_v = 6;
-  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000800U)) {
     if (this_._internal_order_v() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<6>(
@@ -785,7 +794,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 cv_count_u = 7;
-  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
     if (this_._internal_cv_count_u() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<7>(
@@ -794,7 +803,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 cv_count_v = 8;
-  if (CheckHasBit(cached_has_bits, 0x00004000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
     if (this_._internal_cv_count_v() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<8>(
@@ -803,7 +812,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 cv_stride_u = 9;
-  if (CheckHasBit(cached_has_bits, 0x00008000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00004000U)) {
     if (this_._internal_cv_stride_u() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<9>(
@@ -812,7 +821,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // int32 cv_stride_v = 10;
-  if (CheckHasBit(cached_has_bits, 0x00010000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00008000U)) {
     if (this_._internal_cv_stride_v() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<10>(
@@ -842,7 +851,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
   }
 
   // double width = 14;
-  if (CheckHasBit(cached_has_bits, 0x00020000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00040000U)) {
     if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteDoubleToArray(
@@ -893,6 +902,13 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
         stream);
   }
 
+  // optional bool is_visible = 22;
+  if (CheckHasBit(cached_has_bits, 0x00020000U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        22, this_._internal_is_visible(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -916,6 +932,7 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00020000U & cached_has_bits) * 3;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double nurbsknots_u = 11;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -996,58 +1013,58 @@ PROTOBUF_NOINLINE void NurbsSurface::Clear() {
             this_._internal_dimension());
       }
     }
-    // bool is_rational = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000400U)) {
-      if (this_._internal_is_rational() != 0) {
-        total_size += 2;
-      }
-    }
     // int32 order_u = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000400U)) {
       if (this_._internal_order_u() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_order_u());
       }
     }
     // int32 order_v = 6;
-    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (this_._internal_order_v() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_order_v());
       }
     }
     // int32 cv_count_u = 7;
-    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       if (this_._internal_cv_count_u() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_count_u());
       }
     }
     // int32 cv_count_v = 8;
-    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (this_._internal_cv_count_v() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_count_v());
       }
     }
     // int32 cv_stride_u = 9;
-    if (CheckHasBit(cached_has_bits, 0x00008000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
       if (this_._internal_cv_stride_u() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_stride_u());
       }
     }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x00030000U)) {
     // int32 cv_stride_v = 10;
-    if (CheckHasBit(cached_has_bits, 0x00010000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00008000U)) {
       if (this_._internal_cv_stride_v() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_stride_v());
       }
     }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00050000U)) {
+    // bool is_rational = 4;
+    if (CheckHasBit(cached_has_bits, 0x00010000U)) {
+      if (this_._internal_is_rational() != 0) {
+        total_size += 2;
+      }
+    }
     // double width = 14;
-    if (CheckHasBit(cached_has_bits, 0x00020000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00040000U)) {
       if (::absl::bit_cast<::uint64_t>(this_._internal_width()) != 0) {
         total_size += 9;
       }
@@ -1130,43 +1147,46 @@ void NurbsSurface::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000400U)) {
-      if (from._internal_is_rational() != 0) {
-        _this->_impl_.is_rational_ = from._impl_.is_rational_;
-      }
-    }
-    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (from._internal_order_u() != 0) {
         _this->_impl_.order_u_ = from._impl_.order_u_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000800U)) {
       if (from._internal_order_v() != 0) {
         _this->_impl_.order_v_ = from._impl_.order_v_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
       if (from._internal_cv_count_u() != 0) {
         _this->_impl_.cv_count_u_ = from._impl_.cv_count_u_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (from._internal_cv_count_v() != 0) {
         _this->_impl_.cv_count_v_ = from._impl_.cv_count_v_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00008000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
       if (from._internal_cv_stride_u() != 0) {
         _this->_impl_.cv_stride_u_ = from._impl_.cv_stride_u_;
       }
     }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x00030000U)) {
-    if (CheckHasBit(cached_has_bits, 0x00010000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00008000U)) {
       if (from._internal_cv_stride_v() != 0) {
         _this->_impl_.cv_stride_v_ = from._impl_.cv_stride_v_;
       }
     }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00070000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00010000U)) {
+      if (from._internal_is_rational() != 0) {
+        _this->_impl_.is_rational_ = from._impl_.is_rational_;
+      }
+    }
     if (CheckHasBit(cached_has_bits, 0x00020000U)) {
+      _this->_impl_.is_visible_ = from._impl_.is_visible_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00040000U)) {
       if (::absl::bit_cast<::uint64_t>(from._internal_width()) != 0) {
         _this->_impl_.width_ = from._impl_.width_;
       }

@@ -220,6 +220,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
     kNameFieldNumber = 2,
     kLinecolorFieldNumber = 6,
     kWidthFieldNumber = 4,
+    kIsVisibleFieldNumber = 7,
   };
   // repeated double frame = 3;
   [[nodiscard]] int frame_size() const;
@@ -295,11 +296,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
   void _internal_set_width(double value);
 
   public:
+  // optional bool is_visible = 7;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Plane)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 5,
+      ::google::protobuf::internal::TcParseTable<3, 6,
                           1, 36,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -333,6 +345,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     double width_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -649,6 +662,34 @@ inline void Plane::set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULL
 
   _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.Plane.linecolor)
+}
+
+// optional bool is_visible = 7;
+inline bool Plane::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000020U);
+  return value;
+}
+inline void Plane::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+}
+inline bool Plane::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Plane.is_visible)
+  return _internal_is_visible();
+}
+inline void Plane::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  // @@protoc_insertion_point(field_set:session_proto.Plane.is_visible)
+}
+inline bool Plane::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Plane::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

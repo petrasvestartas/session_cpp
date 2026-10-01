@@ -47,11 +47,11 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
     {
       PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_._has_bits_),
       0, // no _extensions_
-      14, 120,  // max_field_number, fast_idx_mask
+      15, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294952960,  // skipmap
+      4294936576,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      13,  // num_field_entries
+      14,  // num_field_entries
       2,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -75,20 +75,20 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
        {24, 6, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.dimension_)}},
       // bool is_rational = 4;
-      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsCurve, _impl_.is_rational_), 7>(),
-       {32, 7, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsCurve, _impl_.is_rational_), 11>(),
+       {32, 11, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_rational_)}},
       // int32 order = 5;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.order_), 8>(),
-       {40, 8, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.order_), 7>(),
+       {40, 7, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.order_)}},
       // int32 cv_count = 6;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.cv_count_), 9>(),
-       {48, 9, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.cv_count_), 8>(),
+       {48, 8, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_count_)}},
       // int32 cv_stride = 7;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.cv_stride_), 11>(),
-       {56, 11, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.cv_stride_), 9>(),
+       {56, 9, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_stride_)}},
       // repeated double nurbsknots = 8;
       {::_pbi::TcParser::FastF64P1,
@@ -112,10 +112,13 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
        {106, 3, 1,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_)}},
       // int32 arrowhead = 14;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.arrowhead_), 12>(),
-       {112, 12, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.arrowhead_), 13>(),
+       {112, 13, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_visible = 15;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsCurve, _impl_.is_visible_), 12>(),
+       {120, 12, 0,
+        PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_visible_)}},
     }}, {{
       65535, 65535
     }}, {{
@@ -126,13 +129,13 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       // int32 dimension = 3;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.dimension_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // bool is_rational = 4;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_rational_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_rational_), _Internal::kHasBitsOffset + 11, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
       // int32 order = 5;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.order_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.order_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_count = 6;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_count_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_count_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cv_stride = 7;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_stride_), _Internal::kHasBitsOffset + 11, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.cv_stride_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // repeated double nurbsknots = 8;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.nurbsknots_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
       // repeated double cvs = 9;
@@ -144,7 +147,9 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       // repeated .session_proto.Color linecolors = 13;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // int32 arrowhead = 14;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      // optional bool is_visible = 15;
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_visible_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -198,11 +203,12 @@ inline constexpr NurbsCurve::Impl_::Impl_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         dimension_{0},
-        is_rational_{false},
         order_{0},
         cv_count_{0},
-        width_{0},
         cv_stride_{0},
+        width_{0},
+        is_rational_{false},
+        is_visible_{false},
         arrowhead_{0} {}
 
 template <typename>
@@ -307,7 +313,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_._has_bits_),
-        16, // hasbit index offset
+        17, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.dimension_),
@@ -321,18 +327,20 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.pointcolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.linecolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.arrowhead_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.is_visible_),
         4,
         5,
         6,
+        11,
         7,
         8,
         9,
-        11,
         0,
         1,
         10,
         2,
         3,
+        13,
         12,
 };
 
@@ -347,14 +355,15 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_nurbscurve_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\020nurbscurve.proto\022\rsession_proto\032\013color"
-    ".proto\"\242\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
+    ".proto\"\312\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
     "ame\030\002 \001(\t\022\021\n\tdimension\030\003 \001(\005\022\023\n\013is_ratio"
     "nal\030\004 \001(\010\022\r\n\005order\030\005 \001(\005\022\020\n\010cv_count\030\006 \001"
     "(\005\022\021\n\tcv_stride\030\007 \001(\005\022\022\n\nnurbsknots\030\010 \003("
     "\001\022\013\n\003cvs\030\t \003(\001\022\r\n\005width\030\n \001(\001\022)\n\013pointco"
     "lors\030\013 \003(\0132\024.session_proto.Color\022(\n\nline"
     "colors\030\r \003(\0132\024.session_proto.Color\022\021\n\tar"
-    "rowhead\030\016 \001(\005J\004\010\014\020\rb\006proto3"
+    "rowhead\030\016 \001(\005\022\027\n\nis_visible\030\017 \001(\010H\000\210\001\001B\r"
+    "\n\013_is_visibleJ\004\010\014\020\rb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_nurbscurve_2eproto_deps[1] = {
@@ -364,7 +373,7 @@ static ::absl::once_flag descriptor_table_nurbscurve_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_nurbscurve_2eproto = {
     false,
     false,
-    347,
+    387,
     descriptor_table_protodef_nurbscurve_2eproto,
     "nurbscurve.proto",
     &descriptor_table_nurbscurve_2eproto_once,
@@ -566,15 +575,15 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   if (BatchCheckHasBit(cached_has_bits, 0x000000c0U)) {
     ::memset(&this_._impl_.dimension_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.is_rational_) -
+                 reinterpret_cast<char*>(&this_._impl_.order_) -
                  reinterpret_cast<char*>(&this_._impl_.dimension_)) +
-                 sizeof(_impl_.is_rational_));
+                 sizeof(_impl_.order_));
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
-    ::memset(&this_._impl_.order_, 0,
+  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+    ::memset(&this_._impl_.cv_count_, 0,
              static_cast<::size_t>(
                  reinterpret_cast<char*>(&this_._impl_.arrowhead_) -
-                 reinterpret_cast<char*>(&this_._impl_.order_)) +
+                 reinterpret_cast<char*>(&this_._impl_.cv_count_)) +
                  sizeof(_impl_.arrowhead_));
   }
   _impl_._has_bits_.Clear();
@@ -630,7 +639,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // bool is_rational = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000800U)) {
     if (this_._internal_is_rational() != 0) {
       target = stream->EnsureSpace(target);
       target = ::_pbi::WireFormatLite::WriteBoolToArray(
@@ -639,7 +648,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // int32 order = 5;
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
     if (this_._internal_order() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<5>(
@@ -648,7 +657,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // int32 cv_count = 6;
-  if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
     if (this_._internal_cv_count() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<6>(
@@ -657,7 +666,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // int32 cv_stride = 7;
-  if (CheckHasBit(cached_has_bits, 0x00000800U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000200U)) {
     if (this_._internal_cv_stride() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<7>(
@@ -713,12 +722,19 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // int32 arrowhead = 14;
-  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
     if (this_._internal_arrowhead() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<14>(
               stream, this_._internal_arrowhead(), target);
     }
+  }
+
+  // optional bool is_visible = 15;
+  if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        15, this_._internal_is_visible(), target);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -744,6 +760,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00001000U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double nurbsknots = 8;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -800,26 +817,27 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
             this_._internal_dimension());
       }
     }
-    // bool is_rational = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      if (this_._internal_is_rational() != 0) {
-        total_size += 2;
-      }
-    }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
     // int32 order = 5;
-    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
       if (this_._internal_order() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_order());
       }
     }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00002f00U)) {
     // int32 cv_count = 6;
-    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (this_._internal_cv_count() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cv_count());
+      }
+    }
+    // int32 cv_stride = 7;
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+      if (this_._internal_cv_stride() != 0) {
+        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
+            this_._internal_cv_stride());
       }
     }
     // double width = 10;
@@ -828,15 +846,14 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
         total_size += 9;
       }
     }
-    // int32 cv_stride = 7;
+    // bool is_rational = 4;
     if (CheckHasBit(cached_has_bits, 0x00000800U)) {
-      if (this_._internal_cv_stride() != 0) {
-        total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
-            this_._internal_cv_stride());
+      if (this_._internal_is_rational() != 0) {
+        total_size += 2;
       }
     }
     // int32 arrowhead = 14;
-    if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (this_._internal_arrowhead() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_arrowhead());
@@ -902,20 +919,20 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000080U)) {
-      if (from._internal_is_rational() != 0) {
-        _this->_impl_.is_rational_ = from._impl_.is_rational_;
-      }
-    }
-  }
-  if (BatchCheckHasBit(cached_has_bits, 0x00001f00U)) {
-    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (from._internal_order() != 0) {
         _this->_impl_.order_ = from._impl_.order_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (from._internal_cv_count() != 0) {
         _this->_impl_.cv_count_ = from._impl_.cv_count_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+      if (from._internal_cv_stride() != 0) {
+        _this->_impl_.cv_stride_ = from._impl_.cv_stride_;
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000400U)) {
@@ -924,11 +941,14 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000800U)) {
-      if (from._internal_cv_stride() != 0) {
-        _this->_impl_.cv_stride_ = from._impl_.cv_stride_;
+      if (from._internal_is_rational() != 0) {
+        _this->_impl_.is_rational_ = from._impl_.is_rational_;
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00001000U)) {
+      _this->_impl_.is_visible_ = from._impl_.is_visible_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       if (from._internal_arrowhead() != 0) {
         _this->_impl_.arrowhead_ = from._impl_.arrowhead_;
       }

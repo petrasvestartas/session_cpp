@@ -228,6 +228,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kPointSizeFieldNumber = 6,
+    kIsVisibleFieldNumber = 16,
   };
   // repeated double coords = 3;
   [[nodiscard]] int coords_size() const;
@@ -478,11 +479,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
   void _internal_set_point_size(double value);
 
   public:
+  // optional bool is_visible = 16;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.PointCloud)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 14,
+      ::google::protobuf::internal::TcParseTable<4, 15,
                           0, 49,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -525,6 +537,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     double point_size_;
+    bool is_visible_;
     ::google::protobuf::internal::CachedSize _colors_cached_byte_size_;
     ::google::protobuf::internal::CachedSize _lod_level_cached_byte_size_;
     ::google::protobuf::internal::CachedSize _lod_first_cached_byte_size_;
@@ -1263,6 +1276,34 @@ inline ::google::protobuf::RepeatedField<::uint32_t>* PROTOBUF_NONNULL
 PointCloud::_internal_mutable_point_ids() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.point_ids_;
+}
+
+// optional bool is_visible = 16;
+inline bool PointCloud::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00004000U);
+  return value;
+}
+inline void PointCloud::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
+}
+inline bool PointCloud::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.is_visible)
+  return _internal_is_visible();
+}
+inline void PointCloud::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.is_visible)
+}
+inline bool PointCloud::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void PointCloud::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

@@ -98,6 +98,7 @@ private:
 
 public:
     std::string name = "my_brep"; // BRep name.
+    bool is_visible = true; // Whether a viewer draws it.
     double width = 1.0; // Display width.
     Color surfacecolor = Color::lightgrey(); // Display color of the faces.
     std::vector<NurbsSurface> m_surfaces; // Surface pool.

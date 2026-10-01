@@ -222,6 +222,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     kLinecolorNameFieldNumber = 11,
     kWidthFieldNumber = 6,
     kArrowheadFieldNumber = 12,
+    kIsVisibleFieldNumber = 13,
   };
   // repeated double dash = 8;
   [[nodiscard]] int dash_size() const;
@@ -345,11 +346,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
   void _internal_set_arrowhead(::int32_t value);
 
   public:
+  // optional bool is_visible = 13;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Line)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 8,
+      ::google::protobuf::internal::TcParseTable<4, 9,
                           0, 57,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -386,6 +398,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     ::google::protobuf::internal::ArenaStringPtr linecolor_name_;
     double width_;
     ::int32_t arrowhead_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -799,6 +812,34 @@ inline ::int32_t Line::_internal_arrowhead() const {
 inline void Line::_internal_set_arrowhead(::int32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.arrowhead_ = value;
+}
+
+// optional bool is_visible = 13;
+inline bool Line::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000100U);
+  return value;
+}
+inline void Line::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+}
+inline bool Line::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Line.is_visible)
+  return _internal_is_visible();
+}
+inline void Line::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_set:session_proto.Line.is_visible)
+}
+inline bool Line::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Line::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

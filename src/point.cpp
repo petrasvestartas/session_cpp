@@ -11,7 +11,7 @@ namespace session_cpp {
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
 Point::Point(const Point& other)
-    : _x(other._x), _y(other._y), _z(other._z), name(other.name), width(other.width), pointcolor(other.pointcolor) {}
+    : _x(other._x), _y(other._y), _z(other._z), name(other.name), is_visible(other.is_visible), width(other.width), pointcolor(other.pointcolor) {}
 
 Point& Point::operator=(const Point& other) {
 
@@ -23,6 +23,7 @@ Point& Point::operator=(const Point& other) {
     _y = other._y;
     _z = other._z;
     name = other.name;
+    is_visible = other.is_visible;
     width = other.width;
     pointcolor = other.pointcolor;
 
@@ -85,7 +86,7 @@ const double& Point::operator[](int index) const {
 
 bool Point::operator==(const Point& other) const {
 
-    return name == other.name &&
+    return name == other.name && is_visible == other.is_visible &&
            std::round(_x * 1000000.0) == std::round(other._x * 1000000.0) &&
            std::round(_y * 1000000.0) == std::round(other._y * 1000000.0) &&
            std::round(_z * 1000000.0) == std::round(other._z * 1000000.0) &&
@@ -356,6 +357,7 @@ nlohmann::ordered_json Point::jsondump() const {
 
     nlohmann::ordered_json data;
     data["guid"] = guid();
+    data["is_visible"] = is_visible;
     data["name"] = name;
     data["pointcolor"] = pointcolor.jsondump();
     data["type"] = "Point";
@@ -372,6 +374,7 @@ Point Point::jsonload(const nlohmann::json& data) {
     Point point(data.at("x"), data.at("y"), data.at("z"));
     point.guid() = data.at("guid");
     point.name = data.at("name");
+    point.is_visible = data.value("is_visible", true);
     point.pointcolor = Color::jsonload(data.at("pointcolor"));
     point.width = data.at("width");
 
@@ -410,6 +413,10 @@ session_proto::Point Point::to_proto() const {
         proto.set_guid(guid());
 
     proto.set_name(name);
+
+    if (!is_visible)
+        proto.set_is_visible(false);
+
     proto.set_x(_x);
     proto.set_y(_y);
     proto.set_z(_z);
@@ -427,6 +434,7 @@ Point Point::from_proto(const session_proto::Point& proto) {
         point.guid() = proto.guid();
 
     point.name = proto.name();
+    point.is_visible = !proto.has_is_visible() || proto.is_visible();
     point.width = proto.width();
     point.pointcolor = Color::from_proto(proto.pointcolor());
 

@@ -306,6 +306,7 @@ public:
     std::map<std::string, double> default_face_attributes;                       // Default face attrs.
     std::map<std::string, double> default_edge_attributes;                       // Default edge attrs.
     std::string name = "my_mesh";                                                // Mesh name.
+    bool is_visible = true;                                                      // Whether a viewer draws it.
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                               // Active color mode.
 
     // ═══════════════════════════════════════════════════════════════════════════

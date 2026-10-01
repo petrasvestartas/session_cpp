@@ -307,4 +307,19 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(pl.squared_distance(p), 0.0));
     }
 
+    MINI_TEST("Plane", "Is Visible Round Trip") {
+        // using session_cpp::Plane;
+
+        Plane hidden = Plane::xy_plane();
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const Plane json = Plane::file_json_loads(hidden.file_json_dumps());
+        const Plane proto = Plane::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 } // namespace session_cpp

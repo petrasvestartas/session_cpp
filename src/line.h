@@ -55,6 +55,7 @@ private:
 
 public:
     std::string name = "my_line"; // Line name.
+    bool is_visible = true; // Whether a viewer draws it.
     double width = 1.0; // Display width.
     std::vector<double> dash; // Dash pattern lengths.
     Color linecolor = Color::black(); // Display color.

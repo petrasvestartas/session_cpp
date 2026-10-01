@@ -360,4 +360,20 @@ MINI_TEST("OBB", "Two Rectangles") {
     MINI_CHECK(rects[9] == rects[5]);
 }
 
+MINI_TEST("OBB", "Is Visible Round Trip") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+
+    OBB hidden = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
+
+    MINI_CHECK(hidden.is_visible);
+
+    hidden.is_visible = false;
+    const OBB json = OBB::file_json_loads(hidden.file_json_dumps());
+    const OBB proto = OBB::pb_loads(hidden.pb_dumps());
+
+    MINI_CHECK(!json.is_visible);
+    MINI_CHECK(!proto.is_visible);
+}
+
 }

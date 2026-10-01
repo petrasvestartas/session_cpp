@@ -1194,4 +1194,21 @@ namespace session_cpp {
         MINI_CHECK(short_distances.point_count() == 0);
     }
 
+    MINI_TEST("Polyline", "Is Visible Round Trip") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+
+        const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)};
+        Polyline hidden = Polyline(points);
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const Polyline json = Polyline::file_json_loads(hidden.file_json_dumps());
+        const Polyline proto = Polyline::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 } // namespace session_cpp

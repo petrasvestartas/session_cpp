@@ -1016,4 +1016,21 @@ namespace session_cpp {
         MINI_CHECK(std::abs(circle.length() - 4.0 * Tolerance::PI) < 1e-9);
     }
 
+    MINI_TEST("NurbsCurve", "Is Visible Round Trip") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+
+        const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)};
+        NurbsCurve hidden = NurbsCurve::create(false, 2, points);
+
+        MINI_CHECK(hidden.is_visible);
+
+        hidden.is_visible = false;
+        const NurbsCurve json = NurbsCurve::file_json_loads(hidden.file_json_dumps());
+        const NurbsCurve proto = NurbsCurve::pb_loads(hidden.pb_dumps());
+
+        MINI_CHECK(!json.is_visible);
+        MINI_CHECK(!proto.is_visible);
+    }
+
 } // namespace session_cpp

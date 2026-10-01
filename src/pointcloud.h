@@ -39,6 +39,7 @@ private:
 
 public:
     std::string name = "my_pointcloud"; // Cloud name.
+    bool is_visible = true; // Whether a viewer draws it.
     double point_size = 1.0; // Display point size.
 
     // ═══════════════════════════════════════════════════════════════════════════

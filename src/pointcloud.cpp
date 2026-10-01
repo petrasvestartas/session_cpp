@@ -39,7 +39,7 @@ PointCloud::PointCloud(const PointCloud& other)
       _lod_count(other._lod_count),
       _lod_children(other._lod_children),
       _point_ids(other._point_ids),
-      name(other.name),
+      name(other.name), is_visible(other.is_visible),
       point_size(other.point_size) {}
 
 PointCloud& PointCloud::operator=(const PointCloud& other) {
@@ -60,6 +60,7 @@ PointCloud& PointCloud::operator=(const PointCloud& other) {
     _lod_children = other._lod_children;
     _point_ids = other._point_ids;
     name = other.name;
+    is_visible = other.is_visible;
     point_size = other.point_size;
 
     return *this;
@@ -106,7 +107,7 @@ PointCloud PointCloud::from_coords(const std::vector<double>& coords, const std:
 // ═══════════════════════════════════════════════════════════════════════════
 bool PointCloud::operator==(const PointCloud& other) const {
 
-    return name == other.name &&
+    return name == other.name && is_visible == other.is_visible &&
            _coords == other._coords &&
            _colors == other._colors &&
            _normals == other._normals &&
@@ -406,6 +407,7 @@ nlohmann::ordered_json PointCloud::jsondump() const {
     data["colors"] = _colors;
     data["coords"] = _coords;
     data["guid"] = guid();
+    data["is_visible"] = is_visible;
     data["lod_children"] = _lod_children;
     data["lod_count"] = _lod_count;
     data["lod_first"] = _lod_first;
@@ -432,6 +434,7 @@ PointCloud PointCloud::jsonload(const nlohmann::json& data) {
 
     cloud.guid() = data.value("guid", cloud.guid());
     cloud.name = data.value("name", cloud.name);
+    cloud.is_visible = data.value("is_visible", true);
     cloud.point_size = data.value("point_size", 1.0);
     cloud._lod_min = data.value("lod_min", std::vector<double>{});
     cloud._lod_size = data.value("lod_size", std::vector<double>{});
@@ -477,6 +480,10 @@ session_proto::PointCloud PointCloud::to_proto() const {
         proto.set_guid(guid());
 
     proto.set_name(name);
+
+    if (!is_visible)
+        proto.set_is_visible(false);
+
     proto.set_point_size(point_size);
     proto.mutable_coords()->Add(_coords.begin(), _coords.end());
     proto.mutable_colors()->Add(_colors.begin(), _colors.end());
@@ -505,6 +512,7 @@ PointCloud PointCloud::from_proto(const session_proto::PointCloud& proto) {
         cloud.guid() = proto.guid();
 
     cloud.name = proto.name();
+    cloud.is_visible = !proto.has_is_visible() || proto.is_visible();
 
     if (proto.point_size() > 0.0)
         cloud.point_size = proto.point_size();

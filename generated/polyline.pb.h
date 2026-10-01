@@ -222,6 +222,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     kLinecolorFieldNumber = 5,
     kWidthFieldNumber = 4,
     kArrowheadFieldNumber = 8,
+    kIsVisibleFieldNumber = 9,
   };
   // repeated double coords = 3;
   [[nodiscard]] int coords_size() const;
@@ -326,12 +327,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
   void _internal_set_arrowhead(::int32_t value);
 
   public:
+  // optional bool is_visible = 9;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Polyline)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 7,
-                          1, 39,
+      ::google::protobuf::internal::TcParseTable<4, 8,
+                          1, 47,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -366,6 +378,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     double width_;
     ::int32_t arrowhead_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -757,6 +770,34 @@ inline ::int32_t Polyline::_internal_arrowhead() const {
 inline void Polyline::_internal_set_arrowhead(::int32_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.arrowhead_ = value;
+}
+
+// optional bool is_visible = 9;
+inline bool Polyline::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  return value;
+}
+inline void Polyline::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+}
+inline bool Polyline::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Polyline.is_visible)
+  return _internal_is_visible();
+}
+inline void Polyline::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:session_proto.Polyline.is_visible)
+}
+inline bool Polyline::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Polyline::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

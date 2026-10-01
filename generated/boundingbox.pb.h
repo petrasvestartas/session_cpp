@@ -223,6 +223,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
     kYAxisFieldNumber = 3,
     kZAxisFieldNumber = 4,
     kHalfSizeFieldNumber = 5,
+    kIsVisibleFieldNumber = 9,
   };
   // string guid = 6;
   void clear_guid() ;
@@ -329,12 +330,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
   ::session_proto::Vector* PROTOBUF_NONNULL _internal_mutable_half_size();
 
   public:
+  // optional bool is_visible = 9;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.BoundingBox)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 7,
-                          5, 42,
+      ::google::protobuf::internal::TcParseTable<4, 8,
+                          5, 50,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -369,6 +381,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
     ::session_proto::Vector* PROTOBUF_NULLABLE y_axis_;
     ::session_proto::Vector* PROTOBUF_NULLABLE z_axis_;
     ::session_proto::Vector* PROTOBUF_NULLABLE half_size_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -982,6 +995,34 @@ inline void BoundingBox::set_allocated_name(::std::string* PROTOBUF_NULLABLE val
     _impl_.name_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:session_proto.BoundingBox.name)
+}
+
+// optional bool is_visible = 9;
+inline bool BoundingBox::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  return value;
+}
+inline void BoundingBox::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+}
+inline bool BoundingBox::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.BoundingBox.is_visible)
+  return _internal_is_visible();
+}
+inline void BoundingBox::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:session_proto.BoundingBox.is_visible)
+}
+inline bool BoundingBox::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void BoundingBox::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

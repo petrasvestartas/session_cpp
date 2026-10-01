@@ -222,6 +222,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Point final : public ::google::prot
     kYFieldNumber = 4,
     kZFieldNumber = 5,
     kWidthFieldNumber = 6,
+    kIsVisibleFieldNumber = 9,
   };
   // string guid = 1;
   void clear_guid() ;
@@ -308,12 +309,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Point final : public ::google::prot
   void _internal_set_width(double value);
 
   public:
+  // optional bool is_visible = 9;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Point)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 7,
-                          1, 36,
+      ::google::protobuf::internal::TcParseTable<4, 8,
+                          1, 44,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -348,6 +360,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Point final : public ::google::prot
     double y_;
     double z_;
     double width_;
+    bool is_visible_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -685,6 +698,34 @@ inline void Point::set_allocated_pointcolor(::session_proto::Color* PROTOBUF_NUL
 
   _impl_.pointcolor_ = reinterpret_cast<::session_proto::Color*>(value);
   // @@protoc_insertion_point(field_set_allocated:session_proto.Point.pointcolor)
+}
+
+// optional bool is_visible = 9;
+inline bool Point::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  return value;
+}
+inline void Point::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+}
+inline bool Point::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Point.is_visible)
+  return _internal_is_visible();
+}
+inline void Point::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  // @@protoc_insertion_point(field_set:session_proto.Point.is_visible)
+}
+inline bool Point::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Point::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

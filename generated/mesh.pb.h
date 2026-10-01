@@ -1927,19 +1927,20 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
   enum : int {
     kEdgeDataFieldNumber = 6,
     kWidthsFieldNumber = 13,
+    kPointcolorsRgbaFieldNumber = 18,
     kFacecolorsRgbaFieldNumber = 19,
     kLinecolorsRgbaFieldNumber = 20,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
     kObjectcolorFieldNumber = 15,
     kColorModeFieldNumber = 16,
+    kIsVisibleFieldNumber = 21,
     kVerticesFieldNumber = 3,
     kFacesFieldNumber = 4,
     kDefaultVertexAttributesFieldNumber = 7,
     kDefaultFaceAttributesFieldNumber = 8,
     kDefaultEdgeAttributesFieldNumber = 9,
     kTriangulationFieldNumber = 17,
-    kPointcolorsRgbaFieldNumber = 18,
   };
   // repeated .session_proto.EdgeData edge_data = 6;
   [[nodiscard]] int edge_data_size() const;
@@ -1978,6 +1979,25 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
   private:
   const ::google::protobuf::RepeatedField<double>& _internal_widths() const;
   ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL _internal_mutable_widths();
+
+  public:
+  // repeated float pointcolors_rgba = 18;
+  [[nodiscard]] int pointcolors_rgba_size() const;
+  private:
+  int _internal_pointcolors_rgba_size() const;
+
+  public:
+  void clear_pointcolors_rgba() ;
+  [[nodiscard]] float pointcolors_rgba(int index) const;
+  void set_pointcolors_rgba(int index, float value);
+  void add_pointcolors_rgba(float value);
+  [[nodiscard]] const ::google::protobuf::RepeatedField<float>& pointcolors_rgba()
+      const;
+  ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL mutable_pointcolors_rgba();
+
+  private:
+  const ::google::protobuf::RepeatedField<float>& _internal_pointcolors_rgba() const;
+  ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL _internal_mutable_pointcolors_rgba();
 
   public:
   // repeated float facecolors_rgba = 19;
@@ -2073,6 +2093,17 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
   void _internal_set_color_mode(::int32_t value);
 
   public:
+  // optional bool is_visible = 21;
+  [[nodiscard]] bool has_is_visible() const;
+  void clear_is_visible() ;
+  [[nodiscard]] bool is_visible() const;
+  void set_is_visible(bool value);
+
+  private:
+  bool _internal_is_visible() const;
+  void _internal_set_is_visible(bool value);
+
+  public:
   // map<uint64, .session_proto.VertexData> vertices = 3;
   [[nodiscard]] int vertices_size() const;
   private:
@@ -2163,31 +2194,12 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
   ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>* PROTOBUF_NONNULL _internal_mutable_triangulation();
 
   public:
-  // repeated float pointcolors_rgba = 18;
-  [[nodiscard]] int pointcolors_rgba_size() const;
-  private:
-  int _internal_pointcolors_rgba_size() const;
-
-  public:
-  void clear_pointcolors_rgba() ;
-  [[nodiscard]] float pointcolors_rgba(int index) const;
-  void set_pointcolors_rgba(int index, float value);
-  void add_pointcolors_rgba(float value);
-  [[nodiscard]] const ::google::protobuf::RepeatedField<float>& pointcolors_rgba()
-      const;
-  ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL mutable_pointcolors_rgba();
-
-  private:
-  const ::google::protobuf::RepeatedField<float>& _internal_pointcolors_rgba() const;
-  ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL _internal_mutable_pointcolors_rgba();
-
-  public:
   // @@protoc_insertion_point(class_scope:session_proto.Mesh)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 15,
-                          11, 114,
+      ::google::protobuf::internal::TcParseTable<5, 16,
+                          11, 122,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -2217,19 +2229,20 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::RepeatedPtrField< ::session_proto::EdgeData > edge_data_;
     ::google::protobuf::RepeatedField<double> widths_;
+    ::google::protobuf::RepeatedField<float> pointcolors_rgba_;
     ::google::protobuf::RepeatedField<float> facecolors_rgba_;
     ::google::protobuf::RepeatedField<float> linecolors_rgba_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
     ::session_proto::Color* PROTOBUF_NULLABLE objectcolor_;
     ::int32_t color_mode_;
+    bool is_visible_;
     ::google::protobuf::internal::MapField<Mesh_VerticesEntry_DoNotUse, ::uint64_t, ::session_proto::VertexData> vertices_;
     ::google::protobuf::internal::MapField<Mesh_FacesEntry_DoNotUse, ::uint64_t, ::session_proto::FaceData> faces_;
     ::google::protobuf::internal::MapField<Mesh_DefaultVertexAttributesEntry_DoNotUse, ::std::string, double> default_vertex_attributes_;
     ::google::protobuf::internal::MapField<Mesh_DefaultFaceAttributesEntry_DoNotUse, ::std::string, double> default_face_attributes_;
     ::google::protobuf::internal::MapField<Mesh_DefaultEdgeAttributesEntry_DoNotUse, ::std::string, double> default_edge_attributes_;
     ::google::protobuf::internal::MapField<Mesh_TriangulationEntry_DoNotUse, ::uint64_t, ::session_proto::TriList> triangulation_;
-    ::google::protobuf::RepeatedField<float> pointcolors_rgba_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -2715,7 +2728,7 @@ TriList::_internal_mutable_vertices() {
 inline void Mesh::clear_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.guid_.ClearToEmpty();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
 }
 inline const ::std::string& Mesh::guid() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -2725,13 +2738,13 @@ inline const ::std::string& Mesh::guid() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Mesh::set_guid(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   _impl_.guid_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Mesh.guid)
 }
 inline ::std::string* PROTOBUF_NONNULL Mesh::mutable_guid()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   ::std::string* _s = _internal_mutable_guid();
   // @@protoc_insertion_point(field_mutable:session_proto.Mesh.guid)
   return _s;
@@ -2751,10 +2764,10 @@ inline ::std::string* PROTOBUF_NONNULL Mesh::_internal_mutable_guid() {
 inline ::std::string* PROTOBUF_NULLABLE Mesh::release_guid() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Mesh.guid)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000010U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000020U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   auto* released = _impl_.guid_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.guid_.Set("", GetArena());
@@ -2764,9 +2777,9 @@ inline ::std::string* PROTOBUF_NULLABLE Mesh::release_guid() {
 inline void Mesh::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
   }
   _impl_.guid_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.guid_.IsDefault()) {
@@ -2779,7 +2792,7 @@ inline void Mesh::set_allocated_guid(::std::string* PROTOBUF_NULLABLE value) {
 inline void Mesh::clear_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.name_.ClearToEmpty();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
 }
 inline const ::std::string& Mesh::name() const
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
@@ -2789,13 +2802,13 @@ inline const ::std::string& Mesh::name() const
 template <typename Arg_, typename... Args_>
 PROTOBUF_ALWAYS_INLINE void Mesh::set_name(Arg_&& arg, Args_... args) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
   // @@protoc_insertion_point(field_set:session_proto.Mesh.name)
 }
 inline ::std::string* PROTOBUF_NONNULL Mesh::mutable_name()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   ::std::string* _s = _internal_mutable_name();
   // @@protoc_insertion_point(field_mutable:session_proto.Mesh.name)
   return _s;
@@ -2815,10 +2828,10 @@ inline ::std::string* PROTOBUF_NONNULL Mesh::_internal_mutable_name() {
 inline ::std::string* PROTOBUF_NULLABLE Mesh::release_name() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Mesh.name)
-  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000020U)) {
+  if (!CheckHasBit(_impl_._has_bits_[0], 0x00000040U)) {
     return nullptr;
   }
-  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
   auto* released = _impl_.name_.Release();
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
     _impl_.name_.Set("", GetArena());
@@ -2828,9 +2841,9 @@ inline ::std::string* PROTOBUF_NULLABLE Mesh::release_name() {
 inline void Mesh::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
   }
   _impl_.name_.SetAllocated(value, GetArena());
   if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
@@ -2849,7 +2862,7 @@ inline int Mesh::vertices_size() const {
 inline void Mesh::clear_vertices() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.vertices_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>& Mesh::_internal_vertices() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2865,7 +2878,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>* PROTOBU
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>* PROTOBUF_NONNULL Mesh::mutable_vertices()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.vertices)
   return _internal_mutable_vertices();
 }
@@ -2880,7 +2893,7 @@ inline int Mesh::faces_size() const {
 inline void Mesh::clear_faces() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.faces_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>& Mesh::_internal_faces() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2896,7 +2909,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>* PROTOBUF_
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>* PROTOBUF_NONNULL Mesh::mutable_faces()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.faces)
   return _internal_mutable_faces();
 }
@@ -2966,7 +2979,7 @@ inline int Mesh::default_vertex_attributes_size() const {
 inline void Mesh::clear_default_vertex_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_vertex_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_vertex_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2982,7 +2995,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_vertex_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_vertex_attributes)
   return _internal_mutable_default_vertex_attributes();
 }
@@ -2997,7 +3010,7 @@ inline int Mesh::default_face_attributes_size() const {
 inline void Mesh::clear_default_face_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_face_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_face_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3013,7 +3026,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_face_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_face_attributes)
   return _internal_mutable_default_face_attributes();
 }
@@ -3028,7 +3041,7 @@ inline int Mesh::default_edge_attributes_size() const {
 inline void Mesh::clear_default_edge_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_edge_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_edge_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3044,7 +3057,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_edge_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_edge_attributes)
   return _internal_mutable_default_edge_attributes();
 }
@@ -3102,7 +3115,7 @@ Mesh::_internal_mutable_widths() {
 
 // .session_proto.Color objectcolor = 15;
 inline bool Mesh::has_objectcolor() const {
-  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
   PROTOBUF_ASSUME(!value || _impl_.objectcolor_ != nullptr);
   return value;
 }
@@ -3123,16 +3136,16 @@ inline void Mesh::unsafe_arena_set_allocated_objectcolor(
   }
   _impl_.objectcolor_ = reinterpret_cast<::session_proto::Color*>(value);
   if (value != nullptr) {
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Mesh.objectcolor)
 }
 inline ::session_proto::Color* PROTOBUF_NULLABLE Mesh::release_objectcolor() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Color* released = _impl_.objectcolor_;
   _impl_.objectcolor_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -3152,7 +3165,7 @@ inline ::session_proto::Color* PROTOBUF_NULLABLE Mesh::unsafe_arena_release_obje
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:session_proto.Mesh.objectcolor)
 
-  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Color* temp = _impl_.objectcolor_;
   _impl_.objectcolor_ = nullptr;
   return temp;
@@ -3167,7 +3180,7 @@ inline ::session_proto::Color* PROTOBUF_NONNULL Mesh::_internal_mutable_objectco
 }
 inline ::session_proto::Color* PROTOBUF_NONNULL Mesh::mutable_objectcolor()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   ::session_proto::Color* _msg = _internal_mutable_objectcolor();
   // @@protoc_insertion_point(field_mutable:session_proto.Mesh.objectcolor)
   return _msg;
@@ -3184,9 +3197,9 @@ inline void Mesh::set_allocated_objectcolor(::session_proto::Color* PROTOBUF_NUL
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
   } else {
-    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
   }
 
   _impl_.objectcolor_ = reinterpret_cast<::session_proto::Color*>(value);
@@ -3197,7 +3210,7 @@ inline void Mesh::set_allocated_objectcolor(::session_proto::Color* PROTOBUF_NUL
 inline void Mesh::clear_color_mode() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.color_mode_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
 }
 inline ::int32_t Mesh::color_mode() const {
   // @@protoc_insertion_point(field_get:session_proto.Mesh.color_mode)
@@ -3205,7 +3218,7 @@ inline ::int32_t Mesh::color_mode() const {
 }
 inline void Mesh::set_color_mode(::int32_t value) {
   _internal_set_color_mode(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_set:session_proto.Mesh.color_mode)
 }
 inline ::int32_t Mesh::_internal_color_mode() const {
@@ -3227,7 +3240,7 @@ inline int Mesh::triangulation_size() const {
 inline void Mesh::clear_triangulation() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.triangulation_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>& Mesh::_internal_triangulation() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3243,7 +3256,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>* PROTOBUF_N
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>* PROTOBUF_NONNULL Mesh::mutable_triangulation()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.triangulation)
   return _internal_mutable_triangulation();
 }
@@ -3258,7 +3271,7 @@ inline int Mesh::pointcolors_rgba_size() const {
 inline void Mesh::clear_pointcolors_rgba() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.pointcolors_rgba_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
 }
 inline float Mesh::pointcolors_rgba(int index) const {
   // @@protoc_insertion_point(field_get:session_proto.Mesh.pointcolors_rgba)
@@ -3273,7 +3286,7 @@ inline void Mesh::add_pointcolors_rgba(float value) {
   _internal_mutable_pointcolors_rgba()
       ->InternalAddWithArena<const ::google::protobuf::MessageLite*>(
           internal_visibility(), this, value);
-  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_add:session_proto.Mesh.pointcolors_rgba)
 }
 inline const ::google::protobuf::RepeatedField<float>& Mesh::pointcolors_rgba() const
@@ -3283,7 +3296,7 @@ inline const ::google::protobuf::RepeatedField<float>& Mesh::pointcolors_rgba() 
 }
 inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL Mesh::mutable_pointcolors_rgba()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Mesh.pointcolors_rgba)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_pointcolors_rgba();
@@ -3309,7 +3322,7 @@ inline int Mesh::facecolors_rgba_size() const {
 inline void Mesh::clear_facecolors_rgba() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.facecolors_rgba_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000004U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
 }
 inline float Mesh::facecolors_rgba(int index) const {
   // @@protoc_insertion_point(field_get:session_proto.Mesh.facecolors_rgba)
@@ -3324,7 +3337,7 @@ inline void Mesh::add_facecolors_rgba(float value) {
   _internal_mutable_facecolors_rgba()
       ->InternalAddWithArena<const ::google::protobuf::MessageLite*>(
           internal_visibility(), this, value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_add:session_proto.Mesh.facecolors_rgba)
 }
 inline const ::google::protobuf::RepeatedField<float>& Mesh::facecolors_rgba() const
@@ -3334,7 +3347,7 @@ inline const ::google::protobuf::RepeatedField<float>& Mesh::facecolors_rgba() c
 }
 inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL Mesh::mutable_facecolors_rgba()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000004U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Mesh.facecolors_rgba)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_facecolors_rgba();
@@ -3360,7 +3373,7 @@ inline int Mesh::linecolors_rgba_size() const {
 inline void Mesh::clear_linecolors_rgba() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.linecolors_rgba_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
 }
 inline float Mesh::linecolors_rgba(int index) const {
   // @@protoc_insertion_point(field_get:session_proto.Mesh.linecolors_rgba)
@@ -3375,7 +3388,7 @@ inline void Mesh::add_linecolors_rgba(float value) {
   _internal_mutable_linecolors_rgba()
       ->InternalAddWithArena<const ::google::protobuf::MessageLite*>(
           internal_visibility(), this, value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   // @@protoc_insertion_point(field_add:session_proto.Mesh.linecolors_rgba)
 }
 inline const ::google::protobuf::RepeatedField<float>& Mesh::linecolors_rgba() const
@@ -3385,7 +3398,7 @@ inline const ::google::protobuf::RepeatedField<float>& Mesh::linecolors_rgba() c
 }
 inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL Mesh::mutable_linecolors_rgba()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
   // @@protoc_insertion_point(field_mutable_list:session_proto.Mesh.linecolors_rgba)
   ::google::protobuf::internal::TSanWrite(&_impl_);
   return _internal_mutable_linecolors_rgba();
@@ -3399,6 +3412,34 @@ inline ::google::protobuf::RepeatedField<float>* PROTOBUF_NONNULL
 Mesh::_internal_mutable_linecolors_rgba() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.linecolors_rgba_;
+}
+
+// optional bool is_visible = 21;
+inline bool Mesh::has_is_visible() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000200U);
+  return value;
+}
+inline void Mesh::clear_is_visible() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
+}
+inline bool Mesh::is_visible() const {
+  // @@protoc_insertion_point(field_get:session_proto.Mesh.is_visible)
+  return _internal_is_visible();
+}
+inline void Mesh::set_is_visible(bool value) {
+  _internal_set_is_visible(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  // @@protoc_insertion_point(field_set:session_proto.Mesh.is_visible)
+}
+inline bool Mesh::_internal_is_visible() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_visible_;
+}
+inline void Mesh::_internal_set_is_visible(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_visible_ = value;
 }
 
 #ifdef __GNUC__

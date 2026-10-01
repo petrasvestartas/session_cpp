@@ -1326,4 +1326,21 @@ MINI_TEST("NurbsSurface", "Curvature") {
     MINI_CHECK(std::abs(std::abs(sphere.mean_curvature(um, vm)) - 1.0 / R) < 1e-3);
 }
 
+MINI_TEST("NurbsSurface", "Is Visible Round Trip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+
+    const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 1.0, 0.0)};
+    NurbsSurface hidden = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
+
+    MINI_CHECK(hidden.is_visible);
+
+    hidden.is_visible = false;
+    const NurbsSurface json = NurbsSurface::file_json_loads(hidden.file_json_dumps());
+    const NurbsSurface proto = NurbsSurface::pb_loads(hidden.pb_dumps());
+
+    MINI_CHECK(!json.is_visible);
+    MINI_CHECK(!proto.is_visible);
+}
+
 } // namespace session_cpp

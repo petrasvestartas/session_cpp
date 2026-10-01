@@ -196,7 +196,7 @@ Polyline::Polyline(const std::vector<Point>& points) {
 }
 
 Polyline::Polyline(const Polyline& other)
-    : _plane_dirty(other._plane_dirty), name(other.name), _coords(other._coords), plane(other.plane),
+    : _plane_dirty(other._plane_dirty), name(other.name), is_visible(other.is_visible), _coords(other._coords), plane(other.plane),
       width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
 
 Polyline& Polyline::operator=(const Polyline& other) {
@@ -207,6 +207,7 @@ Polyline& Polyline::operator=(const Polyline& other) {
     _guid.clear();
     _plane_dirty = other._plane_dirty;
     name = other.name;
+    is_visible = other.is_visible;
     _coords = other._coords;
     plane = other.plane;
     width = other.width;
@@ -1607,6 +1608,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
     data["coords"] = _coords;
     data["dash"] = dash;
     data["guid"] = guid();
+    data["is_visible"] = is_visible;
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
     data["type"] = "Polyline";
@@ -1620,6 +1622,7 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     Polyline polyline;
     polyline.guid() = data.at("guid");
     polyline.name = data.at("name");
+    polyline.is_visible = data.value("is_visible", true);
 
     if (data.contains("coords")) {
         polyline._coords = data["coords"].get<std::vector<double>>();
@@ -1677,6 +1680,10 @@ session_proto::Polyline Polyline::to_proto() const {
         proto.set_guid(guid());
 
     proto.set_name(name);
+
+    if (!is_visible)
+        proto.set_is_visible(false);
+
     proto.set_width(width);
 
     for (double d : dash)
@@ -1699,6 +1706,7 @@ Polyline Polyline::from_proto(const session_proto::Polyline& proto) {
         polyline.guid() = proto.guid();
 
     polyline.name = proto.name();
+    polyline.is_visible = !proto.has_is_visible() || proto.is_visible();
     polyline.width = proto.width();
     polyline.dash.assign(proto.dash().begin(), proto.dash().end());
 
