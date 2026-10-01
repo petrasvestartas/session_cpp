@@ -913,6 +913,27 @@ MINI_TEST("Element", "Is Visible Round Trip") {
     MINI_CHECK(shown != hidden);
 }
 
+MINI_TEST("Element", "Is Locked Round Trip") {
+    // using session_cpp::Element;
+
+    Element locked(unit_quad(), "joint");
+
+    MINI_CHECK(!locked.is_locked);
+
+    locked.is_locked = true;
+    const Element json = Element::file_json_loads(locked.file_json_dumps());
+    const Element proto = Element::pb_loads(locked.pb_dumps());
+
+    MINI_CHECK(json.is_locked);
+    MINI_CHECK(proto.is_locked);
+    MINI_CHECK(json == locked);
+    MINI_CHECK(proto == locked);
+
+    const Element free(unit_quad(), "joint");
+
+    MINI_CHECK(free != locked);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ElementFeature
 // ═══════════════════════════════════════════════════════════════════════════

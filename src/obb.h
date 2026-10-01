@@ -40,6 +40,7 @@ public:
     Vector half_size; // Half extent along each axis.
     std::string name = "my_obb"; // Box name.
     bool is_visible = true; // Whether a viewer draws it.
+    bool is_locked = false; // Whether a viewer keeps it from moving.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors

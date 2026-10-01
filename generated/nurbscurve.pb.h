@@ -228,6 +228,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     kWidthFieldNumber = 10,
     kIsRationalFieldNumber = 4,
     kIsVisibleFieldNumber = 15,
+    kIsLockedFieldNumber = 16,
     kArrowheadFieldNumber = 14,
   };
   // repeated double nurbsknots = 8;
@@ -409,6 +410,17 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 16;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // int32 arrowhead = 14;
   void clear_arrowhead() ;
   [[nodiscard]] ::int32_t arrowhead() const;
@@ -423,7 +435,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 14,
+      ::google::protobuf::internal::TcParseTable<4, 15,
                           2, 49,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -465,6 +477,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED NurbsCurve final : public ::google:
     double width_;
     bool is_rational_;
     bool is_visible_;
+    bool is_locked_;
     ::int32_t arrowhead_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -966,7 +979,7 @@ NurbsCurve::_internal_mutable_linecolors() {
 inline void NurbsCurve::clear_arrowhead() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.arrowhead_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
 }
 inline ::int32_t NurbsCurve::arrowhead() const {
   // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.arrowhead)
@@ -974,7 +987,7 @@ inline ::int32_t NurbsCurve::arrowhead() const {
 }
 inline void NurbsCurve::set_arrowhead(::int32_t value) {
   _internal_set_arrowhead(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.arrowhead)
 }
 inline ::int32_t NurbsCurve::_internal_arrowhead() const {
@@ -1012,6 +1025,34 @@ inline bool NurbsCurve::_internal_is_visible() const {
 inline void NurbsCurve::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 16;
+inline bool NurbsCurve::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00002000U);
+  return value;
+}
+inline void NurbsCurve::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+}
+inline bool NurbsCurve::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.NurbsCurve.is_locked)
+  return _internal_is_locked();
+}
+inline void NurbsCurve::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  // @@protoc_insertion_point(field_set:session_proto.NurbsCurve.is_locked)
+}
+inline bool NurbsCurve::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void NurbsCurve::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

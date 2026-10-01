@@ -40,6 +40,7 @@ private:
 public:
     std::string name = "my_pointcloud"; // Cloud name.
     bool is_visible = true; // Whether a viewer draws it.
+    bool is_locked = false; // Whether a viewer keeps it from moving.
     double point_size = 1.0; // Display point size.
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -1033,4 +1033,21 @@ namespace session_cpp {
         MINI_CHECK(!proto.is_visible);
     }
 
+    MINI_TEST("NurbsCurve", "Is Locked Round Trip") {
+        // using session_cpp::NurbsCurve;
+        // using session_cpp::Point;
+
+        const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)};
+        NurbsCurve locked = NurbsCurve::create(false, 2, points);
+
+        MINI_CHECK(!locked.is_locked);
+
+        locked.is_locked = true;
+        const NurbsCurve json = NurbsCurve::file_json_loads(locked.file_json_dumps());
+        const NurbsCurve proto = NurbsCurve::pb_loads(locked.pb_dumps());
+
+        MINI_CHECK(json.is_locked);
+        MINI_CHECK(proto.is_locked);
+    }
+
 } // namespace session_cpp

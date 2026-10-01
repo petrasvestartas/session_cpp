@@ -11,7 +11,7 @@ namespace session_cpp {
 // Constructors
 // ═══════════════════════════════════════════════════════════════════════════
 Point::Point(const Point& other)
-    : _x(other._x), _y(other._y), _z(other._z), name(other.name), is_visible(other.is_visible), width(other.width), pointcolor(other.pointcolor) {}
+    : _x(other._x), _y(other._y), _z(other._z), name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), width(other.width), pointcolor(other.pointcolor) {}
 
 Point& Point::operator=(const Point& other) {
 
@@ -24,6 +24,7 @@ Point& Point::operator=(const Point& other) {
     _z = other._z;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     width = other.width;
     pointcolor = other.pointcolor;
 
@@ -86,7 +87,7 @@ const double& Point::operator[](int index) const {
 
 bool Point::operator==(const Point& other) const {
 
-    return name == other.name && is_visible == other.is_visible &&
+    return name == other.name && is_visible == other.is_visible && is_locked == other.is_locked &&
            std::round(_x * 1000000.0) == std::round(other._x * 1000000.0) &&
            std::round(_y * 1000000.0) == std::round(other._y * 1000000.0) &&
            std::round(_z * 1000000.0) == std::round(other._z * 1000000.0) &&
@@ -357,6 +358,7 @@ nlohmann::ordered_json Point::jsondump() const {
 
     nlohmann::ordered_json data;
     data["guid"] = guid();
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["name"] = name;
     data["pointcolor"] = pointcolor.jsondump();
@@ -375,6 +377,7 @@ Point Point::jsonload(const nlohmann::json& data) {
     point.guid() = data.at("guid");
     point.name = data.at("name");
     point.is_visible = data.value("is_visible", true);
+    point.is_locked = data.value("is_locked", false);
     point.pointcolor = Color::jsonload(data.at("pointcolor"));
     point.width = data.at("width");
 
@@ -417,6 +420,9 @@ session_proto::Point Point::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_x(_x);
     proto.set_y(_y);
     proto.set_z(_z);
@@ -435,6 +441,7 @@ Point Point::from_proto(const session_proto::Point& proto) {
 
     point.name = proto.name();
     point.is_visible = !proto.has_is_visible() || proto.is_visible();
+    point.is_locked = proto.is_locked();
     point.width = proto.width();
     point.pointcolor = Color::from_proto(proto.pointcolor());
 

@@ -47,11 +47,11 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
     {
       PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_._has_bits_),
       0, // no _extensions_
-      15, 120,  // max_field_number, fast_idx_mask
+      16, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294936576,  // skipmap
+      4294903808,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      14,  // num_field_entries
+      15,  // num_field_entries
       2,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -61,7 +61,10 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       ::_pbi::TcParser::GetTable<::session_proto::NurbsCurve>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 16;
+      {::_pbi::TcParser::FastV8S2,
+       {384, 13, 0,
+        PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_locked_)}},
       // string guid = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 4, 0,
@@ -112,8 +115,8 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
        {106, 3, 1,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_)}},
       // int32 arrowhead = 14;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.arrowhead_), 13>(),
-       {112, 13, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(NurbsCurve, _impl_.arrowhead_), 14>(),
+       {112, 14, 0,
         PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_)}},
       // optional bool is_visible = 15;
       {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(NurbsCurve, _impl_.is_visible_), 12>(),
@@ -147,9 +150,11 @@ constexpr NurbsCurve::ParseTableT_ NurbsCurve::InternalGenerateParseTable_(const
       // repeated .session_proto.Color linecolors = 13;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.linecolors_), _Internal::kHasBitsOffset + 3, 1, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // int32 arrowhead = 14;
-      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.arrowhead_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // optional bool is_visible = 15;
       {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_visible_), _Internal::kHasBitsOffset + 12, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 16;
+      {PROTOBUF_FIELD_OFFSET(NurbsCurve, _impl_.is_locked_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -209,6 +214,7 @@ inline constexpr NurbsCurve::Impl_::Impl_(
         width_{0},
         is_rational_{false},
         is_visible_{false},
+        is_locked_{false},
         arrowhead_{0} {}
 
 template <typename>
@@ -313,7 +319,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_._has_bits_),
-        17, // hasbit index offset
+        18, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.dimension_),
@@ -328,6 +334,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.linecolors_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.arrowhead_),
         PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::NurbsCurve, _impl_.is_locked_),
         4,
         5,
         6,
@@ -340,8 +347,9 @@ const ::uint32_t
         10,
         2,
         3,
-        13,
+        14,
         12,
+        13,
 };
 
 static const ::_pbi::MigrationSchema
@@ -355,15 +363,16 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_nurbscurve_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\020nurbscurve.proto\022\rsession_proto\032\013color"
-    ".proto\"\312\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
+    ".proto\"\360\002\n\nNurbsCurve\022\014\n\004guid\030\001 \001(\t\022\014\n\004n"
     "ame\030\002 \001(\t\022\021\n\tdimension\030\003 \001(\005\022\023\n\013is_ratio"
     "nal\030\004 \001(\010\022\r\n\005order\030\005 \001(\005\022\020\n\010cv_count\030\006 \001"
     "(\005\022\021\n\tcv_stride\030\007 \001(\005\022\022\n\nnurbsknots\030\010 \003("
     "\001\022\013\n\003cvs\030\t \003(\001\022\r\n\005width\030\n \001(\001\022)\n\013pointco"
     "lors\030\013 \003(\0132\024.session_proto.Color\022(\n\nline"
     "colors\030\r \003(\0132\024.session_proto.Color\022\021\n\tar"
-    "rowhead\030\016 \001(\005\022\027\n\nis_visible\030\017 \001(\010H\000\210\001\001B\r"
-    "\n\013_is_visibleJ\004\010\014\020\rb\006proto3"
+    "rowhead\030\016 \001(\005\022\027\n\nis_visible\030\017 \001(\010H\000\210\001\001\022\026"
+    "\n\tis_locked\030\020 \001(\010H\001\210\001\001B\r\n\013_is_visibleB\014\n"
+    "\n_is_lockedJ\004\010\014\020\rb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_nurbscurve_2eproto_deps[1] = {
@@ -373,7 +382,7 @@ static ::absl::once_flag descriptor_table_nurbscurve_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_nurbscurve_2eproto = {
     false,
     false,
-    387,
+    425,
     descriptor_table_protodef_nurbscurve_2eproto,
     "nurbscurve.proto",
     &descriptor_table_nurbscurve_2eproto_once,
@@ -579,7 +588,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
                  reinterpret_cast<char*>(&this_._impl_.dimension_)) +
                  sizeof(_impl_.order_));
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     ::memset(&this_._impl_.cv_count_, 0,
              static_cast<::size_t>(
                  reinterpret_cast<char*>(&this_._impl_.arrowhead_) -
@@ -722,7 +731,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
   }
 
   // int32 arrowhead = 14;
-  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+  if (CheckHasBit(cached_has_bits, 0x00004000U)) {
     if (this_._internal_arrowhead() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<14>(
@@ -735,6 +744,13 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
     target = stream->EnsureSpace(target);
     target = ::_pbi::WireFormatLite::WriteBoolToArray(
         15, this_._internal_is_visible(), target);
+  }
+
+  // optional bool is_locked = 16;
+  if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        16, this_._internal_is_locked(), target);
   }
 
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
@@ -760,6 +776,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00002000U & cached_has_bits) * 3;
   total_size += static_cast<bool>(0x00001000U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double nurbsknots = 8;
@@ -825,7 +842,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00002f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00004f00U)) {
     // int32 cv_count = 6;
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (this_._internal_cv_count() != 0) {
@@ -853,7 +870,7 @@ PROTOBUF_NOINLINE void NurbsCurve::Clear() {
       }
     }
     // int32 arrowhead = 14;
-    if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
       if (this_._internal_arrowhead() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_arrowhead());
@@ -924,7 +941,7 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (from._internal_cv_count() != 0) {
         _this->_impl_.cv_count_ = from._impl_.cv_count_;
@@ -949,6 +966,9 @@ void NurbsCurve::MergeImpl(::google::protobuf::MessageLite& to_msg,
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
     if (CheckHasBit(cached_has_bits, 0x00002000U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
       if (from._internal_arrowhead() != 0) {
         _this->_impl_.arrowhead_ = from._impl_.arrowhead_;
       }

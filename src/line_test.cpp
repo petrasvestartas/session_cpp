@@ -520,4 +520,19 @@ namespace session_cpp {
         MINI_CHECK(!proto.is_visible);
     }
 
+    MINI_TEST("Line", "Is Locked Round Trip") {
+        // using session_cpp::Line;
+
+        Line locked = Line(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+        MINI_CHECK(!locked.is_locked);
+
+        locked.is_locked = true;
+        const Line json = Line::file_json_loads(locked.file_json_dumps());
+        const Line proto = Line::pb_loads(locked.pb_dumps());
+
+        MINI_CHECK(json.is_locked);
+        MINI_CHECK(proto.is_locked);
+    }
+
 }

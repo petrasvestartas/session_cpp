@@ -47,11 +47,11 @@ constexpr Point::ParseTableT_ Point::InternalGenerateParseTable_(const ::_pbi::C
     {
       PROTOBUF_FIELD_OFFSET(Point, _impl_._has_bits_),
       0, // no _extensions_
-      9, 120,  // max_field_number, fast_idx_mask
+      10, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294966912,  // skipmap
+      4294966400,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      8,  // num_field_entries
+      9,  // num_field_entries
       1,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -95,7 +95,10 @@ constexpr Point::ParseTableT_ Point::InternalGenerateParseTable_(const ::_pbi::C
       {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Point, _impl_.is_visible_), 7>(),
        {72, 7, 0,
         PROTOBUF_FIELD_OFFSET(Point, _impl_.is_visible_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 10;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Point, _impl_.is_locked_), 8>(),
+       {80, 8, 0,
+        PROTOBUF_FIELD_OFFSET(Point, _impl_.is_locked_)}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
@@ -120,6 +123,8 @@ constexpr Point::ParseTableT_ Point::InternalGenerateParseTable_(const ::_pbi::C
       {PROTOBUF_FIELD_OFFSET(Point, _impl_.pointcolor_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
       // optional bool is_visible = 9;
       {PROTOBUF_FIELD_OFFSET(Point, _impl_.is_visible_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 10;
+      {PROTOBUF_FIELD_OFFSET(Point, _impl_.is_locked_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -152,7 +157,8 @@ inline constexpr Point::Impl_::Impl_(
         y_{0},
         z_{0},
         width_{0},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr Point::Point(::_pbi::ConstantInitialized,
@@ -256,7 +262,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_._has_bits_),
-        11, // hasbit index offset
+        12, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.x_),
@@ -265,6 +271,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.pointcolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Point, _impl_.is_locked_),
         0,
         1,
         3,
@@ -273,6 +280,7 @@ const ::uint32_t
         6,
         2,
         7,
+        8,
 };
 
 static const ::_pbi::MigrationSchema
@@ -286,11 +294,12 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_point_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\013point.proto\022\rsession_proto\032\013color.prot"
-    "o\"\253\001\n\005Point\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022"
+    "o\"\321\001\n\005Point\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022"
     "\t\n\001x\030\003 \001(\001\022\t\n\001y\030\004 \001(\001\022\t\n\001z\030\005 \001(\001\022\r\n\005widt"
     "h\030\006 \001(\001\022(\n\npointcolor\030\007 \001(\0132\024.session_pr"
-    "oto.Color\022\027\n\nis_visible\030\t \001(\010H\000\210\001\001B\r\n\013_i"
-    "s_visibleJ\004\010\010\020\tb\006proto3"
+    "oto.Color\022\027\n\nis_visible\030\t \001(\010H\000\210\001\001\022\026\n\tis"
+    "_locked\030\n \001(\010H\001\210\001\001B\r\n\013_is_visibleB\014\n\n_is"
+    "_lockedJ\004\010\010\020\tb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_point_2eproto_deps[1] = {
@@ -300,7 +309,7 @@ static ::absl::once_flag descriptor_table_point_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_point_2eproto = {
     false,
     false,
-    223,
+    261,
     descriptor_table_protodef_point_2eproto,
     "point.proto",
     &descriptor_table_point_2eproto_once,
@@ -360,9 +369,9 @@ Point::Point(
                offsetof(Impl_, x_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, x_),
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, x_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Point)
 }
@@ -377,9 +386,9 @@ inline void Point::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, pointcolor_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, pointcolor_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 Point::~Point() {
   // @@protoc_insertion_point(destructor:session_proto.Point)
@@ -450,6 +459,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
                  reinterpret_cast<char*>(&this_._impl_.x_)) +
                  sizeof(_impl_.is_visible_));
   }
+  this_._impl_.is_locked_ = false;
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -543,6 +553,13 @@ PROTOBUF_NOINLINE void Point::Clear() {
         9, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 10;
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        10, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -566,7 +583,7 @@ PROTOBUF_NOINLINE void Point::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  total_size += static_cast<bool>(0x00000080U & cached_has_bits) * 2;
+  total_size += ::absl::popcount(0x00000180U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // string guid = 1;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -681,6 +698,9 @@ void Point::MergeImpl(::google::protobuf::MessageLite& to_msg,
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
   }
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    _this->_impl_.is_locked_ = from._impl_.is_locked_;
+  }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
@@ -703,8 +723,8 @@ void Point::InternalSwap(Point* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Point, _impl_.is_visible_)
-      + sizeof(Point::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(Point, _impl_.is_locked_)
+      + sizeof(Point::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(Point, _impl_.pointcolor_)>(
           reinterpret_cast<char*>(&_impl_.pointcolor_),
           reinterpret_cast<char*>(&other->_impl_.pointcolor_));

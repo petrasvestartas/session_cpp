@@ -1343,4 +1343,21 @@ MINI_TEST("NurbsSurface", "Is Visible Round Trip") {
     MINI_CHECK(!proto.is_visible);
 }
 
+MINI_TEST("NurbsSurface", "Is Locked Round Trip") {
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+
+    const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(0.0, 1.0, 0.0), Point(1.0, 1.0, 0.0)};
+    NurbsSurface locked = NurbsSurface::create(false, false, 1, 1, 2, 2, points);
+
+    MINI_CHECK(!locked.is_locked);
+
+    locked.is_locked = true;
+    const NurbsSurface json = NurbsSurface::file_json_loads(locked.file_json_dumps());
+    const NurbsSurface proto = NurbsSurface::pb_loads(locked.pb_dumps());
+
+    MINI_CHECK(json.is_locked);
+    MINI_CHECK(proto.is_locked);
+}
+
 } // namespace session_cpp

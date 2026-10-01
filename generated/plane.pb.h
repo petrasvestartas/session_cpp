@@ -221,6 +221,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
     kLinecolorFieldNumber = 6,
     kWidthFieldNumber = 4,
     kIsVisibleFieldNumber = 7,
+    kIsLockedFieldNumber = 8,
   };
   // repeated double frame = 3;
   [[nodiscard]] int frame_size() const;
@@ -307,11 +308,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 8;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Plane)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 6,
+      ::google::protobuf::internal::TcParseTable<3, 7,
                           1, 36,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -346,6 +358,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Plane final : public ::google::prot
     ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     double width_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -690,6 +703,34 @@ inline bool Plane::_internal_is_visible() const {
 inline void Plane::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 8;
+inline bool Plane::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
+  return value;
+}
+inline void Plane::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+}
+inline bool Plane::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.Plane.is_locked)
+  return _internal_is_locked();
+}
+inline void Plane::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  // @@protoc_insertion_point(field_set:session_proto.Plane.is_locked)
+}
+inline bool Plane::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void Plane::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

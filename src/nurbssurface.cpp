@@ -1572,6 +1572,7 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     if (m_mesh.number_of_vertices() > 0)
         j["mesh"] = m_mesh.jsondump();
 
+    j["is_locked"] = is_locked;
     j["is_visible"] = is_visible;
     j["name"] = name;
     j["nurbsknots_u"] = m_nurbsknot[0];
@@ -1605,6 +1606,7 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
     surface.guid() = data.value("guid", ::guid());
     surface.name = data.value("name", "my_nurbssurface");
     surface.is_visible = data.value("is_visible", true);
+    surface.is_locked = data.value("is_locked", false);
     surface.width = data.value("width", 1.0);
     surface.pointcolors = colors_from_json(data, "pointcolors");
     surface.facecolors = colors_from_json(data, "facecolors");
@@ -1666,6 +1668,9 @@ session_proto::NurbsSurface NurbsSurface::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
     proto.set_order_u(m_order[0]);
@@ -1717,6 +1722,7 @@ NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) 
 
     surface.name = proto.name();
     surface.is_visible = !proto.has_is_visible() || proto.is_visible();
+    surface.is_locked = proto.is_locked();
     surface.width = proto.width();
     surface.pointcolors = colors_from_proto(proto.pointcolors());
     surface.facecolors = colors_from_proto(proto.facecolors());
@@ -1832,6 +1838,7 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     _guid.clear();
     name = src.name;
     is_visible = src.is_visible;
+    is_locked = src.is_locked;
     width = src.width;
     pointcolors = src.pointcolors;
     facecolors = src.facecolors;

@@ -47,11 +47,11 @@ constexpr Plane::ParseTableT_ Plane::InternalGenerateParseTable_(const ::_pbi::C
     {
       PROTOBUF_FIELD_OFFSET(Plane, _impl_._has_bits_),
       0, // no _extensions_
-      7, 56,  // max_field_number, fast_idx_mask
+      8, 56,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294967184,  // skipmap
+      4294967056,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      6,  // num_field_entries
+      7,  // num_field_entries
       1,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -61,7 +61,10 @@ constexpr Plane::ParseTableT_ Plane::InternalGenerateParseTable_(const ::_pbi::C
       ::_pbi::TcParser::GetTable<::session_proto::Plane>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 8;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Plane, _impl_.is_locked_), 6>(),
+       {64, 6, 0,
+        PROTOBUF_FIELD_OFFSET(Plane, _impl_.is_locked_)}},
       // string guid = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 1, 0,
@@ -102,6 +105,8 @@ constexpr Plane::ParseTableT_ Plane::InternalGenerateParseTable_(const ::_pbi::C
       {PROTOBUF_FIELD_OFFSET(Plane, _impl_.linecolor_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
       // optional bool is_visible = 7;
       {PROTOBUF_FIELD_OFFSET(Plane, _impl_.is_visible_), _Internal::kHasBitsOffset + 5, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 8;
+      {PROTOBUF_FIELD_OFFSET(Plane, _impl_.is_locked_), _Internal::kHasBitsOffset + 6, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -136,7 +141,8 @@ inline constexpr Plane::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         linecolor_{nullptr},
         width_{0},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr Plane::Plane(::_pbi::ConstantInitialized,
@@ -240,19 +246,21 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_._has_bits_),
-        9, // hasbit index offset
+        10, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.frame_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.linecolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Plane, _impl_.is_locked_),
         1,
         2,
         0,
         4,
         3,
         5,
+        6,
 };
 
 static const ::_pbi::MigrationSchema
@@ -266,11 +274,12 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_plane_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\013plane.proto\022\rsession_proto\032\013color.prot"
-    "o\"\230\001\n\005Plane\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022"
+    "o\"\276\001\n\005Plane\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022"
     "\r\n\005frame\030\003 \003(\001\022\r\n\005width\030\004 \001(\001\022\'\n\tlinecol"
     "or\030\006 \001(\0132\024.session_proto.Color\022\027\n\nis_vis"
-    "ible\030\007 \001(\010H\000\210\001\001B\r\n\013_is_visibleJ\004\010\005\020\006b\006pr"
-    "oto3"
+    "ible\030\007 \001(\010H\000\210\001\001\022\026\n\tis_locked\030\010 \001(\010H\001\210\001\001B"
+    "\r\n\013_is_visibleB\014\n\n_is_lockedJ\004\010\005\020\006b\006prot"
+    "o3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_plane_2eproto_deps[1] = {
@@ -280,7 +289,7 @@ static ::absl::once_flag descriptor_table_plane_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_plane_2eproto = {
     false,
     false,
-    204,
+    242,
     descriptor_table_protodef_plane_2eproto,
     "plane.proto",
     &descriptor_table_plane_2eproto_once,
@@ -347,9 +356,9 @@ Plane::Plane(
                offsetof(Impl_, width_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, width_),
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, width_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Plane)
 }
@@ -369,9 +378,9 @@ inline void Plane::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, linecolor_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, linecolor_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 Plane::~Plane() {
   // @@protoc_insertion_point(destructor:session_proto.Plane)
@@ -438,12 +447,12 @@ PROTOBUF_NOINLINE void Plane::Clear() {
       this_._impl_.linecolor_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000030U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000070U)) {
     ::memset(&this_._impl_.width_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.is_visible_) -
+                 reinterpret_cast<char*>(&this_._impl_.is_locked_) -
                  reinterpret_cast<char*>(&this_._impl_.width_)) +
-                 sizeof(_impl_.is_visible_));
+                 sizeof(_impl_.is_locked_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -518,6 +527,13 @@ PROTOBUF_NOINLINE void Plane::Clear() {
         7, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        8, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -541,7 +557,7 @@ PROTOBUF_NOINLINE void Plane::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  total_size += static_cast<bool>(0x00000020U & cached_has_bits) * 2;
+  total_size += ::absl::popcount(0x00000060U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
     // repeated double frame = 3;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -597,7 +613,7 @@ void Plane::MergeImpl(::google::protobuf::MessageLite& to_msg,
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000003fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_frame()->MergeFrom(from._internal_frame());
     }
@@ -635,6 +651,9 @@ void Plane::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00000020U)) {
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -659,8 +678,8 @@ void Plane::InternalSwap(Plane* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Plane, _impl_.is_visible_)
-      + sizeof(Plane::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(Plane, _impl_.is_locked_)
+      + sizeof(Plane::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(Plane, _impl_.linecolor_)>(
           reinterpret_cast<char*>(&_impl_.linecolor_),
           reinterpret_cast<char*>(&other->_impl_.linecolor_));

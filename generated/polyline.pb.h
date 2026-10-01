@@ -223,6 +223,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     kWidthFieldNumber = 4,
     kArrowheadFieldNumber = 8,
     kIsVisibleFieldNumber = 9,
+    kIsLockedFieldNumber = 10,
   };
   // repeated double coords = 3;
   [[nodiscard]] int coords_size() const;
@@ -338,11 +339,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 10;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Polyline)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 8,
+      ::google::protobuf::internal::TcParseTable<4, 9,
                           1, 47,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -379,6 +391,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Polyline final : public ::google::p
     double width_;
     ::int32_t arrowhead_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -798,6 +811,34 @@ inline bool Polyline::_internal_is_visible() const {
 inline void Polyline::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 10;
+inline bool Polyline::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000100U);
+  return value;
+}
+inline void Polyline::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+}
+inline bool Polyline::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.Polyline.is_locked)
+  return _internal_is_locked();
+}
+inline void Polyline::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_set:session_proto.Polyline.is_locked)
+}
+inline bool Polyline::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void Polyline::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

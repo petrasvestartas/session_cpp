@@ -40,7 +40,7 @@ OBB::OBB(const OBB& other)
       y_axis(other.y_axis),
       z_axis(other.z_axis),
       half_size(other.half_size),
-      name(other.name), is_visible(other.is_visible) {}
+      name(other.name), is_visible(other.is_visible), is_locked(other.is_locked) {}
 
 OBB& OBB::operator=(const OBB& other) {
 
@@ -55,6 +55,7 @@ OBB& OBB::operator=(const OBB& other) {
     half_size = other.half_size;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
 
     return *this;
 }
@@ -666,6 +667,7 @@ nlohmann::ordered_json OBB::jsondump() const {
     data["center"] = center.jsondump();
     data["guid"] = guid();
     data["half_size"] = half_size.jsondump();
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["name"] = name;
     data["type"] = "OBB";
@@ -689,6 +691,7 @@ OBB OBB::jsonload(const nlohmann::json& data) {
     obb.guid() = data.at("guid");
     obb.name = data.at("name");
     obb.is_visible = data.value("is_visible", true);
+    obb.is_locked = data.value("is_locked", false);
 
     return obb;
 }
@@ -734,6 +737,9 @@ session_proto::BoundingBox OBB::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     return proto;
 }
 
@@ -752,6 +758,7 @@ OBB OBB::from_proto(const session_proto::BoundingBox& proto) {
 
     obb.name = proto.name();
     obb.is_visible = !proto.has_is_visible() || proto.is_visible();
+    obb.is_locked = proto.is_locked();
 
     return obb;
 }

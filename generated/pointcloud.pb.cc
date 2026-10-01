@@ -47,11 +47,11 @@ constexpr PointCloud::ParseTableT_ PointCloud::InternalGenerateParseTable_(const
     {
       PROTOBUF_FIELD_OFFSET(PointCloud, _impl_._has_bits_),
       0, // no _extensions_
-      16, 120,  // max_field_number, fast_idx_mask
+      17, 248,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294901824,  // skipmap
+      4294836288,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      15,  // num_field_entries
+      16,  // num_field_entries
       0,  // num_aux_entries
       offsetof(ParseTableT_, field_names),  // no aux_entries
       class_data,
@@ -61,10 +61,7 @@ constexpr PointCloud::ParseTableT_ PointCloud::InternalGenerateParseTable_(const
       ::_pbi::TcParser::GetTable<::session_proto::PointCloud>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      // optional bool is_visible = 16;
-      {::_pbi::TcParser::FastV8S2,
-       {384, 14, 0,
-        PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_visible_)}},
+      {::_pbi::TcParser::MiniParse, {}},
       // string guid = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 11, 0,
@@ -122,6 +119,28 @@ constexpr PointCloud::ParseTableT_ PointCloud::InternalGenerateParseTable_(const
       {::_pbi::TcParser::FastF32P1,
        {122, 10, 0,
         PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_ids_)}},
+      // optional bool is_visible = 16;
+      {::_pbi::TcParser::FastV8S2,
+       {384, 14, 0,
+        PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_visible_)}},
+      // optional bool is_locked = 17;
+      {::_pbi::TcParser::FastV8S2,
+       {392, 15, 0,
+        PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_locked_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
     }}, {{
       65535, 65535
     }}, {{
@@ -155,10 +174,12 @@ constexpr PointCloud::ParseTableT_ PointCloud::InternalGenerateParseTable_(const
       {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_ids_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedFixed32)},
       // optional bool is_visible = 16;
       {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_visible_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 17;
+      {PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_locked_), _Internal::kHasBitsOffset + 15, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     // no aux_entries
     {{
-      "\30\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
+      "\30\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
       "session_proto.PointCloud"
       "guid"
       "name"
@@ -232,7 +253,8 @@ inline constexpr PointCloud::Impl_::Impl_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
         point_size_{0},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr PointCloud::PointCloud(::_pbi::ConstantInitialized,
@@ -336,7 +358,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_._has_bits_),
-        18, // hasbit index offset
+        19, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.coords_),
@@ -352,6 +374,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.lod_children_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.point_ids_),
         PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::PointCloud, _impl_.is_locked_),
         11,
         12,
         0,
@@ -367,6 +390,7 @@ const ::uint32_t
         9,
         10,
         14,
+        15,
 };
 
 static const ::_pbi::MigrationSchema
@@ -379,7 +403,7 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 };
 const char descriptor_table_protodef_pointcloud_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\020pointcloud.proto\022\rsession_proto\"\265\002\n\nPo"
+    "\n\020pointcloud.proto\022\rsession_proto\"\333\002\n\nPo"
     "intCloud\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\016\n\006"
     "coords\030\003 \003(\001\022\016\n\006colors\030\004 \003(\r\022\017\n\007normals\030"
     "\005 \003(\001\022\022\n\npoint_size\030\006 \001(\001\022\017\n\007lod_min\030\010 \003"
@@ -387,13 +411,14 @@ const char descriptor_table_protodef_pointcloud_2eproto[] ABSL_ATTRIBUTE_SECTION
     "\001\022\021\n\tlod_level\030\013 \003(\005\022\021\n\tlod_first\030\014 \003(\005\022"
     "\021\n\tlod_count\030\r \003(\005\022\024\n\014lod_children\030\016 \003(\005"
     "\022\021\n\tpoint_ids\030\017 \003(\007\022\027\n\nis_visible\030\020 \001(\010H"
-    "\000\210\001\001B\r\n\013_is_visibleJ\004\010\007\020\010b\006proto3"
+    "\000\210\001\001\022\026\n\tis_locked\030\021 \001(\010H\001\210\001\001B\r\n\013_is_visi"
+    "bleB\014\n\n_is_lockedJ\004\010\007\020\010b\006proto3"
 };
 static ::absl::once_flag descriptor_table_pointcloud_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_pointcloud_2eproto = {
     false,
     false,
-    353,
+    391,
     descriptor_table_protodef_pointcloud_2eproto,
     "pointcloud.proto",
     &descriptor_table_pointcloud_2eproto_once,
@@ -521,9 +546,9 @@ PointCloud::PointCloud(
                offsetof(Impl_, point_size_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, point_size_),
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, point_size_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.PointCloud)
 }
@@ -593,9 +618,9 @@ inline void PointCloud::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, point_size_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, point_size_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 PointCloud::~PointCloud() {
   // @@protoc_insertion_point(destructor:session_proto.PointCloud)
@@ -689,12 +714,12 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
       this_._impl_.name_.ClearNonDefaultToEmpty();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00006000U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000e000U)) {
     ::memset(&this_._impl_.point_size_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.is_visible_) -
+                 reinterpret_cast<char*>(&this_._impl_.is_locked_) -
                  reinterpret_cast<char*>(&this_._impl_.point_size_)) +
-                 sizeof(_impl_.is_visible_));
+                 sizeof(_impl_.is_locked_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -852,6 +877,13 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
         16, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 17;
+  if (CheckHasBit(cached_has_bits, 0x00008000U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        17, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -875,7 +907,7 @@ PROTOBUF_NOINLINE void PointCloud::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  total_size += static_cast<bool>(0x00004000U & cached_has_bits) * 3;
+  total_size += ::absl::popcount(0x0000c000U & cached_has_bits) * 3;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double coords = 3;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -1038,7 +1070,7 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
       _this->_internal_mutable_lod_first()->MergeFrom(from._internal_lod_first());
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x0000ff00U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       _this->_internal_mutable_lod_count()->MergeFrom(from._internal_lod_count());
     }
@@ -1074,6 +1106,9 @@ void PointCloud::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00004000U)) {
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
+    if (CheckHasBit(cached_has_bits, 0x00008000U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -1108,8 +1143,8 @@ void PointCloud::InternalSwap(PointCloud* PROTOBUF_RESTRICT PROTOBUF_NONNULL oth
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_visible_)
-      + sizeof(PointCloud::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.is_locked_)
+      + sizeof(PointCloud::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(PointCloud, _impl_.point_size_)>(
           reinterpret_cast<char*>(&_impl_.point_size_),
           reinterpret_cast<char*>(&other->_impl_.point_size_));

@@ -1236,4 +1236,19 @@ namespace session_cpp {
         MINI_CHECK(!proto.is_visible);
     }
 
+    MINI_TEST("BRep", "Is Locked Round Trip") {
+        // using session_cpp::BRep;
+
+        BRep locked = BRep::create_box(1.0, 1.0, 1.0);
+
+        MINI_CHECK(!locked.is_locked);
+
+        locked.is_locked = true;
+        const BRep json = BRep::file_json_loads(locked.file_json_dumps());
+        const BRep proto = BRep::pb_loads(locked.pb_dumps());
+
+        MINI_CHECK(json.is_locked);
+        MINI_CHECK(proto.is_locked);
+    }
+
 } // namespace session_cpp

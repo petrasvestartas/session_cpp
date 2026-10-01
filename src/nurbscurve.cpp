@@ -2311,6 +2311,7 @@ nlohmann::ordered_json NurbsCurve::jsondump() const {
     j["guid"] = guid();
     j["is_rational"] = m_is_rat != 0;
     j["linecolors"] = linecolors_arr;
+    j["is_locked"] = is_locked;
     j["is_visible"] = is_visible;
     j["name"] = name;
     j["nurbsknots"] = m_nurbsknot;
@@ -2357,6 +2358,7 @@ NurbsCurve NurbsCurve::jsonload(const nlohmann::json& data) {
     curve.guid() = data.value("guid", ::guid());
     curve.name = data.value("name", "my_nurbscurve");
     curve.is_visible = data.value("is_visible", true);
+    curve.is_locked = data.value("is_locked", false);
     curve.width = data.value("width", 1.0);
     curve.arrowhead = arrowhead_from_string(data.value("arrowhead", "none"));
 
@@ -2415,6 +2417,9 @@ session_proto::NurbsCurve NurbsCurve::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_dimension(m_dim);
     proto.set_is_rational(m_is_rat != 0);
     proto.set_order(m_order);
@@ -2459,6 +2464,7 @@ NurbsCurve NurbsCurve::from_proto(const session_proto::NurbsCurve& proto) {
 
     curve.name = proto.name();
     curve.is_visible = !proto.has_is_visible() || proto.is_visible();
+    curve.is_locked = proto.is_locked();
     curve.width = proto.width() != 0.0 ? proto.width() : 1.0;
     curve.m_nurbsknot.clear();
 
@@ -2770,6 +2776,7 @@ void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
     _guid.clear();
     name = src.name;
     is_visible = src.is_visible;
+    is_locked = src.is_locked;
     width = src.width;
     pointcolors = src.pointcolors;
     linecolors = src.linecolors;

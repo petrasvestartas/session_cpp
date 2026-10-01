@@ -1211,4 +1211,21 @@ namespace session_cpp {
         MINI_CHECK(!proto.is_visible);
     }
 
+    MINI_TEST("Polyline", "Is Locked Round Trip") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+
+        const std::vector<Point> points = {Point(0.0, 0.0, 0.0), Point(1.0, 0.0, 0.0), Point(1.0, 1.0, 0.0)};
+        Polyline locked = Polyline(points);
+
+        MINI_CHECK(!locked.is_locked);
+
+        locked.is_locked = true;
+        const Polyline json = Polyline::file_json_loads(locked.file_json_dumps());
+        const Polyline proto = Polyline::pb_loads(locked.pb_dumps());
+
+        MINI_CHECK(json.is_locked);
+        MINI_CHECK(proto.is_locked);
+    }
+
 } // namespace session_cpp

@@ -307,6 +307,7 @@ public:
     std::map<std::string, double> default_edge_attributes;                       // Default edge attrs.
     std::string name = "my_mesh";                                                // Mesh name.
     bool is_visible = true;                                                      // Whether a viewer draws it.
+    bool is_locked = false;                                                      // Whether a viewer keeps it from moving.
     ColorMode color_mode = ColorMode::OBJECTCOLOR;                               // Active color mode.
 
     // ═══════════════════════════════════════════════════════════════════════════

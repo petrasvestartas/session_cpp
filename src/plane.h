@@ -40,6 +40,7 @@ private:
 public:
     std::string name = "my_plane"; // Plane name.
     bool is_visible = true; // Whether a viewer draws it.
+    bool is_locked = false; // Whether a viewer keeps it from moving.
     double width = 1.0; // Display width.
     Color linecolor = Color::blue(); // Display color.
 

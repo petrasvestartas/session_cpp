@@ -224,6 +224,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
     kZAxisFieldNumber = 4,
     kHalfSizeFieldNumber = 5,
     kIsVisibleFieldNumber = 9,
+    kIsLockedFieldNumber = 10,
   };
   // string guid = 6;
   void clear_guid() ;
@@ -341,11 +342,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 10;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.BoundingBox)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 8,
+      ::google::protobuf::internal::TcParseTable<4, 9,
                           5, 50,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -382,6 +394,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BoundingBox final : public ::google
     ::session_proto::Vector* PROTOBUF_NULLABLE z_axis_;
     ::session_proto::Vector* PROTOBUF_NULLABLE half_size_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1023,6 +1036,34 @@ inline bool BoundingBox::_internal_is_visible() const {
 inline void BoundingBox::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 10;
+inline bool BoundingBox::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000100U);
+  return value;
+}
+inline void BoundingBox::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
+}
+inline bool BoundingBox::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.BoundingBox.is_locked)
+  return _internal_is_locked();
+}
+inline void BoundingBox::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
+  // @@protoc_insertion_point(field_set:session_proto.BoundingBox.is_locked)
+}
+inline bool BoundingBox::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void BoundingBox::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

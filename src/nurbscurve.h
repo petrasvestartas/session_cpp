@@ -33,6 +33,7 @@ private:
 public:
     std::string name = "my_nurbscurve"; // Curve name.
     bool is_visible = true; // Whether a viewer draws it.
+    bool is_locked = false; // Whether a viewer keeps it from moving.
     double width = 1.0; // Display width.
     std::vector<Color> pointcolors; // Display color per control point.
     std::vector<Color> linecolors; // Display color per control polygon segment.

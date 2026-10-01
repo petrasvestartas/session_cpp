@@ -322,4 +322,19 @@ namespace session_cpp {
         MINI_CHECK(!proto.is_visible);
     }
 
+    MINI_TEST("Plane", "Is Locked Round Trip") {
+        // using session_cpp::Plane;
+
+        Plane locked = Plane::xy_plane();
+
+        MINI_CHECK(!locked.is_locked);
+
+        locked.is_locked = true;
+        const Plane json = Plane::file_json_loads(locked.file_json_dumps());
+        const Plane proto = Plane::pb_loads(locked.pb_dumps());
+
+        MINI_CHECK(json.is_locked);
+        MINI_CHECK(proto.is_locked);
+    }
+
 } // namespace session_cpp

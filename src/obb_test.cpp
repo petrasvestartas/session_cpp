@@ -376,4 +376,20 @@ MINI_TEST("OBB", "Is Visible Round Trip") {
     MINI_CHECK(!proto.is_visible);
 }
 
+MINI_TEST("OBB", "Is Locked Round Trip") {
+    // using session_cpp::OBB;
+    // using session_cpp::Point;
+
+    OBB locked = OBB::from_point(Point(1.0, 2.0, 3.0), 5.0);
+
+    MINI_CHECK(!locked.is_locked);
+
+    locked.is_locked = true;
+    const OBB json = OBB::file_json_loads(locked.file_json_dumps());
+    const OBB proto = OBB::pb_loads(locked.pb_dumps());
+
+    MINI_CHECK(json.is_locked);
+    MINI_CHECK(proto.is_locked);
+}
+
 }

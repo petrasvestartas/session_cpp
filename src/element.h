@@ -189,6 +189,7 @@ protected:
 public:
     std::string name; // Element name.
     bool is_visible = true; // Whether a viewer draws it.
+    bool is_locked = false; // Whether a viewer keeps it from moving.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors

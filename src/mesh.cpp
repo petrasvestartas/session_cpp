@@ -172,6 +172,7 @@ Mesh& Mesh::operator=(const Mesh& other) {
     _guid = other._guid;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     halfedge = other.halfedge;
     vertex = other.vertex;
     face = other.face;
@@ -5870,6 +5871,7 @@ nlohmann::ordered_json Mesh::jsondump() const {
     data["facedata"] = facedata_json;
     data["guid"] = guid();
     data["halfedge"] = halfedge_to_json(halfedge.empty() && !face.empty() ? compute_halfedges() : halfedge);
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["linecolors"] = colors_to_json(linecolors);
     data["max_face"] = max_face;
@@ -6005,6 +6007,7 @@ Mesh Mesh::jsonload(const nlohmann::json& data) {
     if (data.contains("name"))
         mesh.name = data["name"];
     mesh.is_visible = data.value("is_visible", true);
+    mesh.is_locked = data.value("is_locked", false);
 
     if (data.contains("halfedge"))
         mesh.halfedge = halfedge_from_json(data["halfedge"]);
@@ -6162,6 +6165,9 @@ session_proto::Mesh Mesh::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     vertices_to_proto(vertex, proto);
     faces_to_proto(face, facedata, face_holes, proto);
 
@@ -6288,6 +6294,7 @@ Mesh Mesh::from_proto(const session_proto::Mesh& proto) {
 
     mesh.name = proto.name();
     mesh.is_visible = !proto.has_is_visible() || proto.is_visible();
+    mesh.is_locked = proto.is_locked();
 
     mesh.vertex = vertices_from_proto(proto);
     faces_from_proto(proto, mesh);

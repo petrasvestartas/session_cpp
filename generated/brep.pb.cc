@@ -1331,11 +1331,11 @@ constexpr BRep::ParseTableT_ BRep::InternalGenerateParseTable_(const ::_pbi::Cla
     {
       PROTOBUF_FIELD_OFFSET(BRep, _impl_._has_bits_),
       0, // no _extensions_
-      15, 120,  // max_field_number, fast_idx_mask
+      16, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294942720,  // skipmap
+      4294909952,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      14,  // num_field_entries
+      15,  // num_field_entries
       10,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -1345,7 +1345,10 @@ constexpr BRep::ParseTableT_ BRep::InternalGenerateParseTable_(const ::_pbi::Cla
       ::_pbi::TcParser::GetTable<::session_proto::BRep>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 16;
+      {::_pbi::TcParser::FastV8S2,
+       {384, 14, 0,
+        PROTOBUF_FIELD_OFFSET(BRep, _impl_.is_locked_)}},
       // string guid = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 9, 0,
@@ -1434,6 +1437,8 @@ constexpr BRep::ParseTableT_ BRep::InternalGenerateParseTable_(const ::_pbi::Cla
       {PROTOBUF_FIELD_OFFSET(BRep, _impl_.surfacecolor_), _Internal::kHasBitsOffset + 11, 9, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
       // optional bool is_visible = 15;
       {PROTOBUF_FIELD_OFFSET(BRep, _impl_.is_visible_), _Internal::kHasBitsOffset + 13, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 16;
+      {PROTOBUF_FIELD_OFFSET(BRep, _impl_.is_locked_), _Internal::kHasBitsOffset + 14, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -1553,7 +1558,8 @@ inline constexpr BRep::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         surfacecolor_{nullptr},
         width_{0},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr BRep::BRep(::_pbi::ConstantInitialized,
@@ -1721,7 +1727,7 @@ const ::uint32_t
         0,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_._has_bits_),
-        17, // hasbit index offset
+        18, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.curves_2d_),
@@ -1736,6 +1742,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.surfacecolor_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::BRep, _impl_.is_locked_),
         9,
         10,
         0,
@@ -1750,6 +1757,7 @@ const ::uint32_t
         12,
         11,
         13,
+        14,
 };
 
 static const ::_pbi::MigrationSchema
@@ -1797,7 +1805,7 @@ const char descriptor_table_protodef_brep_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIA
     "rance\030\003 \001(\001\022\'\n\tfacecolor\030\004 \001(\0132\024.session"
     "_proto.Color\"2\n\tBRepShell\022%\n\005faces\030\001 \003(\013"
     "2\026.session_proto.BRepRef\"3\n\tBRepSolid\022&\n"
-    "\006shells\030\001 \003(\0132\026.session_proto.BRepRef\"\217\004"
+    "\006shells\030\001 \003(\0132\026.session_proto.BRepRef\"\265\004"
     "\n\004BRep\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022,\n\tcu"
     "rves_2d\030\003 \003(\0132\031.session_proto.NurbsCurve"
     "\022,\n\tcurves_3d\030\004 \003(\0132\031.session_proto.Nurb"
@@ -1810,11 +1818,12 @@ const char descriptor_table_protodef_brep_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIA
     "sion_proto.BRepShell\022(\n\006solids\030\013 \003(\0132\030.s"
     "ession_proto.BRepSolid\022\r\n\005width\030\014 \001(\001\022*\n"
     "\014surfacecolor\030\r \001(\0132\024.session_proto.Colo"
-    "r\022\027\n\nis_visible\030\017 \001(\010H\000\210\001\001B\r\n\013_is_visibl"
-    "eJ\004\010\016\020\017*x\n\017BRepOrientation\022\027\n\023ORIENTATIO"
-    "N_FORWARD\020\000\022\030\n\024ORIENTATION_REVERSED\020\001\022\030\n"
-    "\024ORIENTATION_INTERNAL\020\002\022\030\n\024ORIENTATION_E"
-    "XTERNAL\020\003b\006proto3"
+    "r\022\027\n\nis_visible\030\017 \001(\010H\000\210\001\001\022\026\n\tis_locked\030"
+    "\020 \001(\010H\001\210\001\001B\r\n\013_is_visibleB\014\n\n_is_lockedJ"
+    "\004\010\016\020\017*x\n\017BRepOrientation\022\027\n\023ORIENTATION_"
+    "FORWARD\020\000\022\030\n\024ORIENTATION_REVERSED\020\001\022\030\n\024O"
+    "RIENTATION_INTERNAL\020\002\022\030\n\024ORIENTATION_EXT"
+    "ERNAL\020\003b\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_brep_2eproto_deps[4] = {
@@ -1827,7 +1836,7 @@ static ::absl::once_flag descriptor_table_brep_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_brep_2eproto = {
     false,
     false,
-    1457,
+    1495,
     descriptor_table_protodef_brep_2eproto,
     "brep.proto",
     &descriptor_table_brep_2eproto_once,
@@ -4010,9 +4019,9 @@ BRep::BRep(
                offsetof(Impl_, width_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, width_),
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, width_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.BRep)
 }
@@ -4072,9 +4081,9 @@ inline void BRep::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, surfacecolor_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, surfacecolor_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 BRep::~BRep() {
   // @@protoc_insertion_point(destructor:session_proto.BRep)
@@ -4167,12 +4176,12 @@ PROTOBUF_NOINLINE void BRep::Clear() {
       this_._impl_.surfacecolor_->Clear();
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003000U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007000U)) {
     ::memset(&this_._impl_.width_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.is_visible_) -
+                 reinterpret_cast<char*>(&this_._impl_.is_locked_) -
                  reinterpret_cast<char*>(&this_._impl_.width_)) +
-                 sizeof(_impl_.is_visible_));
+                 sizeof(_impl_.is_locked_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -4348,6 +4357,13 @@ PROTOBUF_NOINLINE void BRep::Clear() {
         15, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 16;
+  if (CheckHasBit(cached_has_bits, 0x00004000U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        16, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -4371,6 +4387,7 @@ PROTOBUF_NOINLINE void BRep::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00004000U & cached_has_bits) * 3;
   total_size += static_cast<bool>(0x00002000U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated .session_proto.NurbsCurve curves_2d = 3;
@@ -4524,7 +4541,7 @@ void BRep::MergeImpl(::google::protobuf::MessageLite& to_msg,
           from._internal_shells());
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00003f00U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00007f00U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       _this->_internal_mutable_solids()->InternalMergeFromWithArena(
           ::google::protobuf::MessageLite::internal_visibility(), arena,
@@ -4564,6 +4581,9 @@ void BRep::MergeImpl(::google::protobuf::MessageLite& to_msg,
     if (CheckHasBit(cached_has_bits, 0x00002000U)) {
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
+    if (CheckHasBit(cached_has_bits, 0x00004000U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -4596,8 +4616,8 @@ void BRep::InternalSwap(BRep* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(BRep, _impl_.is_visible_)
-      + sizeof(BRep::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(BRep, _impl_.is_locked_)
+      + sizeof(BRep::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(BRep, _impl_.surfacecolor_)>(
           reinterpret_cast<char*>(&_impl_.surfacecolor_),
           reinterpret_cast<char*>(&other->_impl_.surfacecolor_));

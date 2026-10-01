@@ -1935,6 +1935,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
     kObjectcolorFieldNumber = 15,
     kColorModeFieldNumber = 16,
     kIsVisibleFieldNumber = 21,
+    kIsLockedFieldNumber = 22,
     kVerticesFieldNumber = 3,
     kFacesFieldNumber = 4,
     kDefaultVertexAttributesFieldNumber = 7,
@@ -2104,6 +2105,17 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 22;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // map<uint64, .session_proto.VertexData> vertices = 3;
   [[nodiscard]] int vertices_size() const;
   private:
@@ -2198,7 +2210,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<5, 16,
+      ::google::protobuf::internal::TcParseTable<5, 17,
                           11, 122,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -2237,6 +2249,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Mesh final : public ::google::proto
     ::session_proto::Color* PROTOBUF_NULLABLE objectcolor_;
     ::int32_t color_mode_;
     bool is_visible_;
+    bool is_locked_;
     ::google::protobuf::internal::MapField<Mesh_VerticesEntry_DoNotUse, ::uint64_t, ::session_proto::VertexData> vertices_;
     ::google::protobuf::internal::MapField<Mesh_FacesEntry_DoNotUse, ::uint64_t, ::session_proto::FaceData> faces_;
     ::google::protobuf::internal::MapField<Mesh_DefaultVertexAttributesEntry_DoNotUse, ::std::string, double> default_vertex_attributes_;
@@ -2862,7 +2875,7 @@ inline int Mesh::vertices_size() const {
 inline void Mesh::clear_vertices() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.vertices_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>& Mesh::_internal_vertices() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2878,7 +2891,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>* PROTOBU
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::VertexData>* PROTOBUF_NONNULL Mesh::mutable_vertices()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.vertices)
   return _internal_mutable_vertices();
 }
@@ -2893,7 +2906,7 @@ inline int Mesh::faces_size() const {
 inline void Mesh::clear_faces() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.faces_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00000800U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>& Mesh::_internal_faces() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2909,7 +2922,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>* PROTOBUF_
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::FaceData>* PROTOBUF_NONNULL Mesh::mutable_faces()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00000800U);
+  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.faces)
   return _internal_mutable_faces();
 }
@@ -2979,7 +2992,7 @@ inline int Mesh::default_vertex_attributes_size() const {
 inline void Mesh::clear_default_vertex_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_vertex_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00001000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_vertex_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -2995,7 +3008,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_vertex_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00001000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_vertex_attributes)
   return _internal_mutable_default_vertex_attributes();
 }
@@ -3010,7 +3023,7 @@ inline int Mesh::default_face_attributes_size() const {
 inline void Mesh::clear_default_face_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_face_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00002000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_face_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3026,7 +3039,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_face_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00002000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_face_attributes)
   return _internal_mutable_default_face_attributes();
 }
@@ -3041,7 +3054,7 @@ inline int Mesh::default_edge_attributes_size() const {
 inline void Mesh::clear_default_edge_attributes() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.default_edge_attributes_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
 }
 inline const ::google::protobuf::Map<::std::string, double>& Mesh::_internal_default_edge_attributes() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3057,7 +3070,7 @@ inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::_i
 }
 inline ::google::protobuf::Map<::std::string, double>* PROTOBUF_NONNULL Mesh::mutable_default_edge_attributes()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.default_edge_attributes)
   return _internal_mutable_default_edge_attributes();
 }
@@ -3240,7 +3253,7 @@ inline int Mesh::triangulation_size() const {
 inline void Mesh::clear_triangulation() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.triangulation_.Clear();
-  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00010000U);
 }
 inline const ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>& Mesh::_internal_triangulation() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -3256,7 +3269,7 @@ inline ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>* PROTOBUF_N
 }
 inline ::google::protobuf::Map<::uint64_t, ::session_proto::TriList>* PROTOBUF_NONNULL Mesh::mutable_triangulation()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
+  SetHasBit(_impl_._has_bits_[0], 0x00010000U);
   // @@protoc_insertion_point(field_mutable_map:session_proto.Mesh.triangulation)
   return _internal_mutable_triangulation();
 }
@@ -3440,6 +3453,34 @@ inline bool Mesh::_internal_is_visible() const {
 inline void Mesh::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 22;
+inline bool Mesh::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000400U);
+  return value;
+}
+inline void Mesh::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+}
+inline bool Mesh::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.Mesh.is_locked)
+  return _internal_is_locked();
+}
+inline void Mesh::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_set:session_proto.Mesh.is_locked)
+}
+inline bool Mesh::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void Mesh::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

@@ -78,7 +78,7 @@ Line::Line(double x0, double y0, double z0, double x1, double y1, double z1)
 
 Line::Line(const Line& other)
     : _x0(other._x0), _y0(other._y0), _z0(other._z0), _x1(other._x1), _y1(other._y1), _z1(other._z1),
-      name(other.name), is_visible(other.is_visible), width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
+      name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
 
 Line& Line::operator=(const Line& other) {
 
@@ -94,6 +94,7 @@ Line& Line::operator=(const Line& other) {
     _z1 = other._z1;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     width = other.width;
     dash = other.dash;
     linecolor = other.linecolor;
@@ -298,7 +299,7 @@ const double& Line::operator[](int index) const {
 
 bool Line::operator==(const Line& other) const {
 
-    return name == other.name && is_visible == other.is_visible &&
+    return name == other.name && is_visible == other.is_visible && is_locked == other.is_locked &&
            std::round(_x0 * 1000000.0) == std::round(other._x0 * 1000000.0) &&
            std::round(_y0 * 1000000.0) == std::round(other._y0 * 1000000.0) &&
            std::round(_z0 * 1000000.0) == std::round(other._z0 * 1000000.0) &&
@@ -626,6 +627,7 @@ nlohmann::ordered_json Line::jsondump() const {
 
     data["dash"] = dash;
     data["guid"] = guid();
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
@@ -647,6 +649,7 @@ Line Line::jsonload(const nlohmann::json& data) {
     line.guid() = data.at("guid");
     line.name = data.at("name");
     line.is_visible = data.value("is_visible", true);
+    line.is_locked = data.value("is_locked", false);
 
     if (data.contains("dash"))
         line.dash = data["dash"].get<std::vector<double>>();
@@ -699,6 +702,9 @@ session_proto::Line Line::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_width(width);
 
     for (int i = 0; i < 6; i++)
@@ -729,6 +735,7 @@ Line Line::from_proto(const session_proto::Line& proto) {
 
     line.name = proto.name();
     line.is_visible = !proto.has_is_visible() || proto.is_visible();
+    line.is_locked = proto.is_locked();
 
     if (proto.width() > 0.0)
         line.width = proto.width();

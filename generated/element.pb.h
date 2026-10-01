@@ -520,6 +520,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
     kElementTypeFieldNumber = 10,
     kElementDataFieldNumber = 11,
     kIsVisibleFieldNumber = 15,
+    kIsLockedFieldNumber = 16,
   };
   // repeated double insertion_vectors = 12;
   [[nodiscard]] int insertion_vectors_size() const;
@@ -680,11 +681,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 16;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Element)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 10,
+      ::google::protobuf::internal::TcParseTable<4, 11,
                           1, 71,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -723,6 +735,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Element final : public ::google::pr
     ::google::protobuf::internal::ArenaStringPtr element_type_;
     ::google::protobuf::internal::ArenaStringPtr element_data_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -1610,6 +1623,34 @@ inline bool Element::_internal_is_visible() const {
 inline void Element::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 16;
+inline bool Element::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000400U);
+  return value;
+}
+inline void Element::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+}
+inline bool Element::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.Element.is_locked)
+  return _internal_is_locked();
+}
+inline void Element::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_set:session_proto.Element.is_locked)
+}
+inline bool Element::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void Element::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

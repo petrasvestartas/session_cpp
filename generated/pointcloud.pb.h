@@ -229,6 +229,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
     kNameFieldNumber = 2,
     kPointSizeFieldNumber = 6,
     kIsVisibleFieldNumber = 16,
+    kIsLockedFieldNumber = 17,
   };
   // repeated double coords = 3;
   [[nodiscard]] int coords_size() const;
@@ -490,12 +491,23 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 17;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.PointCloud)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 15,
-                          0, 49,
+      ::google::protobuf::internal::TcParseTable<5, 16,
+                          0, 57,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -538,6 +550,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED PointCloud final : public ::google:
     ::google::protobuf::internal::ArenaStringPtr name_;
     double point_size_;
     bool is_visible_;
+    bool is_locked_;
     ::google::protobuf::internal::CachedSize _colors_cached_byte_size_;
     ::google::protobuf::internal::CachedSize _lod_level_cached_byte_size_;
     ::google::protobuf::internal::CachedSize _lod_first_cached_byte_size_;
@@ -1304,6 +1317,34 @@ inline bool PointCloud::_internal_is_visible() const {
 inline void PointCloud::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 17;
+inline bool PointCloud::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00008000U);
+  return value;
+}
+inline void PointCloud::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00008000U);
+}
+inline bool PointCloud::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.PointCloud.is_locked)
+  return _internal_is_locked();
+}
+inline void PointCloud::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00008000U);
+  // @@protoc_insertion_point(field_set:session_proto.PointCloud.is_locked)
+}
+inline bool PointCloud::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void PointCloud::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

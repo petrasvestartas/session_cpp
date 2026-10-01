@@ -247,11 +247,11 @@ constexpr Element::ParseTableT_ Element::InternalGenerateParseTable_(const ::_pb
     {
       PROTOBUF_FIELD_OFFSET(Element, _impl_._has_bits_),
       0, // no _extensions_
-      15, 120,  // max_field_number, fast_idx_mask
+      16, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294935024,  // skipmap
+      4294902256,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      10,  // num_field_entries
+      11,  // num_field_entries
       1,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -261,7 +261,10 @@ constexpr Element::ParseTableT_ Element::InternalGenerateParseTable_(const ::_pb
       ::_pbi::TcParser::GetTable<::session_proto::Element>(),  // to_prefetch
       #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
     }, {{
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 16;
+      {::_pbi::TcParser::FastV8S2,
+       {384, 10, 0,
+        PROTOBUF_FIELD_OFFSET(Element, _impl_.is_locked_)}},
       // string name = 1;
       {::_pbi::TcParser::FastUS1,
        {10, 3, 0,
@@ -330,6 +333,8 @@ constexpr Element::ParseTableT_ Element::InternalGenerateParseTable_(const ::_pb
       {PROTOBUF_FIELD_OFFSET(Element, _impl_.features_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcRepeated | ::_fl::kMessage | ::_fl::kTvTable)},
       // optional bool is_visible = 15;
       {PROTOBUF_FIELD_OFFSET(Element, _impl_.is_visible_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 16;
+      {PROTOBUF_FIELD_OFFSET(Element, _impl_.is_locked_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -386,7 +391,8 @@ inline constexpr Element::Impl_::Impl_(
         element_data_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr Element::Element(::_pbi::ConstantInitialized,
@@ -505,7 +511,7 @@ const ::uint32_t
         5,
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_._has_bits_),
-        13, // hasbit index offset
+        14, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.geometry_type_),
@@ -516,6 +522,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.dimensions_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.features_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Element, _impl_.is_locked_),
         3,
         4,
         5,
@@ -526,6 +533,7 @@ const ::uint32_t
         1,
         2,
         9,
+        10,
 };
 
 static const ::_pbi::MigrationSchema
@@ -545,14 +553,15 @@ const char descriptor_table_protodef_element_2eproto[] ABSL_ATTRIBUTE_SECTION_VA
     "\024\n\014feature_type\030\002 \001(\t\022\022\n\nface_index\030\003 \001("
     "\005\022)\n\010outlines\030\004 \003(\0132\027.session_proto.Poly"
     "line\022\014\n\004guid\030\005 \001(\t\022\024\n\007visible\030\006 \001(\010H\000\210\001\001"
-    "B\n\n\010_visible\"\245\002\n\007Element\022\014\n\004name\030\001 \001(\t\022\014"
+    "B\n\n\010_visible\"\313\002\n\007Element\022\014\n\004name\030\001 \001(\t\022\014"
     "\n\004guid\030\002 \001(\t\022\025\n\rgeometry_type\030\003 \001(\t\022\025\n\rg"
     "eometry_data\030\004 \001(\014\022\024\n\014element_type\030\n \001(\t"
     "\022\024\n\014element_data\030\013 \001(\014\022\031\n\021insertion_vect"
     "ors\030\014 \003(\001\022\022\n\ndimensions\030\r \003(\001\022/\n\010feature"
     "s\030\016 \003(\0132\035.session_proto.ElementFeature\022\027"
-    "\n\nis_visible\030\017 \001(\010H\000\210\001\001B\r\n\013_is_visibleJ\004"
-    "\010\005\020\006J\004\010\006\020\007J\004\010\007\020\010J\004\010\010\020\tJ\004\010\t\020\nb\006proto3"
+    "\n\nis_visible\030\017 \001(\010H\000\210\001\001\022\026\n\tis_locked\030\020 \001"
+    "(\010H\001\210\001\001B\r\n\013_is_visibleB\014\n\n_is_lockedJ\004\010\005"
+    "\020\006J\004\010\006\020\007J\004\010\007\020\010J\004\010\010\020\tJ\004\010\t\020\nb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_element_2eproto_deps[1] = {
@@ -562,7 +571,7 @@ static ::absl::once_flag descriptor_table_element_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_element_2eproto = {
     false,
     false,
-    516,
+    554,
     descriptor_table_protodef_element_2eproto,
     "element.proto",
     &descriptor_table_element_2eproto_once,
@@ -1018,7 +1027,13 @@ Element::Element(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
-  _impl_.is_visible_ = from._impl_.is_visible_;
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, is_visible_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, is_visible_),
+           offsetof(Impl_, is_locked_) -
+               offsetof(Impl_, is_visible_) +
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Element)
 }
@@ -1049,7 +1064,12 @@ PROTOBUF_NDEBUG_INLINE Element::Impl_::Impl_(
 
 inline void Element::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
-  _impl_.is_visible_ = {};
+  ::memset(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, is_visible_),
+           0,
+           offsetof(Impl_, is_locked_) -
+               offsetof(Impl_, is_visible_) +
+               sizeof(Impl_::is_locked_));
 }
 Element::~Element() {
   // @@protoc_insertion_point(destructor:session_proto.Element)
@@ -1133,7 +1153,11 @@ PROTOBUF_NOINLINE void Element::Clear() {
   if (CheckHasBit(cached_has_bits, 0x00000100U)) {
     this_._impl_.element_data_.ClearNonDefaultToEmpty();
   }
-  this_._impl_.is_visible_ = false;
+  ::memset(&this_._impl_.is_visible_, 0,
+           static_cast<::size_t>(
+               reinterpret_cast<char*>(&this_._impl_.is_locked_) -
+               reinterpret_cast<char*>(&this_._impl_.is_visible_)) +
+               sizeof(_impl_.is_locked_));
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -1246,6 +1270,13 @@ PROTOBUF_NOINLINE void Element::Clear() {
         15, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 16;
+  if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        16, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -1269,6 +1300,7 @@ PROTOBUF_NOINLINE void Element::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
+  total_size += static_cast<bool>(0x00000400U & cached_has_bits) * 3;
   total_size += static_cast<bool>(0x00000200U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double insertion_vectors = 12;
@@ -1419,7 +1451,7 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000700U)) {
     if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (!from._internal_element_data().empty()) {
         _this->_internal_set_element_data(from._internal_element_data());
@@ -1431,6 +1463,9 @@ void Element::MergeImpl(::google::protobuf::MessageLite& to_msg,
     }
     if (CheckHasBit(cached_has_bits, 0x00000200U)) {
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
     }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
@@ -1461,7 +1496,12 @@ void Element::InternalSwap(Element* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.geometry_data_, &other->_impl_.geometry_data_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.element_type_, &other->_impl_.element_type_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.element_data_, &other->_impl_.element_data_, arena);
-  swap(_impl_.is_visible_, other->_impl_.is_visible_);
+  ::google::protobuf::internal::memswap<
+      PROTOBUF_FIELD_OFFSET(Element, _impl_.is_locked_)
+      + sizeof(Element::_impl_.is_locked_)
+      - PROTOBUF_FIELD_OFFSET(Element, _impl_.is_visible_)>(
+          reinterpret_cast<char*>(&_impl_.is_visible_),
+          reinterpret_cast<char*>(&other->_impl_.is_visible_));
 }
 
 ::google::protobuf::Metadata Element::GetMetadata() const {

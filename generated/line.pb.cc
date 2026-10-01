@@ -47,11 +47,11 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
     {
       PROTOBUF_FIELD_OFFSET(Line, _impl_._has_bits_),
       0, // no _extensions_
-      13, 120,  // max_field_number, fast_idx_mask
+      14, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294959187,  // skipmap
+      4294950995,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      9,  // num_field_entries
+      10,  // num_field_entries
       0,  // num_aux_entries
       offsetof(ParseTableT_, field_names),  // no aux_entries
       class_data,
@@ -102,7 +102,10 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
       {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Line, _impl_.is_visible_), 8>(),
        {104, 8, 0,
         PROTOBUF_FIELD_OFFSET(Line, _impl_.is_visible_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 14;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(Line, _impl_.is_locked_), 9>(),
+       {112, 9, 0,
+        PROTOBUF_FIELD_OFFSET(Line, _impl_.is_locked_)}},
       {::_pbi::TcParser::MiniParse, {}},
     }}, {{
       65535, 65535
@@ -125,6 +128,8 @@ constexpr Line::ParseTableT_ Line::InternalGenerateParseTable_(const ::_pbi::Cla
       {PROTOBUF_FIELD_OFFSET(Line, _impl_.arrowhead_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // optional bool is_visible = 13;
       {PROTOBUF_FIELD_OFFSET(Line, _impl_.is_visible_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 14;
+      {PROTOBUF_FIELD_OFFSET(Line, _impl_.is_locked_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     // no aux_entries
     {{
@@ -167,7 +172,8 @@ inline constexpr Line::Impl_::Impl_(
             ::_pbi::ConstantInitialized()),
         width_{0},
         arrowhead_{0},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr Line::Line(::_pbi::ConstantInitialized,
@@ -271,7 +277,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_._has_bits_),
-        12, // hasbit index offset
+        13, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.width_),
@@ -281,6 +287,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.linecolor_name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.arrowhead_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Line, _impl_.is_locked_),
         3,
         4,
         6,
@@ -290,6 +297,7 @@ const ::uint32_t
         5,
         7,
         8,
+        9,
 };
 
 static const ::_pbi::MigrationSchema
@@ -302,19 +310,20 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 };
 const char descriptor_table_protodef_line_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\nline.proto\022\rsession_proto\"\322\001\n\004Line\022\014\n\004"
+    "\n\nline.proto\022\rsession_proto\"\370\001\n\004Line\022\014\n\004"
     "guid\030\003 \001(\t\022\014\n\004name\030\004 \001(\t\022\r\n\005width\030\006 \001(\001\022"
     "\014\n\004dash\030\010 \003(\001\022\016\n\006coords\030\t \003(\001\022\026\n\016linecol"
     "or_rgba\030\n \003(\002\022\026\n\016linecolor_name\030\013 \001(\t\022\021\n"
     "\tarrowhead\030\014 \001(\005\022\027\n\nis_visible\030\r \001(\010H\000\210\001"
-    "\001B\r\n\013_is_visibleJ\004\010\001\020\002J\004\010\002\020\003J\004\010\005\020\006J\004\010\007\020\010"
-    "b\006proto3"
+    "\001\022\026\n\tis_locked\030\016 \001(\010H\001\210\001\001B\r\n\013_is_visible"
+    "B\014\n\n_is_lockedJ\004\010\001\020\002J\004\010\002\020\003J\004\010\005\020\006J\004\010\007\020\010b\006"
+    "proto3"
 };
 static ::absl::once_flag descriptor_table_line_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_line_2eproto = {
     false,
     false,
-    248,
+    286,
     descriptor_table_protodef_line_2eproto,
     "line.proto",
     &descriptor_table_line_2eproto_once,
@@ -387,9 +396,9 @@ Line::Line(
                offsetof(Impl_, width_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, width_),
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, width_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Line)
 }
@@ -420,9 +429,9 @@ inline void Line::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, width_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, width_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 Line::~Line() {
   // @@protoc_insertion_point(destructor:session_proto.Line)
@@ -501,7 +510,13 @@ PROTOBUF_NOINLINE void Line::Clear() {
                  reinterpret_cast<char*>(&this_._impl_.width_)) +
                  sizeof(_impl_.arrowhead_));
   }
-  this_._impl_.is_visible_ = false;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
+    ::memset(&this_._impl_.is_visible_, 0,
+             static_cast<::size_t>(
+                 reinterpret_cast<char*>(&this_._impl_.is_locked_) -
+                 reinterpret_cast<char*>(&this_._impl_.is_visible_)) +
+                 sizeof(_impl_.is_locked_));
+  }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -601,6 +616,13 @@ PROTOBUF_NOINLINE void Line::Clear() {
         13, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 14;
+  if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        14, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -624,7 +646,7 @@ PROTOBUF_NOINLINE void Line::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  total_size += static_cast<bool>(0x00000100U & cached_has_bits) * 2;
+  total_size += ::absl::popcount(0x00000300U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double dash = 8;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -756,8 +778,13 @@ void Line::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
   }
-  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
-    _this->_impl_.is_visible_ = from._impl_.is_visible_;
+  if (BatchCheckHasBit(cached_has_bits, 0x00000300U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+      _this->_impl_.is_visible_ = from._impl_.is_visible_;
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
+      _this->_impl_.is_locked_ = from._impl_.is_locked_;
+    }
   }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
@@ -785,8 +812,8 @@ void Line::InternalSwap(Line* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.linecolor_name_, &other->_impl_.linecolor_name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Line, _impl_.is_visible_)
-      + sizeof(Line::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(Line, _impl_.is_locked_)
+      + sizeof(Line::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(Line, _impl_.width_)>(
           reinterpret_cast<char*>(&_impl_.width_),
           reinterpret_cast<char*>(&other->_impl_.width_));

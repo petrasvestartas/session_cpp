@@ -2158,6 +2158,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
     kSurfacecolorFieldNumber = 13,
     kWidthFieldNumber = 12,
     kIsVisibleFieldNumber = 15,
+    kIsLockedFieldNumber = 16,
   };
   // repeated .session_proto.NurbsCurve curves_2d = 3;
   [[nodiscard]] int curves_2d_size() const;
@@ -2405,11 +2406,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 16;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.BRep)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 14,
+      ::google::protobuf::internal::TcParseTable<4, 15,
                           10, 43,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -2452,6 +2464,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED BRep final : public ::google::proto
     ::session_proto::Color* PROTOBUF_NULLABLE surfacecolor_;
     double width_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -4030,6 +4043,34 @@ inline bool BRep::_internal_is_visible() const {
 inline void BRep::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 16;
+inline bool BRep::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00004000U);
+  return value;
+}
+inline void BRep::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00004000U);
+}
+inline bool BRep::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.BRep.is_locked)
+  return _internal_is_locked();
+}
+inline void BRep::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00004000U);
+  // @@protoc_insertion_point(field_set:session_proto.BRep.is_locked)
+}
+inline bool BRep::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void BRep::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

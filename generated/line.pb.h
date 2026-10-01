@@ -223,6 +223,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     kWidthFieldNumber = 6,
     kArrowheadFieldNumber = 12,
     kIsVisibleFieldNumber = 13,
+    kIsLockedFieldNumber = 14,
   };
   // repeated double dash = 8;
   [[nodiscard]] int dash_size() const;
@@ -357,11 +358,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
   void _internal_set_is_visible(bool value);
 
   public:
+  // optional bool is_locked = 14;
+  [[nodiscard]] bool has_is_locked() const;
+  void clear_is_locked() ;
+  [[nodiscard]] bool is_locked() const;
+  void set_is_locked(bool value);
+
+  private:
+  bool _internal_is_locked() const;
+  void _internal_set_is_locked(bool value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Line)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<4, 9,
+      ::google::protobuf::internal::TcParseTable<4, 10,
                           0, 57,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
@@ -399,6 +411,7 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Line final : public ::google::proto
     double width_;
     ::int32_t arrowhead_;
     bool is_visible_;
+    bool is_locked_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -840,6 +853,34 @@ inline bool Line::_internal_is_visible() const {
 inline void Line::_internal_set_is_visible(bool value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.is_visible_ = value;
+}
+
+// optional bool is_locked = 14;
+inline bool Line::has_is_locked() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000200U);
+  return value;
+}
+inline void Line::clear_is_locked() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = false;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
+}
+inline bool Line::is_locked() const {
+  // @@protoc_insertion_point(field_get:session_proto.Line.is_locked)
+  return _internal_is_locked();
+}
+inline void Line::set_is_locked(bool value) {
+  _internal_set_is_locked(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
+  // @@protoc_insertion_point(field_set:session_proto.Line.is_locked)
+}
+inline bool Line::_internal_is_locked() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.is_locked_;
+}
+inline void Line::_internal_set_is_locked(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.is_locked_ = value;
 }
 
 #ifdef __GNUC__

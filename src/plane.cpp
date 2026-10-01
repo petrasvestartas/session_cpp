@@ -24,7 +24,7 @@ Plane::Plane(const Point& point, const Vector& x_axis, const Vector& y_axis, std
 }
 
 Plane::Plane(const Plane& other)
-    : _origin(other._origin), _x_axis(other._x_axis), _y_axis(other._y_axis), _z_axis(other._z_axis), _a(other._a), _b(other._b), _c(other._c), _d(other._d), name(other.name), is_visible(other.is_visible), width(other.width), linecolor(other.linecolor) {}
+    : _origin(other._origin), _x_axis(other._x_axis), _y_axis(other._y_axis), _z_axis(other._z_axis), _a(other._a), _b(other._b), _c(other._c), _d(other._d), name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), width(other.width), linecolor(other.linecolor) {}
 
 Plane& Plane::operator=(const Plane& other) {
 
@@ -42,6 +42,7 @@ Plane& Plane::operator=(const Plane& other) {
     _d = other._d;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     width = other.width;
     linecolor = other.linecolor;
 
@@ -316,7 +317,7 @@ const Vector& Plane::operator[](int index) const {
 }
 
 bool Plane::operator==(const Plane& other) const {
-    return name == other.name && is_visible == other.is_visible && _origin == other._origin && _x_axis == other._x_axis && _y_axis == other._y_axis && _z_axis == other._z_axis && linecolor == other.linecolor;
+    return name == other.name && is_visible == other.is_visible && is_locked == other.is_locked && _origin == other._origin && _x_axis == other._x_axis && _y_axis == other._y_axis && _z_axis == other._z_axis && linecolor == other.linecolor;
 }
 
 bool Plane::operator!=(const Plane& other) const {
@@ -553,6 +554,7 @@ nlohmann::ordered_json Plane::jsondump() const {
     nlohmann::ordered_json data;
     data["frame"] = {_origin[0], _origin[1], _origin[2], _x_axis[0], _x_axis[1], _x_axis[2], _y_axis[0], _y_axis[1], _y_axis[2], _z_axis[0], _z_axis[1], _z_axis[2]};
     data["guid"] = guid();
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
@@ -575,6 +577,7 @@ Plane Plane::jsonload(const nlohmann::json& data) {
     plane.guid() = data.at("guid");
     plane.name = data.at("name");
     plane.is_visible = data.value("is_visible", true);
+    plane.is_locked = data.value("is_locked", false);
 
     if (data.contains("linecolor"))
         plane.linecolor = Color::jsonload(data["linecolor"]);
@@ -621,6 +624,9 @@ session_proto::Plane Plane::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     for (int i = 0; i < 3; i++)
         proto.add_frame(_origin[i]);
 
@@ -656,6 +662,7 @@ Plane Plane::from_proto(const session_proto::Plane& proto) {
 
     plane.name = proto.name();
     plane.is_visible = !proto.has_is_visible() || proto.is_visible();
+    plane.is_locked = proto.is_locked();
 
     if (proto.width() > 0.0)
         plane.width = proto.width();

@@ -196,7 +196,7 @@ Polyline::Polyline(const std::vector<Point>& points) {
 }
 
 Polyline::Polyline(const Polyline& other)
-    : _plane_dirty(other._plane_dirty), name(other.name), is_visible(other.is_visible), _coords(other._coords), plane(other.plane),
+    : _plane_dirty(other._plane_dirty), name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), _coords(other._coords), plane(other.plane),
       width(other.width), dash(other.dash), linecolor(other.linecolor), arrowhead(other.arrowhead) {}
 
 Polyline& Polyline::operator=(const Polyline& other) {
@@ -208,6 +208,7 @@ Polyline& Polyline::operator=(const Polyline& other) {
     _plane_dirty = other._plane_dirty;
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     _coords = other._coords;
     plane = other.plane;
     width = other.width;
@@ -1608,6 +1609,7 @@ nlohmann::ordered_json Polyline::jsondump() const {
     data["coords"] = _coords;
     data["dash"] = dash;
     data["guid"] = guid();
+    data["is_locked"] = is_locked;
     data["is_visible"] = is_visible;
     data["linecolor"] = linecolor.jsondump();
     data["name"] = name;
@@ -1623,6 +1625,7 @@ Polyline Polyline::jsonload(const nlohmann::json& data) {
     polyline.guid() = data.at("guid");
     polyline.name = data.at("name");
     polyline.is_visible = data.value("is_visible", true);
+    polyline.is_locked = data.value("is_locked", false);
 
     if (data.contains("coords")) {
         polyline._coords = data["coords"].get<std::vector<double>>();
@@ -1684,6 +1687,9 @@ session_proto::Polyline Polyline::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_width(width);
 
     for (double d : dash)
@@ -1707,6 +1713,7 @@ Polyline Polyline::from_proto(const session_proto::Polyline& proto) {
 
     polyline.name = proto.name();
     polyline.is_visible = !proto.has_is_visible() || proto.is_visible();
+    polyline.is_locked = proto.is_locked();
     polyline.width = proto.width();
     polyline.dash.assign(proto.dash().begin(), proto.dash().end());
 

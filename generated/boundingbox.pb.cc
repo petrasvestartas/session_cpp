@@ -47,11 +47,11 @@ constexpr BoundingBox::ParseTableT_ BoundingBox::InternalGenerateParseTable_(con
     {
       PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_._has_bits_),
       0, // no _extensions_
-      9, 120,  // max_field_number, fast_idx_mask
+      10, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294966912,  // skipmap
+      4294966400,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      8,  // num_field_entries
+      9,  // num_field_entries
       5,  // num_aux_entries
       offsetof(ParseTableT_, aux_entries),
       class_data,
@@ -95,7 +95,10 @@ constexpr BoundingBox::ParseTableT_ BoundingBox::InternalGenerateParseTable_(con
       {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(BoundingBox, _impl_.is_visible_), 7>(),
        {72, 7, 0,
         PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_visible_)}},
-      {::_pbi::TcParser::MiniParse, {}},
+      // optional bool is_locked = 10;
+      {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(BoundingBox, _impl_.is_locked_), 8>(),
+       {80, 8, 0,
+        PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_locked_)}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
@@ -120,6 +123,8 @@ constexpr BoundingBox::ParseTableT_ BoundingBox::InternalGenerateParseTable_(con
       {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.name_), _Internal::kHasBitsOffset + 1, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
       // optional bool is_visible = 9;
       {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_visible_), _Internal::kHasBitsOffset + 7, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
+      // optional bool is_locked = 10;
+      {PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_locked_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kBool)},
     }},
     {{
         #ifndef PROTOBUF_MESSAGE_GLOBALS
@@ -172,7 +177,8 @@ inline constexpr BoundingBox::Impl_::Impl_(
         y_axis_{nullptr},
         z_axis_{nullptr},
         half_size_{nullptr},
-        is_visible_{false} {}
+        is_visible_{false},
+        is_locked_{false} {}
 
 template <typename>
 constexpr BoundingBox::BoundingBox(::_pbi::ConstantInitialized,
@@ -276,7 +282,7 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_._has_bits_),
-        11, // hasbit index offset
+        12, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.center_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.x_axis_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.y_axis_),
@@ -285,6 +291,7 @@ const ::uint32_t
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.is_visible_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::BoundingBox, _impl_.is_locked_),
         2,
         3,
         4,
@@ -293,6 +300,7 @@ const ::uint32_t
         0,
         1,
         7,
+        8,
 };
 
 static const ::_pbi::MigrationSchema
@@ -306,14 +314,15 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 const char descriptor_table_protodef_boundingbox_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\021boundingbox.proto\022\rsession_proto\032\013poin"
-    "t.proto\032\014vector.proto\"\234\002\n\013BoundingBox\022$\n"
+    "t.proto\032\014vector.proto\"\302\002\n\013BoundingBox\022$\n"
     "\006center\030\001 \001(\0132\024.session_proto.Point\022%\n\006x"
     "_axis\030\002 \001(\0132\025.session_proto.Vector\022%\n\006y_"
     "axis\030\003 \001(\0132\025.session_proto.Vector\022%\n\006z_a"
     "xis\030\004 \001(\0132\025.session_proto.Vector\022(\n\thalf"
     "_size\030\005 \001(\0132\025.session_proto.Vector\022\014\n\004gu"
     "id\030\006 \001(\t\022\014\n\004name\030\007 \001(\t\022\027\n\nis_visible\030\t \001"
-    "(\010H\000\210\001\001B\r\n\013_is_visibleJ\004\010\010\020\tb\006proto3"
+    "(\010H\000\210\001\001\022\026\n\tis_locked\030\n \001(\010H\001\210\001\001B\r\n\013_is_v"
+    "isibleB\014\n\n_is_lockedJ\004\010\010\020\tb\006proto3"
 };
 static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
     descriptor_table_boundingbox_2eproto_deps[2] = {
@@ -324,7 +333,7 @@ static ::absl::once_flag descriptor_table_boundingbox_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_boundingbox_2eproto = {
     false,
     false,
-    356,
+    394,
     descriptor_table_protodef_boundingbox_2eproto,
     "boundingbox.proto",
     &descriptor_table_boundingbox_2eproto_once,
@@ -412,7 +421,13 @@ BoundingBox::BoundingBox(
   _impl_.half_size_ = (CheckHasBit(cached_has_bits, 0x00000040U))
                  ? Super_::CopyConstruct(arena, *from._impl_.half_size_)
                  : nullptr;
-  _impl_.is_visible_ = from._impl_.is_visible_;
+  ::memcpy(reinterpret_cast<char*>(&_impl_) +
+               offsetof(Impl_, is_visible_),
+           reinterpret_cast<const char*>(&from._impl_) +
+               offsetof(Impl_, is_visible_),
+           offsetof(Impl_, is_locked_) -
+               offsetof(Impl_, is_visible_) +
+               sizeof(Impl_::is_locked_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.BoundingBox)
 }
@@ -427,9 +442,9 @@ inline void BoundingBox::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   ::memset(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, center_),
            0,
-           offsetof(Impl_, is_visible_) -
+           offsetof(Impl_, is_locked_) -
                offsetof(Impl_, center_) +
-               sizeof(Impl_::is_visible_));
+               sizeof(Impl_::is_locked_));
 }
 BoundingBox::~BoundingBox() {
   // @@protoc_insertion_point(destructor:session_proto.BoundingBox)
@@ -514,6 +529,7 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
     }
   }
   this_._impl_.is_visible_ = false;
+  this_._impl_.is_locked_ = false;
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
 }
@@ -599,6 +615,13 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
         9, this_._internal_is_visible(), target);
   }
 
+  // optional bool is_locked = 10;
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(
+        10, this_._internal_is_locked(), target);
+  }
+
   if (ABSL_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
     target =
         ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
@@ -622,7 +645,7 @@ PROTOBUF_NOINLINE void BoundingBox::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  total_size += static_cast<bool>(0x00000080U & cached_has_bits) * 2;
+  total_size += ::absl::popcount(0x00000180U & cached_has_bits) * 2;
   if (BatchCheckHasBit(cached_has_bits, 0x0000007fU)) {
     // string guid = 6;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
@@ -745,6 +768,9 @@ void BoundingBox::MergeImpl(::google::protobuf::MessageLite& to_msg,
       _this->_impl_.is_visible_ = from._impl_.is_visible_;
     }
   }
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
+    _this->_impl_.is_locked_ = from._impl_.is_locked_;
+  }
   _this->_impl_._has_bits_[0] |= cached_has_bits;
   _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
@@ -767,8 +793,8 @@ void BoundingBox::InternalSwap(BoundingBox* PROTOBUF_RESTRICT PROTOBUF_NONNULL o
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_visible_)
-      + sizeof(BoundingBox::_impl_.is_visible_)
+      PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.is_locked_)
+      + sizeof(BoundingBox::_impl_.is_locked_)
       - PROTOBUF_FIELD_OFFSET(BoundingBox, _impl_.center_)>(
           reinterpret_cast<char*>(&_impl_.center_),
           reinterpret_cast<char*>(&other->_impl_.center_));

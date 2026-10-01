@@ -1843,6 +1843,7 @@ BRep& BRep::operator=(const BRep& other) {
     _guid.clear();
     name = other.name;
     is_visible = other.is_visible;
+    is_locked = other.is_locked;
     width = other.width;
     surfacecolor = other.surfacecolor;
     m_surfaces = other.m_surfaces;
@@ -2150,7 +2151,7 @@ BRep BRep::from_nurbscurves(const std::vector<NurbsCurve>& curves, const std::ve
 // ═══════════════════════════════════════════════════════════════════════════
 bool BRep::operator==(const BRep& other) const {
 
-    return name == other.name && is_visible == other.is_visible && width == other.width && surfacecolor == other.surfacecolor
+    return name == other.name && is_visible == other.is_visible && is_locked == other.is_locked && width == other.width && surfacecolor == other.surfacecolor
         && m_surfaces.size() == other.m_surfaces.size()
         && m_vertices.size() == other.m_vertices.size()
         && m_edges.size() == other.m_edges.size()
@@ -2693,6 +2694,7 @@ nlohmann::ordered_json BRep::jsondump() const {
         j["faces"].push_back(face_to_json(f));
 
     j["guid"] = guid();
+    j["is_locked"] = is_locked;
     j["is_visible"] = is_visible;
     j["name"] = name;
     j["shells"] = nlohmann::ordered_json::array();
@@ -2740,6 +2742,7 @@ BRep BRep::jsonload(const nlohmann::json& data) {
     if (data.contains("name"))
         b.name = data["name"];
     b.is_visible = data.value("is_visible", true);
+    b.is_locked = data.value("is_locked", false);
 
     if (data.contains("width"))
         b.width = data["width"];
@@ -2826,6 +2829,9 @@ session_proto::BRep BRep::to_proto() const {
     if (!is_visible)
         proto.set_is_visible(false);
 
+    if (is_locked)
+        proto.set_is_locked(true);
+
     proto.set_width(width);
 
     for (const NurbsCurve& c : m_curves_2d)
@@ -2874,6 +2880,7 @@ BRep BRep::from_proto(const session_proto::BRep& proto) {
 
     b.name = proto.name();
     b.is_visible = !proto.has_is_visible() || proto.is_visible();
+    b.is_locked = proto.is_locked();
     b.width = proto.width();
 
     for (const session_proto::NurbsCurve& c : proto.curves_2d())
