@@ -52,6 +52,18 @@ int cross_sign(const std::array<int64_t, 2>& p1, const std::array<int64_t, 2>& p
     return 0;
 }
 
+/// True when path vertex `cur` adds nothing between `prev` and `next`: it repeats `prev`, or `next` lies back along the way it came; a vertex that only continues straight on stays, since every input vertex must reach the triangulation.
+bool redundant(const std::array<int64_t, 2>& prev, const std::array<int64_t, 2>& cur, const std::array<int64_t, 2>& next) {
+
+    if (cross_sign(prev, cur, next) != 0)
+        return false;
+
+    const double dx = (double)(cur[0] - prev[0]);
+    const double dy = (double)(cur[1] - prev[1]);
+
+    return dx * (double)(next[0] - cur[0]) + dy * (double)(next[1] - cur[1]) <= 0.0;
+}
+
 /// True when p1 -> p2 -> p3 turns left.
 bool left_turning(const std::array<int64_t, 2>& p1, const std::array<int64_t, 2>& p2, const std::array<int64_t, 2>& p3) {
     return cross_sign(p1, p2, p3) < 0;
@@ -336,7 +348,7 @@ private:
     /// Flip edge when the far vertex of one triangle lies inside the circumcircle of the other.
     void force_legal(size_t edge);
 
-    /// Walk the path from i back round to i0 creating boundary edges; false when the step budget of a degenerate path is blown.
+    /// Walk the path from i back round to i0 creating boundary edges, keeping every vertex that continues the path; false when the step budget of a degenerate path is blown.
     bool walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t i0, size_t i, size_t v0);
 
     /// Detach the edges of every vertex added since start.
@@ -831,7 +843,7 @@ bool Delaunay::walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t
 
         size_t i_next = next_index(i, n);
 
-        if (cross_sign(vs[v_prev].pt, path[i], path[i_next]) == 0) {
+        if (redundant(vs[v_prev].pt, path[i], path[i_next])) {
             i = i_next;
             continue;
         }
@@ -847,7 +859,7 @@ bool Delaunay::walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t
             i = i_next;
             i_next = next_index(i, n);
 
-            while (cross_sign(vs[v_prev].pt, path[i], path[i_next]) == 0) {
+            while (redundant(vs[v_prev].pt, path[i], path[i_next])) {
                 if (++steps > budget)
                     return false;
 
@@ -870,7 +882,7 @@ bool Delaunay::walk_path(const std::vector<std::array<int64_t, 2>>& path, size_t
             i = i_next;
             i_next = next_index(i, n);
 
-            while (cross_sign(vs[v_prev].pt, path[i], path[i_next]) == 0) {
+            while (redundant(vs[v_prev].pt, path[i], path[i_next])) {
                 if (++steps > budget)
                     return false;
 

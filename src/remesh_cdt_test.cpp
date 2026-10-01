@@ -4,7 +4,9 @@
 #include "polyline.h"
 #include "remesh_cdt.h"
 #include "vector.h"
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <vector>
 
 using namespace session_cpp::mini_test;
@@ -360,6 +362,27 @@ MINI_TEST("RemeshCDT", "Large Coordinates") {
     const std::vector<std::array<int, 3>> tris = RemeshCDT::triangulate({border});
 
     MINI_CHECK(tris.size() == 2);
+}
+
+MINI_TEST("RemeshCDT", "Collinear Boundary Vertices") {
+    const std::vector<std::pair<double, double>> border = {{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {6.0, 10.0}, {3.0, 10.0}, {0.0, 10.0}};
+    const std::vector<std::array<int, 3>> tris = cdt_triangulate(border, {});
+    std::vector<bool> used(border.size(), false);
+    double area = 0.0;
+
+    for (const std::array<int, 3>& t : tris) {
+        used[t[0]] = true;
+        used[t[1]] = true;
+        used[t[2]] = true;
+        const std::pair<double, double>& p = border[t[0]];
+        const std::pair<double, double>& q = border[t[1]];
+        const std::pair<double, double>& r = border[t[2]];
+        area += 0.5 * ((q.first - p.first) * (r.second - p.second) - (q.second - p.second) * (r.first - p.first));
+    }
+
+    MINI_CHECK(tris.size() == 4);
+    MINI_CHECK(std::all_of(used.begin(), used.end(), [](bool u) { return u; }));
+    MINI_CHECK(std::abs(area - 100.0) < 1e-9);
 }
 
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
