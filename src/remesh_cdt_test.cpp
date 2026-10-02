@@ -385,6 +385,84 @@ MINI_TEST("RemeshCDT", "Collinear Boundary Vertices") {
     MINI_CHECK(std::abs(area - 100.0) < 1e-9);
 }
 
+/// Points of a side from a to b with `inner` evenly spaced vertices between them, the end left to the next side
+static void run_side(std::pair<double, double> a, std::pair<double, double> b, int inner, std::vector<std::pair<double, double>>& out) {
+
+    for (int k = 0; k <= inner; ++k) {
+        const double t = (double)k / (inner + 1);
+        out.push_back({a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t});
+    }
+}
+
+/// Twice the signed area of a closed polygon
+static double run_area(const std::vector<std::pair<double, double>>& pts) {
+
+    double area = 0.0;
+
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const std::pair<double, double>& p = pts[i];
+        const std::pair<double, double>& q = pts[(i + 1) % pts.size()];
+        area += p.first * q.second - q.first * p.second;
+    }
+
+    return area;
+}
+
+/// True when the triangulation of border and holes uses every vertex and covers exactly their area
+static bool run_covers(const std::vector<std::pair<double, double>>& border, const std::vector<std::vector<std::pair<double, double>>>& holes) {
+
+    std::vector<std::pair<double, double>> all = border;
+
+    for (const std::vector<std::pair<double, double>>& hole : holes)
+        all.insert(all.end(), hole.begin(), hole.end());
+
+    std::vector<bool> used(all.size(), false);
+    double area = 0.0;
+
+    for (const std::array<int, 3>& t : cdt_triangulate(border, holes)) {
+        used[t[0]] = true;
+        used[t[1]] = true;
+        used[t[2]] = true;
+        const std::pair<double, double>& p = all[t[0]];
+        const std::pair<double, double>& q = all[t[1]];
+        const std::pair<double, double>& r = all[t[2]];
+        area += (q.first - p.first) * (r.second - p.second) - (q.second - p.second) * (r.first - p.first);
+    }
+
+    double expect = std::abs(run_area(border));
+
+    for (const std::vector<std::pair<double, double>>& hole : holes)
+        expect -= std::abs(run_area(hole));
+
+    return std::abs(area - expect) < 1e-6 * expect && std::all_of(used.begin(), used.end(), [](bool u) { return u; });
+}
+
+MINI_TEST("RemeshCDT", "Collinear Boundary Runs") {
+    int failures = 0;
+
+    for (int inner = 3; inner <= 12; ++inner) {
+        for (int which = 0; which < 5; ++which) {
+            const auto ins = [&](int s) { return which == 4 || which == s ? inner : 0; };
+            std::vector<std::pair<double, double>> border;
+            run_side({0.0, 0.0}, {100.0, 0.0}, ins(0), border);
+            run_side({100.0, 0.0}, {100.0, 10.0}, ins(1), border);
+            run_side({100.0, 10.0}, {0.0, 10.0}, ins(2), border);
+            run_side({0.0, 10.0}, {0.0, 0.0}, ins(3), border);
+            std::vector<std::pair<double, double>> hole;
+            run_side({30.0, 3.0}, {30.0, 7.0}, ins(0), hole);
+            run_side({30.0, 7.0}, {70.0, 7.0}, ins(1), hole);
+            run_side({70.0, 7.0}, {70.0, 3.0}, ins(2), hole);
+            run_side({70.0, 3.0}, {30.0, 3.0}, ins(3), hole);
+            const std::vector<std::pair<double, double>> plain = {{0.0, 0.0}, {100.0, 0.0}, {100.0, 10.0}, {0.0, 10.0}};
+
+            if (!run_covers(border, {}) || !run_covers(plain, {hole}) || !run_covers(border, {hole}))
+                ++failures;
+        }
+    }
+
+    MINI_CHECK(failures == 0);
+}
+
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
     // using session_cpp::RemeshCDT;
     // using session_cpp::Polyline;

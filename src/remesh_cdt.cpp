@@ -366,8 +366,8 @@ private:
     /// Connect and fan the hole local minima collected on the finished row; false when one cannot be reached.
     bool sweep_loc_mins(int64_t curr_y);
 
-    /// Fan the horizontal edges deferred from the finished row.
-    void sweep_horizontals(int64_t curr_y);
+    /// Fan the horizontal edges deferred from the finished row, passing over them again while a pass still adds triangles: on a straight run of horizontals each fan needs the diagonal the fan of its neighbour creates, whichever is visited first.
+    void sweep_horizontals(int64_t curr_y, bool last_row);
 
     /// Activate the boundary edges starting at v and fan the ones ending at it.
     void sweep_vertex(size_t v);
@@ -1022,20 +1022,29 @@ bool Delaunay::sweep_loc_mins(int64_t curr_y) {
     return true;
 }
 
-void Delaunay::sweep_horizontals(int64_t curr_y) {
+void Delaunay::sweep_horizontals(int64_t curr_y, bool last_row) {
 
-    while (!horz.empty()) {
-        const size_t e = horz.back();
-        horz.pop_back();
+    const std::vector<size_t> deferred = std::move(horz);
+    bool progress = true;
+    horz.clear();
 
-        if (completed(e))
-            continue;
+    while (progress) {
+        progress = false;
 
-        if (es[e].vb == es[e].vl) {
-            if (es[e].kind == EdgeKind::ascend)
-                triangulate_fan(e, es[e].vb, curr_y, true);
-        } else if (es[e].kind == EdgeKind::descend) {
-            triangulate_fan(e, es[e].vb, curr_y, false);
+        for (const size_t e : deferred) {
+            if (completed(e))
+                continue;
+
+            const size_t before = ts.size();
+
+            if (es[e].vb == es[e].vl) {
+                if (last_row || es[e].kind == EdgeKind::ascend)
+                    triangulate_fan(e, es[e].vb, curr_y, true);
+            } else if (!last_row && es[e].kind == EdgeKind::descend) {
+                triangulate_fan(e, es[e].vb, curr_y, false);
+            }
+
+            progress = progress || ts.size() > before;
         }
     }
 }
@@ -1075,7 +1084,7 @@ bool Delaunay::sweep(const std::vector<size_t>& order) {
             if (!sweep_loc_mins(curr_y))
                 return false;
 
-            sweep_horizontals(curr_y);
+            sweep_horizontals(curr_y, false);
             curr_y = vs[v].pt[1];
         }
 
@@ -1085,13 +1094,7 @@ bool Delaunay::sweep(const std::vector<size_t>& order) {
             loc_mins.push_back(v);
     }
 
-    while (!horz.empty()) {
-        const size_t e = horz.back();
-        horz.pop_back();
-
-        if (!completed(e) && es[e].vb == es[e].vl)
-            triangulate_fan(e, es[e].vb, curr_y, true);
-    }
+    sweep_horizontals(curr_y, true);
 
     return true;
 }
