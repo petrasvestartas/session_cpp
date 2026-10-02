@@ -1822,13 +1822,13 @@ int strip_steps(const NurbsSurface& srf, const NurbsCurve& crv) {
     return steps;
 }
 
-/// Phase 0: the steps of a strip: the angle's share of a turn and what the loops ask for, scaled by the face's size against the whole BRep so a small bore in a large body keeps few steps, never under sixteen, doubled until both loops sag within the chord tolerance measured against the BRep
+/// Phase 0: the steps of a strip: the angle's share of a turn and what the loops ask for, scaled by the face's size against the whole BRep so a small bore in a large body keeps few steps, never under thirty-two so a bore still reads round up close, doubled until both loops sag within the chord tolerance measured against the BRep
 int strip_count(const NurbsSurface& srf, const NurbsCurve& a, const NurbsCurve& c, double scale, double angle, double chord) {
 
     const double tolerance = scale * chord;
     const int asked = std::max({strip_steps(srf, a), strip_steps(srf, c), (int)std::ceil(360.0 / std::max(angle, 0.1))});
     const double share = scale > 0.0 ? std::min(bbox_diagonal(srf) / scale, 1.0) : 1.0;
-    int count = std::max((int)std::ceil(asked * share), 16);
+    int count = std::max((int)std::ceil(asked * share), 32);
 
     while (count < 4096 && tolerance > 0.0 && std::max(strip_sag(srf, a, count), strip_sag(srf, c, count)) > tolerance)
         count *= 2;
