@@ -145,7 +145,12 @@ NurbsCurve project_to_patch(const NurbsCurve& crv, const NurbsSurface& srf) {
 /// Signed area of a closed pcurve's sampled polygon (positive = counter-clockwise)
 double uv_signed_area(const NurbsCurve& c2d) {
 
-    const std::vector<Point> pts = c2d.divide_by_count(std::max(c2d.cv_count() * 4, 16), true).first;
+    // even steps of the parameter: only the sign matters, so no arc-length integration
+    const int count = std::max(c2d.cv_count() * 4, 16);
+    const std::pair<double, double> domain = c2d.domain();
+    std::vector<Point> pts;
+    for (int i = 0; i <= count; ++i)
+        pts.push_back(c2d.point_at(domain.first + (domain.second - domain.first) * i / count));
     double area = 0.0;
 
     for (size_t i = 0; i + 1 < pts.size(); ++i)
