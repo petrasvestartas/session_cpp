@@ -978,6 +978,42 @@ std::shared_ptr<TreeNode> Session::add_brep(std::shared_ptr<BRep> brep, std::sha
     return _add_object("breps", brep, "brep", parent);
 }
 
+std::shared_ptr<TreeNode> Session::add_point(Point point, std::shared_ptr<TreeNode> parent) {
+    return add_point(std::make_shared<Point>(std::move(point)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_line(Line line, std::shared_ptr<TreeNode> parent) {
+    return add_line(std::make_shared<Line>(std::move(line)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_plane(Plane plane, std::shared_ptr<TreeNode> parent) {
+    return add_plane(std::make_shared<Plane>(std::move(plane)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_polyline(Polyline polyline, std::shared_ptr<TreeNode> parent) {
+    return add_polyline(std::make_shared<Polyline>(std::move(polyline)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_pointcloud(PointCloud pointcloud, std::shared_ptr<TreeNode> parent) {
+    return add_pointcloud(std::make_shared<PointCloud>(std::move(pointcloud)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_mesh(Mesh mesh, std::shared_ptr<TreeNode> parent) {
+    return add_mesh(std::make_shared<Mesh>(std::move(mesh)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_nurbscurve(NurbsCurve nurbscurve, std::shared_ptr<TreeNode> parent) {
+    return add_nurbscurve(std::make_shared<NurbsCurve>(std::move(nurbscurve)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_nurbssurface(NurbsSurface nurbssurface, std::shared_ptr<TreeNode> parent) {
+    return add_nurbssurface(std::make_shared<NurbsSurface>(std::move(nurbssurface)), parent);
+}
+
+std::shared_ptr<TreeNode> Session::add_brep(BRep brep, std::shared_ptr<TreeNode> parent) {
+    return add_brep(std::make_shared<BRep>(std::move(brep)), parent);
+}
+
 std::shared_ptr<TreeNode> Session::add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent) {
 
     if (!element)
@@ -2070,6 +2106,159 @@ std::shared_ptr<TreeNode> Session::_add_object(
     }
 
     return node;
+}
+
+void Session::merge(const Session& other) {
+    graft(other, nullptr);
+}
+
+void Session::graft(const Session& other, std::shared_ptr<TreeNode> parent) {
+
+    const Session copy(other);
+
+    for (const std::pair<const std::string, std::shared_ptr<TreeNode>>& entry : copy.node_lookup)
+        if (copy._is_live(entry.first) && _is_live(entry.first))
+            throw std::invalid_argument("Session::graft: " + entry.first + " is already in the session");
+
+    for (const std::pair<const std::string, Geometry>& entry : copy.definition_lookup)
+        if (!definition_lookup.count(entry.first))
+            add_definition(entry.second);
+
+    _graft_children(copy, *copy.tree.root(), parent ? parent : tree.root());
+
+    for (const std::tuple<std::string, std::string>& edge : copy.graph.get_edges()) {
+        const std::string& u = std::get<0>(edge);
+        const std::string& v = std::get<1>(edge);
+        const Edge& source = copy.graph.edges.at(u).at(v);
+        add_edge(u, v, source.attribute);
+        const std::map<std::string, std::vector<std::shared_ptr<Interaction>>>::const_iterator found = copy.interactions.find(source.guid());
+
+        if (found != copy.interactions.end()) {
+            std::vector<std::shared_ptr<Interaction>>& list = interactions[graph.edges.at(u).at(v).guid()];
+            list.insert(list.end(), found->second.begin(), found->second.end());
+        }
+    }
+
+    for (const std::pair<const std::string, Xform>& entry : copy.xforms)
+        if (!xforms.count(entry.first))
+            set_xform(entry.first, entry.second);
+}
+
+void Session::flatten() {
+
+    const std::shared_ptr<TreeNode> root = tree.root();
+    std::vector<std::shared_ptr<TreeNode>> groups;
+    std::vector<std::pair<std::shared_ptr<TreeNode>, Xform>> nodes;
+
+    for (TreeNode* child : root->children())
+        if (!child->is_dead() && !_is_live(child->name))
+            groups.push_back(child->shared_from_this());
+
+    for (const std::shared_ptr<TreeNode>& node : tree.traverse())
+        if (!node->is_dead() && _is_live(node->name))
+            nodes.push_back({node, world_xform(node->name)});
+
+    for (const std::pair<std::shared_ptr<TreeNode>, Xform>& entry : nodes) {
+        add(entry.first, root);
+
+        if (entry.second.is_identity())
+            remove_xform(entry.first->name);
+        else
+            set_xform(entry.first->name, entry.second);
+    }
+
+    for (const std::shared_ptr<TreeNode>& group : groups)
+        remove_group(group);
+}
+
+Session Session::get_branch(const std::string& name) const {
+
+    const std::shared_ptr<TreeNode> node = tree.get_node_by_name(name);
+
+    if (!node || node->is_dead())
+        throw std::invalid_argument("Session::get_branch: no node named " + name);
+
+    const Session copy(*this);
+    std::vector<size_t> path;
+
+    for (std::shared_ptr<TreeNode> at = node; at->parent(); at = at->parent()) {
+        const std::vector<TreeNode*> siblings = at->parent()->children();
+        path.insert(path.begin(), std::find(siblings.begin(), siblings.end(), at.get()) - siblings.begin());
+    }
+
+    std::shared_ptr<TreeNode> from = copy.tree.root();
+
+    for (size_t index : path)
+        from = from->children()[index]->shared_from_this();
+
+    Session part(node->name);
+    std::vector<TreeNode*> below = from->traverse();
+    below.erase(below.begin());
+
+    for (TreeNode* child : below)
+        if (copy.instance_lookup.count(child->name) && !part.definition_lookup.count(copy.instance_lookup.at(child->name)->definition_guid))
+            part.add_definition(copy.definition_lookup.at(copy.instance_lookup.at(child->name)->definition_guid));
+
+    part._graft_children(copy, *from, part.tree.root());
+
+    for (const std::tuple<std::string, std::string>& edge : copy.graph.get_edges()) {
+        const std::string& u = std::get<0>(edge);
+        const std::string& v = std::get<1>(edge);
+
+        if (!part._is_live(u) || !part._is_live(v))
+            continue;
+
+        const Edge& source = copy.graph.edges.at(u).at(v);
+        part.add_edge(u, v, source.attribute);
+        const std::map<std::string, std::vector<std::shared_ptr<Interaction>>>::const_iterator found = copy.interactions.find(source.guid());
+
+        if (found != copy.interactions.end())
+            part.interactions[part.graph.edges.at(u).at(v).guid()] = found->second;
+    }
+
+    for (TreeNode* child : below)
+        if (copy.xforms.count(child->name))
+            part.set_xform(child->name, copy.xforms.at(child->name));
+
+    Xform placement = Xform::identity();
+
+    for (TreeNode* at = from.get(); at; at = at->parent().get())
+        if (copy.xforms.count(at->name))
+            placement = copy.xforms.at(at->name) * placement;
+
+    if (!placement.is_identity())
+        for (TreeNode* child : from->children())
+            part.set_xform(child->name, placement * (part.xforms.count(child->name) ? part.xforms.at(child->name) : Xform::identity()));
+
+    return part;
+}
+
+void Session::_graft_children(const Session& source, const TreeNode& from, const std::shared_ptr<TreeNode>& host) {
+
+    for (TreeNode* child : from.children()) {
+        if (child->is_dead())
+            continue;
+
+        const std::string& name = child->name;
+        std::shared_ptr<TreeNode> node;
+
+        if (source.lookup.count(name)) {
+            const std::pair<std::string, std::string> collection = collection_of(source.objects, source.lookup.at(name));
+            node = _add_object(collection.first, source.lookup.at(name), collection.second, host);
+        } else if (source.component_lookup.count(name))
+            node = _add_object("components", source.component_lookup.at(name), "component", host);
+        else if (source.instance_lookup.count(name))
+            node = _add_object("instances", source.instance_lookup.at(name), "instance", host);
+        else {
+            node = std::make_shared<TreeNode>(name);
+            add(node, host);
+        }
+
+        if (child->color)
+            set_node_color(node, child->color);
+
+        _graft_children(source, *child, node);
+    }
 }
 
 std::shared_ptr<TreeNode> Session::_node_of(const std::string& guid) const {

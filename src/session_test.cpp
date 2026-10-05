@@ -3187,4 +3187,111 @@ MINI_TEST("Session", "Checkpoint Keeps Replaced Definition") {
     MINI_CHECK(session.definitions.points->get_item(0) == c);
 }
 
+MINI_TEST("Session", "Merge") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Point;
+    // using session_cpp::Color;
+    // using session_cpp::Xform;
+
+    Session scene("scene");
+    Session floor("floor");
+    const std::shared_ptr<Element> a = std::make_shared<Element>("a");
+    const std::shared_ptr<Element> b = std::make_shared<Element>("b");
+    const std::shared_ptr<TreeNode> group = floor.add_group("floor_model");
+    floor.add_element(a, group);
+    floor.add_element(b, group);
+    floor.set_node_color(group, Color::red());
+    floor.add_edge(a->guid(), b->guid(), "joint");
+    floor.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
+    floor.set_xform(b->guid(), Xform::translation(1.0, 0.0, 0.0));
+    scene.add_point(std::make_shared<Point>(0.0, 0.0, 0.0));
+    scene.merge(floor);
+    const std::string id = scene.graph.edges.at(a->guid()).at(b->guid()).guid();
+
+    MINI_CHECK(scene.tree.root()->children().size() == 2);
+    MINI_CHECK(scene.tree.root()->children()[1]->name == "floor_model");
+    MINI_CHECK(scene.tree.root()->children()[1]->color == Color::red());
+    MINI_CHECK(scene.get_node(a->guid())->parent()->name == "floor_model");
+    MINI_CHECK(scene.get_object<Element>(a->guid()) != a);
+    MINI_CHECK(scene.graph.edges.at(a->guid()).at(b->guid()).attribute == "joint");
+    MINI_CHECK(scene.interactions.at(id).size() == 1);
+    MINI_CHECK(scene.world_xform(b->guid()) == Xform::translation(1.0, 0.0, 0.0));
+
+    bool duplicate_rejected = false;
+
+    try {
+        scene.merge(floor);
+    } catch (const std::invalid_argument&) {
+        duplicate_rejected = true;
+    }
+
+    MINI_CHECK(duplicate_rejected);
+}
+
+MINI_TEST("Session", "Graft") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+
+    Session scene("scene");
+    Session floor("floor");
+    const std::shared_ptr<Point> point = std::make_shared<Point>(1.0, 2.0, 3.0);
+    floor.add_point(point, floor.add_group("floor_model"));
+    const std::shared_ptr<TreeNode> level = scene.add_group("level_1");
+    scene.graft(floor, level);
+
+    MINI_CHECK(scene.tree.root()->children().size() == 1);
+    MINI_CHECK(scene.get_node(point->guid())->parent()->name == "floor_model");
+    MINI_CHECK(scene.get_node(point->guid())->parent()->parent() == level);
+}
+
+MINI_TEST("Session", "Flatten") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<TreeNode> a_node = session.add_point(a, session.add_group("group"));
+    session.add_point(b, a_node);
+    session.set_xform(a->guid(), Xform::translation(1.0, 0.0, 0.0));
+    session.set_xform(b->guid(), Xform::translation(0.0, 2.0, 0.0));
+    session.flatten();
+
+    MINI_CHECK(session.tree.root()->children().size() == 2);
+    MINI_CHECK(session.get_node(b->guid())->parent() == session.tree.root());
+    MINI_CHECK(session.world_xform(a->guid()) == Xform::translation(1.0, 0.0, 0.0));
+    MINI_CHECK(session.world_xform(b->guid()) == Xform::translation(1.0, 2.0, 0.0));
+}
+
+MINI_TEST("Session", "Get Branch") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::Xform;
+
+    Session session;
+    const std::shared_ptr<Element> a = std::make_shared<Element>("a");
+    const std::shared_ptr<Element> b = std::make_shared<Element>("b");
+    const std::shared_ptr<Element> c = std::make_shared<Element>("c");
+    const std::shared_ptr<TreeNode> quarter = session.add_group("quarter_0");
+    session.add_element(a, quarter);
+    session.add_element(b, quarter);
+    session.add_element(c);
+    session.add_interaction(a, b, std::make_shared<NamedInteraction>("glue"));
+    session.add_interaction(b, c, std::make_shared<NamedInteraction>("screw"));
+    session.set_xform("quarter_0", Xform::translation(0.0, 0.0, 5.0));
+    session.set_xform(a->guid(), Xform::translation(1.0, 0.0, 0.0));
+    const Session part = session.get_branch("quarter_0");
+
+    MINI_CHECK(part.name == "quarter_0");
+    MINI_CHECK(part.tree.root()->children().size() == 2);
+    MINI_CHECK(part.lookup.count(a->guid()) == 1 && part.lookup.count(c->guid()) == 0);
+    MINI_CHECK(part.get_object<Element>(a->guid()) != session.get_object<Element>(a->guid()));
+    MINI_CHECK(part.graph.number_of_edges() == 1 && part.interactions.size() == 1);
+    MINI_CHECK(part.world_xform(a->guid()) == Xform::translation(1.0, 0.0, 5.0));
+    MINI_CHECK(part.world_xform(b->guid()) == Xform::translation(0.0, 0.0, 5.0));
+    MINI_CHECK(session.lookup.size() == 3 && session.graph.number_of_edges() == 2);
+}
+
 } // namespace session_cpp
