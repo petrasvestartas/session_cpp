@@ -1,4 +1,5 @@
 #include "mini_test.h"
+#include "line.h"
 #include "plane.h"
 #include "plane.pb.h"
 #include "point.h"
@@ -335,6 +336,62 @@ namespace session_cpp {
 
         MINI_CHECK(json.is_locked);
         MINI_CHECK(proto.is_locked);
+    }
+
+    MINI_TEST("Plane", "From Line") {
+        // using session_cpp::Line;
+        // using session_cpp::Plane;
+        // using session_cpp::Vector;
+
+        const Line line(0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+        const Line back(2.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        const Plane pl = Plane::from_line(line, Vector(0.0, 0.0, 1.0));
+        const Plane flipped = Plane::from_line(back, Vector(0.0, 0.0, 1.0));
+
+        MINI_CHECK(TOLERANCE.is_close(pl.origin()[0], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(pl.z_axis()[0], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(pl.z_axis()[1], -1.0));
+        MINI_CHECK(TOLERANCE.is_close(pl.z_axis()[2], 0.0));
+        MINI_CHECK(TOLERANCE.is_close(flipped.z_axis()[1], 1.0));
+    }
+
+    MINI_TEST("Plane", "Moved To") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+
+        const Plane pl = Plane::from_point_normal(Point(0.0, 0.0, 0.0), Vector(1.0, 1.0, 0.0));
+        const Plane moved = pl.moved_to(Point(5.0, 0.0, 0.0));
+        const Plane same = pl.moved_to(Point(0.0, 0.0, 3.0));
+
+        MINI_CHECK(TOLERANCE.is_close(moved.origin()[0], 5.0));
+        MINI_CHECK(TOLERANCE.is_close(moved.x_axis()[2], pl.x_axis()[2]));
+        MINI_CHECK(TOLERANCE.is_close(moved.z_axis()[0], pl.z_axis()[0]));
+        MINI_CHECK(TOLERANCE.is_close(moved.d() * moved.d(), 12.5));
+        MINI_CHECK(Plane::is_coplanar(pl, same));
+    }
+
+    MINI_TEST("Plane", "Signed Distance") {
+        // using session_cpp::Plane;
+        // using session_cpp::Point;
+        // using session_cpp::Vector;
+
+        const Plane pl = Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 2.0));
+
+        MINI_CHECK(TOLERANCE.is_close(pl.signed_distance(Point(3.0, 4.0, 5.0)), 4.0));
+        MINI_CHECK(TOLERANCE.is_close(pl.signed_distance(Point(3.0, 4.0, -1.0)), -2.0));
+        MINI_CHECK(pl.signed_distance(Point(3.0, 4.0, 1.0)) == 0.0);
+    }
+
+    MINI_TEST("Plane", "Xy Plane At") {
+        // using session_cpp::Plane;
+
+        const Plane pl = Plane::xy_plane_at(2.5);
+
+        MINI_CHECK(TOLERANCE.is_close(pl.origin()[2], 2.5));
+        MINI_CHECK(TOLERANCE.is_close(pl.z_axis()[2], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(pl.d(), -2.5));
+        MINI_CHECK(Plane::xy_plane_at(0.0) == Plane::xy_plane());
     }
 
 } // namespace session_cpp

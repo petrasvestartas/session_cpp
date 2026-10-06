@@ -169,6 +169,9 @@ public:
     /// Return the angle to other, negated when the cross product points down z; zero below tolerance.
     double angle(const Vector& other, bool sign_by_cross_product = true, bool degrees = true, double tolerance = Tolerance::ZERO_TOLERANCE) const;
 
+    /// Return a copy with z set to zero.
+    Vector flattened() const;
+
     /// Return the projection onto projection_vector: (projection, projected length, perpendicular, perpendicular length).
     std::tuple<Vector, double, Vector, double> projection(const Vector& projection_vector, double tolerance = Tolerance::ZERO_TOLERANCE) const;
 

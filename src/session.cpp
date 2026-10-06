@@ -1134,12 +1134,24 @@ void Session::add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> pare
     _record_add(node, ghost, was_dead);
 }
 
-std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name) {
+std::shared_ptr<TreeNode> Session::add_group(const std::string& group_name, std::shared_ptr<TreeNode> parent) {
 
     std::shared_ptr<TreeNode> node = std::make_shared<TreeNode>(group_name);
-    add(node);
+    add(node, parent);
 
     return node;
+}
+
+std::shared_ptr<TreeNode> Session::group_named(const std::string& name, std::shared_ptr<TreeNode> parent) {
+
+    const std::shared_ptr<TreeNode> host = parent ? parent : tree.root();
+
+    if (host)
+        for (TreeNode* child : host->children())
+            if (child->name == name)
+                return child->shared_from_this();
+
+    return add_group(name, parent);
 }
 
 bool Session::rename_node(std::shared_ptr<TreeNode> node, const std::string& name) {
@@ -1161,7 +1173,7 @@ bool Session::rename_node(std::shared_ptr<TreeNode> node, const std::string& nam
     return true;
 }
 
-bool Session::set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color) {
+bool Session::set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color, bool descendants) {
 
     if (node->is_dead())
         return false;
@@ -1176,6 +1188,10 @@ bool Session::set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color
         const std::shared_ptr<Tomb> tomb = _node_tomb(node);
         history.record(TreeOp(name, node, tomb, nullptr, name, name, before, color, false, false), RECORD);
     }
+
+    if (descendants)
+        for (TreeNode* child : node->descendants())
+            set_node_color(child->shared_from_this(), color);
 
     return true;
 }

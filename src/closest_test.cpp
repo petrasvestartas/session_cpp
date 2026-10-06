@@ -403,4 +403,44 @@ MINI_TEST("Closest", "Boxes Closest") {
     MINI_CHECK(Closest::boxes_closest(boxes, -0.01).empty());
 }
 
+MINI_TEST("Closest", "Segment Segment") {
+    // using session_cpp::Closest;
+    // using session_cpp::Line;
+
+    const Line s(0.0, 0.0, 0.0, 2.0, 0.0, 0.0);
+    const Line t(1.0, -1.0, 1.0, 1.0, 1.0, 1.0);
+    const Line parallel(3.0, 1.0, 0.0, 5.0, 1.0, 0.0);
+
+    double u = 0.0;
+    double v = 0.0;
+    double d = 0.0;
+    std::tie(u, v, d) = Closest::segment_segment(s, t);
+
+    MINI_CHECK(TOLERANCE.is_close(u, 0.5));
+    MINI_CHECK(TOLERANCE.is_close(v, 0.5));
+    MINI_CHECK(TOLERANCE.is_close(d, 1.0));
+
+    std::tie(u, v, d) = Closest::segment_segment(s, parallel);
+
+    MINI_CHECK(TOLERANCE.is_close(u, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(v, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(d, std::sqrt(2.0)));
+}
+
+MINI_TEST("Closest", "Triangle Point") {
+    // using session_cpp::Closest;
+    // using session_cpp::Point;
+
+    const Point a(0.0, 0.0, 0.0);
+    const Point b(4.0, 0.0, 0.0);
+    const Point c(0.0, 4.0, 0.0);
+    const Point collinear(2.0, 0.0, 0.0);
+
+    MINI_CHECK(TOLERANCE.is_close(Closest::triangle_point(a, b, c, Point(1.0, 1.0, 3.0)), 3.0));
+    MINI_CHECK(TOLERANCE.is_close(Closest::triangle_point(a, b, c, Point(1.0, 1.0, -3.0)), 3.0));
+    MINI_CHECK(TOLERANCE.is_close(Closest::triangle_point(a, b, c, Point(2.0, -3.0, 0.0)), 3.0));
+    MINI_CHECK(TOLERANCE.is_close(Closest::triangle_point(a, b, c, Point(-3.0, -4.0, 0.0)), 5.0));
+    MINI_CHECK(TOLERANCE.is_close(Closest::triangle_point(a, collinear, b, Point(1.0, 1.0, 0.0)), 1.0));
+}
+
 } // namespace session_cpp

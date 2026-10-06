@@ -35,6 +35,9 @@ public:
     /// Return the closest point, parameter in [0, 1] and distance on a segment.
     static std::tuple<Point, double, double> line_point(const Line& line, const Point& test_point);
 
+    /// Return the parameters in [0, 1] on both segments and the distance of their closest approach.
+    static std::tuple<double, double, double> segment_segment(const Line& s, const Line& t);
+
     /// Return the closest point, length parameter in [0, 1] and distance on a polyline.
     static std::tuple<Point, double, double> polyline_point(const Polyline& polyline, const Point& test_point);
 
@@ -63,6 +66,9 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshes and clouds
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Return the distance from point to the triangle a b c, to its nearest edge when degenerate.
+    static double triangle_point(const Point& a, const Point& b, const Point& c, const Point& point);
+
     /// Return the closest point, face key and distance on a mesh via its triangle BVH.
     static std::tuple<Point, size_t, double> mesh_point(const Mesh& mesh, const Point& test_point);
 

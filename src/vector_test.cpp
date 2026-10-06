@@ -483,4 +483,16 @@ namespace session_cpp {
         MINI_CHECK(converted == v);
     }
 
+    MINI_TEST("Vector", "Flattened") {
+        // using session_cpp::Vector;
+
+        const Vector v(1.0, 2.0, 3.0);
+        const Vector flat = v.flattened();
+
+        MINI_CHECK(TOLERANCE.is_close(flat[0], 1.0));
+        MINI_CHECK(TOLERANCE.is_close(flat[1], 2.0));
+        MINI_CHECK(flat[2] == 0.0);
+        MINI_CHECK(TOLERANCE.is_close(v[2], 3.0));
+    }
+
 } // namespace session_cpp

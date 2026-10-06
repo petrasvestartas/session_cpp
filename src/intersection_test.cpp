@@ -2446,4 +2446,61 @@ MINI_TEST("Intersection", "Line Line Classified") {
     MINI_CHECK(!type1);
 }
 
+MINI_TEST("Intersection", "Plane Plane Optional") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Vector;
+
+    const Plane xy = Plane::xy_plane();
+    const Plane xz = Plane::xz_plane();
+    const std::optional<Line> line = Intersection::plane_plane(xy, xz);
+    const std::optional<Line> parallel = Intersection::plane_plane(xy, xy + Vector(0.0, 0.0, 1.0));
+
+    MINI_CHECK(line.has_value());
+    MINI_CHECK(TOLERANCE.is_close(std::abs(line->to_direction()[0]), 1.0));
+    MINI_CHECK(!parallel.has_value());
+}
+
+MINI_TEST("Intersection", "Line Plane Optional") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+
+    const Plane plane = Plane::from_point_normal(Point(0.0, 0.0, 1.0), Vector(0.0, 0.0, 1.0));
+    const Line line(0.0, 0.0, 0.0, 0.0, 0.0, 2.0);
+    const Line short_line(0.0, 0.0, 0.0, 0.0, 0.0, 0.5);
+    const Line flat(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    const std::optional<Point> hit = Intersection::line_plane(line, plane);
+    const std::optional<Point> beyond = Intersection::line_plane(short_line, plane, false);
+
+    MINI_CHECK(hit.has_value());
+    MINI_CHECK(TOLERANCE.is_close((*hit)[2], 1.0));
+    MINI_CHECK(!Intersection::line_plane(short_line, plane).has_value());
+    MINI_CHECK(beyond.has_value());
+    MINI_CHECK(TOLERANCE.is_close((*beyond)[2], 1.0));
+    MINI_CHECK(!Intersection::line_plane(flat, plane, false).has_value());
+}
+
+MINI_TEST("Intersection", "Plane Plane Plane Optional") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+
+    const Plane xy = Plane::from_point_normal(Point(0.0, 0.0, 3.0), Vector(0.0, 0.0, 1.0));
+    const Plane yz = Plane::from_point_normal(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0));
+    const Plane xz = Plane::from_point_normal(Point(0.0, 2.0, 0.0), Vector(0.0, 1.0, 0.0));
+    const std::optional<Point> corner = Intersection::plane_plane_plane(xy, yz, xz);
+    const std::optional<Point> parallel = Intersection::plane_plane_plane(xy, yz, xy + Vector(0.0, 0.0, 1.0));
+
+    MINI_CHECK(corner.has_value());
+    MINI_CHECK(TOLERANCE.is_close((*corner)[0], 1.0));
+    MINI_CHECK(TOLERANCE.is_close((*corner)[1], 2.0));
+    MINI_CHECK(TOLERANCE.is_close((*corner)[2], 3.0));
+    MINI_CHECK(!parallel.has_value());
+}
+
 } // namespace session_cpp

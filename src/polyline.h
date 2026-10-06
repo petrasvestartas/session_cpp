@@ -74,6 +74,9 @@ public:
     /// Construct the quadratic Bezier through p0, p1, p2 sampled at divisions points.
     static Polyline quadratic_points(const Point& p0, const Point& p1, const Point& p2, int divisions = 7);
 
+    /// Construct the closed polygon whose corner i is where sides i and i + 1 meet base; throws when three of them share no point.
+    static Polyline from_planes(const std::vector<Plane>& sides, const Plane& base);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Accessors
     // ═══════════════════════════════════════════════════════════════════════════
@@ -127,8 +130,17 @@ public:
     /// Return a copy with the first point appended when open.
     Polyline closed() const;
 
+    /// Return the points without the closing duplicate.
+    std::vector<Point> open_points() const;
+
     /// Return the average of the points, closing duplicate excluded.
     Point center() const;
+
+    /// Return the area of the planar polygon.
+    double area() const;
+
+    /// Return the area centroid of the planar polygon.
+    Point area_centroid() const;
 
     /// Compute the frame with origin at center, x along the first segment, z the average normal.
     void get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const;
@@ -199,8 +211,23 @@ public:
     /// Return the part on one side of plane; flip picks the normal side, unset keeps the arc-length midpoint side.
     Polyline cut_by_plane(const Plane& plane, std::optional<bool> flip = std::nullopt) const;
 
+    /// Return the closed polygon clipped to the side plane's normal points to, empty when nothing is left.
+    Polyline clip_by_plane(const Plane& plane) const;
+
     /// Return the loop closed with side i moved right of its direction in xy by distances[i], outwards for a counter-clockwise loop; corners mitred, the larger distance where two sides are parallel; empty for fewer than three corners or distances than sides.
     Polyline offset_sides(const std::vector<double>& distances) const;
+
+    /// Return the copy with each segment moved by distance across it in the plane of the segment and up, the ends kept on the end planes; throws when three planes share no point.
+    Polyline offset_toward(double distance, const Vector& up) const;
+
+    /// Return a copy with the first point pushed out by start and the last by end along their segments.
+    Polyline extended(double start, double end) const;
+
+    /// Return the copy extended by extension at both ends and cut by both planes, each keeping the side of the original center.
+    Polyline trimmed(const Plane& plane0, const Plane& plane1, double extension) const;
+
+    /// Return the polygon both closed polygons share on plane, in this winding from the corner nearest this first point, closed; this polygon when they share nothing or all of it.
+    Polyline overlap(const Polyline& other, const Plane& plane) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -294,6 +321,9 @@ public:
 
     /// Return the minimum-area rectangle of the hull as a closed 5-point polyline.
     static std::optional<Polyline> bounding_rectangle(const Polyline& polygon);
+
+    /// Return polylines of one vertex count extended by extension and cut on the segments the first crosses, so quads between them stay quads; throws on mixed counts or a missed plane.
+    static std::vector<Polyline> trimmed_alike(const std::vector<Polyline>& polylines, const Plane& plane0, const Plane& plane1, double extension);
 
     /// Return a grid of interior points spaced div_dist, on the polygon miter-offset by offset_dist.
     static std::vector<Point> grid_of_points_in_polygon(const Polyline& polygon, double offset_dist, double div_dist, size_t max_pts = 100);
@@ -412,6 +442,12 @@ private:
 
     /// Find the polyline and edge closest to center.
     static bool closest_edge(const Point& center, const std::vector<Polyline>& polylines, size_t& edge_i, size_t& edge_j);
+
+    /// Return Newell's unit normal of the loop through points, the closing edge included.
+    static Vector newell_normal(const std::vector<Point>& points);
+
+    /// Return the first segment whose ends lie on both sides of plane, points.size() when none.
+    static size_t crossed_segment(const std::vector<Point>& points, const Plane& plane);
 
     /// Return pl projected into plane's local frame as 2D.
     static Polyline boolean_project(const Polyline& pl, const Plane& plane);

@@ -314,14 +314,17 @@ public:
     /// Put a TreeNode under a parent, the root when none is given: a placed node moves and leaves a ghost, one already there is left alone; null is ignored.
     void add(std::shared_ptr<TreeNode> node, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// Create a named group (TreeNode) and add it to the root of the tree.
-    std::shared_ptr<TreeNode> add_group(const std::string& group_name);
+    /// Create a named group (TreeNode) under parent, the root when none is given.
+    std::shared_ptr<TreeNode> add_group(const std::string& group_name, std::shared_ptr<TreeNode> parent = nullptr);
+
+    /// Return the live child of parent (the root when none is given) named name, added as a group after its other children the first time.
+    std::shared_ptr<TreeNode> group_named(const std::string& name, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// Rename a group node; false for an object node, a dead node or the same name.
     bool rename_node(std::shared_ptr<TreeNode> node, const std::string& name);
 
-    /// Set or clear (nullopt) the display colour of a node; false for a dead node.
-    bool set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color);
+    /// Set or clear (nullopt) the display colour of a node and, with descendants, of every node nested under it; false for a dead node.
+    bool set_node_color(std::shared_ptr<TreeNode> node, std::optional<Color> color, bool descendants = false);
 
     /// Kill a group node with everything below it, parking its transform; false for an object node, the root or a dead node.
     bool remove_group(std::shared_ptr<TreeNode> node);

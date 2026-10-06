@@ -257,6 +257,10 @@ Plane Plane::from_two_points(const Point& point1, const Point& point2) {
     return from_frame(point1, x_axis, y_axis, z_axis);
 }
 
+Plane Plane::from_line(const Line& line, const Vector& along) {
+    return from_point_normal(line.center(), line.to_direction().cross(along));
+}
+
 Plane Plane::invalid() {
     return from_frame(Point(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0), Vector(0.0, 0.0, 0.0));
 }
@@ -283,6 +287,10 @@ Plane Plane::xz_plane() {
     plane.name = "xz_plane";
 
     return plane;
+}
+
+Plane Plane::xy_plane_at(double z) {
+    return xy_plane() + Vector(0.0, 0.0, z);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -452,6 +460,10 @@ Plane Plane::translate_by_normal(double distance) const {
     return Plane(_origin + normal * distance, _x_axis, _y_axis, name);
 }
 
+Plane Plane::moved_to(const Point& point) const {
+    return from_frame(point, _x_axis, _y_axis, _z_axis);
+}
+
 Point Plane::project(const Point& p) const {
 
     const double dist = _a * p[0] + _b * p[1] + _c * p[2] + _d;
@@ -486,6 +498,10 @@ double Plane::squared_distance(const Point& p) const {
     const double normal_sq = _a * _a + _b * _b + _c * _c;
 
     return normal_sq > 1e-20 ? value * value / normal_sq : value * value;
+}
+
+double Plane::signed_distance(const Point& point) const {
+    return (point - _origin).dot(_z_axis);
 }
 
 Vector Plane::base1() const {

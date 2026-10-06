@@ -19,6 +19,7 @@ class Plane;
 
 namespace session_cpp {
 
+class Line;
 class Polyline;
 
 /// A plane defined by an origin and an orthonormal x, y, z frame.
@@ -140,6 +141,9 @@ public:
     /// Construct the plane with x axis from point1 to point2.
     static Plane from_two_points(const Point& point1, const Point& point2);
 
+    /// Construct the plane through the line containing along, normal the line direction × along.
+    static Plane from_line(const Line& line, const Vector& along);
+
     /// Construct an all-zero frame that fails is_valid().
     static Plane invalid();
 
@@ -151,6 +155,9 @@ public:
 
     /// Construct the world XZ plane.
     static Plane xz_plane();
+
+    /// Construct the world XY plane lifted to z.
+    static Plane xy_plane_at(double z);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators
@@ -218,6 +225,9 @@ public:
     /// Return a copy moved along z by distance.
     Plane translate_by_normal(double distance) const;
 
+    /// Return the parallel plane through point, axes kept.
+    Plane moved_to(const Point& point) const;
+
     /// Return the orthogonal projection of p onto the plane.
     Point project(const Point& p) const;
 
@@ -229,6 +239,9 @@ public:
 
     /// Return the squared distance from p to the plane.
     double squared_distance(const Point& p) const;
+
+    /// Return the distance from point along the z axis, negative below.
+    double signed_distance(const Point& point) const;
 
     /// Return the canonical in-plane axis from the normal alone: zero the smallest normal coordinate, negate-swap the other two.
     Vector base1() const;

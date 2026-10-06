@@ -280,6 +280,23 @@ Polyline Polyline::quadratic_points(const Point& p0, const Point& p1, const Poin
     return Polyline(points);
 }
 
+Polyline Polyline::from_planes(const std::vector<Plane>& sides, const Plane& base) {
+
+    const size_t n = sides.size();
+    std::vector<Point> points;
+
+    for (size_t i = 0; i < n; i++) {
+        const std::optional<Point> corner = Intersection::plane_plane_plane(sides[i], sides[(i + 1) % n], base);
+
+        if (!corner)
+            throw std::invalid_argument("from_planes: three planes share no point");
+
+        points.push_back(*corner);
+    }
+
+    return points.empty() ? Polyline() : Polyline(points).closed();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
@@ -436,6 +453,16 @@ Polyline Polyline::closed() const {
     return Polyline::from_coords(coords);
 }
 
+std::vector<Point> Polyline::open_points() const {
+
+    std::vector<Point> points = get_points();
+
+    if (is_closed())
+        points.pop_back();
+
+    return points;
+}
+
 Point Polyline::center() const {
 
     if (_coords.empty())
@@ -453,6 +480,35 @@ Point Polyline::center() const {
     }
 
     return Point(x / n, y / n, z / n);
+}
+
+double Polyline::area() const {
+
+    const std::vector<Point> points = open_points();
+    Vector twice(0.0, 0.0, 0.0);
+
+    for (size_t i = 1; i + 1 < points.size(); i++)
+        twice += (points[i] - points[0]).cross(points[i + 1] - points[0]);
+
+    return 0.5 * twice.magnitude();
+}
+
+Point Polyline::area_centroid() const {
+
+    const std::vector<Point> points = open_points();
+    const size_t n = points.size();
+    const Vector normal = newell_normal(points).normalized();
+    const Point origin = points[0];
+    Vector sum(0.0, 0.0, 0.0);
+    double area = 0.0;
+
+    for (size_t i = 1; i + 1 < n; i++) {
+        const double weight = (points[i] - origin).cross(points[i + 1] - origin).dot(normal);
+        sum += ((points[i] - origin) + (points[i + 1] - origin)) * (weight / 3.0);
+        area += weight;
+    }
+
+    return origin + sum / area;
 }
 
 void Polyline::get_average_plane(Point& origin, Vector& x_axis, Vector& y_axis, Vector& z_axis) const {
@@ -899,6 +955,28 @@ Polyline Polyline::cut_by_plane(const Plane& plane, std::optional<bool> flip) co
     return cut;
 }
 
+Polyline Polyline::clip_by_plane(const Plane& plane) const {
+
+    const std::vector<Point> points = open_points();
+    const size_t n = points.size();
+    std::vector<Point> result;
+
+    for (size_t i = 0; i < n; i++) {
+        const Point& a = points[i];
+        const Point& b = points[(i + 1) % n];
+        const double da = plane.signed_distance(a);
+        const double db = plane.signed_distance(b);
+
+        if (da >= 0.0)
+            result.push_back(a);
+
+        if ((da >= 0.0) != (db >= 0.0))
+            result.push_back(a + (b - a) * (da / (da - db)));
+    }
+
+    return result.empty() ? Polyline() : Polyline(result).closed();
+}
+
 Polyline Polyline::offset_sides(const std::vector<double>& distances) const {
 
     std::vector<Point> points = get_points();
@@ -936,6 +1014,85 @@ Polyline Polyline::offset_sides(const std::vector<double>& distances) const {
     result.push_back(result.front());
 
     return Polyline(result);
+}
+
+Polyline Polyline::offset_toward(double distance, const Vector& up) const {
+
+    const std::vector<Point> points = get_points();
+    const size_t n = points.size();
+
+    if (n < 2)
+        return *this;
+
+    std::vector<Plane> planes = {Plane::from_point_normal(points[0], points[1] - points[0])};
+
+    for (size_t i = 0; i + 1 < n; i++) {
+        const Line line = Line::from_points(points[i], points[i + 1]);
+        const Vector x = line.to_direction();
+        const Vector y = up.cross(x);
+        planes.push_back(Plane::from_point_normal(line.center(), x.cross(y)).translate_by_normal(distance));
+    }
+
+    planes.push_back(Plane::from_point_normal(points[n - 1], points[n - 2] - points[n - 1]));
+
+    const Plane base = Plane::from_point_normal(points[0], up.cross(points[n - 1] - points[0]));
+    std::vector<Point> result;
+
+    for (size_t i = 0; i + 1 < planes.size(); i++) {
+        const std::optional<Point> point = Intersection::plane_plane_plane(planes[i], planes[i + 1], base);
+
+        if (!point)
+            throw std::invalid_argument("offset_toward: three planes share no point");
+
+        result.push_back(*point);
+    }
+
+    return Polyline(result);
+}
+
+Polyline Polyline::extended(double start, double end) const {
+
+    std::vector<Point> points = get_points();
+    const size_t n = points.size();
+
+    if (n < 2)
+        return *this;
+
+    points[0] = points[0] + (points[0] - points[1]).normalized() * start;
+    points[n - 1] = points[n - 1] + (points[n - 1] - points[n - 2]).normalized() * end;
+
+    return Polyline(points);
+}
+
+Polyline Polyline::trimmed(const Plane& plane0, const Plane& plane1, double extension) const {
+
+    const Point middle = center();
+
+    return extended(extension, extension).cut_by_plane(plane0, plane0.signed_distance(middle) >= 0.0).cut_by_plane(plane1, plane1.signed_distance(middle) >= 0.0);
+}
+
+Polyline Polyline::overlap(const Polyline& other, const Plane& plane) const {
+
+    const std::vector<Point> loop = open_points();
+    const std::vector<Polyline> shared = boolean_op(*this, other, plane, 0);
+
+    if (shared.empty() || std::abs(shared.front().area() - area()) <= 1e-6 * area())
+        return closed();
+
+    std::vector<Point> points = shared.front().open_points();
+
+    if (newell_normal(points).dot(newell_normal(loop)) < 0.0)
+        std::reverse(points.begin(), points.end());
+
+    size_t nearest = 0;
+
+    for (size_t i = 1; i < points.size(); i++)
+        if (points[i].distance(loop[0]) < points[nearest].distance(loop[0]))
+            nearest = i;
+
+    std::rotate(points.begin(), points.begin() + nearest, points.end());
+
+    return Polyline(points).closed();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1353,6 +1510,45 @@ std::optional<Polyline> Polyline::bounding_rectangle(const Polyline& polygon) {
     }
 
     return unproject_rectangle(origin, xa, ya, best_extents, best_angle);
+}
+
+std::vector<Polyline> Polyline::trimmed_alike(const std::vector<Polyline>& polylines, const Plane& plane0, const Plane& plane1, double extension) {
+
+    if (polylines.empty())
+        return {};
+
+    const std::vector<Point> first = polylines[0].extended(extension, extension).get_points();
+    const size_t a = crossed_segment(first, plane0);
+    const size_t b = crossed_segment(first, plane1);
+
+    if (a == first.size() || b == first.size())
+        throw std::invalid_argument("trimmed_alike: a plane misses the extended polyline");
+
+    const size_t start = std::min(a, b);
+    const size_t end = std::max(a, b);
+    const Plane& cut0 = a <= b ? plane0 : plane1;
+    const Plane& cut1 = a <= b ? plane1 : plane0;
+    std::vector<Polyline> result;
+
+    for (const Polyline& polyline : polylines) {
+
+        if (polyline.point_count() != polylines[0].point_count())
+            throw std::invalid_argument("trimmed_alike: polylines of different vertex counts");
+
+        const std::vector<Point> points = polyline.extended(extension, extension).get_points();
+        const std::optional<Point> head = Intersection::line_plane(Line::from_points(points[start], points[start + 1]), cut0, false);
+        const std::optional<Point> tail = Intersection::line_plane(Line::from_points(points[end], points[end + 1]), cut1, false);
+
+        if (!head || !tail)
+            throw std::invalid_argument("trimmed_alike: an end segment runs parallel to its plane");
+
+        std::vector<Point> kept = {*head};
+        kept.insert(kept.end(), points.begin() + start + 1, points.begin() + end + 1);
+        kept.push_back(*tail);
+        result.push_back(Polyline(kept));
+    }
+
+    return result;
 }
 
 std::vector<Point> Polyline::grid_of_points_in_polygon(const Polyline& polygon, double offset_dist, double div_dist, size_t max_pts) {
@@ -2004,6 +2200,27 @@ bool Polyline::closest_edge(const Point& center, const std::vector<Polyline>& po
     }
 
     return best_sq < std::numeric_limits<double>::infinity();
+}
+
+Vector Polyline::newell_normal(const std::vector<Point>& points) {
+
+    const size_t n = points.size();
+    const Point zero(0.0, 0.0, 0.0);
+    Vector normal(0.0, 0.0, 0.0);
+
+    for (size_t i = 0; i < n; i++)
+        normal += (points[i] - zero).cross(points[(i + 1) % n] - zero);
+
+    return normal.normalized();
+}
+
+size_t Polyline::crossed_segment(const std::vector<Point>& points, const Plane& plane) {
+
+    for (size_t i = 0; i + 1 < points.size(); i++)
+        if ((plane.signed_distance(points[i]) >= 0.0) != (plane.signed_distance(points[i + 1]) >= 0.0))
+            return i;
+
+    return points.size();
 }
 
 Polyline Polyline::boolean_project(const Polyline& pl, const Plane& plane) {

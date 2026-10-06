@@ -443,6 +443,36 @@ bool Intersection::plane_plane_plane(const Plane& plane0, const Plane& plane1, c
     return (rank == 3 && pr > 1e-12);
 }
 
+std::optional<Line> Intersection::plane_plane(const Plane& plane0, const Plane& plane1) {
+
+    Line output;
+
+    if (!plane_plane(plane0, plane1, output))
+        return std::nullopt;
+
+    return output;
+}
+
+std::optional<Point> Intersection::line_plane(const Line& line, const Plane& plane, bool is_finite) {
+
+    Point output;
+
+    if (!line_plane(line, plane, output, is_finite))
+        return std::nullopt;
+
+    return output;
+}
+
+std::optional<Point> Intersection::plane_plane_plane(const Plane& plane0, const Plane& plane1, const Plane& plane2) {
+
+    Point output;
+
+    if (!plane_plane_plane(plane0, plane1, plane2, output))
+        return std::nullopt;
+
+    return output;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Rays
 // ═══════════════════════════════════════════════════════════════════════════

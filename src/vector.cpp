@@ -314,6 +314,10 @@ double Vector::angle(const Vector& other, bool sign_by_cross_product, bool degre
     return degrees ? angle * Tolerance::TO_DEGREES : angle;
 }
 
+Vector Vector::flattened() const {
+    return Vector(_x, _y, 0.0);
+}
+
 std::tuple<Vector, double, Vector, double> Vector::projection(const Vector& projection_vector, double tolerance) const {
 
     const double projection_vector_length = projection_vector.magnitude();

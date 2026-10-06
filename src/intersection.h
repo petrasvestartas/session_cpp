@@ -72,6 +72,15 @@ public:
     /// Intersection point of three planes.
     static bool plane_plane_plane(const Plane& plane0, const Plane& plane1, const Plane& plane2, Point& output);
 
+    /// Intersection line of two planes, anchored on plane0's origin; empty when parallel.
+    static std::optional<Line> plane_plane(const Plane& plane0, const Plane& plane1);
+
+    /// Intersection point of a line and a plane; empty when parallel or, for a finite line, past its ends.
+    static std::optional<Point> line_plane(const Line& line, const Plane& plane, bool is_finite = true);
+
+    /// Intersection point of three planes; empty when two are parallel.
+    static std::optional<Point> plane_plane_plane(const Plane& plane0, const Plane& plane1, const Plane& plane2);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Rays
     // ═══════════════════════════════════════════════════════════════════════════

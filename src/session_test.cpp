@@ -3504,4 +3504,53 @@ MINI_TEST("Session", "Merge Keeps Feature Guids") {
     MINI_CHECK(part.get_object<Element>(element->guid())->features()[0].guid() == guid);
 }
 
+MINI_TEST("Session", "Add Group Parent") {
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
+
+    Session session;
+    const std::shared_ptr<TreeNode> floor = session.add_group("floor");
+    const std::shared_ptr<TreeNode> quarter = session.add_group("quarter_0", floor);
+
+    MINI_CHECK(floor->parent() == session.tree.root());
+    MINI_CHECK(quarter->parent() == floor);
+    MINI_CHECK(floor->children().size() == 1);
+}
+
+MINI_TEST("Session", "Group Named") {
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
+
+    Session session;
+    const std::shared_ptr<TreeNode> floor = session.add_group("floor");
+    session.add_group("beds", floor);
+    const std::shared_ptr<TreeNode> first = session.group_named("quarter_0", floor);
+    const std::shared_ptr<TreeNode> second = session.group_named("quarter_0", floor);
+
+    MINI_CHECK(first == second);
+    MINI_CHECK(floor->children().size() == 2);
+    MINI_CHECK(floor->children()[1]->name == "quarter_0");
+    MINI_CHECK(session.group_named("floor") == floor);
+    MINI_CHECK(session.group_named("top")->parent() == session.tree.root());
+}
+
+MINI_TEST("Session", "Set Node Color Descendants") {
+    // using session_cpp::Color;
+    // using session_cpp::Point;
+    // using session_cpp::Session;
+    // using session_cpp::TreeNode;
+
+    Session session;
+    const std::shared_ptr<TreeNode> floor = session.add_group("floor");
+    const std::shared_ptr<TreeNode> quarter = session.add_group("quarter_0", floor);
+    const std::shared_ptr<TreeNode> point = session.add_point(Point(1.0, 2.0, 3.0), quarter);
+    const bool painted = session.set_node_color(floor, Color::red(), true);
+    session.set_node_color(floor, Color::blue());
+
+    MINI_CHECK(painted);
+    MINI_CHECK(floor->color == Color::blue());
+    MINI_CHECK(quarter->color == Color::red());
+    MINI_CHECK(point->color == Color::red());
+}
+
 } // namespace session_cpp
