@@ -211,9 +211,6 @@ public:
     /// Return the part on one side of plane; flip picks the normal side, unset keeps the arc-length midpoint side.
     Polyline cut_by_plane(const Plane& plane, std::optional<bool> flip = std::nullopt) const;
 
-    /// Return the closed polygon clipped to the side plane's normal points to, empty when nothing is left.
-    Polyline clip_by_plane(const Plane& plane) const;
-
     /// Return the loop closed with side i moved right of its direction in xy by distances[i], outwards for a counter-clockwise loop; corners mitred, the larger distance where two sides are parallel; empty for fewer than three corners or distances than sides.
     Polyline offset_sides(const std::vector<double>& distances) const;
 
@@ -225,9 +222,6 @@ public:
 
     /// Return the copy extended by extension at both ends and cut by both planes, each keeping the side of the original center.
     Polyline trimmed(const Plane& plane0, const Plane& plane1, double extension) const;
-
-    /// Return the polygon both closed polygons share on plane, in this winding from the corner nearest this first point, closed; this polygon when they share nothing or all of it.
-    Polyline overlap(const Polyline& other, const Plane& plane) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators

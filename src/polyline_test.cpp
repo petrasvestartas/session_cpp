@@ -1331,32 +1331,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(reversed[1], 1.0));
     }
 
-    MINI_TEST("Polyline", "Clip By Plane") {
-        // using session_cpp::Plane;
-        // using session_cpp::Point;
-        // using session_cpp::Polyline;
-        // using session_cpp::Vector;
-
-        const Polyline square(std::vector<Point>{
-            Point(0.0, 0.0, 0.0),
-            Point(2.0, 0.0, 0.0),
-            Point(2.0, 2.0, 0.0),
-            Point(0.0, 2.0, 0.0),
-            Point(0.0, 0.0, 0.0),
-        });
-        const Polyline half = square.clip_by_plane(Plane::from_point_normal(Point(1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0)));
-        const Polyline all = square.clip_by_plane(Plane::from_point_normal(Point(-1.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0)));
-        const Polyline none = square.clip_by_plane(Plane::from_point_normal(Point(3.0, 0.0, 0.0), Vector(1.0, 0.0, 0.0)));
-
-        MINI_CHECK(half.point_count() == 5);
-        MINI_CHECK(half.is_closed());
-        MINI_CHECK(TOLERANCE.is_close(half.get_point(0)[0], 1.0));
-        MINI_CHECK(TOLERANCE.is_close(half.area(), 2.0));
-        MINI_CHECK(all.point_count() == 5);
-        MINI_CHECK(TOLERANCE.is_close(all.area(), 4.0));
-        MINI_CHECK(none.point_count() == 0);
-    }
-
     MINI_TEST("Polyline", "Offset Toward") {
         // using session_cpp::Point;
         // using session_cpp::Polyline;
@@ -1473,47 +1447,6 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(trimmed[1].get_point(2)[0], 15.0));
         MINI_CHECK(mixed);
         MINI_CHECK(missed);
-    }
-
-    MINI_TEST("Polyline", "Overlap") {
-        // using session_cpp::Plane;
-        // using session_cpp::Point;
-        // using session_cpp::Polyline;
-
-        const Polyline a(std::vector<Point>{
-            Point(0.0, 0.0, 0.0),
-            Point(4.0, 0.0, 0.0),
-            Point(4.0, 4.0, 0.0),
-            Point(0.0, 4.0, 0.0),
-            Point(0.0, 0.0, 0.0),
-        });
-        const Polyline b(std::vector<Point>{
-            Point(2.0, -1.0, 0.0),
-            Point(6.0, -1.0, 0.0),
-            Point(6.0, 3.0, 0.0),
-            Point(2.0, 3.0, 0.0),
-            Point(2.0, -1.0, 0.0),
-        });
-        const Polyline apart(std::vector<Point>{
-            Point(10.0, 10.0, 0.0),
-            Point(11.0, 10.0, 0.0),
-            Point(11.0, 11.0, 0.0),
-            Point(10.0, 11.0, 0.0),
-            Point(10.0, 10.0, 0.0),
-        });
-        const Polyline shared = a.overlap(b, Plane::xy_plane());
-        const Polyline none = a.overlap(apart, Plane::xy_plane());
-
-        MINI_CHECK(shared.point_count() == 5);
-        MINI_CHECK(shared.is_closed());
-        MINI_CHECK(TOLERANCE.is_close(shared.area(), 6.0));
-        MINI_CHECK(TOLERANCE.is_close(shared.get_point(0)[0], 2.0));
-        MINI_CHECK(TOLERANCE.is_close(shared.get_point(0)[1], 0.0));
-        MINI_CHECK(TOLERANCE.is_close(shared.get_point(1)[0], 4.0));
-        MINI_CHECK(TOLERANCE.is_close(shared.get_point(1)[1], 0.0));
-        MINI_CHECK(none.point_count() == 5);
-        MINI_CHECK(TOLERANCE.is_close(none.area(), 16.0));
-        MINI_CHECK(TOLERANCE.is_close(none.get_point(0)[0], 0.0));
     }
 
 } // namespace session_cpp

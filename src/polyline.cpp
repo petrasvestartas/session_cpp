@@ -955,28 +955,6 @@ Polyline Polyline::cut_by_plane(const Plane& plane, std::optional<bool> flip) co
     return cut;
 }
 
-Polyline Polyline::clip_by_plane(const Plane& plane) const {
-
-    const std::vector<Point> points = open_points();
-    const size_t n = points.size();
-    std::vector<Point> result;
-
-    for (size_t i = 0; i < n; i++) {
-        const Point& a = points[i];
-        const Point& b = points[(i + 1) % n];
-        const double da = plane.signed_distance(a);
-        const double db = plane.signed_distance(b);
-
-        if (da >= 0.0)
-            result.push_back(a);
-
-        if ((da >= 0.0) != (db >= 0.0))
-            result.push_back(a + (b - a) * (da / (da - db)));
-    }
-
-    return result.empty() ? Polyline() : Polyline(result).closed();
-}
-
 Polyline Polyline::offset_sides(const std::vector<double>& distances) const {
 
     std::vector<Point> points = get_points();
@@ -1069,30 +1047,6 @@ Polyline Polyline::trimmed(const Plane& plane0, const Plane& plane1, double exte
     const Point middle = center();
 
     return extended(extension, extension).cut_by_plane(plane0, plane0.signed_distance(middle) >= 0.0).cut_by_plane(plane1, plane1.signed_distance(middle) >= 0.0);
-}
-
-Polyline Polyline::overlap(const Polyline& other, const Plane& plane) const {
-
-    const std::vector<Point> loop = open_points();
-    const std::vector<Polyline> shared = boolean_op(*this, other, plane, 0);
-
-    if (shared.empty() || std::abs(shared.front().area() - area()) <= 1e-6 * area())
-        return closed();
-
-    std::vector<Point> points = shared.front().open_points();
-
-    if (newell_normal(points).dot(newell_normal(loop)) < 0.0)
-        std::reverse(points.begin(), points.end());
-
-    size_t nearest = 0;
-
-    for (size_t i = 1; i < points.size(); i++)
-        if (points[i].distance(loop[0]) < points[nearest].distance(loop[0]))
-            nearest = i;
-
-    std::rotate(points.begin(), points.begin() + nearest, points.end());
-
-    return Polyline(points).closed();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

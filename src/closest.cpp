@@ -1032,31 +1032,6 @@ std::tuple<Point, double, double> Closest::line_point(const Line& line, const Po
     return {closest, t, closest.distance(test_point)};
 }
 
-std::tuple<double, double, double> Closest::segment_segment(const Line& s, const Line& t) {
-
-    const Vector d1 = s.to_vector();
-    const Vector d2 = t.to_vector();
-    const Vector r = s.start() - t.start();
-    const double a = d1.dot(d1);
-    const double e = d2.dot(d2);
-    const double f = d2.dot(r);
-    const double c = d1.dot(r);
-    const double b = d1.dot(d2);
-    const double denominator = a * e - b * b;
-    double u = denominator > 1e-12 ? std::clamp((b * f - c * e) / denominator, 0.0, 1.0) : 0.0;
-    double v = (b * u + f) / e;
-
-    if (v < 0.0) {
-        v = 0.0;
-        u = std::clamp(-c / a, 0.0, 1.0);
-    } else if (v > 1.0) {
-        v = 1.0;
-        u = std::clamp((b - c) / a, 0.0, 1.0);
-    }
-
-    return {u, v, ((s.start() + d1 * u) - (t.start() + d2 * v)).magnitude()};
-}
-
 std::tuple<Point, double, double> Closest::polyline_point(const Polyline& polyline, const Point& test_point) {
 
     const std::vector<Point> points = polyline.get_points();
@@ -1193,34 +1168,6 @@ std::vector<NurbsCurve> Closest::surface_curve(
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshes and clouds
 // ═══════════════════════════════════════════════════════════════════════════
-double Closest::triangle_point(const Point& a, const Point& b, const Point& c, const Point& point) {
-
-    const Point tri[3] = {a, b, c};
-    const Vector n = (b - a).cross(c - a);
-    const double area = n.magnitude();
-
-    if (area >= 1e-12) {
-        const Vector unit = n * (1.0 / area);
-        const double height = (point - a).dot(unit);
-        const Point q = point - unit * height;
-        bool inside = true;
-
-        for (size_t i = 0; i < 3; i++)
-            inside = inside && (tri[(i + 1) % 3] - tri[i]).cross(q - tri[i]).dot(unit) >= 0.0;
-
-        if (inside)
-            return std::abs(height);
-    }
-
-    double best = 1e300;
-
-    for (size_t i = 0; i < 3; i++) {
-        const Line edge = Line::from_points(tri[i], tri[(i + 1) % 3]);
-        best = std::min(best, (point - edge.closest_point(point).second).magnitude());
-    }
-
-    return best;
-}
 
 std::tuple<Point, size_t, double> Closest::mesh_point(const Mesh& mesh, const Point& test_point) {
 
