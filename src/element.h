@@ -527,6 +527,9 @@ public:
     /// Write the element string to a stream.
     friend std::ostream& operator<<(std::ostream& os, const Element& e);
 
+    /// Objects copies the feature guids with the element.
+    friend class Objects;
+
 protected:
     // ═══════════════════════════════════════════════════════════════════════════
     // Computation

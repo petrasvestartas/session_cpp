@@ -268,32 +268,32 @@ public:
     /// Add a brep; null, or no faces and no vertices, or a guid already live, adds nothing and returns nullptr.
     std::shared_ptr<TreeNode> add_brep(std::shared_ptr<BRep> brep, std::shared_ptr<TreeNode> parent = nullptr);
 
-    /// The same as add_point with a shared pointer, from a value: the session makes the shared pointer, the point keeps its name.
-    std::shared_ptr<TreeNode> add_point(Point point, std::shared_ptr<TreeNode> parent = nullptr);
+    /// The same as add_point with a shared pointer, from a value: the session makes the shared pointer, the point keeps its name and guid.
+    std::shared_ptr<TreeNode> add_point(const Point& point, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_line with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_line(Line line, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_line(const Line& line, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_plane with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_plane(Plane plane, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_plane(const Plane& plane, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_polyline with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_polyline(Polyline polyline, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_polyline(const Polyline& polyline, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_pointcloud with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_pointcloud(PointCloud pointcloud, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_pointcloud(const PointCloud& pointcloud, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_mesh with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_mesh(Mesh mesh, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_mesh(const Mesh& mesh, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_nurbscurve with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_nurbscurve(NurbsCurve nurbscurve, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_nurbscurve(const NurbsCurve& nurbscurve, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_nurbssurface with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_nurbssurface(NurbsSurface nurbssurface, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_nurbssurface(const NurbsSurface& nurbssurface, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// The same as add_brep with a shared pointer, from a value.
-    std::shared_ptr<TreeNode> add_brep(BRep brep, std::shared_ptr<TreeNode> parent = nullptr);
+    std::shared_ptr<TreeNode> add_brep(const BRep& brep, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// Add an element, a data record kept even without geometry; null adds nothing, a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_element(std::shared_ptr<Element> element, std::shared_ptr<TreeNode> parent = nullptr);
@@ -326,13 +326,13 @@ public:
     /// Kill a group node with everything below it, parking its transform; false for an object node, the root or a dead node.
     bool remove_group(std::shared_ptr<TreeNode> node);
 
-    /// Copy every live object of other with its tree, graph edges and their interactions, transforms, definitions and components into this session, other's top-level nodes beside this session's under the root; throws when an object guid of other is already live here.
+    /// Copy every live object of other with its tree, graph edges with their attributes and interactions, transforms, definitions and components into this session, other's top-level nodes beside this session's under the root with other's root transform folded into them; throws, changing nothing, when an object guid of other is live or a definition here, a definition guid of other is live here, or a group transform of other would land on a node name this session has.
     void merge(const Session& other);
 
-    /// The same as merge, other's top-level nodes under parent instead of the root.
+    /// The same as merge, other's top-level nodes under parent instead of the root; throws when parent is dead or outside this session's tree.
     void graft(const Session& other, std::shared_ptr<TreeNode> parent);
 
-    /// Move every live object node directly under the root, its world placement its own transform, and remove the groups left behind.
+    /// Move every live object node directly under the root, its world placement its own transform, and remove every group left behind with its transform, and the root's transform.
     void flatten();
 
     /// A new session named name holding a copy of the branch under the first node of that name, any later one ignored, the node's children under its root: their objects, the graph edges and interactions between them, their transforms with the node's placement baked into the top-level children, and the definitions their instances use; this session is unchanged; throws when no node has that name or the first is dead.
@@ -544,6 +544,9 @@ private:
     // ═══════════════════════════════════════════════════════════════════════════
     /// Add the live children of from in source under host, objects through _add_object and groups as new groups, colours kept, then their children in turn.
     void _graft_children(const Session& source, const TreeNode& from, const std::shared_ptr<TreeNode>& host);
+
+    /// Copy the graph vertex attributes of source's live objects live here, and source's edges between objects live here with their name, attributes and interactions.
+    void _graft_graph(const Session& source);
 
     /// Store an object in its typed list, lookup, graph and tree, recording an AddOp when a transaction is open; nullptr for a guid that is already live, as an object or a definition, which adds nothing.
     std::shared_ptr<TreeNode> _add_object(

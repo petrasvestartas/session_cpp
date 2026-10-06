@@ -31,29 +31,6 @@ std::shared_ptr<Collection<std::shared_ptr<T>>> clone_list(
     return out;
 }
 
-/// Elements are polymorphic, so the copy goes through the virtual clone.
-std::shared_ptr<Collection<std::shared_ptr<Element>>> clone_elements(
-    const std::shared_ptr<Collection<std::shared_ptr<Element>>>& source
-) {
-
-    std::shared_ptr<Collection<std::shared_ptr<Element>>> out = std::make_shared<Collection<std::shared_ptr<Element>>>();
-
-    if (!source)
-        return out;
-
-    for (const std::shared_ptr<Element>& item : *source) {
-
-        std::shared_ptr<Element> copy = item->clone();
-
-        if (item->has_guid())
-            copy->guid() = item->guid();
-
-        out->push_back(std::move(copy));
-    }
-
-    return out;
-}
-
 /// A load is not a duplicate: the loaded object is moved in, feature guids included, and its guid put back.
 template <class T>
 std::shared_ptr<T> keep_guid(T&& loaded) {
@@ -233,7 +210,22 @@ Objects::Objects(const Objects& other) : name(other.name) {
     nurbscurves = clone_list(other.nurbscurves);
     nurbssurfaces = clone_list(other.nurbssurfaces);
     breps = clone_list(other.breps);
-    elements = clone_elements(other.elements);
+    elements = std::make_shared<Collection<std::shared_ptr<Element>>>();
+
+    if (other.elements)
+        for (const std::shared_ptr<Element>& item : *other.elements) {
+            std::shared_ptr<Element> copy = item->clone();
+
+            if (item->has_guid())
+                copy->guid() = item->guid();
+
+            for (size_t i = 0; i < item->_features.size() && i < copy->_features.size(); ++i)
+                if (item->_features[i].has_guid())
+                    copy->_features[i].guid() = item->_features[i].guid();
+
+            elements->push_back(std::move(copy));
+        }
+
     components = std::make_shared<Collection<Component>>(other.components ? *other.components : Collection<Component>());
     instances = clone_list(other.instances);
 }

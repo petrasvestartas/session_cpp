@@ -3294,4 +3294,214 @@ MINI_TEST("Session", "Get Branch") {
     MINI_CHECK(session.lookup.size() == 3 && session.graph.number_of_edges() == 2);
 }
 
+MINI_TEST("Session", "Graft Parent Not In Tree") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+
+    Session scene("scene");
+    Session floor("floor");
+    Session other("other");
+    floor.add_point(std::make_shared<Point>(1.0, 2.0, 3.0));
+    const std::shared_ptr<TreeNode> level = scene.add_group("level_1");
+    scene.remove_group(level);
+    bool dead_rejected = false;
+    bool foreign_rejected = false;
+
+    try {
+        scene.graft(floor, level);
+    } catch (const std::invalid_argument&) {
+        dead_rejected = true;
+    }
+
+    try {
+        scene.graft(floor, other.add_group("level_2"));
+    } catch (const std::invalid_argument&) {
+        foreign_rejected = true;
+    }
+
+    MINI_CHECK(dead_rejected);
+    MINI_CHECK(foreign_rejected);
+    MINI_CHECK(scene.lookup.empty() && other.lookup.empty());
+}
+
+MINI_TEST("Session", "Merge Group Xform Clash") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+
+    Session scene("floor");
+    Session floor("floor");
+    Session level("floor");
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> c = std::make_shared<Point>(0.0, 0.0, 0.0);
+    scene.add_point(a, scene.add_group("floor_model"));
+    floor.add_point(b, floor.add_group("floor_model"));
+    floor.set_xform("floor_model", Xform::translation(0.0, 0.0, 3.0));
+    level.add_point(c);
+    level.set_xform("floor", Xform::translation(0.0, 0.0, 3.0));
+    bool clash_rejected = false;
+
+    try {
+        scene.merge(floor);
+    } catch (const std::invalid_argument&) {
+        clash_rejected = true;
+    }
+
+    scene.merge(level);
+
+    MINI_CHECK(clash_rejected);
+    MINI_CHECK(scene.lookup.size() == 2);
+    MINI_CHECK(scene.world_xform(a->guid()) == Xform::identity());
+    MINI_CHECK(scene.world_xform(c->guid()) == Xform::translation(0.0, 0.0, 3.0));
+}
+
+MINI_TEST("Session", "Get Branch Shared Child Name") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<TreeNode> level = session.add_group("level");
+    const std::shared_ptr<TreeNode> first = std::make_shared<TreeNode>("floor_model");
+    const std::shared_ptr<TreeNode> second = std::make_shared<TreeNode>("floor_model");
+    session.add(first, level);
+    session.add(second, level);
+    session.add_point(a, first);
+    session.add_point(b, second);
+    session.set_xform("level", Xform::translation(0.0, 0.0, 3.0));
+    const Session part = session.get_branch("level");
+
+    MINI_CHECK(part.world_xform(a->guid()) == Xform::translation(0.0, 0.0, 3.0));
+    MINI_CHECK(part.world_xform(b->guid()) == Xform::translation(0.0, 0.0, 3.0));
+}
+
+MINI_TEST("Session", "Flatten Root Xform") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+
+    Session session;
+    const std::shared_ptr<Point> point = std::make_shared<Point>(0.0, 0.0, 0.0);
+    session.add_point(point);
+    session.set_xform(session.name, Xform::translation(0.0, 0.0, 3.0));
+    session.flatten();
+
+    MINI_CHECK(session.world_xform(point->guid()) == Xform::translation(0.0, 0.0, 3.0));
+}
+
+MINI_TEST("Session", "Graft Definition Guid") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+
+    Session scene("scene");
+    Session floor("floor");
+    Session library("library");
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    scene.add_definition(a);
+    floor.add_point(a);
+    scene.add_point(b);
+    library.add_definition(b);
+    bool object_rejected = false;
+    bool definition_rejected = false;
+
+    try {
+        scene.merge(floor);
+    } catch (const std::invalid_argument&) {
+        object_rejected = true;
+    }
+
+    try {
+        scene.merge(library);
+    } catch (const std::invalid_argument&) {
+        definition_rejected = true;
+    }
+
+    MINI_CHECK(object_rejected);
+    MINI_CHECK(definition_rejected);
+    MINI_CHECK(scene.lookup.size() == 1 && scene.definition_lookup.size() == 1);
+}
+
+MINI_TEST("Session", "Add Value Keeps Guid") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+
+    Session session;
+    const Point point(1.0, 2.0, 3.0);
+    const std::string guid = point.guid();
+    session.add_point(point);
+    session.add_point(point);
+
+    MINI_CHECK(session.get_node(guid) != nullptr);
+    MINI_CHECK(session.lookup.size() == 1);
+}
+
+MINI_TEST("Session", "Merge Graph Attributes") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+
+    Session scene("scene");
+    Session floor("floor");
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(1.0, 0.0, 0.0);
+    floor.add_point(a);
+    floor.add_point(b);
+    floor.add_edge(a->guid(), b->guid(), "joint");
+    floor.graph.edges.at(a->guid()).at(b->guid()).name = "seam";
+    floor.graph.edges.at(b->guid()).at(a->guid()).name = "seam";
+    floor.graph.set_edge_attribute({a->guid(), b->guid()}, "stiffness", 5.0);
+    floor.graph.set_vertex_attribute(a->guid(), "mass", 2.0);
+    scene.merge(floor);
+    const Session part = floor.get_branch("floor");
+
+    MINI_CHECK(scene.graph.edges.at(a->guid()).at(b->guid()).name == "seam");
+    MINI_CHECK(scene.graph.edge_attribute({a->guid(), b->guid()}, "stiffness") == 5.0);
+    MINI_CHECK(scene.graph.vertex_attribute(a->guid(), "mass") == 2.0);
+    MINI_CHECK(part.graph.edges.at(a->guid()).at(b->guid()).name == "seam");
+    MINI_CHECK(part.graph.edge_attribute({a->guid(), b->guid()}, "stiffness") == 5.0);
+    MINI_CHECK(part.graph.vertex_attribute(a->guid(), "mass") == 2.0);
+}
+
+MINI_TEST("Session", "Flatten Nested Groups") {
+    // using session_cpp::Session;
+    // using session_cpp::Point;
+    // using session_cpp::Xform;
+
+    Session session;
+    const std::shared_ptr<Point> a = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<Point> b = std::make_shared<Point>(0.0, 0.0, 0.0);
+    const std::shared_ptr<TreeNode> inner = std::make_shared<TreeNode>("inner");
+    const std::shared_ptr<TreeNode> held = std::make_shared<TreeNode>("held");
+    session.add(inner, session.add_group("outer"));
+    session.add(held, session.add_point(a, inner));
+    session.add_point(b, held);
+    session.set_xform("inner", Xform::translation(0.0, 0.0, 3.0));
+    session.flatten();
+
+    MINI_CHECK(session.xforms.count("inner") == 0);
+    MINI_CHECK(session.tree.get_node_by_name("held") == nullptr);
+    MINI_CHECK(session.world_xform(b->guid()) == Xform::translation(0.0, 0.0, 3.0));
+}
+
+MINI_TEST("Session", "Merge Keeps Feature Guids") {
+    // using session_cpp::Session;
+    // using session_cpp::Element;
+    // using session_cpp::ElementFeature;
+
+    Session scene("scene");
+    Session floor("floor");
+    const std::shared_ptr<Element> element = std::make_shared<Element>("plate");
+    element->add_feature(ElementFeature("drill", -1, {}, "hole"));
+    const std::string guid = element->features()[0].guid();
+    floor.add_element(element);
+    scene.merge(floor);
+    const Session part = floor.get_branch("floor");
+
+    MINI_CHECK(scene.get_object<Element>(element->guid())->features()[0].guid() == guid);
+    MINI_CHECK(part.get_object<Element>(element->guid())->features()[0].guid() == guid);
+}
+
 } // namespace session_cpp
