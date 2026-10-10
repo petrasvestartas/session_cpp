@@ -802,13 +802,14 @@ void Polyline::extend_segment_equally(int segment_id, double dist, double propor
     if (segment_id < 0 || segment_id >= static_cast<int>(segment_count()))
         return;
 
+    const bool closed = point_count() > 2 && is_closed();
     Point p0 = get_point(segment_id);
     Point p1 = get_point(segment_id + 1);
     extend_segment_equally(p0, p1, dist, proportion);
     set_point(segment_id, p0);
     set_point(segment_id + 1, p1);
 
-    if (point_count() <= 2 || !is_closed())
+    if (!closed)
         return;
 
     if (segment_id == 0)
