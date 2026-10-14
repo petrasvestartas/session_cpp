@@ -27,7 +27,7 @@ public:
 
     std::string name = "my_instance_ref"; // Instance name.
     std::string definition_guid; // Guid of the referenced definition.
-    Xform xform; // Placement outside a Session; inside one Session::xforms places the instance and this stays identity.
+    Xform xform; // Outside-Session placement; inside one the central xforms table holds the LOCAL placement.
     Color color = Color::white(); // Display color, used when flags has FLAG_COLOR.
     uint32_t flags = 0; // FLAG_* bits.
     std::vector<ElementFeature> features; // Per-instance features in the definition frame, drawn after the definition's own.

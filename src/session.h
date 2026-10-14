@@ -79,7 +79,7 @@ public:
     Tree tree;                                                   // Tree structure for hierarchy.
     Graph graph;                                                 // Graph structure for relationships.
     std::unordered_map<std::string, Component> component_lookup; // Fast lookup table for components by GUID.
-    std::unordered_map<std::string, Xform> xforms;               // LOCAL transform per guid, relative to the parent.
+    std::unordered_map<std::string, Xform> xforms;               // Central table by tree-node name/object guid; values are LOCAL to the tree parent.
     Objects definitions;                                         // Shared geometry instances place, each in its own frame; never in order(), the tree, the graph or xforms.
     std::unordered_map<std::string, Geometry> definition_lookup; // Definitions by guid.
     std::unordered_map<std::string, std::shared_ptr<InstanceRef>> instance_lookup; // Instances by guid.
@@ -196,13 +196,13 @@ public:
     /// Canonical object order: the objects lists walked in one fixed type sequence; instances are not in it.
     std::vector<std::string> order() const;
 
-    /// The LOCAL transform of an object, identity when none was set.
+    /// The LOCAL transform stored centrally under tree-node name/object guid, relative to its parent; identity if absent.
     Xform xform(const std::string& guid) const;
 
-    /// The CUMULATIVE placement of an object: every ancestor's transform multiplied down the tree onto its own.
+    /// The WORLD transform: the product of LOCAL transforms from the tree root through the object.
     Xform world_xform(const std::string& guid) const;
 
-    /// Every object's cumulative placement, computed in one downward pass.
+    /// Every object's WORLD transform, computed by multiplying LOCAL transforms down the tree.
     std::unordered_map<std::string, Xform> world_xforms() const;
 
     /// Get the children of a parent GUID.
@@ -372,7 +372,7 @@ public:
     /// Turn an instance into a standalone copy of its definition in the definition frame, keeping its guid, name, transform, tree node and edges, and on an element its features.
     bool explode(const std::string& instance_guid);
 
-    /// Sets the LOCAL transform of an object, relative to its tree parent; a guid that names only a definition is ignored.
+    /// Set the central LOCAL transform under tree-node name/object guid, relative to its parent; a definition-only guid is ignored.
     void set_xform(const std::string& guid, const Xform& xform);
 
     /// Removes an object's local transform, returning whether one was present.

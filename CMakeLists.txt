@@ -367,6 +367,12 @@ target_compile_options(session_bench PRIVATE ${SESSION_COMPILE_OPTIONS})
 target_link_libraries(session_bench PRIVATE session_core)
 LINK_PROTOBUF(session_bench)
 
+# session_robot_arm_cpp — hierarchical local transforms on downloaded link meshes.
+add_executable(session_robot_arm_cpp ../session_examples/robot_arm.cpp)
+target_compile_options(session_robot_arm_cpp PRIVATE ${SESSION_COMPILE_OPTIONS})
+target_link_libraries(session_robot_arm_cpp PRIVATE session_core)
+LINK_PROTOBUF(session_robot_arm_cpp)
+
 #############################################################################################
 # TESTS
 #############################################################################################
