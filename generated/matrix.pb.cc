@@ -47,13 +47,13 @@ constexpr Matrix::ParseTableT_ Matrix::InternalGenerateParseTable_(const ::_pbi:
     {
       PROTOBUF_FIELD_OFFSET(Matrix, _impl_._has_bits_),
       0, // no _extensions_
-      5, 56,  // max_field_number, fast_idx_mask
+      11, 120,  // max_field_number, fast_idx_mask
       offsetof(ParseTableT_, field_lookup_table),
-      4294967264,  // skipmap
+      4294965248,  // skipmap
       offsetof(ParseTableT_, field_entries),
-      5,  // num_field_entries
-      0,  // num_aux_entries
-      offsetof(ParseTableT_, field_names),  // no aux_entries
+      11,  // num_field_entries
+      5,  // num_aux_entries
+      offsetof(ParseTableT_, aux_entries),
       class_data,
       nullptr,  // post_loop_handler
       ::_pbi::TcParser::MpUnknownFields,  // fallback
@@ -71,17 +71,43 @@ constexpr Matrix::ParseTableT_ Matrix::InternalGenerateParseTable_(const ::_pbi:
        {18, 2, 0,
         PROTOBUF_FIELD_OFFSET(Matrix, _impl_.name_)}},
       // int32 rows = 3;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Matrix, _impl_.rows_), 3>(),
-       {24, 3, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Matrix, _impl_.rows_), 8>(),
+       {24, 8, 0,
         PROTOBUF_FIELD_OFFSET(Matrix, _impl_.rows_)}},
       // int32 cols = 4;
-      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Matrix, _impl_.cols_), 4>(),
-       {32, 4, 0,
+      {::_pbi::TcParser::SingularVarintNoZag1<::uint32_t, offsetof(Matrix, _impl_.cols_), 9>(),
+       {32, 9, 0,
         PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cols_)}},
       // repeated double data = 5;
       {::_pbi::TcParser::FastF64P1,
        {42, 0, 0,
         PROTOBUF_FIELD_OFFSET(Matrix, _impl_.data_)}},
+      // .session_proto.Color mincolor = 6;
+      {::_pbi::TcParser::FastMtS1,
+       {50, 3, 0,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.mincolor_)}},
+      // .session_proto.Color maxcolor = 7;
+      {::_pbi::TcParser::FastMtS1,
+       {58, 4, 1,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.maxcolor_)}},
+      // .session_proto.Color zerocolor = 8;
+      {::_pbi::TcParser::FastMtS1,
+       {66, 5, 2,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.zerocolor_)}},
+      // .session_proto.Color textcolor = 9;
+      {::_pbi::TcParser::FastMtS1,
+       {74, 6, 3,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.textcolor_)}},
+      // .session_proto.Color linecolor = 10;
+      {::_pbi::TcParser::FastMtS1,
+       {82, 7, 4,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.linecolor_)}},
+      // double cell = 11;
+      {::_pbi::TcParser::FastF64S1,
+       {89, 10, 0,
+        PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cell_)}},
+      {::_pbi::TcParser::MiniParse, {}},
+      {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
       {::_pbi::TcParser::MiniParse, {}},
     }}, {{
@@ -92,15 +118,53 @@ constexpr Matrix::ParseTableT_ Matrix::InternalGenerateParseTable_(const ::_pbi:
       // string name = 2;
       {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.name_), _Internal::kHasBitsOffset + 2, 0, (0 | ::_fl::kFcOptional | ::_fl::kUtf8String | ::_fl::kRepAString)},
       // int32 rows = 3;
-      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.rows_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.rows_), _Internal::kHasBitsOffset + 8, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // int32 cols = 4;
-      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cols_), _Internal::kHasBitsOffset + 4, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cols_), _Internal::kHasBitsOffset + 9, 0, (0 | ::_fl::kFcOptional | ::_fl::kInt32)},
       // repeated double data = 5;
       {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.data_), _Internal::kHasBitsOffset + 0, 0, (0 | ::_fl::kFcRepeated | ::_fl::kPackedDouble)},
+      // .session_proto.Color mincolor = 6;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.mincolor_), _Internal::kHasBitsOffset + 3, 0, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // .session_proto.Color maxcolor = 7;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.maxcolor_), _Internal::kHasBitsOffset + 4, 1, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // .session_proto.Color zerocolor = 8;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.zerocolor_), _Internal::kHasBitsOffset + 5, 2, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // .session_proto.Color textcolor = 9;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.textcolor_), _Internal::kHasBitsOffset + 6, 3, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // .session_proto.Color linecolor = 10;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.linecolor_), _Internal::kHasBitsOffset + 7, 4, (0 | ::_fl::kFcOptional | ::_fl::kMessage | ::_fl::kTvTable)},
+      // double cell = 11;
+      {PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cell_), _Internal::kHasBitsOffset + 10, 0, (0 | ::_fl::kFcOptional | ::_fl::kDouble)},
     }},
-    // no aux_entries
     {{
-      "\24\4\4\0\0\0\0\0"
+        #ifndef PROTOBUF_MESSAGE_GLOBALS
+        {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+        #else
+        {::_pbi::FieldAuxMessageGlobals(), &::session_proto::Color_globals_},
+        #endif
+        #ifndef PROTOBUF_MESSAGE_GLOBALS
+        {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+        #else
+        {::_pbi::FieldAuxMessageGlobals(), &::session_proto::Color_globals_},
+        #endif
+        #ifndef PROTOBUF_MESSAGE_GLOBALS
+        {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+        #else
+        {::_pbi::FieldAuxMessageGlobals(), &::session_proto::Color_globals_},
+        #endif
+        #ifndef PROTOBUF_MESSAGE_GLOBALS
+        {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+        #else
+        {::_pbi::FieldAuxMessageGlobals(), &::session_proto::Color_globals_},
+        #endif
+        #ifndef PROTOBUF_MESSAGE_GLOBALS
+        {::_pbi::TcParser::GetTable<::session_proto::Color>()},
+        #else
+        {::_pbi::FieldAuxMessageGlobals(), &::session_proto::Color_globals_},
+        #endif
+    }},
+    {{
+      "\24\4\4\0\0\0\0\0\0\0\0\0\0\0\0\0"
       "session_proto.Matrix"
       "guid"
       "name"
@@ -123,8 +187,14 @@ inline constexpr Matrix::Impl_::Impl_(
         name_(
             &::google::protobuf::internal::fixed_address_empty_string,
             ::_pbi::ConstantInitialized()),
+        mincolor_{nullptr},
+        maxcolor_{nullptr},
+        zerocolor_{nullptr},
+        textcolor_{nullptr},
+        linecolor_{nullptr},
         rows_{0},
-        cols_{0} {}
+        cols_{0},
+        cell_{0} {}
 
 template <typename>
 constexpr Matrix::Matrix(::_pbi::ConstantInitialized,
@@ -228,17 +298,29 @@ const ::uint32_t
         protodesc_cold) = {
         0x081, // bitmap
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_._has_bits_),
-        8, // hasbit index offset
+        14, // hasbit index offset
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.guid_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.name_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.rows_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.cols_),
         PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.data_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.mincolor_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.maxcolor_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.zerocolor_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.textcolor_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.linecolor_),
+        PROTOBUF_FIELD_OFFSET(::session_proto::Matrix, _impl_.cell_),
         1,
         2,
+        8,
+        9,
+        0,
         3,
         4,
-        0,
+        5,
+        6,
+        7,
+        10,
 };
 
 static const ::_pbi::MigrationSchema
@@ -251,20 +333,30 @@ static const ::_pbi::MessageGlobalsBase* PROTOBUF_NONNULL const
 };
 const char descriptor_table_protodef_matrix_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
-    "\n\014matrix.proto\022\rsession_proto\"N\n\006Matrix\022"
-    "\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\014\n\004rows\030\003 \001("
-    "\005\022\014\n\004cols\030\004 \001(\005\022\014\n\004data\030\005 \003(\001b\006proto3"
+    "\n\014matrix.proto\022\rsession_proto\032\013color.pro"
+    "to\"\247\002\n\006Matrix\022\014\n\004guid\030\001 \001(\t\022\014\n\004name\030\002 \001("
+    "\t\022\014\n\004rows\030\003 \001(\005\022\014\n\004cols\030\004 \001(\005\022\014\n\004data\030\005 "
+    "\003(\001\022&\n\010mincolor\030\006 \001(\0132\024.session_proto.Co"
+    "lor\022&\n\010maxcolor\030\007 \001(\0132\024.session_proto.Co"
+    "lor\022\'\n\tzerocolor\030\010 \001(\0132\024.session_proto.C"
+    "olor\022\'\n\ttextcolor\030\t \001(\0132\024.session_proto."
+    "Color\022\'\n\tlinecolor\030\n \001(\0132\024.session_proto"
+    ".Color\022\014\n\004cell\030\013 \001(\001b\006proto3"
+};
+static const ::_pbi::DescriptorTable* PROTOBUF_NONNULL const
+    descriptor_table_matrix_2eproto_deps[1] = {
+        &::descriptor_table_color_2eproto,
 };
 static ::absl::once_flag descriptor_table_matrix_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_matrix_2eproto = {
     false,
     false,
-    117,
+    348,
     descriptor_table_protodef_matrix_2eproto,
     "matrix.proto",
     &descriptor_table_matrix_2eproto_once,
-    nullptr,
-    0,
+    descriptor_table_matrix_2eproto_deps,
+    1,
     1,
     schemas,
     file_message_globals,
@@ -275,6 +367,31 @@ PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_matrix_2eproto
 namespace session_proto {
 // ===================================================================
 
+void Matrix::clear_mincolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.mincolor_ != nullptr) _impl_.mincolor_->Clear();
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+}
+void Matrix::clear_maxcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.maxcolor_ != nullptr) _impl_.maxcolor_->Clear();
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+}
+void Matrix::clear_zerocolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.zerocolor_ != nullptr) _impl_.zerocolor_->Clear();
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+}
+void Matrix::clear_textcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.textcolor_ != nullptr) _impl_.textcolor_->Clear();
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+}
+void Matrix::clear_linecolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.linecolor_ != nullptr) _impl_.linecolor_->Clear();
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+}
 Matrix::Matrix(::google::protobuf::Arena* PROTOBUF_NULLABLE arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : Super_(arena, Matrix_get_class_data()) {
@@ -313,13 +430,29 @@ Matrix::Matrix(
   _internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(
       from._internal_metadata_);
   new (&_impl_) Impl_(internal_visibility(), arena, from._impl_, from);
+  ::uint32_t cached_has_bits = _impl_._has_bits_[0];
+  _impl_.mincolor_ = (CheckHasBit(cached_has_bits, 0x00000008U))
+                 ? Super_::CopyConstruct(arena, *from._impl_.mincolor_)
+                 : nullptr;
+  _impl_.maxcolor_ = (CheckHasBit(cached_has_bits, 0x00000010U))
+                 ? Super_::CopyConstruct(arena, *from._impl_.maxcolor_)
+                 : nullptr;
+  _impl_.zerocolor_ = (CheckHasBit(cached_has_bits, 0x00000020U))
+                 ? Super_::CopyConstruct(arena, *from._impl_.zerocolor_)
+                 : nullptr;
+  _impl_.textcolor_ = (CheckHasBit(cached_has_bits, 0x00000040U))
+                 ? Super_::CopyConstruct(arena, *from._impl_.textcolor_)
+                 : nullptr;
+  _impl_.linecolor_ = (CheckHasBit(cached_has_bits, 0x00000080U))
+                 ? Super_::CopyConstruct(arena, *from._impl_.linecolor_)
+                 : nullptr;
   ::memcpy(reinterpret_cast<char*>(&_impl_) +
                offsetof(Impl_, rows_),
            reinterpret_cast<const char*>(&from._impl_) +
                offsetof(Impl_, rows_),
-           offsetof(Impl_, cols_) -
+           offsetof(Impl_, cell_) -
                offsetof(Impl_, rows_) +
-               sizeof(Impl_::cols_));
+               sizeof(Impl_::cell_));
 
   // @@protoc_insertion_point(copy_constructor:session_proto.Matrix)
 }
@@ -337,11 +470,11 @@ PROTOBUF_NDEBUG_INLINE Matrix::Impl_::Impl_(
 inline void Matrix::SharedCtor(::_pb::Arena* PROTOBUF_NULLABLE arena) {
   new (&_impl_) Impl_(internal_visibility(), arena);
   ::memset(reinterpret_cast<char*>(&_impl_) +
-               offsetof(Impl_, rows_),
+               offsetof(Impl_, mincolor_),
            0,
-           offsetof(Impl_, cols_) -
-               offsetof(Impl_, rows_) +
-               sizeof(Impl_::cols_));
+           offsetof(Impl_, cell_) -
+               offsetof(Impl_, mincolor_) +
+               sizeof(Impl_::cell_));
 }
 Matrix::~Matrix() {
   // @@protoc_insertion_point(destructor:session_proto.Matrix)
@@ -356,6 +489,11 @@ inline void Matrix::SharedDtor(MessageLite& self) {
   ABSL_DCHECK(this_.GetArena() == nullptr);
   this_._impl_.guid_.Destroy();
   this_._impl_.name_.Destroy();
+  delete this_._impl_.mincolor_;
+  delete this_._impl_.maxcolor_;
+  delete this_._impl_.zerocolor_;
+  delete this_._impl_.textcolor_;
+  delete this_._impl_.linecolor_;
   this_._impl_.~Impl_();
 }
 
@@ -392,7 +530,7 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
   ::uint32_t cached_has_bits [[maybe_unused]] = 0;
 
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x00000007U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _impl_.data_.Clear();
     }
@@ -402,13 +540,33 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
     if (CheckHasBit(cached_has_bits, 0x00000004U)) {
       this_._impl_.name_.ClearNonDefaultToEmpty();
     }
+    if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      ABSL_DCHECK(this_._impl_.mincolor_ != nullptr);
+      this_._impl_.mincolor_->Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      ABSL_DCHECK(this_._impl_.maxcolor_ != nullptr);
+      this_._impl_.maxcolor_->Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+      ABSL_DCHECK(this_._impl_.zerocolor_ != nullptr);
+      this_._impl_.zerocolor_->Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      ABSL_DCHECK(this_._impl_.textcolor_ != nullptr);
+      this_._impl_.textcolor_->Clear();
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      ABSL_DCHECK(this_._impl_.linecolor_ != nullptr);
+      this_._impl_.linecolor_->Clear();
+    }
   }
-  if (BatchCheckHasBit(cached_has_bits, 0x00000018U)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x00000700U)) {
     ::memset(&this_._impl_.rows_, 0,
              static_cast<::size_t>(
-                 reinterpret_cast<char*>(&this_._impl_.cols_) -
+                 reinterpret_cast<char*>(&this_._impl_.cell_) -
                  reinterpret_cast<char*>(&this_._impl_.rows_)) +
-                 sizeof(_impl_.cols_));
+                 sizeof(_impl_.cell_));
   }
   _impl_._has_bits_.Clear();
   _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
@@ -454,7 +612,7 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
   }
 
   // int32 rows = 3;
-  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000100U)) {
     if (this_._internal_rows() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<3>(
@@ -463,7 +621,7 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
   }
 
   // int32 cols = 4;
-  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+  if (CheckHasBit(cached_has_bits, 0x00000200U)) {
     if (this_._internal_cols() != 0) {
       target =
           ::google::protobuf::internal::WireFormatLite::WriteInt32ToArrayWithField<4>(
@@ -475,6 +633,50 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
   if (CheckHasBit(cached_has_bits, 0x00000001U)) {
     if (this_._internal_data_size() > 0) {
       target = stream->WriteFixedPacked(5, this_._internal_data(), target);
+    }
+  }
+
+  // .session_proto.Color mincolor = 6;
+  if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        6, *this_._impl_.mincolor_, this_._impl_.mincolor_->GetCachedSize(), target,
+        stream);
+  }
+
+  // .session_proto.Color maxcolor = 7;
+  if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        7, *this_._impl_.maxcolor_, this_._impl_.maxcolor_->GetCachedSize(), target,
+        stream);
+  }
+
+  // .session_proto.Color zerocolor = 8;
+  if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        8, *this_._impl_.zerocolor_, this_._impl_.zerocolor_->GetCachedSize(), target,
+        stream);
+  }
+
+  // .session_proto.Color textcolor = 9;
+  if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        9, *this_._impl_.textcolor_, this_._impl_.textcolor_->GetCachedSize(), target,
+        stream);
+  }
+
+  // .session_proto.Color linecolor = 10;
+  if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+    target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+        10, *this_._impl_.linecolor_, this_._impl_.linecolor_->GetCachedSize(), target,
+        stream);
+  }
+
+  // double cell = 11;
+  if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+    if (::absl::bit_cast<::uint64_t>(this_._internal_cell()) != 0) {
+      target = stream->EnsureSpace(target);
+      target = ::_pbi::WireFormatLite::WriteDoubleToArray(
+          11, this_._internal_cell(), target);
     }
   }
 
@@ -501,7 +703,7 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
 
   ::_pbi::Prefetch5LinesFrom7Lines(&this_);
   cached_has_bits = this_._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     // repeated double data = 5;
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       ::size_t data_size = ::size_t{8} *
@@ -526,18 +728,51 @@ PROTOBUF_NOINLINE void Matrix::Clear() {
                                         this_._internal_name());
       }
     }
-    // int32 rows = 3;
+    // .session_proto.Color mincolor = 6;
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.mincolor_);
+    }
+    // .session_proto.Color maxcolor = 7;
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.maxcolor_);
+    }
+    // .session_proto.Color zerocolor = 8;
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.zerocolor_);
+    }
+    // .session_proto.Color textcolor = 9;
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.textcolor_);
+    }
+    // .session_proto.Color linecolor = 10;
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      total_size += 1 +
+                    ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.linecolor_);
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00000700U)) {
+    // int32 rows = 3;
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (this_._internal_rows() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_rows());
       }
     }
     // int32 cols = 4;
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
       if (this_._internal_cols() != 0) {
         total_size += ::_pbi::WireFormatLite::Int32SizePlusOne(
             this_._internal_cols());
+      }
+    }
+    // double cell = 11;
+    if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+      if (::absl::bit_cast<::uint64_t>(this_._internal_cell()) != 0) {
+        total_size += 9;
       }
     }
   }
@@ -552,13 +787,14 @@ void Matrix::MergeImpl(::google::protobuf::MessageLite& to_msg,
   if constexpr (::_pbi::DebugHardenCheckHasBitConsistency()) {
     from.CheckHasBitConsistency();
   }
+  ::google::protobuf::Arena* arena = _this->GetArena();
   // @@protoc_insertion_point(class_specific_merge_from_start:session_proto.Matrix)
   ABSL_DCHECK_NE(&from, _this);
   ::uint32_t cached_has_bits = 0;
   (void)cached_has_bits;
 
   cached_has_bits = from._impl_._has_bits_[0];
-  if (BatchCheckHasBit(cached_has_bits, 0x0000001fU)) {
+  if (BatchCheckHasBit(cached_has_bits, 0x000000ffU)) {
     if (CheckHasBit(cached_has_bits, 0x00000001U)) {
       _this->_internal_mutable_data()->MergeFrom(from._internal_data());
     }
@@ -581,13 +817,60 @@ void Matrix::MergeImpl(::google::protobuf::MessageLite& to_msg,
       }
     }
     if (CheckHasBit(cached_has_bits, 0x00000008U)) {
+      ABSL_DCHECK(from._impl_.mincolor_ != nullptr);
+      if (_this->_impl_.mincolor_ == nullptr) {
+        _this->_impl_.mincolor_ = Super_::CopyConstruct(arena, *from._impl_.mincolor_);
+      } else {
+        _this->_impl_.mincolor_->MergeFrom(*from._impl_.mincolor_);
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+      ABSL_DCHECK(from._impl_.maxcolor_ != nullptr);
+      if (_this->_impl_.maxcolor_ == nullptr) {
+        _this->_impl_.maxcolor_ = Super_::CopyConstruct(arena, *from._impl_.maxcolor_);
+      } else {
+        _this->_impl_.maxcolor_->MergeFrom(*from._impl_.maxcolor_);
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000020U)) {
+      ABSL_DCHECK(from._impl_.zerocolor_ != nullptr);
+      if (_this->_impl_.zerocolor_ == nullptr) {
+        _this->_impl_.zerocolor_ = Super_::CopyConstruct(arena, *from._impl_.zerocolor_);
+      } else {
+        _this->_impl_.zerocolor_->MergeFrom(*from._impl_.zerocolor_);
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000040U)) {
+      ABSL_DCHECK(from._impl_.textcolor_ != nullptr);
+      if (_this->_impl_.textcolor_ == nullptr) {
+        _this->_impl_.textcolor_ = Super_::CopyConstruct(arena, *from._impl_.textcolor_);
+      } else {
+        _this->_impl_.textcolor_->MergeFrom(*from._impl_.textcolor_);
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000080U)) {
+      ABSL_DCHECK(from._impl_.linecolor_ != nullptr);
+      if (_this->_impl_.linecolor_ == nullptr) {
+        _this->_impl_.linecolor_ = Super_::CopyConstruct(arena, *from._impl_.linecolor_);
+      } else {
+        _this->_impl_.linecolor_->MergeFrom(*from._impl_.linecolor_);
+      }
+    }
+  }
+  if (BatchCheckHasBit(cached_has_bits, 0x00000700U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000100U)) {
       if (from._internal_rows() != 0) {
         _this->_impl_.rows_ = from._impl_.rows_;
       }
     }
-    if (CheckHasBit(cached_has_bits, 0x00000010U)) {
+    if (CheckHasBit(cached_has_bits, 0x00000200U)) {
       if (from._internal_cols() != 0) {
         _this->_impl_.cols_ = from._impl_.cols_;
+      }
+    }
+    if (CheckHasBit(cached_has_bits, 0x00000400U)) {
+      if (::absl::bit_cast<::uint64_t>(from._internal_cell()) != 0) {
+        _this->_impl_.cell_ = from._impl_.cell_;
       }
     }
   }
@@ -614,11 +897,11 @@ void Matrix::InternalSwap(Matrix* PROTOBUF_RESTRICT PROTOBUF_NONNULL other) {
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.guid_, &other->_impl_.guid_, arena);
   ::_pbi::ArenaStringPtr::InternalSwap(&_impl_.name_, &other->_impl_.name_, arena);
   ::google::protobuf::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cols_)
-      + sizeof(Matrix::_impl_.cols_)
-      - PROTOBUF_FIELD_OFFSET(Matrix, _impl_.rows_)>(
-          reinterpret_cast<char*>(&_impl_.rows_),
-          reinterpret_cast<char*>(&other->_impl_.rows_));
+      PROTOBUF_FIELD_OFFSET(Matrix, _impl_.cell_)
+      + sizeof(Matrix::_impl_.cell_)
+      - PROTOBUF_FIELD_OFFSET(Matrix, _impl_.mincolor_)>(
+          reinterpret_cast<char*>(&_impl_.mincolor_),
+          reinterpret_cast<char*>(&other->_impl_.mincolor_));
 }
 
 ::google::protobuf::Metadata Matrix::GetMetadata() const {

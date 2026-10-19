@@ -4,6 +4,7 @@
 #include "graph.h"
 #include "guid.h"
 #include "json.h"
+#include "matrix.h"
 #include "objects.h"
 #include "point.h"
 #include "vector.h"
@@ -300,6 +301,9 @@ public:
 
     /// Add a custom component (any object with type_name/guid/name/extra); a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_component(Component component, std::shared_ptr<TreeNode> parent = nullptr);
+
+    /// Add a matrix as its component (type_name Matrix, the matrix's guid), placed by set_xform on that guid; a guid already live adds nothing and returns the node that guid has.
+    std::shared_ptr<TreeNode> add_matrix(const Matrix& matrix, std::shared_ptr<TreeNode> parent = nullptr);
 
     /// Add a definition, geometry in its own frame that instances share; returns its guid, also when that guid is already defined, and "" for null or a guid an object, instance or component holds.
     std::string add_definition(const Geometry& definition);

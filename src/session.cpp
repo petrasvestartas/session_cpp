@@ -1041,6 +1041,10 @@ std::shared_ptr<TreeNode> Session::add_component(Component component, std::share
     return node ? node : _node_of(component.guid());
 }
 
+std::shared_ptr<TreeNode> Session::add_matrix(const Matrix& matrix, std::shared_ptr<TreeNode> parent) {
+    return add_component(matrix.to_component(), parent);
+}
+
 std::string Session::add_definition(const Geometry& definition) {
 
     const bool empty = std::visit(

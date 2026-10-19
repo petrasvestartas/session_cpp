@@ -1,4 +1,5 @@
 #pragma once
+#include "color.h"
 #include "guid.h"
 #include "json.h"
 #include <optional>
@@ -12,6 +13,8 @@ class Matrix;
 
 namespace session_cpp {
 
+class Component;
+
 /// An NxM matrix with row-major storage.
 class Matrix {
 private:
@@ -22,6 +25,12 @@ public:
     int rows = 0; // Row count.
     int cols = 0; // Column count.
     std::vector<double> data; // Row-major values.
+    Color mincolor = Color(11.0f / 255.0f, 25.0f / 255.0f, 87.0f / 255.0f); // Cell colour at the smallest non-zero entry.
+    Color maxcolor = Color(206.0f / 255.0f, 64.0f / 255.0f, 149.0f / 255.0f); // Cell colour at the largest non-zero entry.
+    Color zerocolor = Color(185.0f / 255.0f, 185.0f / 255.0f, 189.0f / 255.0f); // Cell colour of a zero entry.
+    Color textcolor = Color::white(); // Colour of the values written in the cells.
+    Color linecolor = Color::black(); // Colour of the cell edges and the title.
+    double cell = 1.0; // Edge length of one square cell.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
@@ -118,7 +127,7 @@ public:
     /// Multiply every element by a scalar.
     Matrix operator*(double s) const;
 
-    /// Compare dimensions and values within the matrix comparison tolerance.
+    /// Compare dimensions, values within the matrix comparison tolerance, colours and cell size.
     bool operator==(const Matrix& other) const;
 
     /// Return whether two matrices differ.
@@ -210,6 +219,15 @@ public:
 
     /// Read protobuf bytes from a file.
     static Matrix pb_load(const std::string& filename);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Component
+    // ═══════════════════════════════════════════════════════════════════════════
+    /// Return a Session component of type Matrix with this guid and name, every other JSON field in extra.
+    Component to_component() const;
+
+    /// Construct from a component made by to_component, guid and name from the component.
+    static Matrix from_component(const Component& component);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // String

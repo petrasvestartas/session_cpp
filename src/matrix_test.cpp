@@ -1,6 +1,7 @@
 #include "mini_test.h"
 #include "matrix.h"
 #include "matrix.pb.h"
+#include "objects.h"
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
@@ -17,6 +18,7 @@ using namespace session_cpp::mini_test;
 namespace session_cpp {
 
 MINI_TEST("Matrix", "Constructor") {
+    // using session_cpp::Color;
     // using session_cpp::Matrix;
 
     const Matrix m = Matrix::zeros(2, 3);
@@ -49,6 +51,11 @@ MINI_TEST("Matrix", "Constructor") {
     MINI_CHECK(srepr.find("Matrix(") != std::string::npos);
     MINI_CHECK(d == ml && d.guid() != ml.guid());
     MINI_CHECK(short_repr.find("guid='id...'") != std::string::npos);
+    MINI_CHECK(m.mincolor == Color(11.0f / 255.0f, 25.0f / 255.0f, 87.0f / 255.0f));
+    MINI_CHECK(m.maxcolor == Color(206.0f / 255.0f, 64.0f / 255.0f, 149.0f / 255.0f));
+    MINI_CHECK(m.zerocolor == Color(185.0f / 255.0f, 185.0f / 255.0f, 189.0f / 255.0f));
+    MINI_CHECK(m.textcolor == Color::white() && m.linecolor == Color::black());
+    MINI_CHECK(m.cell == 1.0);
 }
 
 MINI_TEST("Matrix", "Properties") {
@@ -292,10 +299,17 @@ MINI_TEST("Matrix", "Rank") {
 }
 
 MINI_TEST("Matrix", "Json Roundtrip") {
+    // using session_cpp::Color;
     // using session_cpp::Matrix;
 
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix";
+    a.mincolor = Color::blue();
+    a.maxcolor = Color::red();
+    a.zerocolor = Color::grey();
+    a.textcolor = Color::black();
+    a.linecolor = Color::white();
+    a.cell = 2.5;
 
     a.file_json_dump("serialization/test_matrix.json");
     const Matrix loaded = Matrix::file_json_load("serialization/test_matrix.json");
@@ -304,16 +318,26 @@ MINI_TEST("Matrix", "Json Roundtrip") {
     MINI_CHECK(loaded.name == "test_matrix");
     MINI_CHECK(loaded.rows == 2 && loaded.cols == 3);
     MINI_CHECK(TOLERANCE.is_close(loaded(0, 0), 1.0) && TOLERANCE.is_close(loaded(1, 2), 6.0));
+    MINI_CHECK(loaded.mincolor == Color::blue() && loaded.maxcolor == Color::red());
+    MINI_CHECK(loaded.zerocolor == Color::grey() && loaded.textcolor == Color::black());
+    MINI_CHECK(loaded.linecolor == Color::white() && loaded.cell == 2.5);
     MINI_CHECK(parsed == a);
 }
 
 MINI_TEST("Matrix", "Protobuf Roundtrip") {
+    // using session_cpp::Color;
     // using session_cpp::Matrix;
 
     const Matrix fresh;
     const session_proto::Matrix fresh_proto = fresh.to_proto();
     Matrix a = Matrix::from_vec(2, 3, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
     a.name = "test_matrix_proto";
+    a.mincolor = Color::blue();
+    a.maxcolor = Color::red();
+    a.zerocolor = Color::grey();
+    a.textcolor = Color::black();
+    a.linecolor = Color::white();
+    a.cell = 2.5;
     const std::string guid = a.guid();
 
     a.pb_dump("serialization/test_matrix.bin");
@@ -329,6 +353,41 @@ MINI_TEST("Matrix", "Protobuf Roundtrip") {
     MINI_CHECK(parsed == a);
     MINI_CHECK(converted == a);
     MINI_CHECK(loaded.guid() == guid && parsed.guid() == guid && converted.guid() == guid);
+    MINI_CHECK(loaded.mincolor == Color::blue() && loaded.maxcolor == Color::red());
+    MINI_CHECK(loaded.zerocolor == Color::grey() && loaded.textcolor == Color::black());
+    MINI_CHECK(loaded.linecolor == Color::white() && loaded.cell == 2.5);
+}
+
+MINI_TEST("Matrix", "To Component") {
+    // using session_cpp::Matrix;
+
+    Matrix m = Matrix::from_rows({{1.0, -2.0}, {0.0, 3.0}});
+    m.name = "stiffness";
+    const Component component = m.to_component();
+    const nlohmann::ordered_json& extra = component.extra;
+
+    MINI_CHECK(component.type_name == "Matrix");
+    MINI_CHECK(component.guid() == m.guid() && component.name == "stiffness");
+    MINI_CHECK(extra.size() == 9);
+    MINI_CHECK(extra.contains("cell") && extra.contains("zerocolor"));
+    MINI_CHECK(!extra.contains("guid") && !extra.contains("name"));
+    MINI_CHECK(!extra.contains("type"));
+    MINI_CHECK(extra["data"].get<std::vector<double>>() == std::vector<double>({1.0, -2.0, 0.0, 3.0}));
+}
+
+MINI_TEST("Matrix", "From Component") {
+    // using session_cpp::Color;
+    // using session_cpp::Matrix;
+
+    Matrix m = Matrix::from_rows({{1.0, -2.0}, {0.0, 3.0}});
+    m.name = "stiffness";
+    m.maxcolor = Color::red();
+    m.cell = 0.5;
+    const Matrix restored = Matrix::from_component(m.to_component());
+
+    MINI_CHECK(restored == m);
+    MINI_CHECK(restored.guid() == m.guid() && restored.name == "stiffness");
+    MINI_CHECK(restored.maxcolor == Color::red() && restored.cell == 0.5);
 }
 
 MINI_TEST("Matrix", "Serialization Errors") {

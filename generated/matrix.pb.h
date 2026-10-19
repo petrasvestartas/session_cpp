@@ -30,6 +30,7 @@
 #include "google/protobuf/repeated_field.h"  // IWYU pragma: export
 #include "google/protobuf/extension_set.h"  // IWYU pragma: export
 #include "google/protobuf/unknown_field_set.h"
+#include "color.pb.h"
 // @@protoc_insertion_point(includes)
 
 // Must be included last.
@@ -217,8 +218,14 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Matrix final : public ::google::pro
     kDataFieldNumber = 5,
     kGuidFieldNumber = 1,
     kNameFieldNumber = 2,
+    kMincolorFieldNumber = 6,
+    kMaxcolorFieldNumber = 7,
+    kZerocolorFieldNumber = 8,
+    kTextcolorFieldNumber = 9,
+    kLinecolorFieldNumber = 10,
     kRowsFieldNumber = 3,
     kColsFieldNumber = 4,
+    kCellFieldNumber = 11,
   };
   // repeated double data = 5;
   [[nodiscard]] int data_size() const;
@@ -269,6 +276,81 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Matrix final : public ::google::pro
   ::std::string* PROTOBUF_NONNULL _internal_mutable_name();
 
   public:
+  // .session_proto.Color mincolor = 6;
+  [[nodiscard]] bool has_mincolor() const;
+  void clear_mincolor() ;
+  [[nodiscard]] const ::session_proto::Color& mincolor() const;
+  [[nodiscard]] ::session_proto::Color* PROTOBUF_NULLABLE release_mincolor();
+  ::session_proto::Color* PROTOBUF_NONNULL mutable_mincolor();
+  void set_allocated_mincolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_mincolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  ::session_proto::Color* PROTOBUF_NULLABLE unsafe_arena_release_mincolor();
+
+  private:
+  const ::session_proto::Color& _internal_mincolor() const;
+  ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_mincolor();
+
+  public:
+  // .session_proto.Color maxcolor = 7;
+  [[nodiscard]] bool has_maxcolor() const;
+  void clear_maxcolor() ;
+  [[nodiscard]] const ::session_proto::Color& maxcolor() const;
+  [[nodiscard]] ::session_proto::Color* PROTOBUF_NULLABLE release_maxcolor();
+  ::session_proto::Color* PROTOBUF_NONNULL mutable_maxcolor();
+  void set_allocated_maxcolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_maxcolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  ::session_proto::Color* PROTOBUF_NULLABLE unsafe_arena_release_maxcolor();
+
+  private:
+  const ::session_proto::Color& _internal_maxcolor() const;
+  ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_maxcolor();
+
+  public:
+  // .session_proto.Color zerocolor = 8;
+  [[nodiscard]] bool has_zerocolor() const;
+  void clear_zerocolor() ;
+  [[nodiscard]] const ::session_proto::Color& zerocolor() const;
+  [[nodiscard]] ::session_proto::Color* PROTOBUF_NULLABLE release_zerocolor();
+  ::session_proto::Color* PROTOBUF_NONNULL mutable_zerocolor();
+  void set_allocated_zerocolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_zerocolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  ::session_proto::Color* PROTOBUF_NULLABLE unsafe_arena_release_zerocolor();
+
+  private:
+  const ::session_proto::Color& _internal_zerocolor() const;
+  ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_zerocolor();
+
+  public:
+  // .session_proto.Color textcolor = 9;
+  [[nodiscard]] bool has_textcolor() const;
+  void clear_textcolor() ;
+  [[nodiscard]] const ::session_proto::Color& textcolor() const;
+  [[nodiscard]] ::session_proto::Color* PROTOBUF_NULLABLE release_textcolor();
+  ::session_proto::Color* PROTOBUF_NONNULL mutable_textcolor();
+  void set_allocated_textcolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_textcolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  ::session_proto::Color* PROTOBUF_NULLABLE unsafe_arena_release_textcolor();
+
+  private:
+  const ::session_proto::Color& _internal_textcolor() const;
+  ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_textcolor();
+
+  public:
+  // .session_proto.Color linecolor = 10;
+  [[nodiscard]] bool has_linecolor() const;
+  void clear_linecolor() ;
+  [[nodiscard]] const ::session_proto::Color& linecolor() const;
+  [[nodiscard]] ::session_proto::Color* PROTOBUF_NULLABLE release_linecolor();
+  ::session_proto::Color* PROTOBUF_NONNULL mutable_linecolor();
+  void set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULLABLE value);
+  ::session_proto::Color* PROTOBUF_NULLABLE unsafe_arena_release_linecolor();
+
+  private:
+  const ::session_proto::Color& _internal_linecolor() const;
+  ::session_proto::Color* PROTOBUF_NONNULL _internal_mutable_linecolor();
+
+  public:
   // int32 rows = 3;
   void clear_rows() ;
   [[nodiscard]] ::int32_t rows() const;
@@ -289,12 +371,22 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Matrix final : public ::google::pro
   void _internal_set_cols(::int32_t value);
 
   public:
+  // double cell = 11;
+  void clear_cell() ;
+  [[nodiscard]] double cell() const;
+  void set_cell(double value);
+
+  private:
+  double _internal_cell() const;
+  void _internal_set_cell(double value);
+
+  public:
   // @@protoc_insertion_point(class_scope:session_proto.Matrix)
  private:
   class _Internal;
   using ParseTableT_ =
-      ::google::protobuf::internal::TcParseTable<3, 5,
-                          0, 37,
+      ::google::protobuf::internal::TcParseTable<4, 11,
+                          5, 45,
                           2>;
   static constexpr ParseTableT_ InternalGenerateParseTable_(
       const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL class_data);
@@ -325,8 +417,14 @@ class  PROTOBUF_FUTURE_ADD_EARLY_WARN_UNUSED Matrix final : public ::google::pro
     ::google::protobuf::RepeatedField<double> data_;
     ::google::protobuf::internal::ArenaStringPtr guid_;
     ::google::protobuf::internal::ArenaStringPtr name_;
+    ::session_proto::Color* PROTOBUF_NULLABLE mincolor_;
+    ::session_proto::Color* PROTOBUF_NULLABLE maxcolor_;
+    ::session_proto::Color* PROTOBUF_NULLABLE zerocolor_;
+    ::session_proto::Color* PROTOBUF_NULLABLE textcolor_;
+    ::session_proto::Color* PROTOBUF_NULLABLE linecolor_;
     ::int32_t rows_;
     ::int32_t cols_;
+    double cell_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -481,7 +579,7 @@ inline void Matrix::set_allocated_name(::std::string* PROTOBUF_NULLABLE value) {
 inline void Matrix::clear_rows() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.rows_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000100U);
 }
 inline ::int32_t Matrix::rows() const {
   // @@protoc_insertion_point(field_get:session_proto.Matrix.rows)
@@ -489,7 +587,7 @@ inline ::int32_t Matrix::rows() const {
 }
 inline void Matrix::set_rows(::int32_t value) {
   _internal_set_rows(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000100U);
   // @@protoc_insertion_point(field_set:session_proto.Matrix.rows)
 }
 inline ::int32_t Matrix::_internal_rows() const {
@@ -505,7 +603,7 @@ inline void Matrix::_internal_set_rows(::int32_t value) {
 inline void Matrix::clear_cols() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.cols_ = 0;
-  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ClearHasBit(_impl_._has_bits_[0], 0x00000200U);
 }
 inline ::int32_t Matrix::cols() const {
   // @@protoc_insertion_point(field_get:session_proto.Matrix.cols)
@@ -513,7 +611,7 @@ inline ::int32_t Matrix::cols() const {
 }
 inline void Matrix::set_cols(::int32_t value) {
   _internal_set_cols(value);
-  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  SetHasBit(_impl_._has_bits_[0], 0x00000200U);
   // @@protoc_insertion_point(field_set:session_proto.Matrix.cols)
 }
 inline ::int32_t Matrix::_internal_cols() const {
@@ -574,6 +672,495 @@ inline ::google::protobuf::RepeatedField<double>* PROTOBUF_NONNULL
 Matrix::_internal_mutable_data() {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return &_impl_.data_;
+}
+
+// .session_proto.Color mincolor = 6;
+inline bool Matrix::has_mincolor() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000008U);
+  PROTOBUF_ASSUME(!value || _impl_.mincolor_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Color& Matrix::_internal_mincolor() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Color* p = _impl_.mincolor_;
+  return p != nullptr ? *p : *::google::protobuf::internal::MessageGlobalsBase::ToDefaultInstance<::session_proto::Color>(&::session_proto::Color_globals_);
+}
+inline const ::session_proto::Color& Matrix::mincolor() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.mincolor)
+  return _internal_mincolor();
+}
+inline void Matrix::unsafe_arena_set_allocated_mincolor(
+    ::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.mincolor_);
+  }
+  _impl_.mincolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Matrix.mincolor)
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::release_mincolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ::session_proto::Color* released = _impl_.mincolor_;
+  _impl_.mincolor_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::unsafe_arena_release_mincolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Matrix.mincolor)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ::session_proto::Color* temp = _impl_.mincolor_;
+  _impl_.mincolor_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::_internal_mutable_mincolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.mincolor_ == nullptr) {
+    auto* p = Super_::DefaultConstruct<::session_proto::Color>(GetArena());
+    _impl_.mincolor_ = reinterpret_cast<::session_proto::Color*>(p);
+  }
+  return _impl_.mincolor_;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::mutable_mincolor()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  ::session_proto::Color* _msg = _internal_mutable_mincolor();
+  // @@protoc_insertion_point(field_mutable:session_proto.Matrix.mincolor)
+  return _msg;
+}
+inline void Matrix::set_allocated_mincolor(::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.mincolor_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000008U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000008U);
+  }
+
+  _impl_.mincolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Matrix.mincolor)
+}
+
+// .session_proto.Color maxcolor = 7;
+inline bool Matrix::has_maxcolor() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000010U);
+  PROTOBUF_ASSUME(!value || _impl_.maxcolor_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Color& Matrix::_internal_maxcolor() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Color* p = _impl_.maxcolor_;
+  return p != nullptr ? *p : *::google::protobuf::internal::MessageGlobalsBase::ToDefaultInstance<::session_proto::Color>(&::session_proto::Color_globals_);
+}
+inline const ::session_proto::Color& Matrix::maxcolor() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.maxcolor)
+  return _internal_maxcolor();
+}
+inline void Matrix::unsafe_arena_set_allocated_maxcolor(
+    ::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.maxcolor_);
+  }
+  _impl_.maxcolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Matrix.maxcolor)
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::release_maxcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ::session_proto::Color* released = _impl_.maxcolor_;
+  _impl_.maxcolor_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::unsafe_arena_release_maxcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Matrix.maxcolor)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ::session_proto::Color* temp = _impl_.maxcolor_;
+  _impl_.maxcolor_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::_internal_mutable_maxcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.maxcolor_ == nullptr) {
+    auto* p = Super_::DefaultConstruct<::session_proto::Color>(GetArena());
+    _impl_.maxcolor_ = reinterpret_cast<::session_proto::Color*>(p);
+  }
+  return _impl_.maxcolor_;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::mutable_maxcolor()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  ::session_proto::Color* _msg = _internal_mutable_maxcolor();
+  // @@protoc_insertion_point(field_mutable:session_proto.Matrix.maxcolor)
+  return _msg;
+}
+inline void Matrix::set_allocated_maxcolor(::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.maxcolor_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000010U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000010U);
+  }
+
+  _impl_.maxcolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Matrix.maxcolor)
+}
+
+// .session_proto.Color zerocolor = 8;
+inline bool Matrix::has_zerocolor() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000020U);
+  PROTOBUF_ASSUME(!value || _impl_.zerocolor_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Color& Matrix::_internal_zerocolor() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Color* p = _impl_.zerocolor_;
+  return p != nullptr ? *p : *::google::protobuf::internal::MessageGlobalsBase::ToDefaultInstance<::session_proto::Color>(&::session_proto::Color_globals_);
+}
+inline const ::session_proto::Color& Matrix::zerocolor() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.zerocolor)
+  return _internal_zerocolor();
+}
+inline void Matrix::unsafe_arena_set_allocated_zerocolor(
+    ::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.zerocolor_);
+  }
+  _impl_.zerocolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Matrix.zerocolor)
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::release_zerocolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ::session_proto::Color* released = _impl_.zerocolor_;
+  _impl_.zerocolor_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::unsafe_arena_release_zerocolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Matrix.zerocolor)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ::session_proto::Color* temp = _impl_.zerocolor_;
+  _impl_.zerocolor_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::_internal_mutable_zerocolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.zerocolor_ == nullptr) {
+    auto* p = Super_::DefaultConstruct<::session_proto::Color>(GetArena());
+    _impl_.zerocolor_ = reinterpret_cast<::session_proto::Color*>(p);
+  }
+  return _impl_.zerocolor_;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::mutable_zerocolor()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  ::session_proto::Color* _msg = _internal_mutable_zerocolor();
+  // @@protoc_insertion_point(field_mutable:session_proto.Matrix.zerocolor)
+  return _msg;
+}
+inline void Matrix::set_allocated_zerocolor(::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.zerocolor_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000020U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000020U);
+  }
+
+  _impl_.zerocolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Matrix.zerocolor)
+}
+
+// .session_proto.Color textcolor = 9;
+inline bool Matrix::has_textcolor() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000040U);
+  PROTOBUF_ASSUME(!value || _impl_.textcolor_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Color& Matrix::_internal_textcolor() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Color* p = _impl_.textcolor_;
+  return p != nullptr ? *p : *::google::protobuf::internal::MessageGlobalsBase::ToDefaultInstance<::session_proto::Color>(&::session_proto::Color_globals_);
+}
+inline const ::session_proto::Color& Matrix::textcolor() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.textcolor)
+  return _internal_textcolor();
+}
+inline void Matrix::unsafe_arena_set_allocated_textcolor(
+    ::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.textcolor_);
+  }
+  _impl_.textcolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Matrix.textcolor)
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::release_textcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ::session_proto::Color* released = _impl_.textcolor_;
+  _impl_.textcolor_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::unsafe_arena_release_textcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Matrix.textcolor)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ::session_proto::Color* temp = _impl_.textcolor_;
+  _impl_.textcolor_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::_internal_mutable_textcolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.textcolor_ == nullptr) {
+    auto* p = Super_::DefaultConstruct<::session_proto::Color>(GetArena());
+    _impl_.textcolor_ = reinterpret_cast<::session_proto::Color*>(p);
+  }
+  return _impl_.textcolor_;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::mutable_textcolor()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  ::session_proto::Color* _msg = _internal_mutable_textcolor();
+  // @@protoc_insertion_point(field_mutable:session_proto.Matrix.textcolor)
+  return _msg;
+}
+inline void Matrix::set_allocated_textcolor(::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.textcolor_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000040U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000040U);
+  }
+
+  _impl_.textcolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Matrix.textcolor)
+}
+
+// .session_proto.Color linecolor = 10;
+inline bool Matrix::has_linecolor() const {
+  bool value = CheckHasBit(_impl_._has_bits_[0], 0x00000080U);
+  PROTOBUF_ASSUME(!value || _impl_.linecolor_ != nullptr);
+  return value;
+}
+inline const ::session_proto::Color& Matrix::_internal_linecolor() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::session_proto::Color* p = _impl_.linecolor_;
+  return p != nullptr ? *p : *::google::protobuf::internal::MessageGlobalsBase::ToDefaultInstance<::session_proto::Color>(&::session_proto::Color_globals_);
+}
+inline const ::session_proto::Color& Matrix::linecolor() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.linecolor)
+  return _internal_linecolor();
+}
+inline void Matrix::unsafe_arena_set_allocated_linecolor(
+    ::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.linecolor_);
+  }
+  _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  if (value != nullptr) {
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:session_proto.Matrix.linecolor)
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::release_linecolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Color* released = _impl_.linecolor_;
+  _impl_.linecolor_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::session_proto::Color* PROTOBUF_NULLABLE Matrix::unsafe_arena_release_linecolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:session_proto.Matrix.linecolor)
+
+  ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Color* temp = _impl_.linecolor_;
+  _impl_.linecolor_ = nullptr;
+  return temp;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::_internal_mutable_linecolor() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.linecolor_ == nullptr) {
+    auto* p = Super_::DefaultConstruct<::session_proto::Color>(GetArena());
+    _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(p);
+  }
+  return _impl_.linecolor_;
+}
+inline ::session_proto::Color* PROTOBUF_NONNULL Matrix::mutable_linecolor()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  ::session_proto::Color* _msg = _internal_mutable_linecolor();
+  // @@protoc_insertion_point(field_mutable:session_proto.Matrix.linecolor)
+  return _msg;
+}
+inline void Matrix::set_allocated_linecolor(::session_proto::Color* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.linecolor_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = reinterpret_cast<::google::protobuf::Message*>(value)->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    SetHasBit(_impl_._has_bits_[0], 0x00000080U);
+  } else {
+    ClearHasBit(_impl_._has_bits_[0], 0x00000080U);
+  }
+
+  _impl_.linecolor_ = reinterpret_cast<::session_proto::Color*>(value);
+  // @@protoc_insertion_point(field_set_allocated:session_proto.Matrix.linecolor)
+}
+
+// double cell = 11;
+inline void Matrix::clear_cell() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.cell_ = 0;
+  ClearHasBit(_impl_._has_bits_[0], 0x00000400U);
+}
+inline double Matrix::cell() const {
+  // @@protoc_insertion_point(field_get:session_proto.Matrix.cell)
+  return _internal_cell();
+}
+inline void Matrix::set_cell(double value) {
+  _internal_set_cell(value);
+  SetHasBit(_impl_._has_bits_[0], 0x00000400U);
+  // @@protoc_insertion_point(field_set:session_proto.Matrix.cell)
+}
+inline double Matrix::_internal_cell() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.cell_;
+}
+inline void Matrix::_internal_set_cell(double value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.cell_ = value;
 }
 
 #ifdef __GNUC__

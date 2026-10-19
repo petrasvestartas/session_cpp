@@ -1,5 +1,6 @@
 #include "matrix.h"
 #include "matrix.pb.h"
+#include "objects.h"
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
@@ -51,7 +52,9 @@ bool eigen_pair_greater(const std::pair<double, std::vector<double>>& a, const s
 Matrix::Matrix(int rows, int cols) : rows(rows), cols(cols), data(matrix_size(rows, cols), 0.0) {}
 
 Matrix::Matrix(const Matrix& other)
-    : name(other.name), rows(other.rows), cols(other.cols), data(other.data) {}
+    : name(other.name), rows(other.rows), cols(other.cols), data(other.data), mincolor(other.mincolor),
+      maxcolor(other.maxcolor), zerocolor(other.zerocolor), textcolor(other.textcolor), linecolor(other.linecolor),
+      cell(other.cell) {}
 
 Matrix& Matrix::operator=(const Matrix& other) {
 
@@ -61,6 +64,12 @@ Matrix& Matrix::operator=(const Matrix& other) {
         rows = other.rows;
         cols = other.cols;
         data = other.data;
+        mincolor = other.mincolor;
+        maxcolor = other.maxcolor;
+        zerocolor = other.zerocolor;
+        textcolor = other.textcolor;
+        linecolor = other.linecolor;
+        cell = other.cell;
     }
 
     return *this;
@@ -234,6 +243,12 @@ Matrix Matrix::operator*(double s) const {
 bool Matrix::operator==(const Matrix& other) const {
 
     if (rows != other.rows || cols != other.cols)
+        return false;
+
+    if (mincolor != other.mincolor || maxcolor != other.maxcolor || zerocolor != other.zerocolor)
+        return false;
+
+    if (textcolor != other.textcolor || linecolor != other.linecolor || cell != other.cell)
         return false;
 
     for (size_t i = 0; i < data.size(); ++i)
@@ -721,12 +736,18 @@ int Matrix::rank() const {
 nlohmann::ordered_json Matrix::jsondump() const {
 
     nlohmann::ordered_json d;
+    d["cell"] = cell;
     d["cols"] = cols;
     d["data"] = data;
     d["guid"] = guid();
+    d["linecolor"] = linecolor.jsondump();
+    d["maxcolor"] = maxcolor.jsondump();
+    d["mincolor"] = mincolor.jsondump();
     d["name"] = name;
     d["rows"] = rows;
+    d["textcolor"] = textcolor.jsondump();
     d["type"] = "Matrix";
+    d["zerocolor"] = zerocolor.jsondump();
 
     return d;
 }
@@ -741,6 +762,24 @@ Matrix Matrix::jsonload(const nlohmann::json& d) {
 
     m.guid() = d.at("guid").get<std::string>();
     m.name = d.at("name").get<std::string>();
+
+    if (d.contains("mincolor"))
+        m.mincolor = Color::jsonload(d["mincolor"]);
+
+    if (d.contains("maxcolor"))
+        m.maxcolor = Color::jsonload(d["maxcolor"]);
+
+    if (d.contains("zerocolor"))
+        m.zerocolor = Color::jsonload(d["zerocolor"]);
+
+    if (d.contains("textcolor"))
+        m.textcolor = Color::jsonload(d["textcolor"]);
+
+    if (d.contains("linecolor"))
+        m.linecolor = Color::jsonload(d["linecolor"]);
+
+    if (d.contains("cell"))
+        m.cell = d["cell"].get<double>();
 
     return m;
 }
@@ -793,6 +832,13 @@ session_proto::Matrix Matrix::to_proto() const {
     for (double v : data)
         proto.add_data(v);
 
+    *proto.mutable_mincolor() = mincolor.to_proto();
+    *proto.mutable_maxcolor() = maxcolor.to_proto();
+    *proto.mutable_zerocolor() = zerocolor.to_proto();
+    *proto.mutable_textcolor() = textcolor.to_proto();
+    *proto.mutable_linecolor() = linecolor.to_proto();
+    proto.set_cell(cell);
+
     return proto;
 }
 
@@ -808,6 +854,24 @@ Matrix Matrix::from_proto(const session_proto::Matrix& proto) {
         matrix.guid() = proto.guid();
 
     matrix.name = proto.name();
+
+    if (proto.has_mincolor())
+        matrix.mincolor = Color::from_proto(proto.mincolor());
+
+    if (proto.has_maxcolor())
+        matrix.maxcolor = Color::from_proto(proto.maxcolor());
+
+    if (proto.has_zerocolor())
+        matrix.zerocolor = Color::from_proto(proto.zerocolor());
+
+    if (proto.has_textcolor())
+        matrix.textcolor = Color::from_proto(proto.textcolor());
+
+    if (proto.has_linecolor())
+        matrix.linecolor = Color::from_proto(proto.linecolor());
+
+    if (proto.cell() > 0.0)
+        matrix.cell = proto.cell();
 
     return matrix;
 }
@@ -853,6 +917,32 @@ Matrix Matrix::pb_load(const std::string& filename) {
         throw std::runtime_error("Failed to read protobuf file: " + filename);
 
     return pb_loads(data);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════════════════════
+Component Matrix::to_component() const {
+
+    Component component;
+    component.type_name = "Matrix";
+    component.guid() = guid();
+    component.name = name;
+    component.extra = jsondump();
+    component.extra.erase("guid");
+    component.extra.erase("name");
+    component.extra.erase("type");
+
+    return component;
+}
+
+Matrix Matrix::from_component(const Component& component) {
+
+    nlohmann::ordered_json data = component.extra;
+    data["guid"] = component.guid();
+    data["name"] = component.name;
+
+    return jsonload(data);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

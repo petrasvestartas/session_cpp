@@ -999,6 +999,24 @@ MINI_TEST("Session", "Add Component") {
     MINI_CHECK(session.graph.has_node(guid));
 }
 
+MINI_TEST("Session", "Add Matrix") {
+    // using session_cpp::Matrix;
+    // using session_cpp::Session;
+
+    Session session;
+    Matrix m = Matrix::from_rows({{1.0, -2.0}, {0.0, 3.0}});
+    m.name = "stiffness";
+
+    session.add_matrix(m);
+    const Component component = session.objects.components->at(0);
+    const Matrix restored = Matrix::from_component(component);
+
+    MINI_CHECK(session.objects.components->size() == 1);
+    MINI_CHECK(component.type_name == "Matrix" && component.guid() == m.guid());
+    MINI_CHECK(session.graph.has_node(m.guid()));
+    MINI_CHECK(restored == m && restored.guid() == m.guid());
+}
+
 MINI_TEST("Session", "Component Json Roundtrip") {
     // using session_cpp::Session;
     // using session_cpp::Component;
