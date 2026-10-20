@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace session_proto {
@@ -56,6 +57,24 @@ public:
     /// Construct a rows x cols zero matrix.
     static Matrix zeros(int rows, int cols);
 
+    /// Construct a matrix from rows, like a two-dimensional NumPy array.
+    static Matrix array(const std::vector<std::vector<double>>& values);
+
+    /// Construct a column vector.
+    static Matrix column(const std::vector<double>& values);
+
+    /// Construct a constant matrix.
+    static Matrix full(int rows, int cols, double value);
+
+    /// Construct a matrix of ones.
+    static Matrix ones(int rows, int cols);
+
+    /// Construct an identity matrix.
+    static Matrix eye(int n);
+
+    /// Return (rows, cols).
+    std::pair<int, int> shape() const;
+
     /// Construct an n x n identity matrix.
     static Matrix identity(int n);
 
@@ -67,6 +86,9 @@ public:
 
     /// Construct from equal-length columns.
     static Matrix from_cols(const std::vector<std::vector<double>>& cols_list);
+
+    /// Construct a square matrix with the given diagonal values.
+    static Matrix diag(const std::vector<double>& values);
 
     /// Copy with a new guid and the same data.
     Matrix duplicate() const;
@@ -103,6 +125,9 @@ public:
     /// Return the element at (row, col).
     const double& operator()(int r, int c) const;
 
+    /// Copy a rectangular block; indices are zero-based and sizes are counts.
+    Matrix block(int row, int col, int rows, int cols) const;
+
     /// Return whether the matrix has equal row and column counts.
     bool is_square() const;
 
@@ -136,6 +161,21 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Linear algebra
     // ═══════════════════════════════════════════════════════════════════════════
+    /// Multiply by a dimension-compatible matrix, including column vectors.
+    Matrix matmul(const Matrix& other) const;
+
+    /// Multiply matching entries of equal-sized matrices.
+    Matrix hadamard(const Matrix& other) const;
+
+    /// Scale each row without constructing a diagonal matrix.
+    Matrix scale_rows(const std::vector<double>& values) const;
+
+    /// Scale each column without constructing a diagonal matrix.
+    Matrix scale_cols(const std::vector<double>& values) const;
+
+    /// Return the Euclidean norm of each row as a column vector.
+    Matrix row_norms() const;
+
     /// Return the transpose.
     Matrix transpose() const;
 
@@ -148,8 +188,11 @@ public:
     /// Return the inverse, or empty for a non-square or singular matrix.
     std::optional<Matrix> inverse() const;
 
-    /// Return x with A * x = b, or empty when no compatible unique solution exists.
+    /// Solve A * X = B for one or more columns using partial pivoting; empty on invalid or singular input.
     std::optional<Matrix> solve(const Matrix& b) const;
+
+    /// Solve a symmetric positive-definite system by Cholesky; empty on invalid input.
+    std::optional<Matrix> solve_positive_definite(const Matrix& b) const;
 
     /// Return (Q, R) from Gram-Schmidt decomposition.
     std::tuple<Matrix, Matrix> qr_decompose() const;

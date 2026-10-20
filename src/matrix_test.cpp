@@ -516,4 +516,116 @@ MINI_TEST("Matrix", "Shape Errors") {
     MINI_CHECK(proto_data);
 }
 
+MINI_TEST("Matrix", "Tutorial Operations") {
+    const Matrix a = Matrix::from_rows({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+    const Matrix diagonal = Matrix::diag({2.0, 3.0});
+    MINI_CHECK(diagonal == Matrix::from_rows({{2.0, 0.0}, {0.0, 3.0}}));
+    MINI_CHECK(a.block(0, 1, 2, 2) == Matrix::from_rows({{2.0, 3.0}, {5.0, 6.0}}));
+    MINI_CHECK(a.block(2, 3, 0, 0).data.empty());
+    MINI_CHECK(a.scale_rows({2.0, 3.0}) == diagonal.matmul(a));
+    MINI_CHECK(a.scale_cols({2.0, 3.0, 4.0}) == a.matmul(Matrix::diag({2.0, 3.0, 4.0})));
+    MINI_CHECK(a.hadamard(a) == Matrix::from_rows({{1.0, 4.0, 9.0}, {16.0, 25.0, 36.0}}));
+    MINI_CHECK(Matrix::from_rows({{3.0, 4.0}, {0.0, 0.0}}).row_norms() == Matrix::from_cols({{5.0, 0.0}}));
+    MINI_CHECK(Matrix::zeros(2, 0).row_norms() == Matrix::zeros(2, 1));
+    MINI_CHECK(a.matmul(Matrix::from_cols({{1.0, 0.0, -1.0}})) == Matrix::from_cols({{-2.0, -2.0}}));
+    MINI_CHECK(a == a.transpose().transpose());
+    MINI_CHECK(Matrix::diag({}).rows == 0);
+}
+
+MINI_TEST("Matrix", "Solve Multiple") {
+    const Matrix a = Matrix::from_rows({{0.0, 2.0}, {1.0, 3.0}});
+    const Matrix b = Matrix::from_rows({{8.0, 10.0, 12.0}, {13.0, 17.0, 21.0}});
+    const Matrix expected = Matrix::from_rows({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+    const auto x = a.solve(b);
+    MINI_CHECK(x.has_value());
+    MINI_CHECK(((*x) - expected).norm_inf() < 1e-12);
+    MINI_CHECK((a.matmul(*x) - b).norm_inf() < 1e-12);
+    const auto small = (Matrix::identity(2) * 1e-200).solve(expected * 1e-200);
+    MINI_CHECK(small.has_value());
+    MINI_CHECK(((*small) - expected).norm_inf() < 1e-12);
+    MINI_CHECK(Matrix::zeros(0, 0).solve(Matrix::zeros(0, 3))->cols == 3);
+}
+
+MINI_TEST("Matrix", "Solve Positive Definite") {
+    const Matrix a = Matrix::from_rows({{4.0, 1.0}, {1.0, 3.0}});
+    const Matrix b = Matrix::from_rows({{8.0, 13.0, 18.0}, {13.0, 17.0, 21.0}});
+    const Matrix expected = Matrix::from_rows({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+    const auto x = a.solve_positive_definite(b);
+    MINI_CHECK(x.has_value());
+    MINI_CHECK(((*x) - expected).norm_inf() < 1e-12);
+    MINI_CHECK((a.matmul(*x) - b).norm_inf() < 1e-12);
+    const auto small = (Matrix::identity(2) * 1e-200).solve_positive_definite(expected * 1e-200);
+    MINI_CHECK(small.has_value());
+    MINI_CHECK(((*small) - expected).norm_inf() < 1e-12);
+    MINI_CHECK(Matrix::zeros(0, 0).solve_positive_definite(Matrix::zeros(0, 3))->cols == 3);
+}
+
+MINI_TEST("Matrix", "Solver Errors") {
+    const Matrix rhs = Matrix::identity(2);
+    const Matrix singular = Matrix::from_rows({{1.0, 2.0}, {2.0, 4.0}});
+    const Matrix indefinite = Matrix::from_rows({{1.0, 2.0}, {2.0, 1.0}});
+    const Matrix asymmetric = Matrix::from_rows({{4.0, 1.0}, {0.0, 3.0}});
+    MINI_CHECK(!singular.solve(rhs).has_value());
+    MINI_CHECK(!singular.solve_positive_definite(rhs).has_value());
+    MINI_CHECK(!indefinite.solve_positive_definite(rhs).has_value());
+    MINI_CHECK(!asymmetric.solve_positive_definite(rhs).has_value());
+    MINI_CHECK(!Matrix::zeros(2, 3).solve(rhs).has_value());
+    MINI_CHECK(!rhs.solve(Matrix::zeros(3, 1)).has_value());
+    MINI_CHECK(!rhs.solve(Matrix::zeros(2, 0)).has_value());
+    MINI_CHECK(!rhs.solve_positive_definite(Matrix::zeros(3, 1)).has_value());
+    MINI_CHECK(!rhs.solve_positive_definite(Matrix::zeros(2, 0)).has_value());
+    const Matrix bad = Matrix::from_rows({{std::numeric_limits<double>::quiet_NaN(), 0.0}, {0.0, 1.0}});
+    MINI_CHECK(!bad.solve(rhs).has_value());
+    MINI_CHECK(!rhs.solve(bad).has_value());
+    MINI_CHECK(!bad.solve_positive_definite(rhs).has_value());
+    MINI_CHECK(!rhs.solve_positive_definite(bad).has_value());
+}
+
+MINI_TEST("Matrix", "Force Density") {
+    const Matrix c_s = Matrix::from_rows({{1.0, -1.0, 0.0, 0.0, 0.0}, {1.0, 0.0, -1.0, 0.0, 0.0}, {1.0, 0.0, 0.0, -1.0, 0.0}, {1.0, 0.0, 0.0, 0.0, -1.0}});
+    const Matrix c = c_s.block(0, 0, 4, 1);
+    const Matrix cf = c_s.block(0, 1, 4, 4);
+    const Matrix fixed = Matrix::from_rows({{-1.0, -1.0, 0.0}, {1.0, -1.0, 0.0}, {1.0, 1.0, 0.0}, {-1.0, 1.0, 0.0}});
+    const Matrix loads = Matrix::from_rows({{0.0, 0.0, -1.0}});
+    const Matrix d = c.transpose().matmul(c.scale_rows({1.0, 1.0, 1.0, 1.0}));
+    const Matrix df = c.transpose().matmul(cf.scale_rows({1.0, 1.0, 1.0, 1.0}));
+    const Matrix rhs = loads - df.matmul(fixed);
+    const auto xyz = d.solve_positive_definite(rhs);
+    MINI_CHECK(xyz.has_value());
+    MINI_CHECK(((*xyz) - Matrix::from_rows({{0.0, 0.0, -0.25}})).norm_inf() < 1e-12);
+    MINI_CHECK(((*d.solve(rhs)) - (*xyz)).norm_inf() < 1e-12);
+    const Matrix uvw = c.matmul(*xyz) + cf.matmul(fixed);
+    const Matrix lengths = uvw.row_norms();
+    MINI_CHECK(std::abs(lengths(0, 0) - std::sqrt(2.0625)) < 1e-12);
+    MINI_CHECK((c.transpose().matmul(uvw) - loads).norm_inf() < 1e-12);
+    const Matrix reactions = cf.transpose().matmul(uvw);
+    MINI_CHECK(std::abs(reactions(0, 2) + reactions(1, 2) + reactions(2, 2) + reactions(3, 2) - 1.0) < 1e-12);
+}
+
+MINI_TEST("Matrix", "Array Constructors") {
+    const Matrix a = Matrix::array({{1.0, 2.0}, {3.0, 4.0}});
+    MINI_CHECK(a == Matrix::from_rows({{1.0, 2.0}, {3.0, 4.0}}));
+    MINI_CHECK(Matrix::column({2.0, 3.0}) == Matrix::from_cols({{2.0, 3.0}}));
+    MINI_CHECK(Matrix::ones(2, 3) == Matrix::full(2, 3, 1.0));
+    MINI_CHECK(Matrix::full(2, 2, -2.0).data == std::vector<double>({-2.0, -2.0, -2.0, -2.0}));
+    MINI_CHECK(Matrix::eye(3) == Matrix::identity(3));
+    MINI_CHECK(a.shape().first == 2 && a.shape().second == 2);
+    MINI_CHECK(Matrix::column({}).rows == 0 && Matrix::column({}).cols == 1);
+    MINI_CHECK(Matrix::full(0, 3, 2.0).data.empty());
+}
+
+MINI_TEST("Matrix", "Operation Errors") {
+    const Matrix a = Matrix::ones(2, 3);
+    const std::vector<std::function<void()>> invalid = {
+        [&] { a.block(3, 0, 0, 0); }, [&] { a.block(1, 1, 2, 2); },
+        [&] { a.scale_rows({1.0}); }, [&] { a.scale_cols({1.0}); },
+        [&] { a.hadamard(Matrix::eye(2)); }, [&] { a.matmul(Matrix::eye(2)); }
+    };
+    for (const auto& operation : invalid) {
+        bool rejected = false;
+        try { operation(); } catch (const std::invalid_argument&) { rejected = true; }
+        MINI_CHECK(rejected);
+    }
+}
+
 } // namespace session_cpp

@@ -79,6 +79,32 @@ Matrix Matrix::zeros(int rows, int cols) {
     return Matrix(rows, cols);
 }
 
+Matrix Matrix::array(const std::vector<std::vector<double>>& values) {
+    return from_rows(values);
+}
+
+Matrix Matrix::column(const std::vector<double>& values) {
+    return from_vec(matrix_dimension(values.size()), 1, values);
+}
+
+Matrix Matrix::full(int rows, int cols, double value) {
+    Matrix result(rows, cols);
+    std::fill(result.data.begin(), result.data.end(), value);
+    return result;
+}
+
+Matrix Matrix::ones(int rows, int cols) {
+    return full(rows, cols, 1.0);
+}
+
+Matrix Matrix::eye(int n) {
+    return identity(n);
+}
+
+std::pair<int, int> Matrix::shape() const {
+    return {rows, cols};
+}
+
 Matrix Matrix::identity(int n) {
 
     Matrix m(n, n);
@@ -134,6 +160,25 @@ Matrix Matrix::from_cols(const std::vector<std::vector<double>>& cols_list) {
             m(i, j) = cols_list[j][i];
 
     return m;
+}
+
+Matrix Matrix::diag(const std::vector<double>& values) {
+    const int n = matrix_dimension(values.size());
+    Matrix result(n, n);
+    for (int i = 0; i < n; ++i)
+        result(i, i) = values[i];
+    return result;
+}
+
+Matrix Matrix::block(int row, int col, int row_count, int col_count) const {
+    if (row < 0 || col < 0 || row_count < 0 || col_count < 0 ||
+        row > rows || col > cols || row_count > rows - row || col_count > cols - col)
+        throw std::invalid_argument("Matrix block is out of bounds");
+    Matrix result(row_count, col_count);
+    for (int i = 0; i < row_count; ++i)
+        std::copy_n(data.begin() + static_cast<size_t>(row + i) * cols + col,
+                    col_count, result.data.begin() + static_cast<size_t>(i) * col_count);
+    return result;
 }
 
 Matrix Matrix::duplicate() const {
@@ -211,22 +256,48 @@ Matrix Matrix::operator-(const Matrix& other) const {
 }
 
 Matrix Matrix::operator*(const Matrix& other) const {
+    return matmul(other);
+}
 
+Matrix Matrix::matmul(const Matrix& other) const {
     if (cols != other.rows)
         throw std::invalid_argument("Matrix dimensions are incompatible for multiplication");
-
     Matrix result(rows, other.cols);
-
     for (int i = 0; i < rows; ++i)
-        for (int j = 0; j < other.cols; ++j) {
-            double s = 0.0;
-
-            for (int k = 0; k < cols; ++k)
-                s += (*this)(i, k) * other(k, j);
-
-            result(i, j) = s;
+        for (int k = 0; k < cols; ++k) {
+            const double a = (*this)(i, k);
+            for (int j = 0; j < other.cols; ++j)
+                result(i, j) += a * other(k, j);
         }
+    return result;
+}
 
+Matrix Matrix::hadamard(const Matrix& other) const {
+    if (rows != other.rows || cols != other.cols)
+        throw std::invalid_argument("Matrix dimensions must match for entrywise multiplication");
+    Matrix result(rows, cols);
+    for (size_t i = 0; i < data.size(); ++i)
+        result.data[i] = data[i] * other.data[i];
+    return result;
+}
+
+Matrix Matrix::scale_rows(const std::vector<double>& values) const {
+    if (values.size() != static_cast<size_t>(rows))
+        throw std::invalid_argument("Matrix row scale count must match its rows");
+    Matrix result(rows, cols);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            result(i, j) = (*this)(i, j) * values[i];
+    return result;
+}
+
+Matrix Matrix::scale_cols(const std::vector<double>& values) const {
+    if (values.size() != static_cast<size_t>(cols))
+        throw std::invalid_argument("Matrix column scale count must match its columns");
+    Matrix result(rows, cols);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            result(i, j) = (*this)(i, j) * values[j];
     return result;
 }
 
@@ -265,6 +336,14 @@ bool Matrix::operator!=(const Matrix& other) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Linear algebra
 // ═══════════════════════════════════════════════════════════════════════════
+Matrix Matrix::row_norms() const {
+    Matrix result(rows, 1);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            result(i, 0) = std::hypot(result(i, 0), (*this)(i, j));
+    return result;
+}
+
 Matrix Matrix::transpose() const {
 
     Matrix result(cols, rows);
@@ -414,52 +493,73 @@ std::optional<Matrix> Matrix::inverse() const {
 }
 
 std::optional<Matrix> Matrix::solve(const Matrix& b) const {
-
-    if (!is_square() || b.rows != rows || b.cols != 1)
+    if (!is_square() || b.rows != rows || b.cols == 0)
         return std::nullopt;
+    for (double value : data)
+        if (!std::isfinite(value)) return std::nullopt;
+    for (double value : b.data)
+        if (!std::isfinite(value)) return std::nullopt;
+    Matrix a = Matrix::from_vec(rows, cols, data);
+    Matrix x = Matrix::from_vec(b.rows, b.cols, b.data);
+    for (int k = 0; k < rows; ++k) {
+        int pivot = k;
+        for (int i = k + 1; i < rows; ++i)
+            if (std::abs(a(i, k)) > std::abs(a(pivot, k))) pivot = i;
+        if (a(pivot, k) == 0.0) return std::nullopt;
+        if (pivot != k) {
+            for (int j = 0; j < cols; ++j) std::swap(a(k, j), a(pivot, j));
+            for (int j = 0; j < b.cols; ++j) std::swap(x(k, j), x(pivot, j));
+        }
+        for (int i = k + 1; i < rows; ++i) {
+            const double factor = a(i, k) / a(k, k);
+            a(i, k) = 0.0;
+            for (int j = k + 1; j < cols; ++j) a(i, j) -= factor * a(k, j);
+            for (int j = 0; j < b.cols; ++j) x(i, j) -= factor * x(k, j);
+        }
+    }
+    for (double value : a.data)
+        if (!std::isfinite(value)) return std::nullopt;
+    for (int i = rows - 1; i >= 0; --i) {
+        for (int j = i + 1; j < rows; ++j)
+            for (int c = 0; c < b.cols; ++c) x(i, c) -= a(i, j) * x(j, c);
+        for (int c = 0; c < b.cols; ++c) x(i, c) /= a(i, i);
+    }
+    for (double value : x.data)
+        if (!std::isfinite(value)) return std::nullopt;
+    return x;
+}
 
-    const int n = rows;
-    Matrix lower;
-    Matrix u;
-    Matrix p;
-    std::tie(lower, u, p, std::ignore) = _lu_internal();
-
-    for (int i = 0; i < n; ++i)
-        if (std::abs(u(i, i)) < PIVOT_TOLERANCE)
-            return std::nullopt;
-
-    std::vector<double> pb(n, 0.0);
-
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            pb[i] += p(i, j) * b(j, 0);
-
-    std::vector<double> y(n, 0.0);
-
-    for (int i = 0; i < n; ++i) {
-        y[i] = pb[i];
-
+std::optional<Matrix> Matrix::solve_positive_definite(const Matrix& b) const {
+    if (!is_square() || b.rows != rows || b.cols == 0)
+        return std::nullopt;
+    for (double value : data)
+        if (!std::isfinite(value)) return std::nullopt;
+    for (double value : b.data)
+        if (!std::isfinite(value)) return std::nullopt;
+    const double eps = 32.0 * std::numeric_limits<double>::epsilon();
+    for (int i = 0; i < rows; ++i)
         for (int j = 0; j < i; ++j)
-            y[i] -= lower(i, j) * y[j];
+            if (std::abs((*this)(i, j) - (*this)(j, i)) >
+                eps * std::max(std::abs((*this)(i, j)), std::abs((*this)(j, i))))
+                return std::nullopt;
+    auto lower = cholesky();
+    if (!lower) return std::nullopt;
+    for (double value : lower->data)
+        if (!std::isfinite(value)) return std::nullopt;
+    Matrix x = Matrix::from_vec(b.rows, b.cols, b.data);
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < i; ++j)
+            for (int c = 0; c < b.cols; ++c) x(i, c) -= (*lower)(i, j) * x(j, c);
+        for (int c = 0; c < b.cols; ++c) x(i, c) /= (*lower)(i, i);
     }
-
-    std::vector<double> x(n, 0.0);
-
-    for (int i = n - 1; i >= 0; --i) {
-        x[i] = y[i];
-
-        for (int j = i + 1; j < n; ++j)
-            x[i] -= u(i, j) * x[j];
-
-        x[i] /= u(i, i);
+    for (int i = rows - 1; i >= 0; --i) {
+        for (int j = i + 1; j < rows; ++j)
+            for (int c = 0; c < b.cols; ++c) x(i, c) -= (*lower)(j, i) * x(j, c);
+        for (int c = 0; c < b.cols; ++c) x(i, c) /= (*lower)(i, i);
     }
-
-    Matrix result(n, 1);
-
-    for (int i = 0; i < n; ++i)
-        result(i, 0) = x[i];
-
-    return result;
+    for (double value : x.data)
+        if (!std::isfinite(value)) return std::nullopt;
+    return x;
 }
 
 std::tuple<Matrix, Matrix> Matrix::qr_decompose() const {
