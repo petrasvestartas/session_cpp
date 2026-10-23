@@ -1538,8 +1538,10 @@ Mesh NurbsSurface::mesh_adaptive(
 
 Mesh NurbsSurface::mesh() const {
 
-    if (m_mesh.number_of_vertices() == 0 && is_valid())
-        m_mesh = is_planar(nullptr, 1e-6) ? mesh_planar() : RemeshNurbsSurfaceGrid::from_u_v(*this, 0, 0);
+    if (m_mesh.number_of_vertices() == 0 && is_valid()) {
+        const bool bilinear = degree(0) == 1 && degree(1) == 1 && cv_count(0) == 2 && cv_count(1) == 2;
+        m_mesh = bilinear && is_planar(nullptr, 1e-6) ? mesh_planar() : RemeshNurbsSurfaceGrid::from_u_v(*this, 0, 0);
+    }
 
     return m_mesh;
 }
@@ -2036,26 +2038,27 @@ bool NurbsSurface::fundamental_forms(
 Mesh NurbsSurface::mesh_planar() const {
 
     Mesh result;
-    const Point p00 = point_at_corner(0, 0);
-    const Point p10 = point_at_corner(1, 0);
-    const Point p11 = point_at_corner(1, 1);
-    const Point p01 = point_at_corner(0, 1);
-    const size_t v0 = result.add_vertex(p00);
-    const size_t v1 = result.add_vertex(p10);
-    const size_t v2 = result.add_vertex(p11);
-    result.add_face({v0, v1, v2});
-    Vector normal;
+    const std::pair<double, double> du = domain(0);
+    const std::pair<double, double> dv = domain(1);
+    const double us[4] = {du.first, du.second, du.second, du.first};
+    const double vs[4] = {dv.first, dv.first, dv.second, dv.second};
+    const bool triangle = point_at_corner(0, 0).distance(point_at_corner(0, 1)) < 1e-10;
+    const int count = triangle ? 3 : 4;
+    std::vector<size_t> keys;
 
-    if (p00.distance(p01) < 1e-10) {
-        const Vector e1 = p10 - p00;
-        const Vector e2 = p11 - p00;
-        normal = e1.cross(e2);
-    } else {
-        const size_t v3 = result.add_vertex(p01);
-        result.add_face({v0, v2, v3});
-        const std::vector<Vector> derivs = evaluate(0.5, 0.5, 1);
-        normal = derivs[1].cross(derivs[2]);
+    for (int k = 0; k < count; k++) {
+        keys.push_back(result.add_vertex(point_at(us[k], vs[k])));
+        result.vertex[keys[k]].attributes["u"] = us[k];
+        result.vertex[keys[k]].attributes["v"] = vs[k];
     }
+
+    result.add_face({keys[0], keys[1], keys[2]});
+
+    if (!triangle)
+        result.add_face({keys[0], keys[2], keys[3]});
+
+    const std::vector<Vector> derivs = evaluate(0.5 * (du.first + du.second), 0.5 * (dv.first + dv.second), 1);
+    Vector normal = derivs[1].cross(derivs[2]);
 
     if (normal.magnitude() > 1e-15)
         normal = normal.normalized();

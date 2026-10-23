@@ -111,10 +111,15 @@ MINI_TEST("Primitives", "Nurbscurve Arc") {
     const Point mid(1.0, 1.0, 0.0);
     const Point end(2.0, 0.0, 0.0);
     const NurbsCurve curve = Primitives::arc(start, mid, end);
+    const Point quarter_mid(std::sqrt(0.5), std::sqrt(0.5), 0.0);
+    const NurbsCurve quarter = Primitives::arc(Point(1.0, 0.0, 0.0), quarter_mid, Point(0.0, 1.0, 0.0));
 
     MINI_CHECK(curve.cv_count() == 3);
     MINI_CHECK(curve.order() == 3);
     MINI_CHECK(curve.is_rational());
+    MINI_CHECK(TOLERANCE.is_point_close(curve.point_at(0.5), mid));
+    MINI_CHECK(TOLERANCE.is_point_close(quarter.point_at(0.5), quarter_mid));
+    MINI_CHECK(std::abs(quarter.point_at(0.25).distance(Point(0.0, 0.0, 0.0)) - 1.0) < 1e-9);
 }
 
 MINI_TEST("Primitives", "Nurbscurve Parabola") {

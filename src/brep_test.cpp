@@ -92,6 +92,92 @@ namespace session_cpp {
         return b.add_face(si, {{wi, BRepOrientation::Forward}});
     }
 
+    /// Quarter arc of the given radius in the xz plane at y, from (r, y, 0) to (0, y, r)
+    static NurbsCurve quarter_arc(double radius, double y) {
+
+        const double c = radius * std::sqrt(0.5);
+
+        return Primitives::arc(Point(radius, y, 0.0), Point(c, y, c), Point(0.0, y, radius));
+    }
+
+    /// Closed solid of six ruled patches between four quarter arcs of radii ro and ri at y = 0 and y = width
+    static BRep build_ring_sector(double ro, double ri, double width) {
+
+        BRep b;
+        const std::array<NurbsCurve, 4> arcs = {
+            quarter_arc(ro, 0.0),
+            quarter_arc(ro, width),
+            quarter_arc(ri, 0.0),
+            quarter_arc(ri, width),
+        };
+        std::map<std::pair<int, int>, int> edges;
+
+        for (int k = 0; k < 4; ++k) {
+            b.add_vertex(arcs[k].point_at(arcs[k].domain_start()));
+            b.add_vertex(arcs[k].point_at(arcs[k].domain_end()));
+            edges[{2 * k, 2 * k + 1}] = b.add_edge(b.add_curve_3d(arcs[k]), 2 * k, 2 * k + 1);
+        }
+
+        const std::array<std::pair<int, int>, 4> rulings = {{{0, 2}, {4, 6}, {0, 4}, {2, 6}}};
+
+        for (int end = 0; end < 2; ++end)
+            for (const std::pair<int, int>& ruling : rulings) {
+                const int start = ruling.first + end;
+                const int stop = ruling.second + end;
+                const std::vector<Point> ends = {b.m_vertices[start].point, b.m_vertices[stop].point};
+                edges[{start, stop}] = b.add_edge(b.add_curve_3d(NurbsCurve::create(false, 1, ends)), start, stop);
+            }
+
+        const std::array<NurbsSurface, 6> patches = {
+            Primitives::create_ruled(arcs[0], arcs[1]),
+            Primitives::create_ruled(arcs[2], arcs[3]),
+            Primitives::create_ruled(arcs[0], arcs[2]),
+            Primitives::create_ruled(arcs[1], arcs[3]),
+            Primitives::create_ruled(b.m_curves_3d[edges.at({0, 2})], b.m_curves_3d[edges.at({4, 6})]),
+            Primitives::create_ruled(b.m_curves_3d[edges.at({1, 3})], b.m_curves_3d[edges.at({5, 7})]),
+        };
+        const std::array<std::array<int, 4>, 6> corners = {{
+            {0, 1, 3, 2},
+            {4, 5, 7, 6},
+            {0, 1, 5, 4},
+            {2, 3, 7, 6},
+            {0, 2, 6, 4},
+            {1, 3, 7, 5},
+        }};
+        const std::array<Point, 4> uv = {
+            Point(0.0, 0.0, 0.0),
+            Point(1.0, 0.0, 0.0),
+            Point(1.0, 1.0, 0.0),
+            Point(0.0, 1.0, 0.0),
+        };
+        std::vector<BRepRef> shell;
+
+        for (int i = 0; i < 6; ++i) {
+            const int si = b.add_surface(patches[i]);
+            std::vector<BRepRef> wire;
+
+            for (int k = 0; k < 4; ++k) {
+                const int next = (k + 1) % 4;
+                const int a = std::min(corners[i][k], corners[i][next]);
+                const int z = std::max(corners[i][k], corners[i][next]);
+                const int edge = edges.at({a, z});
+                const bool forward = b.m_edges[edge].start_vertex == corners[i][k];
+                const std::vector<Point> pcurve = forward ? std::vector<Point>{uv[k], uv[next]} : std::vector<Point>{uv[next], uv[k]};
+                b.add_pcurve(edge, si, b.add_curve_2d(NurbsCurve::create(false, 1, pcurve)));
+                wire.push_back({edge, forward ? BRepOrientation::Forward : BRepOrientation::Reversed});
+            }
+
+            const int fi = b.add_face(si, {{b.add_wire(wire), BRepOrientation::Forward}});
+            const Vector away = patches[i].point_at(0.5, 0.5) - patches[i ^ 1].point_at(0.5, 0.5);
+            const bool outward = patches[i].normal_at(0.5, 0.5).dot(away) > 0.0;
+            shell.push_back({fi, outward ? BRepOrientation::Forward : BRepOrientation::Reversed});
+        }
+
+        b.add_solid({{b.add_shell(shell), BRepOrientation::Forward}});
+
+        return b;
+    }
+
     MINI_TEST("BRep", "Shared Grid Boundary") {
         // using session_cpp::BRep;
         // using session_cpp::BRepOrientation;
@@ -1118,6 +1204,22 @@ namespace session_cpp {
         const BRep box = BRep::create_box(2.0, 3.0, 4.0).transformed(far);
 
         MINI_CHECK(std::abs(box.volume() / 24.0 - 1.0) < 1e-9);
+    }
+
+    MINI_TEST("BRep", "Volume Planar Curved Boundary") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
+        // using session_cpp::Tolerance::PI;
+
+        const BRep sector = build_ring_sector(2000.0, 1880.0, 600.0);
+        const std::vector<Mesh> fm = sector.face_meshes();
+        const Mesh m = sector.mesh();
+        const double ref = Tolerance::PI / 4.0 * (2000.0 * 2000.0 - 1880.0 * 1880.0) * 600.0;
+
+        MINI_CHECK(sector.is_solid() && fm.size() == 6);
+        MINI_CHECK(fm[2].face.size() > 2 && fm[3].face.size() > 2);
+        MINI_CHECK(m.is_closed());
+        MINI_CHECK(std::abs(sector.volume() - ref) / ref < 0.01);
     }
 
     MINI_TEST("BRep", "Face Polylines Box") {

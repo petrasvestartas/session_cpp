@@ -419,7 +419,7 @@ public:
         double max_chord_height = 0.0
     ) const;
 
-    /// Return two triangles for a planar surface, else the span grid, cached in m_mesh.
+    /// Return two triangles for a planar bilinear patch, else the span grid, vertices tagged u and v, cached in m_mesh.
     Mesh mesh() const;
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -507,7 +507,7 @@ private:
     /// Compute the first and second fundamental forms at (u, v); false at a singular point.
     bool fundamental_forms(double u, double v, double& E, double& F, double& G, double& L, double& M, double& N) const;
 
-    /// Return two triangles through the four corners with one shared normal.
+    /// Return two triangles through the corners tagged u and v, one when the u = 0 side is a point, one shared normal.
     Mesh mesh_planar() const;
 
     /// Pack the CV rows across dir into one curve along dir with cv_size * cv_count(1 - dir) doubles per CV.

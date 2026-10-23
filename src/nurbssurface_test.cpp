@@ -1055,6 +1055,27 @@ MINI_TEST("NurbsSurface", "Meshing") {
     MINI_CHECK(mesh_planar_adaptive.is_valid());
 }
 
+MINI_TEST("NurbsSurface", "Mesh Planar Curved Boundary") {
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Mesh;
+    // using session_cpp::Tolerance::PI;
+
+    const double c = std::sqrt(0.5);
+    const NurbsCurve outer = Primitives::arc(Point(2.0, 0.0, 0.0), Point(2.0 * c, 0.0, 2.0 * c), Point(0.0, 0.0, 2.0));
+    const NurbsCurve inner = Primitives::arc(Point(1.0, 0.0, 0.0), Point(c, 0.0, c), Point(0.0, 0.0, 1.0));
+    const NurbsSurface side = Primitives::create_ruled(outer, inner);
+    const Mesh mesh = side.mesh();
+    const double ref = Tolerance::PI / 4.0 * (2.0 * 2.0 - 1.0 * 1.0);
+
+    MINI_CHECK(side.is_planar());
+    MINI_CHECK(mesh.vertex.size() > 4);
+    MINI_CHECK(mesh.vertex.begin()->second.attributes.count("u") == 1);
+    MINI_CHECK(std::abs(mesh.area() - ref) / ref < 0.01);
+}
+
 MINI_TEST("NurbsSurface", "Split By Plane") {
     // using session_cpp::Plane;
     // using session_cpp::Point;

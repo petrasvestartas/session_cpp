@@ -909,7 +909,7 @@ NurbsCurve Primitives::arc(const Point& start, const Point& mid, const Point& en
     NurbsCurve curve(3, true, 3, 3);
     curve.m_nurbsknot = {0.0, 0.0, 1.0, 1.0};
     curve.set_cv_4d(0, start[0], start[1], start[2], 1.0);
-    const Point weighted = chord_mid * w + sagitta;
+    const Point weighted = chord_mid * w + sagitta * (1.0 + w);
     curve.set_cv_4d(1, weighted[0], weighted[1], weighted[2], w);
     curve.set_cv_4d(2, end[0], end[1], end[2], 1.0);
 
