@@ -2223,8 +2223,13 @@ Mesh ruled_mesh(const BRep& b, int fi, int shift, EdgeBoundary& boundary) {
     const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
     const std::vector<BRepRef> edges = ruled_edges(b, fi, shift);
     const std::vector<std::tuple<double, Point, Point>> first = ruled_lift(b, fi, edges[0], boundary);
-    const std::vector<std::tuple<double, Point, Point>> second = ruled_lift(b, fi, edges[2], boundary);
+    std::vector<std::tuple<double, Point, Point>> second = ruled_lift(b, fi, edges[2], boundary);
     const size_t n = first.size();
+
+    // the second loop numbered on round the loop, from the ruling where the first ends, so the rulings tag their own two ends
+    if (n >= 2 && second.size() == n && std::abs(std::get<1>(first[n - 1])[0] - std::get<1>(second[0])[0]) > std::abs(std::get<1>(first[n - 1])[0] - std::get<1>(second[n - 1])[0]))
+        std::reverse(second.begin(), second.end());
+
     const std::vector<size_t> bottom_order = ruled_order(first);
     const std::vector<size_t> top_order = ruled_order(second);
     const double tolerance = (srf.domain(0).second - srf.domain(0).first) * 1e-6;
