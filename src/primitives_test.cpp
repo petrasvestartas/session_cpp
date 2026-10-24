@@ -6,6 +6,7 @@
 #include "line.h"
 #include "point.h"
 #include "vector.h"
+#include "xform.h"
 #include "color.h"
 #include "tolerance.h"
 
@@ -371,6 +372,37 @@ MINI_TEST("Primitives", "Nurbssurface Quad Sphere") {
 // ═══════════════════════════════════════════════════════════════════════════
 // NurbsSurface factory methods
 // ═══════════════════════════════════════════════════════════════════════════
+MINI_TEST("Primitives", "Nurbssurface Ruled Nearby Knots") {
+    const std::vector<Point> wave = {
+        Point(0.0, 0.0, 0.0),
+        Point(1.0, 0.0, 0.8),
+        Point(2.5, 0.0, -0.4),
+        Point(3.5, 0.0, 0.9),
+        Point(5.0, 0.0, 0.0),
+    };
+    NurbsCurve crv_a = NurbsCurve::create_interpolated(wave);
+    NurbsCurve crv_b = crv_a;
+    crv_a.set_domain(0.0, 1.0);
+    crv_b.set_domain(0.0, 1.0);
+    crv_b.transform(Xform::translation(0.0, 3.0, 0.0));
+
+    for (int k = crv_b.degree(); k < crv_b.cv_count() - 1; k++)
+        crv_b.set_nurbsknot(k, crv_b.nurbsknot(k) + 1e-9);
+
+    const NurbsSurface srf = Primitives::create_ruled(crv_a, crv_b);
+    double apart = 0.0;
+
+    for (int k = 0; k <= 10; k++) {
+        const double u = k / 10.0;
+        apart = std::max(apart, srf.point_at(u, 0.0).distance(crv_a.point_at(u)));
+        apart = std::max(apart, srf.point_at(u, 1.0).distance(crv_b.point_at(u)));
+    }
+
+    MINI_CHECK(srf.is_valid());
+    MINI_CHECK(srf.cv_count(0) == crv_a.cv_count() && srf.cv_count(1) == 2);
+    MINI_CHECK(apart < 1e-6);
+}
+
 MINI_TEST("Primitives", "Nurbssurface Ruled") {
     // using session_cpp::Primitives;
     // using session_cpp::NurbsCurve;

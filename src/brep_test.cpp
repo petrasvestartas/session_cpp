@@ -100,16 +100,27 @@ namespace session_cpp {
         return Primitives::arc(Point(radius, y, 0.0), Point(c, y, c), Point(0.0, y, radius));
     }
 
-    /// Closed solid of six ruled patches between four quarter arcs of radii ro and ri at y = 0 and y = width
-    static BRep build_ring_sector(double ro, double ri, double width) {
+    /// Orientation of face fi in a shell where face fj already has orientation oj: the shell runs their shared edge the opposite way on each; -1 when they share no edge
+    static int shell_orientation(const BRep& b, int fi, int fj, BRepOrientation oj) {
+
+        for (const BRepRef& er : b.wire_edges(b.m_faces[fi].wires[0]))
+            for (const BRepRef& es : b.wire_edges(b.m_faces[fj].wires[0])) {
+                if (er.index != es.index)
+                    continue;
+
+                const bool direction_j = (es.orientation == BRepOrientation::Forward) != (oj == BRepOrientation::Reversed);
+                const bool reversed_i = (er.orientation == BRepOrientation::Forward) == direction_j;
+
+                return reversed_i ? 1 : 0;
+            }
+
+        return -1;
+    }
+
+    /// Closed solid of six ruled patches between four arcs (outer a, outer b, inner a, inner b) running the same way: the outer and inner faces, the two sides and the two caps, every face wound outwards, the outer face by its distance from the inner and every other by the shell's consistency with an oriented neighbour
+    static BRep build_six_patch(const std::array<NurbsCurve, 4>& arcs) {
 
         BRep b;
-        const std::array<NurbsCurve, 4> arcs = {
-            quarter_arc(ro, 0.0),
-            quarter_arc(ro, width),
-            quarter_arc(ri, 0.0),
-            quarter_arc(ri, width),
-        };
         std::map<std::pair<int, int>, int> edges;
 
         for (int k = 0; k < 4; ++k) {
@@ -150,7 +161,6 @@ namespace session_cpp {
             Point(1.0, 1.0, 0.0),
             Point(0.0, 1.0, 0.0),
         };
-        std::vector<BRepRef> shell;
 
         for (int i = 0; i < 6; ++i) {
             const int si = b.add_surface(patches[i]);
@@ -167,15 +177,32 @@ namespace session_cpp {
                 wire.push_back({edge, forward ? BRepOrientation::Forward : BRepOrientation::Reversed});
             }
 
-            const int fi = b.add_face(si, {{b.add_wire(wire), BRepOrientation::Forward}});
-            const Vector away = patches[i].point_at(0.5, 0.5) - patches[i ^ 1].point_at(0.5, 0.5);
-            const bool outward = patches[i].normal_at(0.5, 0.5).dot(away) > 0.0;
-            shell.push_back({fi, outward ? BRepOrientation::Forward : BRepOrientation::Reversed});
+            b.add_face(si, {{b.add_wire(wire), BRepOrientation::Forward}});
         }
+
+        const Vector away = patches[0].point_at(0.5, 0.5) - patches[1].point_at(0.5, 0.5);
+        std::array<int, 6> oriented = {patches[0].normal_at(0.5, 0.5).dot(away) > 0.0 ? 0 : 1, -1, -1, -1, -1, -1};
+
+        for (int pass = 0; pass < 6; ++pass)
+            for (int i = 1; i < 6; ++i)
+                for (int j = 0; j < 6 && oriented[i] < 0; ++j)
+                    if (oriented[j] >= 0)
+                        oriented[i] = shell_orientation(b, i, j, oriented[j] == 1 ? BRepOrientation::Reversed : BRepOrientation::Forward);
+
+        std::vector<BRepRef> shell;
+
+        for (int i = 0; i < 6; ++i)
+            shell.push_back({i, oriented[i] == 1 ? BRepOrientation::Reversed : BRepOrientation::Forward});
 
         b.add_solid({{b.add_shell(shell), BRepOrientation::Forward}});
 
         return b;
+    }
+
+    /// Closed solid of six ruled patches between four quarter arcs of radii ro and ri at y = 0 and y = width
+    static BRep build_ring_sector(double ro, double ri, double width) {
+
+        return build_six_patch({quarter_arc(ro, 0.0), quarter_arc(ro, width), quarter_arc(ri, 0.0), quarter_arc(ri, width)});
     }
 
     MINI_TEST("BRep", "Shared Grid Boundary") {
@@ -247,8 +274,8 @@ namespace session_cpp {
         std::vector<std::array<double, 3>> first = boundary_points(meshes[0]);
         const std::vector<std::array<double, 3>> second = boundary_points(meshes[1]);
 
-        MINI_CHECK(first == second && first.size() == 7);
-        MINI_CHECK(meshes[0].face.size() == original[0].face.size() && !meshes[1].face.empty());
+        MINI_CHECK(first == second && first.size() >= 7);
+        MINI_CHECK(meshes[0].face.size() == 2 * (first.size() - 1) && meshes[1].face.size() == meshes[0].face.size());
 
         double maximum = 0.0;
 
@@ -266,14 +293,10 @@ namespace session_cpp {
 
         MINI_CHECK(maximum <= 0.005 * 1.5);
 
-        const Mesh refined = RemeshNurbsSurfaceGrid::from_u_v_q(surfaces[0], 0, 0, 5.0, 0.001);
         meshes = b.face_meshes_q(true, 5.0, 0.001);
         first = boundary_points(meshes[0]);
 
-        MINI_CHECK(first == boundary_points(meshes[1]) && !meshes[0].face.empty() && !meshes[1].face.empty());
-
-        for (const std::array<double, 3>& point : boundary_points(refined))
-            MINI_CHECK(std::find(first.begin(), first.end(), point) != first.end());
+        MINI_CHECK(first == boundary_points(meshes[1]) && meshes[0].face.size() == 2 * (first.size() - 1));
 
         const double cosine = std::cos(5.0 * Tolerance::PI / 180.0);
 
@@ -1140,6 +1163,85 @@ namespace session_cpp {
         MINI_CHECK(empty == 0);
         MINI_CHECK(open == 0);
         MINI_CHECK(missing == 0);
+    }
+
+    MINI_TEST("BRep", "Ruled Watertight") {
+        const auto at = [](double r, double y, double degrees) { return Point(r * std::cos(degrees * Tolerance::PI / 180.0), y, r * std::sin(degrees * Tolerance::PI / 180.0)); };
+        const std::array<NurbsCurve, 4> meridians = {
+            Primitives::arc(at(1000.0, 0.0, 165.0), at(1000.0, 0.0, 90.0), at(1000.0, 0.0, 15.0)),
+            Primitives::arc(at(1300.0, 300.0, 165.0), at(1300.0, 300.0, 90.0), at(1300.0, 300.0, 15.0)),
+            Primitives::arc(at(880.0, 0.0, 165.0), at(880.0, 0.0, 90.0), at(880.0, 0.0, 15.0)),
+            Primitives::arc(at(1180.0, 300.0, 165.0), at(1180.0, 300.0, 90.0), at(1180.0, 300.0, 15.0)),
+        };
+        const BRep b = build_six_patch(meridians);
+        const std::vector<Mesh> fms = b.face_meshes();
+        const auto key = [](const Point& p) { return std::array<double, 3>{p[0] + 0.0, p[1] + 0.0, p[2] + 0.0}; };
+        std::map<std::pair<std::array<double, 3>, std::array<double, 3>>, int> directed;
+        int empty = 0;
+        int inward = 0;
+        int spanning = 0;
+        int open = 0;
+
+        for (size_t fi = 0; fi < fms.size(); ++fi) {
+            const Mesh& fm = fms[fi];
+
+            if (fm.face.empty())
+                ++empty;
+
+            for (const std::pair<const size_t, std::vector<size_t>>& face : fm.face) {
+                const Point a = fm.vertex.at(face.second[0]).position();
+                const Point c = fm.vertex.at(face.second[1]).position();
+                const Point d = fm.vertex.at(face.second[2]).position();
+                double u = 0.0;
+                double v = 0.0;
+                std::vector<double> stations;
+
+                for (const size_t vk : face.second) {
+                    const Attributes& attributes = fm.vertex.at(vk).attributes;
+                    u += (attributes.count("u") ? attributes.at("u") : 0.5) / 3.0;
+                    v += (attributes.count("v") ? attributes.at("v") : 0.5) / 3.0;
+                    stations.push_back(attributes.count("u") ? attributes.at("u") : 0.5);
+                }
+
+                std::sort(stations.begin(), stations.end());
+
+                if (stations[1] - stations[0] > 1e-6 && stations[2] - stations[1] > 1e-6 && fi < 4)
+                    ++spanning;
+
+                if ((c - a).cross(d - a).dot(b.normal_at((int)fi, u, v)) <= 0.0)
+                    ++inward;
+
+                for (size_t i = 0; i < 3; ++i) {
+                    const std::array<double, 3> from = key(fm.vertex.at(face.second[i]).position());
+                    const std::array<double, 3> to = key(fm.vertex.at(face.second[(i + 1) % 3]).position());
+                    directed[{from, to}] += 1;
+                }
+            }
+        }
+
+        for (const auto& entry : directed) {
+            const auto reverse = directed.find({entry.first.second, entry.first.first});
+
+            if (entry.second != 1 || reverse == directed.end() || reverse->second != 1)
+                ++open;
+        }
+
+        std::vector<std::vector<Point>> polygons;
+
+        for (const Mesh& fm : b.face_meshes_q(true, 2.0, 0.0005))
+            for (const std::pair<const size_t, std::vector<size_t>>& face : fm.face)
+                polygons.push_back({fm.vertex.at(face.second[0]).position(), fm.vertex.at(face.second[1]).position(), fm.vertex.at(face.second[2]).position()});
+
+        const double volume = b.volume();
+        const double fine = Mesh::from_polylines(polygons, 1e-6).volume();
+        const double outer = (double)fms[0].face.size();
+        const double inner = (double)fms[1].face.size();
+
+        MINI_CHECK(b.is_solid() && empty == 0);
+        MINI_CHECK(open == 0);
+        MINI_CHECK(inward == 0 && spanning == 0);
+        MINI_CHECK(std::abs(fine - 1.0273e8) / 1.0273e8 < 0.01 && std::abs(volume - fine) / fine < 0.05);
+        MINI_CHECK(outer / inner > 0.5 && outer / inner < 2.0);
     }
 
     MINI_TEST("BRep", "Mesh Orientation") {

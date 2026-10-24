@@ -19,10 +19,11 @@ const int STACK_SIZE = 64;
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve helpers
 // ═══════════════════════════════════════════════════════════════════════════
-/// Parameter of the closest sample on a dense grid over [t0, t1].
+/// Parameter of the closest sample on a grid over [t0, t1], ten samples per control point of the window's share of the domain, never under fifty.
 static double curve_seed(const NurbsCurve& curve, const Point& test_point, double t0, double t1) {
 
-    const int num_samples = std::max(50, curve.cv_count() * 10);
+    const double share = (t1 - t0) / std::max(curve.domain_end() - curve.domain_start(), std::numeric_limits<double>::min());
+    const int num_samples = std::max(50, (int)std::ceil(curve.cv_count() * 10 * std::min(share, 1.0)));
     const double dt = (t1 - t0) / num_samples;
     double best_t = t0;
     double best_dist = curve.point_at(t0).distance(test_point);

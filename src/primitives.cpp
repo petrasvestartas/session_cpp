@@ -115,10 +115,19 @@ std::vector<std::vector<size_t>> surface_mid_grid(
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve compatibility
 // ═══════════════════════════════════════════════════════════════════════════
-/// Sorted union of two nurbsknot vectors, equal values kept once.
+/// Within this of each other two nurbsknots of the vectors are one knot: 1e-7 of the wider span, above what insert_nurbsknot treats as the same knot, so a knot nearly on another is never inserted beside it
+double nurbsknot_tolerance(const std::vector<double>& a, const std::vector<double>& b) {
+
+    const double span_a = a.empty() ? 0.0 : a.back() - a.front();
+    const double span_b = b.empty() ? 0.0 : b.back() - b.front();
+
+    return 1e-7 * std::max(span_a, span_b);
+}
+
+/// Sorted union of two nurbsknot vectors, values within nurbsknot_tolerance kept once at the first vector's value.
 std::vector<double> merge_nurbsknot_vectors(const std::vector<double>& a, const std::vector<double>& b) {
 
-    const double tol = 1e-10;
+    const double tol = nurbsknot_tolerance(a, b);
     std::vector<double> merged;
     size_t i = 0;
     size_t j = 0;
@@ -146,10 +155,10 @@ std::vector<double> merge_nurbsknot_vectors(const std::vector<double>& a, const 
     return merged;
 }
 
-/// True when both nurbsknot vectors match within 1e-10.
+/// True when both nurbsknot vectors match within nurbsknot_tolerance.
 bool nurbsknot_vectors_equal(const std::vector<double>& a, const std::vector<double>& b) {
 
-    const double tol = 1e-10;
+    const double tol = nurbsknot_tolerance(a, b);
 
     if (a.size() != b.size())
         return false;
@@ -220,7 +229,7 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
     for (size_t i = 1; i < curves.size(); i++)
         unified = merge_nurbsknot_vectors(unified, span_nurbsknots(curves[i]));
 
-    const double tol = 1e-10;
+    const double tol = nurbsknot_tolerance(unified, unified);
 
     for (NurbsCurve& c : curves) {
         const std::vector<double> nurbsknots = span_nurbsknots(c);
@@ -233,10 +242,14 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
 
             mult++;
 
-            if (ci < nurbsknots.size() && std::abs(nurbsknots[ci] - unified[ui]) < tol)
+            if (ci < nurbsknots.size() && std::abs(nurbsknots[ci] - unified[ui]) < tol) {
+                if (!periodic && nurbsknots[ci] != unified[ui])
+                    c.set_nurbsknot((int)ci, unified[ui]);
+
                 ci++;
-            else if (!c.insert_nurbsknot(unified[ui], mult))
+            } else if (!c.insert_nurbsknot(unified[ui], mult)) {
                 return false;
+            }
         }
     }
 
@@ -245,6 +258,29 @@ bool unify_curves(std::vector<NurbsCurve>& curves) {
             return false;
 
     return true;
+}
+
+/// Every curve interpolated anew through the same count of points at equal steps of its [0, 1] domain with uniform nurbsknots, so the nurbsknot vectors agree where unification could not make them; false when a curve cannot be interpolated.
+bool resample_curves(std::vector<NurbsCurve>& curves) {
+
+    int count = 4;
+
+    for (const NurbsCurve& c : curves)
+        count = std::max(count, c.cv_count());
+
+    for (NurbsCurve& c : curves) {
+        std::vector<Point> points;
+
+        for (int k = 0; k < count; k++)
+            points.push_back(c.point_at((double)k / (count - 1)));
+
+        c = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform);
+
+        if (!c.is_valid() || !c.set_domain(0.0, 1.0))
+            return false;
+    }
+
+    return unify_curves(curves);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1126,7 +1162,10 @@ NurbsSurface Primitives::create_ruled(const NurbsCurve& curve_a, const NurbsCurv
 
     std::vector<NurbsCurve> curves = {curve_a, curve_b};
 
-    if (!curves[0].set_domain(0.0, 1.0) || !curves[1].set_domain(0.0, 1.0) || !unify_curves(curves))
+    if (!curves[0].set_domain(0.0, 1.0) || !curves[1].set_domain(0.0, 1.0))
+        return NurbsSurface();
+
+    if (!unify_curves(curves) && !resample_curves(curves))
         return NurbsSurface();
 
     const int cv_count_u = curves[0].cv_count();

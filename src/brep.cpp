@@ -1,5 +1,6 @@
 #include "brep.h"
 #include "brep.pb.h"
+#include "closest.h"
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.h"
 #include "primitives.h"
@@ -11,6 +12,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -1905,6 +1907,383 @@ Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double scale, dou
     return mesh;
 }
 
+/// Phase 1: the side of the surface domain a straight two-point pcurve runs along, corner to corner: 0 along v0, 1 along v1, 2 along u0, 3 along u1; -1 for any other pcurve
+int ruled_side(const NurbsSurface& srf, const NurbsCurve& crv) {
+
+    if (crv.degree() != 1 || crv.is_rational() || crv.cv_count() != 2)
+        return -1;
+
+    const std::pair<double, double> du = srf.domain(0);
+    const std::pair<double, double> dv = srf.domain(1);
+    const double tolerance_u = (du.second - du.first) * 1e-9;
+    const double tolerance_v = (dv.second - dv.first) * 1e-9;
+    const Point c0 = crv.get_cv(0);
+    const Point c1 = crv.get_cv(1);
+
+    for (const Point& p : {c0, c1}) {
+        const bool corner_u = std::min(std::abs(p[0] - du.first), std::abs(p[0] - du.second)) <= tolerance_u;
+        const bool corner_v = std::min(std::abs(p[1] - dv.first), std::abs(p[1] - dv.second)) <= tolerance_v;
+
+        if (!corner_u || !corner_v)
+            return -1;
+    }
+
+    if (std::abs(c0[1] - c1[1]) <= tolerance_v && std::abs(c0[0] - c1[0]) > tolerance_u)
+        return std::abs(c0[1] - dv.first) <= tolerance_v ? 0 : 1;
+
+    if (std::abs(c0[0] - c1[0]) <= tolerance_u && std::abs(c0[1] - c1[1]) > tolerance_v)
+        return std::abs(c0[0] - du.first) <= tolerance_u ? 2 : 3;
+
+    return -1;
+}
+
+/// Phase 1: a face on the whole domain of a curved surface straight across its rulings, its wire four distinct open edges each a straight pcurve along one domain side: the place in the wire of the edge along v0, so the wire turned there reads as the loop at v0, a ruling, the loop at v1 and a ruling; -1 for any other face
+int ruled_face(const BRep& b, int fi) {
+
+    const BRepFace& face = b.m_faces[fi];
+
+    if (face.wires.size() != 1)
+        return -1;
+
+    const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+
+    if (edges.size() != 4 || srf.degree(1) != 1 || srf.cv_count(1) != 2 || is_planar_patch(srf))
+        return -1;
+
+    for (int side = 0; side < 4; ++side)
+        if (srf.is_singular(side))
+            return -1;
+
+    std::array<int, 4> sides = {-1, -1, -1, -1};
+
+    for (size_t k = 0; k < 4; ++k) {
+        const BRepEdge& edge = b.m_edges[edges[k].index];
+        const int ci = b.pcurve_index(edges[k].index, fi, edges[k].orientation);
+
+        for (size_t j = 0; j < k; ++j)
+            if (edges[j].index == edges[k].index)
+                return -1;
+
+        if (edge.degenerated || edge.start_vertex == edge.end_vertex || ci < 0)
+            return -1;
+
+        sides[k] = ruled_side(srf, b.m_curves_2d[ci]);
+    }
+
+    for (int side = 0; side < 4; ++side)
+        if (std::count(sides.begin(), sides.end(), side) != 1)
+            return -1;
+
+    const int shift = (int)(std::find(sides.begin(), sides.end(), 0) - sides.begin());
+
+    return sides[(shift + 2) % 4] == 1 ? shift : -1;
+}
+
+/// Phase 1: the wire of a ruled face turned to start at its loop along v0
+std::vector<BRepRef> ruled_edges(const BRep& b, int fi, int shift) {
+
+    std::vector<BRepRef> edges = b.wire_edges(b.m_faces[fi].wires[0]);
+    std::rotate(edges.begin(), edges.begin() + shift, edges.end());
+
+    return edges;
+}
+
+/// Phase 1: the distinct nurbsknots of a ruled face's surface across u from the start of its domain to its end: the spans within which its loops are smooth, so a kink between two spans never asks for steps
+std::vector<double> ruled_spans(const NurbsSurface& srf) {
+
+    const std::pair<double, double> du = srf.domain(0);
+    const double tolerance = (du.second - du.first) * 1e-9;
+    std::vector<double> spans = {du.first};
+
+    for (int k = 0; k < srf.nurbsknot_count(0); ++k) {
+        const double knot = srf.nurbsknot(0, k);
+
+        if (knot > spans.back() + tolerance && knot < du.second - tolerance)
+            spans.push_back(knot);
+    }
+
+    spans.push_back(du.second);
+
+    return spans;
+}
+
+/// Phase 1: the stations across u of a ruled face: every span at its own count of equal steps
+std::vector<double> ruled_steps(const std::vector<double>& spans, const std::vector<int>& counts) {
+
+    std::vector<double> steps;
+
+    for (size_t span = 0; span + 1 < spans.size(); ++span)
+        for (int k = 0; k < counts[span]; ++k)
+            steps.push_back(spans[span] + (spans[span + 1] - spans[span]) * k / counts[span]);
+
+    steps.push_back(spans.back());
+
+    return steps;
+}
+
+/// Phase 1: how far one span of a ruled face at count equal steps is from the quality asked, on whichever loop and step is worse: the sag of a chord over the tolerance or the turn of the normals over the angle, as a share of what is allowed; zero or below when the span passes, the normals taken just inside a step so a kink at a station is not a turn
+double ruled_excess(const NurbsSurface& srf, double u0, double u1, int count, double cosine, double tolerance) {
+
+    const std::pair<double, double> dv = srf.domain(1);
+    double excess = -1.0;
+
+    for (const double v : {dv.first, dv.second})
+        for (int k = 0; k < count; ++k) {
+            const double ua = u0 + (u1 - u0) * k / count;
+            const double ub = u0 + (u1 - u0) * (k + 1) / count;
+            const double inside = (ub - ua) * 1e-6;
+            const Point a = srf.point_at(ua, v);
+            const Point z = srf.point_at(ub, v);
+            const Point middle = srf.point_at((ua + ub) * 0.5, v);
+            const double sag = middle.distance(a + (z - a) * 0.5);
+            const double dot = srf.normal_at(ua + inside, v).dot(srf.normal_at(ub - inside, v));
+            excess = std::max({excess, tolerance > 0.0 ? sag / tolerance - 1.0 : -1.0, (cosine - dot) / (1.0 - cosine)});
+        }
+
+    return excess;
+}
+
+/// Phase 1: the steps of every span of a ruled face: one, doubled while the span is coarser than the chord tolerance measured against the whole BRep or the angle allows and doubling still brings it closer, so a kink or a fold inside a span does not ask for ever more steps; 4096 stations at most over all spans
+std::vector<int> ruled_counts(const NurbsSurface& srf, const std::vector<double>& spans, double scale, double angle, double chord) {
+
+    const double tolerance = scale * chord;
+    const double cosine = std::cos(std::clamp(angle, 0.1, 179.0) * Tolerance::PI / 180.0);
+    std::vector<int> counts(spans.size() - 1, 1);
+    int total = (int)counts.size();
+
+    for (size_t span = 0; span + 1 < spans.size(); ++span) {
+        double excess = ruled_excess(srf, spans[span], spans[span + 1], counts[span], cosine, tolerance);
+
+        while (excess > 0.0 && total + counts[span] <= 4096) {
+            const double finer = ruled_excess(srf, spans[span], spans[span + 1], 2 * counts[span], cosine, tolerance);
+
+            if (finer > 0.75 * excess)
+                break;
+
+            total += counts[span];
+            counts[span] *= 2;
+            excess = finer;
+        }
+    }
+
+    return counts;
+}
+
+/// Phase 1: the canonical points of a loop of a ruled face lifted onto the face along the loop's own iso curve, each the parameter of its closest point there searched between the neighbours of its nearest sample of the curve, in the loop's traversal order with equal parameters kept once; empty while nobody has sampled the edge
+std::vector<std::tuple<double, Point, Point>> ruled_lift(const BRep& b, int fi, const BRepRef& er, const EdgeBoundary& boundary) {
+
+    std::vector<std::tuple<double, Point, Point>> samples;
+
+    if (!boundary.points.count(er.index))
+        return samples;
+
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+    const NurbsCurve& crv = b.m_curves_2d[b.pcurve_index(er.index, fi, er.orientation)];
+    const Point c0 = crv.get_cv(0);
+    const Point c1 = crv.get_cv(1);
+    const NurbsCurve iso = srf.iso_curve(0, c0[1]);
+    const std::pair<double, double> domain = crv.domain();
+    const std::pair<double, double> du = srf.domain(0);
+    const int count = std::max(50, iso.cv_count() * 10);
+    std::vector<Point> table;
+
+    for (int k = 0; k <= count; ++k)
+        table.push_back(iso.point_at(du.first + (du.second - du.first) * k / count));
+
+    for (const Point& p : boundary.points.at(er.index)) {
+        int nearest = 0;
+
+        for (int k = 1; k <= count; ++k)
+            if (table[k].distance(p) < table[nearest].distance(p))
+                nearest = k;
+
+        const double lo = du.first + (du.second - du.first) * std::max(nearest - 1, 0) / count;
+        const double hi = du.first + (du.second - du.first) * std::min(nearest + 1, count) / count;
+        const double u = Closest::curve_point(iso, p, lo, hi).first;
+        const double t = domain.first + (domain.second - domain.first) * (u - c0[0]) / (c1[0] - c0[0]);
+        samples.push_back({t, Point(u, c0[1], 0.0), p});
+    }
+
+    std::sort(samples.begin(), samples.end(), sample_less);
+    samples.erase(std::unique(samples.begin(), samples.end(), sample_equal), samples.end());
+
+    return samples;
+}
+
+/// Phase 1: the stations across u where a ruled face runs its rulings: its own steps in every span and the u of every canonical point of either loop, sorted and merged within the tolerance
+std::vector<double> ruled_stations(
+    const std::vector<double>& spans,
+    const std::vector<int>& counts,
+    const std::vector<std::tuple<double, Point, Point>>& first,
+    const std::vector<std::tuple<double, Point, Point>>& second,
+    double tolerance
+) {
+
+    std::vector<double> stations = ruled_steps(spans, counts);
+
+    for (const std::vector<std::tuple<double, Point, Point>>* lifted : {&first, &second})
+        for (const std::tuple<double, Point, Point>& sample : *lifted)
+            stations.push_back(std::get<1>(sample)[0]);
+
+    std::sort(stations.begin(), stations.end());
+    std::vector<double> merged;
+
+    for (const double u : stations)
+        if (merged.empty() || u - merged.back() > tolerance)
+            merged.push_back(u);
+
+    return merged;
+}
+
+/// Phase 1: the stations a loop of a ruled face has no canonical point at yet, added to its edge at the loop's v up to 4096 points on the edge, the domain ends snapped onto the edge's vertices; true when any was added
+bool ruled_extend(
+    const NurbsSurface& srf,
+    double v,
+    const std::vector<double>& stations,
+    const std::vector<std::tuple<double, Point, Point>>& lifted,
+    double tolerance,
+    const std::pair<Point, Point>& ends,
+    std::vector<Point>& points
+) {
+
+    const std::pair<double, double> du = srf.domain(0);
+    bool added = false;
+
+    for (const double u : stations) {
+        bool present = false;
+
+        for (const std::tuple<double, Point, Point>& sample : lifted)
+            present = present || std::abs(std::get<1>(sample)[0] - u) <= tolerance;
+
+        if (present || points.size() >= 4096)
+            continue;
+
+        Point p = srf.point_at(u, v);
+
+        if (std::abs(u - du.first) <= tolerance || std::abs(u - du.second) <= tolerance)
+            p = p.distance(ends.first) <= p.distance(ends.second) ? ends.first : ends.second;
+
+        points.push_back(p);
+        added = true;
+    }
+
+    return added;
+}
+
+/// Phase 1: the rulings of every ruled face agreed with its neighbours: each pass every face asks its stations of both loops and adds the points a loop lacks, which the faces sharing that edge pick up on the next pass, until no face adds a point or sixteen passes are spent
+void ruled_boundaries(const BRep& b, const std::vector<int>& face_ruled, EdgeBoundary& boundary, double scale, double angle, double chord) {
+
+    std::vector<std::vector<double>> spans(face_ruled.size());
+    std::vector<std::vector<int>> counts(face_ruled.size());
+
+    for (size_t fi = 0; fi < face_ruled.size(); ++fi)
+        if (face_ruled[fi] >= 0) {
+            spans[fi] = ruled_spans(b.m_surfaces[b.m_faces[fi].surface_index]);
+            counts[fi] = ruled_counts(b.m_surfaces[b.m_faces[fi].surface_index], spans[fi], scale, angle, chord);
+        }
+
+    for (int pass = 0; pass < 16; ++pass) {
+        bool changed = false;
+
+        for (size_t fi = 0; fi < face_ruled.size(); ++fi) {
+            if (face_ruled[fi] < 0)
+                continue;
+
+            const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+            const std::vector<BRepRef> edges = ruled_edges(b, (int)fi, face_ruled[fi]);
+            const std::pair<double, double> du = srf.domain(0);
+            const std::pair<double, double> dv = srf.domain(1);
+            const double tolerance = (du.second - du.first) * 1e-6;
+            const std::vector<std::tuple<double, Point, Point>> first = ruled_lift(b, (int)fi, edges[0], boundary);
+            const std::vector<std::tuple<double, Point, Point>> second = ruled_lift(b, (int)fi, edges[2], boundary);
+            const std::vector<double> stations = ruled_stations(spans[fi], counts[fi], first, second, tolerance);
+            changed = ruled_extend(srf, dv.first, stations, first, tolerance, edge_ends(b, edges[0].index), boundary.points[edges[0].index]) || changed;
+            changed = ruled_extend(srf, dv.second, stations, second, tolerance, edge_ends(b, edges[2].index), boundary.points[edges[2].index]) || changed;
+        }
+
+        if (!changed)
+            return;
+    }
+}
+
+/// Phase 1: the order of lifted samples by increasing u
+std::vector<size_t> ruled_order(const std::vector<std::tuple<double, Point, Point>>& lifted) {
+
+    std::vector<size_t> order(lifted.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&lifted](size_t i, size_t j) { return std::get<1>(lifted[i])[0] < std::get<1>(lifted[j])[0]; });
+
+    return order;
+}
+
+/// Phase 1: the mesh of a ruled face: both loops at the agreed stations, paired ruling by ruling into two triangles per step so no triangle spans two rulings, degenerate triangles at a collapsed ruling skipped, the loop numbered as the CDT polygon (loop at v0, ruling, loop at v1, ruling) so the edge uses tag as there; empty when the loops disagree on their stations
+Mesh ruled_mesh(const BRep& b, int fi, int shift, EdgeBoundary& boundary) {
+
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+    const std::vector<BRepRef> edges = ruled_edges(b, fi, shift);
+    const std::vector<std::tuple<double, Point, Point>> first = ruled_lift(b, fi, edges[0], boundary);
+    const std::vector<std::tuple<double, Point, Point>> second = ruled_lift(b, fi, edges[2], boundary);
+    const size_t n = first.size();
+    const std::vector<size_t> bottom_order = ruled_order(first);
+    const std::vector<size_t> top_order = ruled_order(second);
+    const double tolerance = (srf.domain(0).second - srf.domain(0).first) * 1e-6;
+    Mesh mesh;
+
+    if (n < 2 || second.size() != n)
+        return mesh;
+
+    for (size_t k = 0; k < n; ++k)
+        if (std::abs(std::get<1>(first[bottom_order[k]])[0] - std::get<1>(second[top_order[k]])[0]) > tolerance)
+            return mesh;
+
+    for (const int k : {1, 3})
+        if (!boundary.points.count(edges[k].index)) {
+            const std::pair<Point, Point> ends = edge_ends(b, edges[k].index);
+            boundary.points[edges[k].index] = {ends.first, ends.second};
+        }
+
+    TrimLoops loops;
+    loops.uv.resize(1, std::vector<Point>(2 * n));
+    loops.xyz.resize(1, std::vector<Point>(2 * n));
+    std::vector<size_t> bottom;
+    std::vector<size_t> top;
+
+    for (size_t k = 0; k < n; ++k) {
+        bottom.push_back(strip_vertex(srf, mesh, first[k], k));
+        top.push_back(strip_vertex(srf, mesh, second[k], n + k));
+        loops.uv[0][k] = std::get<1>(first[k]);
+        loops.xyz[0][k] = std::get<2>(first[k]);
+        loops.uv[0][n + k] = std::get<1>(second[k]);
+        loops.xyz[0][n + k] = std::get<2>(second[k]);
+    }
+
+    for (size_t k = 0; k + 1 < n; ++k) {
+        const std::array<size_t, 4> quad = {bottom[bottom_order[k]], bottom[bottom_order[k + 1]], top[top_order[k + 1]], top[top_order[k]]};
+
+        for (const std::array<size_t, 3>& triangle : {std::array<size_t, 3>{quad[0], quad[1], quad[2]}, std::array<size_t, 3>{quad[0], quad[2], quad[3]}}) {
+            const Point a = mesh.vertex[triangle[0]].position();
+            const Point c = mesh.vertex[triangle[1]].position();
+            const Point d = mesh.vertex[triangle[2]].position();
+
+            if (!same_boundary_point(a, c) && !same_boundary_point(c, d) && !same_boundary_point(d, a))
+                mesh.add_face({triangle[0], triangle[1], triangle[2]});
+        }
+    }
+
+    const Point& start = std::get<1>(first[bottom_order[0]]);
+    wind_to_normal(mesh, srf.normal_at(start[0], start[1]));
+    const std::vector<std::tuple<int, size_t, size_t, size_t>> uses = {
+        {edges[0].index, 0, 0, n},
+        {edges[1].index, 0, n - 1, 2},
+        {edges[2].index, 0, n, n},
+        {edges[3].index, 0, 2 * n - 1, 2},
+    };
+    tag_edge_uses(mesh, loops, uses);
+
+    return mesh;
+}
+
 /// Flip every face mesh of a face Reversed in its shell, vertex normals included
 void flip_reversed_faces(const BRep& b, std::vector<Mesh>& fmesh) {
 
@@ -2866,6 +3245,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     const double chord = has_quality ? chord_factor : 0.005;
     const double scale = brep_diagonal(*this);
     std::vector<bool> face_strip(nf, false);
+    std::vector<int> face_ruled(nf, -1);
     std::vector<bool> face_direct(nf, false);
     std::vector<bool> rebuild_grid(nf, false);
     std::vector<Mesh> fmesh(nf);
@@ -2879,7 +3259,23 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     }
 
     for (int fi = 0; fi < nf; ++fi)
-        face_direct[fi] = !face_strip[fi] && direct_face(*this, fi);
+        if (!face_strip[fi])
+            face_ruled[fi] = ruled_face(*this, fi);
+
+    ruled_boundaries(*this, face_ruled, boundary, scale, angle, chord);
+
+    for (int fi = 0; fi < nf; ++fi) {
+        if (face_ruled[fi] < 0)
+            continue;
+
+        fmesh[fi] = ruled_mesh(*this, fi, face_ruled[fi], boundary);
+
+        if (fmesh[fi].face.empty())
+            face_ruled[fi] = -1;
+    }
+
+    for (int fi = 0; fi < nf; ++fi)
+        face_direct[fi] = !face_strip[fi] && face_ruled[fi] < 0 && direct_face(*this, fi);
 
     for (int fi = 0; fi < nf; ++fi) {
         if (!face_direct[fi])
@@ -2898,7 +3294,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
             face_direct[fi] = false;
 
     for (int fi = 0; fi < nf; ++fi) {
-        if (face_strip[fi] || face_direct[fi])
+        if (face_strip[fi] || face_ruled[fi] >= 0 || face_direct[fi])
             continue;
 
         const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
