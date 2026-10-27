@@ -5,10 +5,187 @@
 #include "xform.h"
 #include "tolerance.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
+
+static void save_section_geometry(
+    const std::string& name,
+    const NurbsSurface& a,
+    const NurbsSurface& b,
+    const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections
+) {
+#ifdef SESSION_WITH_OCCT
+    const std::filesystem::path folder = "build/geometry-tests";
+#else
+    const std::filesystem::path folder = "build/native-geometry-tests";
+#endif
+    std::filesystem::create_directories(folder);
+    nlohmann::ordered_json report;
+    report["surfaces"] = {a.jsondump(), b.jsondump()};
+    report["surface_samples"] = nlohmann::ordered_json::array();
+    for (const NurbsSurface* surface : {&a, &b}) {
+        nlohmann::ordered_json grid = nlohmann::ordered_json::array();
+        for (int i = 0; i <= 32; ++i) {
+            nlohmann::ordered_json row = nlohmann::ordered_json::array();
+            for (int j = 0; j <= 32; ++j) {
+                const std::pair<double, double> u = surface->domain(0);
+                const std::pair<double, double> v = surface->domain(1);
+                const Point p = surface->point_at(u.first + (u.second - u.first) * i / 32.0,
+                                                v.first + (v.second - v.first) * j / 32.0);
+                row.push_back({p[0], p[1], p[2]});
+            }
+            grid.push_back(row);
+        }
+        report["surface_samples"].push_back(grid);
+    }
+    report["sections"] = nlohmann::ordered_json::array();
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : sections) {
+        nlohmann::ordered_json samples = nlohmann::ordered_json::array();
+        double gap = 0.0;
+        for (int i = 0; i <= 256; ++i) {
+            const double t = i / 256.0;
+            const Point p = std::get<0>(section).point_at(t);
+            const Point ua = std::get<1>(section).point_at(t);
+            const Point ub = std::get<2>(section).point_at(t);
+            gap = std::max({gap, p.distance(a.point_at(ua[0], ua[1])), p.distance(b.point_at(ub[0], ub[1]))});
+            samples.push_back({p[0], p[1], p[2]});
+        }
+        report["sections"].push_back({{"curve", std::get<0>(section).jsondump()},
+            {"length", std::get<0>(section).length()}, {"max_sampled_gap", gap}, {"samples", samples}});
+    }
+    std::ofstream(folder / (name + ".sections.json")) << report.dump(2);
+}
+
+MINI_TEST("Intersection", "Surface Surface Freeform Pcurves") {
+    std::vector<Point> first_points, second_points;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j) {
+            const double height = 0.15 * (i - 1.5) * (j - 1.5);
+            first_points.push_back({(double)i, (double)j, height});
+            second_points.push_back({(double)i, (double)j, 0.1 - height});
+        }
+    const NurbsSurface a = NurbsSurface::create(false, false, 3, 3, 4, 4, first_points);
+    const NurbsSurface b = NurbsSurface::create(false, false, 3, 3, 4, 4, second_points);
+    const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections = Intersection::surface_surface(a, b, 1e-7);
+    save_section_geometry("freeform_pcurves", a, b, sections);
+    MINI_CHECK(sections.size() == 2);
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : sections)
+        for (int i = 0; i <= 64; ++i) {
+            const double parameter = i / 64.0;
+            const Point point = std::get<0>(section).point_at(parameter);
+            const Point ua = std::get<1>(section).point_at(parameter);
+            const Point ub = std::get<2>(section).point_at(parameter);
+            MINI_CHECK(point.distance(a.point_at(ua[0], ua[1])) < 2e-6);
+            MINI_CHECK(point.distance(b.point_at(ub[0], ub[1])) < 2e-6);
+        }
+}
+
+MINI_TEST("Intersection", "Surface Surface Small Interior Loop") {
+    std::vector<Point> points;
+    const std::array<double, 3> heights = {1.0, -1.0, 1.0};
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            points.push_back({i - 1.0, j - 1.0, heights[i] + heights[j]});
+    const NurbsSurface bowl = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
+    const NurbsSurface plane = NurbsSurface::create(
+        false, false, 1, 1, 2, 2, {{-1, -1, 0.01}, {-1, 1, 0.01}, {1, -1, 0.01}, {1, 1, 0.01}}
+    );
+    const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections = Intersection::surface_surface(bowl, plane, 1e-7);
+    save_section_geometry("small_interior_loop", bowl, plane, sections);
+    MINI_CHECK(!sections.empty());
+    double length = 0.0;
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : sections) {
+        length += std::get<0>(section).length();
+        for (int i = 0; i <= 256; ++i) {
+            const Point p = std::get<0>(section).point_at(i / 256.0);
+            const Point uv = std::get<1>(section).point_at(i / 256.0);
+            MINI_CHECK(p.distance(bowl.point_at(uv[0], uv[1])) < 2e-6);
+        }
+    }
+    MINI_CHECK(std::abs(length - 0.2 * Tolerance::PI) < 1e-5);
+}
+
+MINI_TEST("Intersection", "Curve Curve Crossings And Overlaps") {
+    const NurbsCurve a = NurbsCurve::create(false, 1, {{-2, 0, 0}, {2, 0, 0}});
+    const NurbsCurve b = NurbsCurve::create(false, 1, {{0, -2, 0}, {0, 2, 0}});
+    const SectionResult crossing = Intersection::curve_curve(a, b);
+    MINI_CHECK(crossing.points.size() == 1);
+    MINI_CHECK(crossing.points[0].distance({0, 0, 0}) < 1e-7);
+    MINI_CHECK(crossing.curves.empty());
+
+    const NurbsCurve overlapping = NurbsCurve::create(false, 1, {{-1, 0, 0}, {3, 0, 0}});
+    const SectionResult overlap = Intersection::curve_curve(a, overlapping);
+    MINI_CHECK(overlap.points.empty());
+    MINI_CHECK(overlap.curves.size() == 1);
+    MINI_CHECK(std::abs(overlap.curves[0].length() - 3.0) < 1e-6);
+
+    const NurbsCurve skew = b.transformed(Xform::translation(0, 0, 0.01));
+    const SectionResult miss = Intersection::curve_curve(a, skew);
+    MINI_CHECK(miss.points.empty());
+    MINI_CHECK(miss.curves.empty());
+}
+
+MINI_TEST("Intersection", "Curve Surface Crossings And Tangency") {
+    const NurbsSurface surface = NurbsSurface::create(
+        false, false, 1, 1, 2, 2, {{-2, -2, 0}, {-2, 2, 0}, {2, -2, 0}, {2, 2, 0}}
+    );
+    const NurbsCurve line = NurbsCurve::create(false, 1, {{0, 0, -1}, {0, 0, 1}});
+    const SectionResult crossing = Intersection::curve_surface(line, surface);
+    MINI_CHECK(crossing.points.size() == 1);
+    MINI_CHECK(crossing.points[0].distance({0, 0, 0}) < 1e-7);
+    const NurbsCurve tangent = NurbsCurve::create(false, 2, {{-1, 0, 1}, {0, 0, -1}, {1, 0, 1}});
+    const SectionResult contact = Intersection::curve_surface(tangent, surface);
+    MINI_CHECK(contact.points.size() == 1);
+    MINI_CHECK(contact.points[0].distance({0, 0, 0}) < 1e-5);
+    const NurbsCurve coplanar = NurbsCurve::create(false, 1, {{-3, 0, 0}, {3, 0, 0}});
+    const SectionResult overlap = Intersection::curve_surface(coplanar, surface);
+    MINI_CHECK(overlap.curves.size() == 1);
+    MINI_CHECK(std::abs(overlap.curves[0].length() - 4.0) < 1e-5);
+}
+
+MINI_TEST("Intersection", "Curve BRep Trimmed Boundaries") {
+    const BRep bore = BRep::create_block_with_hole(4.0, 4.0, 2.0, 0.5);
+    const NurbsCurve axis = NurbsCurve::create(false, 1, {{0, 0, -1}, {0, 0, 3}});
+    const SectionResult hole = Intersection::curve_brep(axis, bore);
+    MINI_CHECK(hole.points.empty());
+    MINI_CHECK(hole.curves.empty());
+    const NurbsCurve crossing = NurbsCurve::create(false, 1, {{-3, 0, 0}, {3, 0, 0}});
+    const SectionResult cuts = Intersection::curve_brep(crossing, bore);
+    MINI_CHECK(cuts.points.size() == 4);
+    MINI_CHECK(cuts.curves.empty());
+}
+
+/// Save samples and computed roots from a curve-plane regression.
+static void save_curve_geometry(
+    const std::string& name,
+    const NurbsCurve& curve,
+    const std::vector<double>& roots
+) {
+
+    const std::filesystem::path folder = std::filesystem::path("build") / "geometry-tests";
+    std::filesystem::create_directories(folder);
+    nlohmann::ordered_json data;
+    data["curve"] = curve.jsondump();
+    data["roots"] = roots;
+    data["samples"] = nlohmann::ordered_json::array();
+    for (int i = 0; i <= 1024; ++i) {
+        const double t = curve.domain_start() + (curve.domain_end() - curve.domain_start()) * i / 1024.0;
+        const Point point = curve.point_at(t);
+        data["samples"].push_back({t, point[0], point[1], point[2]});
+    }
+    data["points"] = nlohmann::ordered_json::array();
+    for (double t : roots) {
+        const Point point = curve.point_at(t);
+        data["points"].push_back({point[0], point[1], point[2]});
+    }
+
+    std::ofstream stream(folder / (name + ".curve.json"));
+    stream << data.dump(2);
+}
 
 static double lies_on_curve(const NurbsCurve& curve3d, const NurbsCurve& pcurve, const NurbsSurface& surface) {
 
@@ -952,6 +1129,93 @@ MINI_TEST("Intersection", "Curve Plane") {
     MINI_CHECK(hidden.size() == 2);
 }
 
+MINI_TEST("Intersection", "Curve Plane Tangency") {
+    const double root = 0.137;
+    const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+    NurbsCurve curve = NurbsCurve::create(false, 2, {
+        {0.0, 0.0, root * root},
+        {0.5, 0.0, root * root - root},
+        {1.0, 0.0, (1.0 - root) * (1.0 - root)}
+    });
+    curve.set_domain(0.0, 1.0);
+    const std::vector<double> roots = Intersection::curve_plane(curve, plane);
+
+    MINI_CHECK(roots.size() == 1);
+    MINI_CHECK(std::abs(roots[0] - root) < 1e-12);
+
+    save_curve_geometry("curve_plane_tangency", curve, roots);
+
+    curve.set_cv(1, {0.5, 0.0, root * root - root + 0.01});
+
+    MINI_CHECK(Intersection::curve_plane(curve, plane).empty());
+}
+
+MINI_TEST("Intersection", "Curve Plane Hidden Crossings") {
+    const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+    const double d = -0.1 * 0.12 * 0.8;
+    const double c = 0.1 * 0.12 + 0.1 * 0.8 + 0.12 * 0.8;
+    const double b = -(0.1 + 0.12 + 0.8);
+    NurbsCurve curve = NurbsCurve::create(false, 3, {
+        {0.0, 0.0, d},
+        {1.0 / 3.0, 0.0, d + c / 3.0},
+        {2.0 / 3.0, 0.0, d + 2.0 * c / 3.0 + b / 3.0},
+        {1.0, 0.0, d + c + b + 1.0}
+    });
+    curve.set_domain(0.0, 1.0);
+    const std::vector<double> roots = Intersection::curve_plane(curve, plane);
+
+    MINI_CHECK(roots.size() == 3);
+    MINI_CHECK(std::abs(roots[0] - 0.1) < 1e-12);
+    MINI_CHECK(std::abs(roots[1] - 0.12) < 1e-12);
+    MINI_CHECK(std::abs(roots[2] - 0.8) < 1e-12);
+    MINI_CHECK(Intersection::curve_plane_algebraic(curve, plane).size() == 3);
+    MINI_CHECK(Intersection::curve_plane_production(curve, plane).size() == 3);
+    MINI_CHECK(Intersection::curve_plane_bezier_clipping(curve, plane).size() == 3);
+
+    save_curve_geometry("curve_plane_hidden_crossings", curve, roots);
+
+    for (double& knot : curve.m_nurbsknot)
+        knot *= 1e-10;
+    const std::vector<double> scaled = Intersection::curve_plane(curve, plane);
+
+    MINI_CHECK(scaled.size() == 3);
+    MINI_CHECK(std::abs(scaled[0] / 1e-10 - 0.1) < 1e-12);
+    MINI_CHECK(std::abs(scaled[1] / 1e-10 - 0.12) < 1e-12);
+    MINI_CHECK(std::abs(scaled[2] / 1e-10 - 0.8) < 1e-12);
+
+    save_curve_geometry("curve_plane_small_domain", curve, scaled);
+}
+
+MINI_TEST("Intersection", "Curve Plane Rational Tangency") {
+    const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+    NurbsCurve curve(3, true, 3, 3);
+    curve.m_nurbsknot = {0.0, 0.0, 1.0, 1.0};
+    curve.set_cv_4d(0, 0.0, 0.0, 0.25, 1.0);
+    curve.set_cv_4d(1, 1.0, 0.0, -0.25, 2.0);
+    curve.set_cv_4d(2, 1.0, 0.0, 0.25, 1.0);
+    const std::vector<double> roots = Intersection::curve_plane(curve, plane);
+
+    MINI_CHECK(roots.size() == 1);
+    MINI_CHECK(std::abs(roots[0] - 0.5) < 1e-12);
+
+    save_curve_geometry("curve_plane_rational_tangency", curve, roots);
+}
+
+MINI_TEST("Intersection", "Curve Plane Coplanar Span") {
+    const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+    const NurbsCurve curve = NurbsCurve::create(false, 1, {
+        {0, 0, 1}, {1, 0, 0}, {2, 0, 0}, {3, 0, 1}
+    });
+    const std::vector<double> spans = curve.get_span_vector();
+    const std::vector<double> roots = Intersection::curve_plane(curve, plane);
+
+    MINI_CHECK(roots.size() == 2);
+    MINI_CHECK(roots[0] == spans[1]);
+    MINI_CHECK(roots[1] == spans[2]);
+
+    save_curve_geometry("curve_plane_coplanar_span", curve, roots);
+}
+
 MINI_TEST("Intersection", "Curve Plane Bezier Clipping") {
     // using session_cpp::Intersection;
     // using session_cpp::Plane;
@@ -1724,8 +1988,8 @@ MINI_TEST("Intersection", "Cut Curves On Surface Torus") {
 
     NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 2.0, 0.5);
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
+    save_section_geometry("torus_wall", torus, wall, Intersection::surface_surface(torus, wall));
     std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(torus, wall);
-
     MINI_CHECK(cuts.size() == 2);
 
     for (const NurbsCurve& pc : cuts)

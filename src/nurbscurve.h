@@ -79,6 +79,14 @@ public:
     /// Construct an interpolated cubic through points; Rhino (Bessel) or Occt (Lagrange) end tangents.
     static NurbsCurve create_interpolated(const std::vector<Point>& points, CurveNurbsKnotStyle parameterization = CurveNurbsKnotStyle::Chord, CurveInterpStyle end_condition = CurveInterpStyle::Rhino);
 
+    /// Interpolate at shared parameters; periodic curves require one extra closing parameter.
+    static NurbsCurve create_interpolated(
+        const std::vector<Point>& points,
+        const std::vector<double>& parameters,
+        bool periodic = false,
+        CurveInterpStyle end_condition = CurveInterpStyle::Occt
+    );
+
     /// Construct from poles, weights, distinct knots and multiplicities (OCCT convention).
     static NurbsCurve create_from_parameters(const std::vector<Point>& points, const std::vector<double>& weights, const std::vector<double>& knots, const std::vector<int>& mults, int degree, bool periodic = false);
 
@@ -425,6 +433,9 @@ public:
     /// Keep [t0, t1] by nurbsknot insertion.
     bool trim(double t0, double t1);
 
+    /// Approximate the signed offset along tangent cross normal with native adaptive residual checks.
+    NurbsCurve offset(double distance, const Vector& normal, double tolerance = 1e-7) const;
+
     /// Compute trimmed copies on both sides of t.
     bool split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve) const;
 
@@ -534,14 +545,14 @@ private:
     /// Solve matrix * x = rhs in place by Gaussian elimination with partial pivoting, dim values per row.
     static bool solve_dense(std::vector<std::vector<double>>& matrix, std::vector<double>& rhs, int n, int dim);
 
-    /// Return the un-normalized derivative by finite difference with step h.
-    Vector derivative_at(double t, double h) const;
+    /// Integrate analytic speed on intervals split at every distinct knot.
+    void arc_length_table(int samples, std::vector<double>& parameters, std::vector<double>& lengths) const;
 
     /// Return the arc length of [ta, tb] by 5-point Gauss-Legendre.
-    double arc_length_gauss(double ta, double tb, double h) const;
+    double arc_length_gauss(double ta, double tb) const;
 
     /// Return the parameter at arc length s_target from the (t, s) table by bracketed Newton.
-    double find_t_at_s(double s_target, const std::vector<double>& t_vals, const std::vector<double>& s_vals, double h) const;
+    double find_t_at_s(double s_target, const std::vector<double>& t_vals, const std::vector<double>& s_vals) const;
 
     /// Return the Frenet frame from first and second derivatives, world Z then Y as normal fallback.
     static Plane frenet_frame(const Point& origin, const Vector& d1, const Vector& d2);

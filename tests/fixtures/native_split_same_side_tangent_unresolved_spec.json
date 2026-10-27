@@ -1,0 +1,82 @@
+{
+  "purpose": "Safe failure regression for unsupported same-side tangent ordering; not feature acceptance",
+  "source": "BOPAlgo_WireSplitter_1.cxx:925-1028 caller sector prerequisites; native whole-prefix side certificate",
+  "rectangle_radius": 2,
+  "tolerance": 1e-07,
+  "parameter_domain": [
+    0,
+    1
+  ],
+  "cuts": [
+    {
+      "degree": 2,
+      "control_points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          0
+        ]
+      ],
+      "equation": "C0(t)=(2t,t^2,0)"
+    },
+    {
+      "degree": 2,
+      "control_points": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          0
+        ]
+      ],
+      "equation": "C1(t)=(2t,2t^2,0)"
+    },
+    {
+      "degree": 1,
+      "control_points": [
+        [
+          -2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "equation": "C2(t)=(-2+2t,0,0)"
+    }
+  ],
+  "expected": {
+    "throws": true,
+    "message_contains": "Tangent fan has unresolved prefix order or endpoint identity",
+    "must_not_return_arbitrary_faces": true,
+    "feature_status": "unsupported same-side tangent cluster"
+  },
+  "proposed_variants": [
+    "original order012",
+    "permuted order210",
+    "each curve reversed with common affine domain[3,11]"
+  ],
+  "geometric_fact": "The two positive-X branches are distinct, meet only at t=0, and both have strictly positive normal side."
+}

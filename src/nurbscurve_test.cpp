@@ -9,6 +9,7 @@
 #include "primitives.h"
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -16,6 +17,160 @@
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
+
+    MINI_TEST("NurbsCurve", "Arc Length Across Knots And Affine Domains") {
+        NurbsCurve curve = NurbsCurve::create(false, 1,
+            {Point(0, 0, 0), Point(2, 0, 0), Point(2, 3, 0), Point(6, 3, 0)});
+        curve.set_nurbsknot(1, 0.0137);
+        curve.set_nurbsknot(2, 0.5003);
+        for (int pass = 0; pass < 2; ++pass) {
+            const auto by_count = curve.divide_by_count(10, true).first;
+            const auto by_length = curve.divide_by_length(1.0).first;
+            MINI_CHECK(by_count.size() == 10);
+            MINI_CHECK(by_length.size() == 10);
+            for (int i = 0; i < 10; ++i) {
+                const Point expected = i <= 2 ? Point(i, 0, 0)
+                    : i <= 5 ? Point(2, i - 2, 0) : Point(i - 3, 3, 0);
+                MINI_CHECK(by_count[i].distance(expected) < 1e-10);
+                MINI_CHECK(by_length[i].distance(expected) < 1e-10);
+            }
+            MINI_CHECK(curve.set_domain(-9, 13));
+        }
+    }
+
+    MINI_TEST("NurbsCurve", "Chair Pcurve Arc Length Reparameterization") {
+        const auto path = std::filesystem::path(__FILE__).parent_path().parent_path()
+            / "tests/fixtures/chair_arc_length_pcurve.json";
+        std::ifstream input(path);
+        const NurbsCurve original = NurbsCurve::jsonload(nlohmann::json::parse(input));
+        NurbsCurve normalized = original;
+        MINI_CHECK(normalized.set_domain(0, 1));
+        const auto before = original.divide_by_count(192, true).first;
+        const auto after = normalized.divide_by_count(192, true).first;
+        MINI_CHECK(before.size() == after.size());
+        for (size_t i = 0; i < before.size(); ++i)
+            MINI_CHECK(before[i].distance(after[i]) < 1e-10);
+    }
+
+    MINI_TEST("NurbsCurve", "Homogeneous Weight Scaling") {
+        const NurbsCurve original = Primitives::circle(3, -4, 5, 2);
+        for (double factor : {1e-100, 1e100}) {
+            NurbsCurve curve = original;
+            for (double& value : curve.m_cv)
+                value *= factor;
+            MINI_CHECK(curve.is_valid());
+            for (int i = 0; i < curve.cv_count(); ++i)
+                MINI_CHECK(curve.get_cv(i).distance(original.get_cv(i)) < 1e-13);
+            for (int i = 0; i <= 20; ++i) {
+                const double t = original.domain_start() + (original.domain_end() - original.domain_start()) * i / 20.0;
+                MINI_CHECK(curve.point_at(t).distance(original.point_at(t)) < 1e-13);
+                const auto a = curve.evaluate(t, 3);
+                const auto b = original.evaluate(t, 3);
+                for (int k = 0; k <= 3; ++k)
+                    MINI_CHECK((a[k] - b[k]).magnitude() < 1e-10);
+            }
+        }
+    }
+
+    MINI_TEST("NurbsCurve", "Rational Derivatives Above Degree") {
+        NurbsCurve curve(3, true, 2, 2);
+        MINI_CHECK(curve.set_nurbsknot(0, 0) && curve.set_nurbsknot(1, 1));
+        MINI_CHECK(curve.set_cv_4d(0, 0, 0, 0, 1));
+        MINI_CHECK(curve.set_cv_4d(1, 2, 0, 0, 2));
+        for (double t : {0.0, 0.2, 0.5, 1.0}) {
+            const std::vector<Vector> derivatives = curve.evaluate(t, 5);
+            MINI_CHECK(derivatives.size() == 6);
+            MINI_CHECK(std::abs(derivatives[0][0] - 2.0 * t / (1.0 + t)) < 1e-13);
+            double factorial = 1.0;
+            for (int k = 1; k <= 5; ++k) {
+                factorial *= k;
+                const double expected = (k % 2 ? 2.0 : -2.0) * factorial / std::pow(1.0 + t, k + 1);
+                MINI_CHECK(std::abs(derivatives[k][0] - expected) < 1e-11);
+                MINI_CHECK(derivatives[k][1] == 0.0 && derivatives[k][2] == 0.0);
+            }
+        }
+    }
+
+    MINI_TEST("NurbsCurve", "Shared Interpolation Parameters") {
+        const std::vector<double> parameters = {2.0, 2.01, 2.2, 2.9, 3.0};
+        std::vector<Point> points;
+        std::vector<Point> mapped;
+        for (double t : parameters) {
+            const Point p(t, t * t, t * t * t);
+            points.push_back(p);
+            mapped.push_back({3.0 * p[0] - p[1], 2.0 * p[2], p[1] + 7.0});
+        }
+        const NurbsCurve a = NurbsCurve::create_interpolated(points, parameters);
+        const NurbsCurve b = NurbsCurve::create_interpolated(mapped, parameters);
+        MINI_CHECK(a.is_valid() && b.is_valid());
+        for (size_t i = 0; i < points.size(); ++i)
+            MINI_CHECK(a.point_at(parameters[i]).distance(points[i]) < 1e-11);
+        for (int i = 0; i <= 100; ++i) {
+            const double t = 2.0 + i / 100.0;
+            const Point p = a.point_at(t);
+            MINI_CHECK(p.distance({t, t * t, t * t * t}) < 1e-11);
+            MINI_CHECK(b.point_at(t).distance({3.0 * p[0] - p[1], 2.0 * p[2], p[1] + 7.0}) < 1e-11);
+        }
+        MINI_CHECK(!NurbsCurve::create_interpolated(points, std::vector<double>{0, 1, 1, 2, 3}).is_valid());
+        MINI_CHECK(!NurbsCurve::create_interpolated(points, std::vector<double>{0, 1}).is_valid());
+        const std::vector<Point> loop = {{1, 0, 0}, {0, 1, 0}, {-1, 0, 0}, {0, -1, 0}};
+        const std::vector<double> periodic_parameters = {0, 0.1, 0.5, 0.8, 1};
+        const NurbsCurve periodic = NurbsCurve::create_interpolated(loop, periodic_parameters, true);
+        MINI_CHECK(periodic.is_valid() && periodic.is_closed());
+        for (size_t i = 0; i < loop.size(); ++i)
+            MINI_CHECK(periodic.point_at(periodic_parameters[i]).distance(loop[i]) < 1e-11);
+    }
+
+    MINI_TEST("NurbsCurve", "Dense Periodic Interpolation") {
+        std::vector<Point> points;
+        for (int i = 0; i < 2048; ++i) {
+            const double angle = Tolerance::TWO_PI * i / 2048.0;
+            points.push_back({std::cos(angle), std::sin(angle), 0.15 * std::sin(3.0 * angle)});
+        }
+        const NurbsCurve curve = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::UniformPeriodic);
+        MINI_CHECK(curve.is_valid() && curve.is_closed());
+        for (int i = 0; i < 2048; ++i) {
+            const double t = curve.domain_start() + (curve.domain_end() - curve.domain_start()) * i / 2048.0;
+            MINI_CHECK(curve.point_at(t).distance(points[i]) < 1e-10);
+        }
+        const std::vector<Vector> start = curve.evaluate(curve.domain_start(), 2);
+        const std::vector<Vector> end = curve.evaluate(curve.domain_end(), 2);
+        MINI_CHECK((start[1] - end[1]).magnitude() < 1e-10);
+        MINI_CHECK((start[2] - end[2]).magnitude() < 1e-10);
+    }
+
+    MINI_TEST("NurbsCurve", "Offset") {
+        const std::array<NurbsCurve, 3> curves = {
+            NurbsCurve::create(false, 1, {{0, 0, 0}, {2, 0, 0}}),
+            NurbsCurve::create(false, 3, {{0, 0, 0}, {1, 2, 0}, {2, -1, 0}, {3, 1, 0}}),
+            Primitives::circle(0, 0, 0, 2)
+        };
+        const Vector normal(0, 0, 1);
+        const std::filesystem::path folder = std::filesystem::path("build") / "geometry-tests";
+        std::filesystem::create_directories(folder);
+        for (size_t curve_index = 0; curve_index < curves.size(); ++curve_index) {
+            const NurbsCurve& curve = curves[curve_index];
+            for (double distance : {-0.1, 0.1}) {
+                const NurbsCurve offset = curve.offset(distance, normal, 1e-6);
+                MINI_CHECK(offset.is_valid());
+                nlohmann::ordered_json data = {
+                    {"group", "NurbsCurve"}, {"test", "Offset"}, {"kind", "curve"}, {"distance", distance},
+                    {"original", curve.jsondump()}, {"offset", offset.jsondump()}, {"samples", nlohmann::ordered_json::array()}
+                };
+                for (int i = 0; i <= 100; ++i) {
+                    const double parameter = curve.domain_start() + (curve.domain_end() - curve.domain_start()) * i / 100.0;
+                    const Vector side = curve.tangent_at(parameter).cross(normal).normalized();
+                    const Point expected = curve.point_at(parameter) + side * distance;
+                    MINI_CHECK(offset.point_at(parameter).distance(expected) < 5e-6);
+                    const Point point = curve.point_at(parameter);
+                    const Point displaced = offset.point_at(parameter);
+                    data["samples"].push_back({point[0], point[1], point[2], displaced[0], displaced[1], displaced[2]});
+                }
+                const std::string name = "curve_offset_" + std::to_string(curve_index) + (distance < 0 ? "_negative" : "_positive");
+                std::ofstream(folder / (name + ".offset.json")) << data.dump(2);
+            }
+        }
+    }
 
     MINI_TEST("NurbsCurve", "Constructor") {
         // using session_cpp::Arrowhead;
@@ -1048,6 +1203,17 @@ namespace session_cpp {
 
         MINI_CHECK(json.is_locked);
         MINI_CHECK(proto.is_locked);
+    }
+
+    MINI_TEST("NurbsCurve", "Linear Domain Endpoint Normalization") {
+        NurbsCurve curve = NurbsCurve::create(false, 1, {{0.1, 0.2, 0}, {0.9, 0.8, 0}});
+        MINI_CHECK(curve.set_domain(-1e-9, 3e-9));
+        MINI_CHECK(curve.domain_start() == -1e-9 && curve.domain_end() == 3e-9);
+        MINI_CHECK(curve.set_domain(0, 1));
+        MINI_CHECK(curve.domain_start() == 0 && curve.domain_end() == 1);
+        MINI_CHECK(curve.point_at_start().distance({0.1, 0.2, 0}) < 1e-15);
+        MINI_CHECK(curve.point_at_end().distance({0.9, 0.8, 0}) < 1e-15);
+        MINI_CHECK(curve.point_at_middle().distance({0.5, 0.5, 0}) < 1e-15);
     }
 
 } // namespace session_cpp

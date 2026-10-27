@@ -223,16 +223,16 @@ public:
     /// Return the number of solids.
     int solid_count() const;
 
-    /// Every reference resolves into its table, every face has a surface and an outer wire, every edge two vertices and (unless degenerated) a 3D curve
+    /// Check finite geometry, table references, tolerances, and connected closed boundary wires.
     bool is_valid() const;
 
     /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used exactly twice by the shell's faces (a seam counts twice through its two pcurves)
     bool is_closed(int shell_index) const;
 
-    /// At least one solid, and every shell of every solid is closed
+    /// Check valid topology and closed shells with opposite boundary-edge uses.
     bool is_solid() const;
 
-    /// Orientation of a face inside its first parent shell; Forward for a free face
+    /// Compose the first solid-shell-face orientation; Forward for a free face.
     BRepOrientation face_orientation(int face_index) const;
 
     /// BRep_Tool::CurveOnSurface(E, F): the pcurve index of an edge on a face's surface for the given use orientation (the REVERSED pcurve on a seam); -1 if none
@@ -258,6 +258,9 @@ public:
 
     /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only
     double volume() const;
+
+    /// Integrate the trimmed NURBS solid volume through OCCT without tessellation.
+    double volume_exact(double tolerance = 1e-7) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Building
@@ -298,6 +301,9 @@ public:
     /// One welded triangle mesh of every face, wound to the face's outward orientation
     Mesh mesh() const;
 
+    /// Tessellate trimmed faces through OCCT with absolute chord deflection and angular deflection in radians.
+    Mesh tessellate(double deflection, double angle = 0.35) const;
+
     /// One mesh per face, in face order (vertices not shared across faces)
     std::vector<Mesh> face_meshes() const;
 
@@ -327,6 +333,27 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the part on the side the plane normal points to, every section loop capped by one planar face; a copy when everything lies on that side, empty when the plane cuts a BRep with a curved face or edge
     BRep cut_by_plane(const Plane& plane) const;
+
+    /// Miter-offset a convex planar solid; reject curved or nonconvex inputs and return empty after complete erosion.
+    BRep offset_convex(double distance, double tolerance = 1e-6) const;
+
+    /// Union of solid BReps through the configured OCCT backend.
+    BRep boolean_union(const BRep& other, double tolerance = 1e-7) const;
+
+    /// Common volume of solid BReps through the configured OCCT backend.
+    BRep boolean_intersection(const BRep& other, double tolerance = 1e-7) const;
+
+    /// Subtract another solid BRep through the configured OCCT backend.
+    BRep boolean_difference(const BRep& other, double tolerance = 1e-7) const;
+
+    /// Symmetric difference of solid BReps through the configured OCCT backend.
+    BRep boolean_xor(const BRep& other, double tolerance = 1e-7) const;
+
+    /// Offset a BRep through OCCT, rejecting failed or invalid results.
+    BRep offset(double distance, double tolerance = 1e-7) const;
+
+    /// Build a hollow solid with signed wall thickness, removing the specified faces as openings.
+    BRep hollow(const std::vector<int>& openings, double thickness, double tolerance = 1e-7) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON

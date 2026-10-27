@@ -1,0 +1,64 @@
+{
+  "status": "Exact source-derived regression specifications; not yet executed as native tests",
+  "knots": "Session omitted-endpoint convention",
+  "cases": [
+    {
+      "name": "C0 reversed occurrence selects left span",
+      "degree": 1,
+      "control_points": [[-2, 0, 0], [0, 0, 0], [0, 2, 0]],
+      "knots": [0, 0.5, 1],
+      "runs": [
+        {"range": [0.5, 0], "outgoing_direction": [-1, 0]},
+        {"range": [0.5, 1], "outgoing_direction": [0, 1]}
+      ],
+      "integration_rectangle": [[-2, -2, 0], [2, -2, 0], [2, 2, 0], [-2, 2, 0]],
+      "additional_cut": [[-2, -2, 0], [2, 2, 0]],
+      "expected_faces": 4,
+      "expected_total_area": 16
+    },
+    {
+      "name": "Stationary even jet at forward endpoint",
+      "formula": "C(t)=(3*t^2,3*t^3,0)",
+      "degree": 3,
+      "control_points": [[0, 0, 0], [0, 0, 0], [1, 0, 0], [3, 3, 0]],
+      "knots": [0, 0, 0, 1, 1, 1],
+      "runs": [{"range": [0, 1], "first_nonzero_jet": 2, "outgoing_direction": [1, 0]}]
+    },
+    {
+      "name": "Stationary even jet at reverse endpoint",
+      "formula": "C(t)=(3*(1-t)^2,3*(1-t)^3,0)",
+      "degree": 3,
+      "control_points": [[3, 3, 0], [1, 0, 0], [0, 0, 0], [0, 0, 0]],
+      "knots": [0, 0, 0, 1, 1, 1],
+      "runs": [{"range": [1, 0], "first_nonzero_jet": 2, "outgoing_direction": [1, 0]}]
+    },
+    {
+      "name": "Stationary odd jet at reverse endpoint",
+      "formula": "C(t)=(4*t^3,4*t^4,0)",
+      "degree": 4,
+      "control_points": [[-4, 4, 0], [-1, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+      "knots": [-1, -1, -1, -1, 0, 0, 0, 0],
+      "runs": [{"range": [0, -1], "first_nonzero_jet": 3, "outgoing_direction": [-1, 0]}]
+    },
+    {
+      "name": "Coincident endpoint tangents require sector refinement",
+      "degree": 2,
+      "first_controls": [[0, 0, 0], [1, 0, 0], [2, 2, 0]],
+      "second_controls": [[0, 0, 0], [1, 0, 0], [2, -2, 0]],
+      "knots": [0, 0, 1, 1],
+      "outgoing_direction_for_both": [1, 0],
+      "exact_interior_parameter": 0.25,
+      "first_interior_point": [0.5, 0.125, 0],
+      "second_interior_point": [0.5, -0.125, 0],
+      "expected_counterclockwise_order": ["second", "first"],
+      "acceptance": "Resolve the distinct local sectors or explicitly report unresolved; never order by source insertion index"
+    },
+    {
+      "name": "Constant interval does not define a direction",
+      "degree": 3,
+      "control_points": [[2, 3, 0], [2, 3, 0], [2, 3, 0], [2, 3, 0]],
+      "knots": [0, 0, 0, 1, 1, 1],
+      "acceptance": "Only an established full-interval vertex-ball collapse may remove this arc; otherwise reject direction explicitly"
+    }
+  ]
+}

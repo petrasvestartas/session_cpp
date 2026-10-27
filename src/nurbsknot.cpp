@@ -508,7 +508,7 @@ std::vector<double> build_interp_nurbsknots(const std::vector<double>& params, i
         return std::vector<double>();
 
     const double t_max = params[n - 1];
-    std::vector<double> nurbsknots(kc, 0.0);
+    std::vector<double> nurbsknots(kc, params.front());
 
     for (int i = 1; i < n - 1; i++)
         nurbsknots[order - 2 + i] = params[i];

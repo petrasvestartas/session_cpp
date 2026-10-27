@@ -1,6 +1,8 @@
 #include "mini_test.h"
 #include "split.h"
 #include "brep.h"
+#include "curve_surface_intersection.h"
+#include "file_step.h"
 #include "line.h"
 #include "mesh.h"
 #include "nurbscurve.h"
@@ -10,7 +12,11 @@
 #include "primitives.h"
 #include "tolerance.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -19,11 +25,381 @@ using namespace session_cpp::mini_test;
 
 namespace session_cpp {
 
+MINI_TEST("Split", "One Sided Knot Directions") {
+    const BRep source = BRep::from_polylines({Polyline({{-2, -2, 0}, {2, -2, 0},
+        {2, 2, 0}, {-2, 2, 0}, {-2, -2, 0}})});
+    const NurbsCurve diagonal = NurbsCurve::create(false, 1, {{-2, -2, 0}, {2, 2, 0}});
+    for (bool reversed : {false, true})
+        for (bool swapped : {false, true}) {
+            NurbsCurve bent = NurbsCurve::create(false, 1, {{-2, 0, 0}, {0, 0, 0}, {0, 2, 0}});
+            MINI_CHECK(bent.set_domain(0, 1));
+            if (reversed)
+                MINI_CHECK(bent.reverse());
+            const std::vector<NurbsCurve> cuts = swapped ? std::vector<NurbsCurve>{diagonal, bent}
+                : std::vector<NurbsCurve>{bent, diagonal};
+            const BRep result = split::split_brep_face_by_curves(source, 0, cuts, 1e-7);
+            const auto folder = std::filesystem::path(__FILE__).parent_path().parent_path() / "build/native-geometry-tests";
+            std::filesystem::create_directories(folder);
+            result.file_json_dump((folder / "split_one_sided_knot_result.brep.json").string());
+            MINI_CHECK(result.is_valid() && result.face_count() == 4);
+            double area = 0;
+            for (const Mesh& mesh : result.face_meshes_q(true, 20.0, 0.005))
+                area += mesh.area();
+            MINI_CHECK(std::abs(area - 16.0) < 1e-9);
+        }
+}
+
+MINI_TEST("Split", "Preserved Inward Offset Cycle Nesting") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_offset_inward_large_cycle_nesting_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    BRep source = BRep::jsonload(fixture["partition"]);
+    source.m_edges.resize(4);
+    source.m_wires.clear();
+    source.m_faces.clear();
+    source.m_shells.clear();
+    source.m_solids.clear();
+    const int wire = source.add_wire({{0}, {1}, {2, BRepOrientation::Reversed}, {3, BRepOrientation::Reversed}});
+    source.add_face(0, {{wire}});
+    MINI_CHECK(source.is_valid());
+    std::vector<split::FaceCut> cuts;
+    for (int section : {2, 5, 8, 10}) {
+        const auto& saved = fixture["sections"][section];
+        const auto& uv = saved[section == 10 ? "first_pcurve" : "second_pcurve"];
+        cuts.push_back({NurbsCurve::jsonload(saved["world"]), NurbsCurve::jsonload(uv), section});
+    }
+    const auto result = split::split_brep_face_by_pcurves(source, 0, cuts, fixture["tolerance"].get<double>() * 0.5);
+    MINI_CHECK(result.brep.is_valid() && result.faces.size() == 2);
+    int holes = 0;
+    for (int face : result.faces) {
+        std::set<int> edges;
+        const BRepFace& region = result.brep.m_faces[face];
+        holes += static_cast<int>(region.wires.size()) - 1;
+        for (const BRepRef& boundary : region.wires)
+            for (const BRepRef& edge : result.brep.wire_edges(boundary))
+                MINI_CHECK(edges.insert(edge.index).second);
+    }
+    MINI_CHECK(holes == 1);
+}
+
+MINI_TEST("Split", "Knot Vertices And Genuine Intersection Events") {
+    const BRep box = BRep::create_box(2, 3, 4);
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const auto u = surface.domain(0);
+    const auto v = surface.domain(1);
+    const auto cut = [&](bool vertical, double first, double last, int section) {
+        std::vector<Point> parameters;
+        std::vector<Point> points;
+        for (int i = 0; i <= 16; ++i) {
+            const double t = first + (last - first) * i / 16.0;
+            const Point uv(u.first + (u.second - u.first) * (vertical ? 0.5 : t),
+                v.first + (v.second - v.first) * (vertical ? t : 0.5), 0);
+            parameters.push_back(uv);
+            points.push_back(surface.point_at(uv[0], uv[1]));
+        }
+        NurbsCurve world = NurbsCurve::create(false, 1, points);
+        NurbsCurve pcurve = NurbsCurve::create(false, 1, parameters);
+        MINI_CHECK(world.set_domain(0, 1) && pcurve.set_domain(0, 1));
+        return split::FaceCut{world, pcurve, section};
+    };
+    for (int mode = 0; mode < 3; ++mode) {
+        std::vector<split::FaceCut> cuts = {cut(false, 0, 1, 42)};
+        if (mode == 1)
+            cuts.push_back(cut(true, 0, 1, 43));
+        if (mode == 2)
+            cuts.push_back(cut(false, 0.25, 0.75, 43));
+        const auto result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+        MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+        MINI_CHECK(result.faces.size() == (mode == 1 ? 4 : 2));
+        int pieces = 0;
+        bool first_overlap = false;
+        bool last_overlap = false;
+        for (const auto& piece : result.edges)
+            if (piece.section == 42) {
+                ++pieces;
+                first_overlap = first_overlap || std::abs(piece.last - 0.25) < 1e-10;
+                last_overlap = last_overlap || std::abs(piece.first - 0.75) < 1e-10;
+            }
+        if (mode < 2)
+            MINI_CHECK(pieces == (mode == 0 ? 1 : 2));
+        else
+            MINI_CHECK(pieces >= 3 && first_overlap && last_overlap);
+    }
+}
+
+MINI_TEST("Split", "Preserved Rhino Chair Trim Sampling") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_trim_sampling_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const BRep source = BRep::jsonload(fixture["shape"]);
+    std::vector<split::FaceCut> cuts;
+    for (const auto& cut : fixture["cuts"])
+        cuts.push_back({NurbsCurve::jsonload(cut["world"]), NurbsCurve::jsonload(cut["pcurve"]), cut["section"]});
+    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"]);
+    MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+    MINI_CHECK(result.faces.size() > 1);
+}
+
+MINI_TEST("Split", "Preserved Rhino Chair Face Partition Replay") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_sections.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const auto chairs = file_step::read_file_step_breps((root / "tests/fixtures/solidbrep.stp").string());
+    const auto folder = root / "build/native-geometry-tests";
+    std::filesystem::create_directories(folder);
+    for (size_t operand = 0; operand < chairs.size(); ++operand) {
+        BRep partition = chairs[operand];
+        for (int face = 0; face < chairs[operand].face_count(); ++face) {
+            std::vector<split::FaceCut> cuts;
+            nlohmann::ordered_json saved = nlohmann::ordered_json::array();
+            int index = 0;
+            for (const auto& section : fixture["curves"]) {
+                if (section[operand == 0 ? "first_face" : "second_face"] == face) {
+                    const auto& uv = section[operand == 0 ? "first_pcurve" : "second_pcurve"];
+                    cuts.push_back({NurbsCurve::jsonload(section["world"]), NurbsCurve::jsonload(uv), index});
+                    saved.push_back({{"world", section["world"]}, {"pcurve", uv}, {"section", index}});
+                }
+                ++index;
+            }
+            if (cuts.empty())
+                continue;
+            std::cout << "chair partition " << operand << " face " << face << std::endl;
+            try {
+                const auto result = split::split_brep_face_by_pcurves(partition, face, cuts, fixture["tolerance"]);
+                MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+                partition = result.brep;
+            } catch (const split::SamplingError& error) {
+                const nlohmann::ordered_json diagnostic = {{"operand", operand}, {"face", face},
+                    {"shape", partition.jsondump()}, {"cuts", saved}, {"tolerance", fixture["tolerance"]},
+                    {"curve", error.curve.jsondump()}, {"part", error.part.jsondump()},
+                    {"uv_tolerance", error.tolerance}, {"visited", error.visited}, {"error", error.what()}};
+                std::ofstream(folder / "chair_trim_sampling_failure.json") << diagnostic.dump(2);
+                throw;
+            }
+        }
+    }
+}
+
+MINI_TEST("Split", "Two Nondegenerate Loops At One Vertex") {
+    const BRep face = BRep::from_polylines({Polyline({{-18, -20, 0}, {18, -20, 0},
+        {18, 20, 0}, {-18, 20, 0}, {-18, -20, 0}})});
+    for (bool inserted : {false, true}) {
+        NurbsCurve cut = NurbsCurve::create(false, 4, {{-18, 0, 0}, {15, -4.5, 0},
+            {0, 13, 0}, {-15, -19.5, 0}, {18, 18, 0}});
+        MINI_CHECK(cut.set_domain(0, 1));
+        if (inserted)
+            MINI_CHECK(cut.insert_nurbsknot(0.25) && cut.insert_nurbsknot(0.75));
+        const auto folder = std::filesystem::path(__FILE__).parent_path().parent_path() / "build/native-geometry-tests";
+        std::filesystem::create_directories(folder);
+        BRep result;
+        try {
+            result = split::split_brep_face_by_curves(face, 0, {cut}, 1e-7);
+        } catch (const split::CurveError& error) {
+            const double fraction = (error.parameter - error.pcurve.domain_start())
+                / (error.pcurve.domain_end() - error.pcurve.domain_start());
+            const double parameter = error.curve.domain_start()
+                + fraction * (error.curve.domain_end() - error.curve.domain_start());
+            const Point uv = error.pcurve.point_at(error.parameter);
+            const Point lifted = error.surface.point_at(uv[0], uv[1]);
+            std::string certificate;
+            const auto match = curve_surface_intersection::same_parameter(error.curve, error.pcurve,
+                error.surface, error.tolerance, &certificate);
+            const nlohmann::ordered_json diagnostic = {{"world", error.curve.jsondump()},
+                {"pcurve", error.pcurve.jsondump()}, {"surface", error.surface.jsondump()},
+                {"parameter", error.parameter}, {"distance", error.distance}, {"tolerance", error.tolerance},
+                {"affine_parameter", parameter}, {"affine_distance", error.curve.point_at(parameter).distance(lifted)},
+                {"parameter_match", static_cast<int>(match)}, {"certificate_diagnostic", certificate},
+                {"inserted_knots", inserted}};
+            std::ofstream(folder / "two_loops_split_correspondence_failure.json") << diagnostic.dump(2);
+            throw;
+        }
+        result.file_json_dump((folder / (inserted ? "two_loops_inserted.brep.json" : "two_loops_single_span.brep.json")).string());
+        MINI_CHECK(result.is_valid() && result.face_count() == 4);
+        int loops = 0;
+        for (const BRepEdge& edge : result.m_edges)
+            if (edge.start_vertex == edge.end_vertex && !edge.degenerated) {
+                const NurbsCurve& curve = result.m_curves_3d[edge.curve_3d_index];
+                const double middle = (curve.domain_start() + curve.domain_end()) * 0.5;
+                MINI_CHECK(curve.point_at(middle).distance(result.m_vertices[edge.start_vertex].point) > 1e-3);
+                ++loops;
+            }
+        MINI_CHECK(loops == 2);
+    }
+}
+
+MINI_TEST("Split", "Single Span Self Crossing Cut") {
+    const BRep face = BRep::from_polylines({Polyline({{0, -0.7, 0}, {1.2, -0.7, 0},
+        {1.2, 0.7, 0}, {0, 0.7, 0}, {0, -0.7, 0}})});
+    NurbsCurve cut = NurbsCurve::create(false, 3, {{0, 0, 0}, {1, 0.1875, 0},
+        {1, -0.625, 0}, {0, 0.5625, 0}});
+    MINI_CHECK(cut.set_domain(0, 1));
+    MINI_CHECK(cut.get_span_vector().size() == 2 && !cut.is_closed());
+    const BRep result = split::split_brep_face_by_curves(face, 0, {cut}, 1e-7);
+    const auto folder = std::filesystem::path(__FILE__).parent_path().parent_path() / "build/native-geometry-tests";
+    std::filesystem::create_directories(folder);
+    result.file_json_dump((folder / "single_span_self_crossing_split.brep.json").string());
+    MINI_CHECK(result.is_valid());
+    MINI_CHECK(result.face_count() == 3);
+}
+
+MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_face_zero_cuts.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const auto chairs = file_step::read_file_step_breps((root / "tests/fixtures/solidbrep.stp").string());
+    const BRep& source = chairs.at(fixture["operand"].get<size_t>());
+    std::vector<split::FaceCut> cuts;
+    for (const auto& cut : fixture["cuts"])
+        cuts.push_back({NurbsCurve::jsonload(cut["world"]), NurbsCurve::jsonload(cut["pcurve"]),
+            static_cast<int>(cuts.size())});
+    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"]);
+    MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+    MINI_CHECK(result.faces.size() > 1);
+}
+
+MINI_TEST("Split", "Sphere Seams And Pole Edges") {
+    const BRep sphere = BRep::create_sphere(2);
+    const NurbsSurface& surface = sphere.m_surfaces[sphere.m_faces[0].surface_index];
+    for (int direction : {0, 1}) {
+        const auto variable = surface.domain(direction);
+        const auto fixed = surface.domain(1 - direction);
+        const double at = fixed.first + (fixed.second - fixed.first) * (direction == 0 ? 0.5 : 0.25);
+        NurbsCurve world = surface.iso_curve(direction, at);
+        Point first, last;
+        first[direction] = variable.first;
+        last[direction] = variable.second;
+        first[1 - direction] = last[1 - direction] = at;
+        NurbsCurve pcurve = NurbsCurve::create(false, 1, {first, last});
+        MINI_CHECK(pcurve.set_domain(world.domain_start(), world.domain_end()));
+        const split::FaceSplit result = split::split_brep_face_by_pcurves(sphere, 0, {{world, pcurve, 19}}, 1e-6);
+        MINI_CHECK(result.faces.size() == 2);
+        MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+        for (const BRepEdge& edge : result.brep.m_edges)
+            if (edge.degenerated)
+                MINI_CHECK(edge.start_vertex == edge.end_vertex && edge.curve_3d_index == -1);
+    }
+}
+
+MINI_TEST("Split", "Paired Face Cut Identity") {
+    const BRep box = BRep::create_box(2, 3, 4);
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const std::pair<double, double> u = surface.domain(0);
+    const std::pair<double, double> v = surface.domain(1);
+    const double middle = (v.first + v.second) * 0.5;
+    NurbsCurve world = surface.iso_curve(0, middle);
+    NurbsCurve pcurve = NurbsCurve::create(false, 1, {{u.first, middle, 0}, {u.second, middle, 0}});
+    MINI_CHECK(world.set_domain(10, 20) && pcurve.set_domain(10, 20));
+    const split::FaceSplit result = split::split_brep_face_by_pcurves(box, 0, {{world, pcurve, 42}}, 1e-7);
+    MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+    MINI_CHECK(result.faces.size() == 2 && result.brep.face_count() == 7);
+    MINI_CHECK(box.face_count() == 6);
+    int sections = 0;
+    for (const split::EdgePiece& piece : result.edges) {
+        if (piece.section != 42)
+            continue;
+        ++sections;
+        MINI_CHECK(piece.source_edge == -1);
+        MINI_CHECK(std::abs(piece.first - 10.0) < 1e-10 && std::abs(piece.last - 20.0) < 1e-10);
+        int uses = 0;
+        for (int face : result.faces)
+            for (const BRepRef& wire : result.brep.m_faces[face].wires)
+                for (const BRepRef& edge : result.brep.wire_edges(wire))
+                    uses += edge.index == piece.edge ? 1 : 0;
+        MINI_CHECK(uses == 2);
+    }
+    MINI_CHECK(sections == 1);
+}
+
 /// Point at fractions x and y along the first two control edges of a surface.
 static Point mapped(const NurbsSurface& surface, double x, double y) {
 
     const Point a = surface.get_cv(0, 0);
     return a + (surface.get_cv(1, 0) - a) * x + (surface.get_cv(0, 1) - a) * y;
+}
+
+static split::FaceCut planar_cut(const NurbsSurface& surface, const NurbsCurve& pcurve, int section) {
+    NurbsCurve world = pcurve;
+    for (int i = 0; i < world.cv_count(); ++i) {
+        const Point uv = pcurve.get_cv(i);
+        const Point point = mapped(surface, uv[0], uv[1]);
+        const double weight = world.weight(i);
+        double* coordinates = world.cv(i);
+        for (int d = 0; d < 3; ++d)
+            coordinates[d] = point[d] * weight;
+    }
+    return {world, pcurve, section};
+}
+
+MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
+    const BRep box = BRep::create_box(10, 10, 10);
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
+    const NurbsCurve shared = NurbsCurve::create(false, 1, {{0.75, 0.5, 0}, {0.25, 0.5, 0}});
+    const NurbsCurve vertical = NurbsCurve::create(false, 1, {{0.5, 0, 0}, {0.5, 1, 0}});
+    const NurbsCurve boundary = NurbsCurve::create(false, 1, {{0.8, 0, 0}, {0.2, 0, 0}});
+    const std::vector<split::FaceCut> cuts = {
+        planar_cut(surface, horizontal, 11), planar_cut(surface, shared, 12),
+        planar_cut(surface, vertical, 13), planar_cut(surface, boundary, 14)
+    };
+    const split::FaceSplit result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+    MINI_CHECK(result.faces.size() == 4);
+    MINI_CHECK(result.brep.is_solid());
+    int horizontal_parts = 0;
+    for (const split::EdgePiece& piece : result.edges) {
+        MINI_CHECK(piece.section != 12 && piece.section != 14);
+        horizontal_parts += piece.section == 11 ? 1 : 0;
+    }
+    MINI_CHECK(horizontal_parts == 4);
+}
+
+MINI_TEST("Split", "Rational Common Closed Trims") {
+    const BRep box = BRep::create_box(10, 10, 10);
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsCurve circle = Primitives::circle(0.5, 0.5, 0, 0.25);
+    NurbsCurve reversed = circle;
+    MINI_CHECK(reversed.reverse());
+    NurbsCurve partial = circle;
+    const double start = circle.domain_start();
+    const double length = circle.domain_end() - start;
+    MINI_CHECK(partial.trim(start + length * 0.25, start + length * 0.75));
+    const std::vector<split::FaceCut> cuts = {
+        planar_cut(surface, circle, 21), planar_cut(surface, reversed, 22),
+        planar_cut(surface, partial, 23)
+    };
+    const split::FaceSplit result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+    MINI_CHECK(result.faces.size() == 2);
+    MINI_CHECK(result.brep.is_solid());
+    int common_parts = 0;
+    for (const split::EdgePiece& piece : result.edges) {
+        MINI_CHECK(piece.section != 22 && piece.section != 23);
+        common_parts += piece.section == 21 ? 1 : 0;
+    }
+    MINI_CHECK(common_parts == 4);
+}
+
+MINI_TEST("Split", "Distinct Curved Arcs With Shared Endpoints") {
+    const BRep box = BRep::create_box(10, 10, 10);
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsCurve upper = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.9, 0}, {1, 0.5, 0}});
+    const NurbsCurve lower = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.1, 0}, {1, 0.5, 0}});
+    const std::vector<split::FaceCut> cuts = {
+        planar_cut(surface, upper, 31), planar_cut(surface, lower, 32), planar_cut(surface, upper, 33)
+    };
+    const split::FaceSplit result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+    MINI_CHECK(result.faces.size() == 3);
+    MINI_CHECK(result.brep.is_solid());
+    bool have_upper = false;
+    bool have_lower = false;
+    for (const split::EdgePiece& piece : result.edges) {
+        MINI_CHECK(piece.section != 33);
+        have_upper = have_upper || piece.section == 31;
+        have_lower = have_lower || piece.section == 32;
+    }
+    MINI_CHECK(have_upper && have_lower);
 }
 
 MINI_TEST("Split", "Split Curve By Curves") {

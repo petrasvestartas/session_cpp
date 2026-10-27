@@ -1,0 +1,1893 @@
+{
+    "curves_2d": [
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "2abfffb7-94d2-49e0-8673-b96468f81949",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "9c26b11e-e9a6-4b33-b895-c94602a17dde",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "a4746ae5-563e-42a4-bb0c-ee81bf05126f",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "ee3ab800-3683-40f6-999d-39712122d9d3",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "6b377235-91e4-4671-8e30-5c17b58c603d",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "a9a98d24-549c-4ddb-a32d-d8e268769c26",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "c81c46b8-54b5-473e-8738-d3ae049810b1",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "b77b66c8-5e89-4901-ba8e-8ca8323a9a17",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "d7c3d59b-4b0d-44c0-9918-94b3984472a9",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "3d2540fd-175e-4246-bc41-b78cb355d9b4",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "f3748600-6c9c-4e66-972f-068bd8f16c1b",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "9aa91b8c-3244-4576-8766-c1a35b5a3b38",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "6156106b-0f7a-48be-b272-d8aecdf6c0fa",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "b2cdee9f-ac2b-458c-b5f1-abbb2dc7be5d",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "7b1a1932-dcd8-494d-97a0-4888ace0e46f",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "588402ca-ac3b-4403-aa45-92b4a33d1b06",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "7d9a02aa-5ca7-4889-b431-10c992400dcf",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "8589ac9f-5764-4d26-8990-b1f4d425b015",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "f2106ca0-b7bb-45ce-8a39-5a608d9e3173",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "3e00a89d-7476-4ea9-bfc3-0a63f41de904",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "547995f7-52b4-46c1-8c7c-0b7d72981aa4",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "29b6aa89-656f-47a8-ba1b-99d43f65f101",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "e9805d79-37b2-4a6e-b014-18105ebc5ba2",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "948d7a6c-560b-4e4c-b7af-ec6354d90a4b",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        }
+    ],
+    "curves_3d": [
+        {
+            "control_points": [
+                [
+                    -0.88,
+                    -0.91,
+                    -0.84
+                ],
+                [
+                    -1.12,
+                    1.09,
+                    -1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "0e757a20-7ad8-40c3-996e-cc17463dd04b",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.88,
+                    0.91,
+                    -0.84
+                ],
+                [
+                    -1.12,
+                    1.09,
+                    -1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "7d734e3d-8869-4850-8855-0c2b17869908",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.12,
+                    -1.09,
+                    -1.16
+                ],
+                [
+                    0.88,
+                    0.91,
+                    -0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "78bd6c9f-bf1c-419f-a585-9b4f6006e975",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    -0.88,
+                    -0.91,
+                    -0.84
+                ],
+                [
+                    1.12,
+                    -1.09,
+                    -1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "955e8710-fcd1-44e6-b06a-27d37c0afd76",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    -1.12,
+                    -1.09,
+                    1.16
+                ],
+                [
+                    0.88,
+                    -0.91,
+                    0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "c85cc1dc-e7fd-4d10-8400-072479844a96",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.88,
+                    -0.91,
+                    0.84
+                ],
+                [
+                    1.12,
+                    1.09,
+                    1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "94424cdb-b057-4444-bf45-1b3b00d76a39",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.12,
+                    1.09,
+                    1.16
+                ],
+                [
+                    -0.88,
+                    0.91,
+                    0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "3905b4b1-bccd-4da5-b810-037fb592d5c3",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    -1.12,
+                    -1.09,
+                    1.16
+                ],
+                [
+                    -0.88,
+                    0.91,
+                    0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "7fe4ad78-9006-4500-97f7-4fb370e0a1ae",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    1.12,
+                    -1.09,
+                    -1.16
+                ],
+                [
+                    0.88,
+                    -0.91,
+                    0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "662670cc-9601-406c-9795-7de572b736eb",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    -0.88,
+                    -0.91,
+                    -0.84
+                ],
+                [
+                    -1.12,
+                    -1.09,
+                    1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "fd131140-7607-4f40-8bb1-621afafd7c56",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    0.88,
+                    0.91,
+                    -0.84
+                ],
+                [
+                    1.12,
+                    1.09,
+                    1.16
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "0bab0cc6-8eea-4802-b018-f0f6fbc6f413",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                [
+                    -1.12,
+                    1.09,
+                    -1.16
+                ],
+                [
+                    -0.88,
+                    0.91,
+                    0.84
+                ]
+            ],
+            "cv_count": 2,
+            "cv_stride": 3,
+            "dimension": 3,
+            "guid": "52f4ca88-3703-4ddd-bb5e-2af0609de85e",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbscurve",
+            "nurbsknots": [
+                0.0,
+                2.0
+            ],
+            "order": 2,
+            "pointcolors": [],
+            "type": "NurbsCurve",
+            "width": 1.0
+        }
+    ],
+    "edges": [
+        {
+            "curve_3d_index": 0,
+            "degenerated": false,
+            "end_vertex": 3,
+            "pcurves": [
+                {
+                    "curve_2d_index": 0,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 0
+                },
+                {
+                    "curve_2d_index": 20,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 5
+                }
+            ],
+            "start_vertex": 0,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 1,
+            "degenerated": false,
+            "end_vertex": 3,
+            "pcurves": [
+                {
+                    "curve_2d_index": 1,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 0
+                },
+                {
+                    "curve_2d_index": 16,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 4
+                }
+            ],
+            "start_vertex": 2,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 2,
+            "degenerated": false,
+            "end_vertex": 2,
+            "pcurves": [
+                {
+                    "curve_2d_index": 2,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 0
+                },
+                {
+                    "curve_2d_index": 12,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 3
+                }
+            ],
+            "start_vertex": 1,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 3,
+            "degenerated": false,
+            "end_vertex": 1,
+            "pcurves": [
+                {
+                    "curve_2d_index": 3,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 0
+                },
+                {
+                    "curve_2d_index": 8,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 2
+                }
+            ],
+            "start_vertex": 0,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 4,
+            "degenerated": false,
+            "end_vertex": 5,
+            "pcurves": [
+                {
+                    "curve_2d_index": 4,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 1
+                },
+                {
+                    "curve_2d_index": 10,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 2
+                }
+            ],
+            "start_vertex": 4,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 5,
+            "degenerated": false,
+            "end_vertex": 6,
+            "pcurves": [
+                {
+                    "curve_2d_index": 5,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 1
+                },
+                {
+                    "curve_2d_index": 14,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 3
+                }
+            ],
+            "start_vertex": 5,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 6,
+            "degenerated": false,
+            "end_vertex": 7,
+            "pcurves": [
+                {
+                    "curve_2d_index": 6,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 1
+                },
+                {
+                    "curve_2d_index": 18,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 4
+                }
+            ],
+            "start_vertex": 6,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 7,
+            "degenerated": false,
+            "end_vertex": 7,
+            "pcurves": [
+                {
+                    "curve_2d_index": 7,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 1
+                },
+                {
+                    "curve_2d_index": 22,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 5
+                }
+            ],
+            "start_vertex": 4,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 8,
+            "degenerated": false,
+            "end_vertex": 5,
+            "pcurves": [
+                {
+                    "curve_2d_index": 9,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 2
+                },
+                {
+                    "curve_2d_index": 15,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 3
+                }
+            ],
+            "start_vertex": 1,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 9,
+            "degenerated": false,
+            "end_vertex": 4,
+            "pcurves": [
+                {
+                    "curve_2d_index": 11,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 2
+                },
+                {
+                    "curve_2d_index": 21,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 5
+                }
+            ],
+            "start_vertex": 0,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 10,
+            "degenerated": false,
+            "end_vertex": 6,
+            "pcurves": [
+                {
+                    "curve_2d_index": 13,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 3
+                },
+                {
+                    "curve_2d_index": 19,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 4
+                }
+            ],
+            "start_vertex": 2,
+            "tolerance": 0.0
+        },
+        {
+            "curve_3d_index": 11,
+            "degenerated": false,
+            "end_vertex": 7,
+            "pcurves": [
+                {
+                    "curve_2d_index": 17,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 4
+                },
+                {
+                    "curve_2d_index": 23,
+                    "curve_2d_index_2": -1,
+                    "surface_index": 5
+                }
+            ],
+            "start_vertex": 3,
+            "tolerance": 0.0
+        }
+    ],
+    "faces": [
+        {
+            "surface_index": 0,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 0,
+                    "orientation": "forward"
+                }
+            ]
+        },
+        {
+            "surface_index": 1,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 1,
+                    "orientation": "forward"
+                }
+            ]
+        },
+        {
+            "surface_index": 2,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 2,
+                    "orientation": "forward"
+                }
+            ]
+        },
+        {
+            "surface_index": 3,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 3,
+                    "orientation": "forward"
+                }
+            ]
+        },
+        {
+            "surface_index": 4,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 4,
+                    "orientation": "forward"
+                }
+            ]
+        },
+        {
+            "surface_index": 5,
+            "tolerance": 0.0,
+            "wires": [
+                {
+                    "index": 5,
+                    "orientation": "forward"
+                }
+            ]
+        }
+    ],
+    "guid": "dd52545f-f871-4807-95c7-0c2977df196a",
+    "is_locked": false,
+    "is_visible": true,
+    "name": "native_offset_inward_freeform_source",
+    "shells": [
+        {
+            "faces": [
+                {
+                    "index": 0,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 1,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 2,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 3,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 4,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 5,
+                    "orientation": "forward"
+                }
+            ]
+        }
+    ],
+    "solids": [
+        {
+            "shells": [
+                {
+                    "index": 0,
+                    "orientation": "forward"
+                }
+            ]
+        }
+    ],
+    "surfacecolor": {
+        "a": 1.0,
+        "b": 1.0,
+        "g": 1.0,
+        "guid": "0c16f649-a622-465c-85b4-ce67ba9550f5",
+        "name": "my_color",
+        "r": 1.0,
+        "type": "Color"
+    },
+    "surfaces": [
+        {
+            "control_points": [
+                -0.88,
+                -0.91,
+                -0.84,
+                1.12,
+                -1.09,
+                -1.16,
+                -1.12,
+                1.09,
+                -1.16,
+                0.88,
+                0.91,
+                -0.84
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "12aea6d4-0340-4598-ba0e-8931fe873769",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                -1.12,
+                -1.09,
+                1.16,
+                -0.88,
+                0.91,
+                0.84,
+                0.88,
+                -0.91,
+                0.84,
+                1.12,
+                1.09,
+                1.16
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "9ae22015-2fd3-4f67-a019-4cf8f8027c96",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                -0.88,
+                -0.91,
+                -0.84,
+                -1.12,
+                -1.09,
+                1.16,
+                1.12,
+                -1.09,
+                -1.16,
+                0.88,
+                -0.91,
+                0.84
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "dc489fac-f472-4b69-b5d7-2e887450fd39",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                1.12,
+                -1.09,
+                -1.16,
+                0.88,
+                -0.91,
+                0.84,
+                0.88,
+                0.91,
+                -0.84,
+                1.12,
+                1.09,
+                1.16
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "13f087ae-bee2-4768-88bb-a178284b2658",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                0.88,
+                0.91,
+                -0.84,
+                1.12,
+                1.09,
+                1.16,
+                -1.12,
+                1.09,
+                -1.16,
+                -0.88,
+                0.91,
+                0.84
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "58e16c89-4c00-491e-b2bf-2427f82a95a5",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        },
+        {
+            "control_points": [
+                -1.12,
+                1.09,
+                -1.16,
+                -0.88,
+                0.91,
+                0.84,
+                -0.88,
+                -0.91,
+                -0.84,
+                -1.12,
+                -1.09,
+                1.16
+            ],
+            "cv_count_u": 2,
+            "cv_count_v": 2,
+            "dimension": 3,
+            "facecolors": [],
+            "guid": "d4dd3b78-77ca-411d-b0c1-6fbb5181d660",
+            "is_rational": false,
+            "linecolors": [],
+            "is_locked": false,
+            "is_visible": true,
+            "name": "my_nurbssurface",
+            "nurbsknots_u": [
+                0.0,
+                1.0
+            ],
+            "nurbsknots_v": [
+                0.0,
+                1.0
+            ],
+            "order_u": 2,
+            "order_v": 2,
+            "pointcolors": [],
+            "type": "NurbsSurface",
+            "width": 1.0
+        }
+    ],
+    "type": "BRep",
+    "vertices": [
+        {
+            "point": [
+                -0.88,
+                -0.91,
+                -0.84
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                1.12,
+                -1.09,
+                -1.16
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                0.88,
+                0.91,
+                -0.84
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                -1.12,
+                1.09,
+                -1.16
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                -1.12,
+                -1.09,
+                1.16
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                0.88,
+                -0.91,
+                0.84
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                1.12,
+                1.09,
+                1.16
+            ],
+            "tolerance": 0.0
+        },
+        {
+            "point": [
+                -0.88,
+                0.91,
+                0.84
+            ],
+            "tolerance": 0.0
+        }
+    ],
+    "width": 1.0,
+    "wires": [
+        {
+            "edges": [
+                {
+                    "index": 0,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 1,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 2,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 3,
+                    "orientation": "reversed"
+                }
+            ]
+        },
+        {
+            "edges": [
+                {
+                    "index": 4,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 5,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 6,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 7,
+                    "orientation": "reversed"
+                }
+            ]
+        },
+        {
+            "edges": [
+                {
+                    "index": 3,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 8,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 4,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 9,
+                    "orientation": "reversed"
+                }
+            ]
+        },
+        {
+            "edges": [
+                {
+                    "index": 2,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 10,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 5,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 8,
+                    "orientation": "reversed"
+                }
+            ]
+        },
+        {
+            "edges": [
+                {
+                    "index": 1,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 11,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 6,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 10,
+                    "orientation": "reversed"
+                }
+            ]
+        },
+        {
+            "edges": [
+                {
+                    "index": 0,
+                    "orientation": "reversed"
+                },
+                {
+                    "index": 9,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 7,
+                    "orientation": "forward"
+                },
+                {
+                    "index": 11,
+                    "orientation": "reversed"
+                }
+            ]
+        }
+    ]
+}

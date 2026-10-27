@@ -1,0 +1,84 @@
+{
+  "distance": -0.1,
+  "kind": "surface",
+  "offset": {
+    "control_points": [
+      2.4999999999998437e-08,
+      2.4999999999998437e-08,
+      -0.09999999999999376,
+      2.4999999999998437e-08,
+      1.0249999999999984e-06,
+      -0.09999999999999376,
+      1.0249999999999984e-06,
+      2.4999999999998437e-08,
+      -0.09999999999999376,
+      1.0249999999999984e-06,
+      1.0249999999999984e-06,
+      -0.09999999999949376
+    ],
+    "cv_count_u": 2,
+    "cv_count_v": 2,
+    "dimension": 3,
+    "facecolors": [],
+    "guid": "06b43a49-c15f-46a6-903b-a93467efd7bc",
+    "is_rational": false,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbssurface",
+    "nurbsknots_u": [
+      0.0,
+      1.0
+    ],
+    "nurbsknots_v": [
+      0.0,
+      1.0
+    ],
+    "order_u": 2,
+    "order_v": 2,
+    "pointcolors": [],
+    "type": "NurbsSurface",
+    "width": 1.0
+  },
+  "original": {
+    "control_points": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1e-06,
+      0.0,
+      1e-06,
+      0.0,
+      0.0,
+      1e-06,
+      1e-06,
+      5e-13
+    ],
+    "cv_count_u": 2,
+    "cv_count_v": 2,
+    "dimension": 3,
+    "facecolors": [],
+    "guid": "27a43ce5-31cb-44de-a371-c90342a520f9",
+    "is_rational": false,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbssurface",
+    "nurbsknots_u": [
+      0.0,
+      1.0
+    ],
+    "nurbsknots_v": [
+      0.0,
+      1.0
+    ],
+    "order_u": 2,
+    "order_v": 2,
+    "pointcolors": [],
+    "type": "NurbsSurface",
+    "width": 1.0
+  },
+  "tolerance": 1e-10,
+  "residual": 3.535533905932572e-08
+}

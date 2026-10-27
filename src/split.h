@@ -3,6 +3,8 @@
 #include "brep.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace session_cpp {
@@ -13,6 +15,59 @@ class Polyline;
 } // namespace session_cpp
 
 namespace session_cpp::split {
+
+struct SamplingError : std::invalid_argument {
+    NurbsCurve curve;
+    NurbsCurve part;
+    double tolerance;
+    size_t visited;
+
+    SamplingError(const NurbsCurve& source, const NurbsCurve& active, double tol, size_t count)
+        : std::invalid_argument("Trim sampling exceeds the bounded workload"),
+          curve(source), part(active), tolerance(tol), visited(count) {}
+};
+
+struct FaceCut {
+    NurbsCurve world;
+    NurbsCurve pcurve;
+    int section = -1;
+};
+
+struct CurveError : std::invalid_argument {
+    NurbsCurve curve;
+    NurbsCurve pcurve;
+    NurbsSurface surface;
+    double parameter;
+    double distance;
+    double tolerance;
+
+    CurveError(const NurbsCurve& world, const NurbsCurve& uv, const NurbsSurface& support,
+        double at, double gap, double tol, const std::string& reason)
+        : std::invalid_argument("Split curve/trim correspondence " + reason), curve(world), pcurve(uv),
+          surface(support), parameter(at), distance(gap), tolerance(tol) {}
+};
+
+struct EdgePiece {
+    int source_edge = -1;
+    int section = -1;
+    int edge = -1;
+    double first = 0.0;
+    double last = 0.0;
+};
+
+struct FaceSplit {
+    BRep brep;
+    std::vector<int> faces;
+    std::vector<EdgePiece> edges;
+};
+
+/// Partition a face using existing pcurves, retaining source-edge and section identity.
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep,
+    int face_index,
+    const std::vector<FaceCut>& cutters,
+    double tolerance
+);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Split

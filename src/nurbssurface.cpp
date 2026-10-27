@@ -1,4 +1,5 @@
 #include "nurbssurface.h"
+#include "nurbs_offset.h"
 #include "brep.h"
 #include "closest.h"
 #include "intersection.h"
@@ -16,6 +17,10 @@
 #include <stdexcept>
 
 namespace session_cpp {
+
+NurbsSurface NurbsSurface::offset(double distance, double tolerance) const {
+    return nurbs_offset::surface(*this, distance, tolerance);
+}
 
 namespace {
 
@@ -551,7 +556,14 @@ bool NurbsSurface::is_valid() const {
     if (!is_valid_nurbsknot_vector(0) || !is_valid_nurbsknot_vector(1))
         return false;
 
-    return static_cast<int>(m_cv.size()) >= cv_count() * cv_size();
+    if (static_cast<int>(m_cv.size()) < cv_count() * cv_size())
+        return false;
+
+    for (double value : m_cv)
+        if (!std::isfinite(value))
+            return false;
+
+    return true;
 }
 
 bool NurbsSurface::is_valid_nurbsknot_vector(int dir) const {
@@ -561,14 +573,16 @@ bool NurbsSurface::is_valid_nurbsknot_vector(int dir) const {
 
     const int kc = nurbsknot_count(dir);
 
-    if (static_cast<int>(m_nurbsknot[dir].size()) != kc)
+    if (m_order[dir] < 2 || m_cv_count[dir] < m_order[dir]
+        || static_cast<int>(m_nurbsknot[dir].size()) != kc)
         return false;
 
-    for (int i = 1; i < kc; i++)
-        if (m_nurbsknot[dir][i] < m_nurbsknot[dir][i - 1])
+    for (int i = 0; i < kc; i++)
+        if (!std::isfinite(m_nurbsknot[dir][i])
+            || (i > 0 && m_nurbsknot[dir][i] < m_nurbsknot[dir][i - 1]))
             return false;
 
-    return true;
+    return m_nurbsknot[dir][m_order[dir] - 2] < m_nurbsknot[dir][m_cv_count[dir] - 1];
 }
 
 bool NurbsSurface::is_closed(int dir) const {
@@ -803,7 +817,7 @@ bool NurbsSurface::set_cv(int i, int j, const Point& point) {
     if (!cv_ptr)
         return false;
 
-    const double w = (m_is_rat && std::abs(cv_ptr[m_dim]) > 1e-14) ? cv_ptr[m_dim] : 1.0;
+    const double w = (m_is_rat && cv_ptr[m_dim] != 0.0) ? cv_ptr[m_dim] : 1.0;
     cv_ptr[0] = point[0] * w;
 
     if (m_dim > 1)
@@ -811,6 +825,8 @@ bool NurbsSurface::set_cv(int i, int j, const Point& point) {
 
     if (m_dim > 2)
         cv_ptr[2] = point[2] * w;
+
+    m_mesh = Mesh();
 
     return true;
 }
@@ -833,6 +849,8 @@ bool NurbsSurface::set_cv_4d(int i, int j, double x, double y, double z, double 
     if (m_is_rat)
         cv_ptr[m_dim] = w;
 
+    m_mesh = Mesh();
+
     return true;
 }
 
@@ -850,14 +868,15 @@ bool NurbsSurface::set_weight(int i, int j, double weight) {
     if (!m_is_rat || !cv_ptr)
         return false;
 
-    const double old_w = std::abs(cv_ptr[m_dim]) > 1e-14 ? cv_ptr[m_dim] : 1.0;
-    const double new_w = std::abs(weight) > 1e-14 ? weight : 1.0;
+    const double old_w = cv_ptr[m_dim] != 0.0 ? cv_ptr[m_dim] : 1.0;
+    const double new_w = weight != 0.0 ? weight : 1.0;
     const double scale = new_w / old_w;
 
     for (int d = 0; d < m_dim; d++)
         cv_ptr[d] *= scale;
 
     cv_ptr[m_dim] = new_w;
+    m_mesh = Mesh();
 
     return true;
 }
@@ -1893,7 +1912,7 @@ bool NurbsSurface::set_periodic_uniform_nurbsknot_vector(int dir, double delta) 
 
 Point NurbsSurface::dehomogenize(const double* h) const {
 
-    const double w = (m_is_rat && std::abs(h[m_dim]) > 1e-14) ? h[m_dim] : 1.0;
+    const double w = (m_is_rat && h[m_dim] != 0.0) ? h[m_dim] : 1.0;
 
     return Point(h[0] / w, m_dim > 1 ? h[1] / w : 0.0, m_dim > 2 ? h[2] / w : 0.0);
 }
@@ -1929,7 +1948,7 @@ std::vector<Vector> NurbsSurface::rational_derivatives(
     const int n = num_derivs;
     const double w00 = skl[0][m_dim];
 
-    if (std::abs(w00) < 1e-14)
+    if (w00 == 0.0)
         return std::vector<Vector>(skl.size(), Vector(0, 0, 0));
 
     for (int k = 0; k <= n; k++)

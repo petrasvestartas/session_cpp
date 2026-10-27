@@ -1,4 +1,5 @@
 #include "mini_test.h"
+#include <cstdlib>
 
 #include <climits>
 #include <cmath>
@@ -204,9 +205,15 @@ int run_all(const std::string &language) {
 
   // Group tests by logical group name
   std::map<std::string, std::vector<const RegisteredTest *>> tests_by_group;
+  const char* selected_name = std::getenv("SESSION_MINITEST_NAME");
+  const char* selected_group = std::getenv("SESSION_MINITEST_GROUP");
+  const bool progress = std::getenv("SESSION_MINITEST_PROGRESS") != nullptr;
   for (const auto &t : tests) {
-    tests_by_group[t.group].push_back(&t);
+    if ((!selected_name || t.name == selected_name) && (!selected_group || t.group == selected_group))
+      tests_by_group[t.group].push_back(&t);
   }
+  if (tests_by_group.empty())
+    return 1;
 
   fs::path repo_root = compute_repo_root();
   fs::path subdir = repo_root / "session_tests" / "session_cpp";
@@ -224,6 +231,8 @@ int run_all(const std::string &language) {
     fs::path test_file_path;
 
     for (const RegisteredTest *t : group_tests) {
+      if (progress)
+        std::cerr << "[cpp-minitest] RUN " << group << "::" << t->name << std::endl;
       std::vector<CheckRecord> checks;
       current_checks() = &checks;
       current_assertion_time() = 0.0;
@@ -250,6 +259,13 @@ int run_all(const std::string &language) {
       double elapsed_ms = std::chrono::duration<double, std::milli>(end - start).count();
       double effective_ms = std::max(0.0, elapsed_ms - current_assertion_time());
       double rounded_ms = std::round(effective_ms * 1000.0) / 1000.0; // three decimals
+      if (progress)
+        std::cerr << "[cpp-minitest] " << (passed ? "PASS " : "FAIL ") << group << "::" << t->name
+                  << " " << rounded_ms << " ms" << std::endl;
+      if (progress && !passed)
+        for (const auto& failure : failures)
+          if (failure.contains("error"))
+            std::cerr << "[cpp-minitest] " << failure["error"].get<std::string>() << std::endl;
 
       if (test_file_path.empty()) {
         test_file_path = fs::path(t->file);

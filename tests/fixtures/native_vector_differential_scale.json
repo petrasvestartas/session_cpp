@@ -1,0 +1,23 @@
+{
+  "cause": "Vector::compute_magnitude uses a 1e-12 component snapping threshold",
+  "offset_differential": [
+    2.5e-19,
+    2.5e-19,
+    0
+  ],
+  "expected_norm": "sqrt(2)*2.5e-19",
+  "scales": [
+    1e-300,
+    1e-19,
+    1e-13,
+    1,
+    1e+150,
+    1e+300
+  ],
+  "direction": [
+    3,
+    4,
+    12
+  ],
+  "expected_scaled_norm": 13
+}

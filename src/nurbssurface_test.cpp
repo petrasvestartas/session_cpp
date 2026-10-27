@@ -16,6 +16,8 @@
 #include "tolerance.h"
 
 #include <cmath>
+#include <fstream>
+#include <filesystem>
 #include <filesystem>
 #include <string>
 #include <tuple>
@@ -24,6 +26,68 @@
 using namespace session_cpp::mini_test;
 
 namespace session_cpp {
+
+    MINI_TEST("NurbsSurface", "Homogeneous Weight Scaling") {
+        const NurbsSurface original = Primitives::sphere_surface(3, -4, 5, 2);
+        for (double factor : {1e-100, 1e100}) {
+            NurbsSurface surface = original;
+            for (double& value : surface.m_cv)
+                value *= factor;
+            MINI_CHECK(surface.is_valid());
+            for (int i = 0; i < surface.cv_count(0); ++i)
+                for (int j = 0; j < surface.cv_count(1); ++j)
+                    MINI_CHECK(surface.get_cv(i, j).distance(original.get_cv(i, j)) < 1e-13);
+            for (int i = 0; i <= 4; ++i)
+                for (int j = 0; j <= 4; ++j) {
+                    const auto u = original.domain(0), v = original.domain(1);
+                    const double a = u.first + (u.second - u.first) * i / 4.0;
+                    const double b = v.first + (v.second - v.first) * j / 4.0;
+                    MINI_CHECK(surface.point_at(a, b).distance(original.point_at(a, b)) < 1e-13);
+                    const auto da = surface.evaluate(a, b, 2);
+                    const auto db = original.evaluate(a, b, 2);
+                    for (size_t k = 0; k < da.size(); ++k)
+                        MINI_CHECK((da[k] - db[k]).magnitude() < 1e-10);
+                }
+            surface.mesh();
+            MINI_CHECK(!surface.m_mesh.vertex.empty());
+            const Point moved = surface.get_cv(0, 0) + Vector(0.1, 0.2, 0.3);
+            const double weight = surface.weight(0, 0);
+            MINI_CHECK(surface.set_cv(0, 0, moved));
+            MINI_CHECK(surface.weight(0, 0) == weight);
+            MINI_CHECK(surface.get_cv(0, 0).distance(moved) < 1e-13);
+            MINI_CHECK(surface.m_mesh.vertex.empty());
+        }
+    }
+
+    MINI_TEST("NurbsSurface", "Offset") {
+        std::vector<Point> points;
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                points.push_back({(double)i, (double)j, 0.15 * (i - 1.5) * (j - 1.5)});
+        const NurbsSurface surface = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+        const std::filesystem::path folder = std::filesystem::path("build") / "geometry-tests";
+        std::filesystem::create_directories(folder);
+        for (double distance : {-0.1, 0.1}) {
+            const NurbsSurface offset = surface.offset(distance, 1e-6);
+            MINI_CHECK(offset.is_valid());
+            nlohmann::ordered_json data = {
+                {"group", "NurbsSurface"}, {"test", "Offset"}, {"kind", "surface"}, {"distance", distance},
+                {"original", surface.jsondump()}, {"offset", offset.jsondump()}, {"samples", nlohmann::ordered_json::array()}
+            };
+            for (int i = 0; i <= 20; ++i)
+                for (int j = 0; j <= 20; ++j) {
+                    const double u = surface.domain(0).first + (surface.domain(0).second - surface.domain(0).first) * i / 20.0;
+                    const double v = surface.domain(1).first + (surface.domain(1).second - surface.domain(1).first) * j / 20.0;
+                    const Point expected = surface.point_at(u, v) + surface.normal_at(u, v) * distance;
+                    MINI_CHECK(offset.point_at(u, v).distance(expected) < 5e-6);
+                    const Point point = surface.point_at(u, v);
+                    const Point displaced = offset.point_at(u, v);
+                    data["samples"].push_back({point[0], point[1], point[2], displaced[0], displaced[1], displaced[2]});
+                }
+            const std::string name = distance < 0 ? "surface_offset_negative" : "surface_offset_positive";
+            std::ofstream(folder / (name + ".offset.json")) << data.dump(2);
+        }
+    }
 
 MINI_TEST("NurbsSurface", "Constructor") {
     // using session_cpp::NurbsSurface;

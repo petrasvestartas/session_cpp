@@ -1,5 +1,11 @@
 #include "split.h"
 #include "closest.h"
+#include "curve_intersection.h"
+#include "curve_self_intersection.h"
+#include "curve_surface_intersection.h"
+#include "nurbs_bounds.h"
+#include "nurbs_interval.h"
+#include "spatial_rtree.h"
 #include "line.h"
 #include "polyline.h"
 #include "tolerance.h"
@@ -83,6 +89,7 @@ struct Source {
     int edge; // BRep edge, -1 for a cutter.
     NurbsCurve world; // 3D curve.
     NurbsCurve uv; // Curve in surface parameter space.
+    int section = -1;
 };
 
 /// Parameter run along one source curve.
@@ -99,6 +106,7 @@ struct Span {
     double b; // End parameter.
     std::vector<double> cuts; // Cut parameters, span ends included.
     NurbsCurve curve; // Span of the source uv curve.
+    std::vector<double> events; // Genuine intersection and overlap parameters.
 };
 
 /// Directed half-edge of the trim graph.
@@ -111,6 +119,7 @@ struct Directed {
 struct Graph {
     std::vector<Directed> edges; // Half-edges.
     std::vector<std::vector<size_t>> outgoing; // Half-edges leaving each vertex, sorted by angle.
+    std::vector<bool> events; // Vertices retained by intersection or overlap events.
 };
 
 /// Closed loop of runs with its sampled polygon.
@@ -118,6 +127,7 @@ struct Cycle {
     double area; // Signed area in parameter space.
     std::vector<Run> loop; // Runs around the loop.
     std::vector<Point> points; // Sampled polygon.
+    std::vector<size_t> edges; // Undirected graph edges, sorted by identity.
 };
 
 /// New BRep edge cut from a source.
@@ -278,7 +288,7 @@ std::vector<double> unique_parameters(std::vector<double> values, double lo, dou
 // ═══════════════════════════════════════════════════════════════════════════
 // Curve intersection
 // ═══════════════════════════════════════════════════════════════════════════
-/// True when every control point lies within tolerance of the chord.
+/// True when outward control bounds lie inside the closed chord's tolerance capsule.
 bool flat(const NurbsCurve& curve, double tolerance) {
 
     const Point a = curve.point_at_start();
@@ -286,14 +296,21 @@ bool flat(const NurbsCurve& curve, double tolerance) {
     const Vector v = b - a;
     const double length2 = v.dot(v);
 
-    if (length2 <= tolerance * tolerance)
-        return Bounds(curve).diagonal() <= tolerance;
-
     for (int i = 0; i < curve.cv_count(); ++i) {
         const Point p = curve.get_cv(i);
-        const double t = (p - a).dot(v) / length2;
-
-        if (t < -EPSILON || t > 1.0 + EPSILON || p.distance(a + v * t) > tolerance)
+        const double t = length2 > 0.0 ? std::clamp((p - a).dot(v) / length2, 0.0, 1.0) : 0.0;
+        const double* cv = curve.cv(i);
+        const nurbs_interval::Interval weight(curve.weight(i));
+        nurbs_interval::Interval squared;
+        for (int d = 0; d < 3; ++d) {
+            const auto control = nurbs_interval::Interval(d < curve.dimension() ? cv[d] : 0.0) / weight;
+            const auto chord = nurbs_interval::Interval(a[d]) + nurbs_interval::Interval(t) *
+                (nurbs_interval::Interval(b[d]) - nurbs_interval::Interval(a[d]));
+            const nurbs_interval::Interval distance(nurbs_interval::magnitude(control - chord));
+            squared = squared + distance * distance;
+        }
+        const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+        if (!nurbs_interval::finite(squared) || squared.hi > allowed.lo)
             return false;
     }
 
@@ -539,7 +556,8 @@ std::vector<Point> polygon(const NurbsCurve& curve, double tolerance) {
 
     while (!work.empty()) {
         ++visited;
-        require(visited <= WORK_LIMIT, "Trim sampling exceeds the bounded workload");
+        if (visited > WORK_LIMIT)
+            throw SamplingError(curve, work.back().curve, tolerance, visited);
         const Part part = std::move(work.back());
         work.pop_back();
 
@@ -594,6 +612,80 @@ bool inside_loops(const Point& p, const std::vector<std::vector<Point>>& loops) 
 // ═══════════════════════════════════════════════════════════════════════════
 // Trim arrangement
 // ═══════════════════════════════════════════════════════════════════════════
+/// Outward bounds of the original positive-rational basis controls active on a knot span.
+std::pair<std::array<double, 2>, std::array<double, 2>> span_bounds(const NurbsCurve& curve, double parameter) {
+    const double infinity = std::numeric_limits<double>::infinity();
+    std::array<double, 2> lo = {infinity, infinity}, hi = {-infinity, -infinity};
+    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, parameter);
+    for (int i = first; i < first + curve.order(); ++i) {
+        const Point point = curve.get_cv(i);
+        for (int d = 0; d < 2; ++d) {
+            lo[d] = std::min(lo[d], std::nextafter(point[d], -infinity));
+            hi[d] = std::max(hi[d], std::nextafter(point[d], infinity));
+            require(std::isfinite(lo[d]) && std::isfinite(hi[d]), "Face split bounds exceed floating-point resolution");
+        }
+    }
+    return {lo, hi};
+}
+
+std::vector<std::pair<size_t, size_t>> span_candidates(
+    const std::vector<Source>& sources,
+    const std::vector<Span>& spans,
+    double tolerance
+) {
+    SpatialRTree<size_t, double, 2> tree;
+    std::vector<std::pair<size_t, size_t>> pairs;
+    const double infinity = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < spans.size(); ++i) {
+        const auto bounds = span_bounds(sources[spans[i].source].uv, spans[i].a);
+        std::array<double, 2> lo, hi;
+        for (int d = 0; d < 2; ++d) {
+            lo[d] = std::nextafter(bounds.first[d] - tolerance, -infinity);
+            hi[d] = std::nextafter(bounds.second[d] + tolerance, infinity);
+        }
+        tree.search(lo.data(), hi.data(), [&](size_t j) {
+            require(pairs.size() < WORK_LIMIT, "Face split candidates exceed the bounded workload");
+            pairs.emplace_back(j, i);
+            return true;
+        });
+        tree.insert(bounds.first.data(), bounds.second.data(), i);
+    }
+    std::sort(pairs.begin(), pairs.end());
+    return pairs;
+}
+
+/// True when the whole original interval lies inside one vertex tolerance ball.
+bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& point, double tolerance) {
+    nurbs_interval::CurveBounds bounds;
+    if (!nurbs_interval::curve_bounds(curve, {std::min(a, b), std::max(a, b)},
+        {point[0], point[1], point[2]}, bounds))
+        return false;
+    nurbs_interval::Interval squared;
+    for (const nurbs_interval::Interval coordinate : bounds.point) {
+        const nurbs_interval::Interval distance(nurbs_interval::magnitude(coordinate));
+        squared = squared + distance * distance;
+    }
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    return nurbs_interval::finite(squared) && squared.hi <= allowed.lo;
+}
+
+/// Preserve both parameters of every original-curve self event in the affected knot spans.
+void self_events(std::vector<Span>& spans, const std::vector<Source>& sources, double tolerance) {
+    for (size_t source = 0; source < sources.size(); ++source) {
+        const auto events = curve_self_intersection::intersect(sources[source].uv, tolerance);
+        require(events.complete, events.failure);
+        for (const auto* hits : {&events.points, &events.endpoints})
+            for (const curve_intersection::Hit& hit : *hits)
+                for (Span& span : spans)
+                    if (span.source == source)
+                        for (double parameter : {hit.a, hit.b})
+                            if (parameter >= span.a && parameter <= span.b) {
+                                span.cuts.push_back(parameter);
+                                span.events.push_back(parameter);
+                            }
+    }
+}
+
 /// Knot spans of every source, cut at their mutual intersections.
 std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance) {
 
@@ -608,41 +700,56 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
             knots = {lo, lo + (hi - lo) * 0.25, (lo + hi) * 0.5, lo + (hi - lo) * 0.75, hi};
         }
 
-        for (size_t i = 1; i < knots.size(); ++i)
+        for (size_t i = 1; i < knots.size(); ++i) {
+            require(spans.size() < WORK_LIMIT, "Face split spans exceed the bounded workload");
             spans.push_back({si, knots[i - 1], knots[i], {knots[i - 1], knots[i]}, interval(sources[si].uv, knots[i - 1], knots[i])});
+        }
     }
 
-    require(!spans.empty() && spans.size() <= WORK_LIMIT / spans.size(), "Face split exceeds the bounded workload");
-    size_t budget = WORK_LIMIT;
-
-    for (size_t i = 0; i < spans.size(); ++i)
-        for (size_t j = i + 1; j < spans.size(); ++j) {
-            const std::vector<std::pair<double, double>> hits = intersections(spans[i].curve, spans[j].curve, tolerance, budget);
-
-            for (const std::pair<double, double>& hit : hits) {
-                spans[i].cuts.push_back(hit.first);
-                spans[j].cuts.push_back(hit.second);
+    require(!spans.empty(), "Face split requires nonempty spans");
+    self_events(spans, sources, tolerance);
+    for (const auto& [i, j] : span_candidates(sources, spans, tolerance)) {
+        if (spans[i].source == spans[j].source)
+            continue;
+        const curve_intersection::Result events = curve_intersection::intersect(spans[i].curve, spans[j].curve, tolerance);
+        require(events.complete, events.failure);
+        for (const curve_intersection::Hit& hit : events.points) {
+            spans[i].cuts.push_back(hit.a);
+            spans[j].cuts.push_back(hit.b);
+            if (spans[i].source != spans[j].source || hit.a != hit.b) {
+                spans[i].events.push_back(hit.a);
+                spans[j].events.push_back(hit.b);
             }
         }
+        for (const curve_intersection::Overlap& overlap : events.overlaps) {
+            spans[i].cuts.push_back(overlap.a0);
+            spans[i].cuts.push_back(overlap.a1);
+            spans[j].cuts.push_back(overlap.b0);
+            spans[j].cuts.push_back(overlap.b1);
+            spans[i].events.insert(spans[i].events.end(), {overlap.a0, overlap.a1});
+            spans[j].events.insert(spans[j].events.end(), {overlap.b0, overlap.b1});
+        }
+    }
 
     return spans;
 }
 
 /// Cut parameters of a span, snapped to its ends and deduplicated.
-std::vector<double> span_cuts(const Span& span, double tolerance) {
+std::vector<double> span_cuts(const Span& span, const NurbsCurve& curve, double tolerance) {
 
     std::vector<double> cuts = span.cuts;
 
     for (double& t : cuts) {
-        const Point p = span.curve.point_at(t);
-
-        if (p.distance(span.curve.point_at(span.a)) <= tolerance)
+        t = std::clamp(t, span.a, span.b);
+        if (vertex_interval(curve, span.a, t, curve.point_at(span.a), tolerance))
             t = span.a;
-        else if (p.distance(span.curve.point_at(span.b)) <= tolerance)
+        else if (vertex_interval(curve, t, span.b, curve.point_at(span.b), tolerance))
             t = span.b;
     }
 
-    return unique_parameters(cuts, span.a, span.b);
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    return cuts;
 }
 
 /// Index of the graph vertex at a point, added when none lies within tolerance.
@@ -654,15 +761,343 @@ size_t node(Graph& graph, std::vector<Point>& vertices, const Point& p, double t
 
     vertices.push_back(p);
     graph.outgoing.emplace_back();
+    graph.events.push_back(false);
     return vertices.size() - 1;
 }
 
-/// Direction angle of a run leaving its start vertex.
-double angle(const std::vector<Source>& sources, const Run& run) {
+/// First nonzero one-sided direction of a run leaving its start vertex.
+Vector run_direction(const std::vector<Source>& sources, const Run& run) {
+    const NurbsCurve part = interval(sources[run.source].uv, std::min(run.a, run.b), std::max(run.a, run.b));
+    const bool forward = run.b > run.a;
+    const double parameter = forward ? part.domain_start() : part.domain_end();
+    const std::vector<Vector> derivatives = part.evaluate(parameter, part.degree());
+    for (size_t order = 1; order < derivatives.size(); ++order) {
+        const Vector& direction = derivatives[order];
+        const double length = std::hypot(direction[0], direction[1]);
+        require(std::isfinite(length), "Trim occurrence has a nonfinite endpoint direction");
+        if (length > 0.0) {
+            const double sign = forward || order % 2 == 0 ? 1.0 : -1.0;
+            return direction * sign;
+        }
+    }
+    throw std::invalid_argument("Trim occurrence has an unresolved endpoint direction");
+}
 
-    const Vector d = sources[run.source].uv.evaluate(run.a, 1)[1];
-    const double sign = run.b > run.a ? 1.0 : -1.0;
-    return std::atan2(sign * d[1], sign * d[0]);
+using SectorInterval = nurbs_interval::Interval;
+using SectorControl = nurbs_interval::Homogeneous;
+
+SectorInterval sector_projection(const SectorControl& cv, const Vector& direction) {
+    return cv[0] * SectorInterval(direction[0]) + cv[1] * SectorInterval(direction[1]);
+}
+
+bool sector_identical(SectorInterval a, SectorInterval b) {
+    return a.lo == a.hi && b.lo == b.hi && a.lo == b.lo;
+}
+
+bool sector_origin(const SectorControl& cv, Point& point) {
+    if (!(cv[3].lo > 0) || !nurbs_interval::finite(cv[3]))
+        return false;
+    for (int d = 0; d < 2; ++d) {
+        const auto value = cv[d] / cv[3];
+        if (!nurbs_interval::finite(value) || value.lo != value.hi)
+            return false;
+        point[d] = value.lo;
+    }
+    point[2] = 0;
+    return true;
+}
+
+bool sector_monotone(const std::vector<SectorControl>& data, const Vector& tangent) {
+    bool strict = false;
+    for (size_t i = 1; i < data.size(); ++i) {
+        const auto& a = data[i - 1];
+        const auto& b = data[i];
+        if (!(a[3].lo > 0 && b[3].lo > 0) || !nurbs_interval::finite(a[3]) || !nurbs_interval::finite(b[3]))
+            return false;
+        const auto first = sector_projection(a, tangent);
+        const auto second = sector_projection(b, tangent);
+        const bool identical = sector_identical(a[0], b[0]) && sector_identical(a[1], b[1]) && sector_identical(a[3], b[3]);
+        SectorInterval difference;
+        if (!identical && !(sector_identical(first, second) && sector_identical(a[3], b[3])))
+            difference = second * a[3] - first * b[3];
+        if (!nurbs_interval::finite(difference) || difference.lo < 0)
+            return false;
+        strict = strict || difference.lo > 0;
+    }
+    return strict;
+}
+
+int sector_sign(const std::vector<SectorControl>& data, const Point& origin, const Vector& direction) {
+    bool positive = true;
+    bool negative = true;
+    bool strict_positive = false;
+    bool strict_negative = false;
+    for (auto cv : data) {
+        for (int d = 0; d < 2; ++d)
+            cv[d] = cv[d] - SectorInterval(origin[d]) * cv[3];
+        const auto value = sector_projection(cv, direction);
+        if (!nurbs_interval::finite(value))
+            return 2;
+        positive = positive && value.lo >= 0;
+        negative = negative && value.hi <= 0;
+        strict_positive = strict_positive || value.lo > 0;
+        strict_negative = strict_negative || value.hi < 0;
+    }
+    if (positive && negative)
+        return 0;
+    if (positive && strict_positive)
+        return 1;
+    if (negative && strict_negative)
+        return -1;
+    return 2;
+}
+
+/// Prove a tangent cluster's side order inside a supplied open cone of width less than pi.
+bool sector_sides(
+    const std::vector<Source>& sources,
+    const Graph& graph,
+    const std::vector<size_t>& cluster,
+    const Point& origin,
+    const Vector& tangent,
+    const Vector& left,
+    const Vector& right,
+    size_t& budget,
+    std::vector<size_t>& ordered
+) {
+    const auto cross = [](const Vector& a, const Vector& b) {
+        return SectorInterval(a[0]) * SectorInterval(b[1]) - SectorInterval(a[1]) * SectorInterval(b[0]);
+    };
+    if (cluster.empty() || cluster.size() > 3 || !(cross(left, right).lo > 0) ||
+        !(cross(left, tangent).lo > 0) || !(cross(tangent, right).lo > 0))
+        return false;
+    std::array<size_t, 3> slots;
+    slots.fill(std::numeric_limits<size_t>::max());
+    for (size_t edge : cluster) {
+        Run prefix = graph.edges[edge].run;
+        const auto& curve = sources[prefix.source].uv;
+        int side = 2;
+        for (int depth = 0; depth <= 96; ++depth) {
+            if (budget == 0)
+                return false;
+            --budget;
+            auto data = nurbs_interval::curve_controls(curve,
+                {std::min(prefix.a, prefix.b), std::max(prefix.a, prefix.b)}, {0, 0, 0});
+            if (data.empty())
+                return false;
+            if (prefix.a > prefix.b)
+                std::reverse(data.begin(), data.end());
+            Point start;
+            if (!sector_origin(data.front(), start))
+                return false;
+            if (start[0] != origin[0] || start[1] != origin[1])
+                return false;
+            if (sector_monotone(data, tangent) &&
+                sector_sign(data, origin, {-left[1], left[0], 0}) == 1 &&
+                sector_sign(data, origin, {right[1], -right[0], 0}) == 1) {
+                side = sector_sign(data, origin, {-tangent[1], tangent[0], 0});
+                if (side != 2)
+                    break;
+            }
+            const double next = std::midpoint(prefix.a, prefix.b);
+            if (next == prefix.a || next == prefix.b)
+                return false;
+            prefix.b = next;
+        }
+        if (side == 2 || slots[side + 1] != std::numeric_limits<size_t>::max())
+            return false;
+        slots[side + 1] = edge;
+    }
+    ordered.clear();
+    for (size_t edge : slots)
+        if (edge != std::numeric_limits<size_t>::max())
+            ordered.push_back(edge);
+    return true;
+}
+
+struct SectorCone {
+    Vector tangent;
+    Vector left;
+    Vector right;
+};
+
+SectorInterval sector_cross(const Vector& a, const Vector& b) {
+    return SectorInterval(a[0]) * SectorInterval(b[1]) - SectorInterval(a[1]) * SectorInterval(b[0]);
+}
+
+double sector_angle(const Vector& direction) {
+    const double value = std::atan2(direction[1], direction[0]);
+    return value == std::acos(-1.0) ? -value : value == 0 ? 0 : value;
+}
+
+bool sector_ambiguous(const Vector& a, const Vector& b) {
+    if (sector_angle(a) == sector_angle(b))
+        return true;
+    const auto cross = sector_cross(a, b);
+    const auto dot = SectorInterval(a[0]) * SectorInterval(b[0]) + SectorInterval(a[1]) * SectorInterval(b[1]);
+    return cross.lo <= 0 && cross.hi >= 0 && dot.lo > 0;
+}
+
+bool sector_cones(const std::vector<SectorCone>& cones, size_t& budget, std::vector<size_t>& order) {
+    struct Boundary {
+        Vector ray;
+        size_t cone;
+        bool right;
+    };
+    std::vector<Boundary> boundaries;
+    for (size_t i = 0; i < cones.size(); ++i) {
+        if (!(sector_cross(cones[i].left, cones[i].right).lo > 0))
+            return false;
+        boundaries.push_back({cones[i].left, i, false});
+        boundaries.push_back({cones[i].right, i, true});
+    }
+    const auto upper = [](const Vector& ray) {
+        return ray[1] > 0 || (ray[1] == 0 && ray[0] > 0);
+    };
+    for (size_t i = 0; i < boundaries.size(); ++i)
+        for (size_t j = i + 1; j < boundaries.size(); ++j) {
+            if (budget == 0)
+                return false;
+            --budget;
+            if (upper(boundaries[i].ray) == upper(boundaries[j].ray)) {
+                const auto cross = sector_cross(boundaries[i].ray, boundaries[j].ray);
+                if (!(cross.lo > 0 || cross.hi < 0))
+                    return false;
+            }
+        }
+    std::sort(boundaries.begin(), boundaries.end(), [&](const Boundary& a, const Boundary& b) {
+        const bool first = upper(a.ray);
+        const bool second = upper(b.ray);
+        return first != second ? first : sector_cross(a.ray, b.ray).lo > 0;
+    });
+    order.clear();
+    for (size_t i = 0; i < boundaries.size(); ++i) {
+        const auto& boundary = boundaries[i];
+        if (boundary.right)
+            continue;
+        const auto& next = boundaries[(i + 1) % boundaries.size()];
+        if (!next.right || boundary.cone != next.cone)
+            return false;
+        order.push_back(boundary.cone);
+    }
+    return order.size() == cones.size();
+}
+
+/// Replace an ambiguous fan only after every branch has a disjoint original-prefix sector proof.
+void order_sector_fan(
+    const std::vector<Source>& sources,
+    const Graph& graph,
+    const std::vector<Vector>& directions,
+    size_t& budget,
+    std::vector<size_t>& choices
+) {
+    if (choices.size() < 2)
+        return;
+    std::vector<size_t> proposal = choices;
+    std::sort(proposal.begin(), proposal.end(), [&](size_t a, size_t b) {
+        return sector_angle(directions[a]) < sector_angle(directions[b]);
+    });
+    std::vector<std::vector<size_t>> clusters;
+    for (size_t edge : proposal) {
+        if (clusters.empty() || !sector_ambiguous(directions[clusters.back().back()], directions[edge]))
+            clusters.push_back({});
+        clusters.back().push_back(edge);
+    }
+    if (clusters.size() > 1 && sector_ambiguous(directions[clusters.back().back()], directions[clusters.front().front()])) {
+        const auto last = std::move(clusters.back());
+        clusters.pop_back();
+        clusters.front().insert(clusters.front().end(), last.begin(), last.end());
+    }
+    if (clusters.size() == choices.size())
+        return;
+    const Run& initial = graph.edges[proposal.front()].run;
+    auto data = nurbs_interval::curve_controls(sources[initial.source].uv,
+        {std::min(initial.a, initial.b), std::max(initial.a, initial.b)}, {0, 0, 0});
+    require(!data.empty(), "Tangent fan has no original-span endpoint enclosure");
+    Point origin;
+    require(sector_origin(initial.a < initial.b ? data.front() : data.back(), origin),
+        "Tangent fan has an unresolved common endpoint");
+    const double pi = std::acos(-1.0);
+    const auto gap = [pi](double first, double second) {
+        const double value = second - first;
+        return value > 0 ? value : value + 2 * pi;
+    };
+    std::vector<SectorCone> cones;
+    for (size_t i = 0; i < clusters.size(); ++i) {
+        const Vector& direction = directions[clusters[i].front()];
+        const double scale = std::max(std::abs(direction[0]), std::abs(direction[1]));
+        require(std::isfinite(scale) && scale > 0, "Tangent fan has an invalid candidate direction");
+        const Vector tangent(direction[0] / scale, direction[1] / scale, 0);
+        const double angle = sector_angle(direction);
+        const double previous = sector_angle(directions[clusters[(i + clusters.size() - 1) % clusters.size()].front()]);
+        const double next = sector_angle(directions[clusters[(i + 1) % clusters.size()].front()]);
+        const double width = std::min({pi * 0.25, gap(previous, angle) * 0.25, gap(angle, next) * 0.25});
+        const double height = std::tan(width);
+        require(std::isfinite(height) && height > 0, "Tangent fan has no representable candidate cone");
+        const Vector offset(-height * tangent[1], height * tangent[0], 0);
+        cones.push_back({tangent, tangent - offset, tangent + offset});
+    }
+    std::vector<size_t> order;
+    require(sector_cones(cones, budget, order), "Tangent fan candidate cones are not proved disjoint");
+    std::vector<size_t> result;
+    for (size_t index : order) {
+        std::vector<size_t> cluster;
+        const auto& cone = cones[index];
+        require(sector_sides(sources, graph, clusters[index], origin, cone.tangent, cone.left, cone.right, budget, cluster),
+            "Tangent fan has unresolved prefix order or endpoint identity");
+        result.insert(result.end(), cluster.begin(), cluster.end());
+    }
+    choices = std::move(result);
+}
+
+
+bool covers_interval(
+    const NurbsCurve& curve,
+    const std::vector<curve_intersection::Overlap>& overlaps,
+    bool second
+) {
+    std::vector<std::pair<double, double>> intervals;
+    for (const curve_intersection::Overlap& overlap : overlaps) {
+        const double a = second ? overlap.b0 : overlap.a0;
+        const double b = second ? overlap.b1 : overlap.a1;
+        intervals.push_back({std::min(a, b), std::max(a, b)});
+    }
+    std::sort(intervals.begin(), intervals.end());
+    double last = curve.domain_start();
+    const double epsilon = 128.0 * std::numeric_limits<double>::epsilon()
+        * std::max({std::abs(last), std::abs(curve.domain_end()), curve.domain_end() - last});
+    for (const std::pair<double, double>& interval : intervals) {
+        if (interval.first > last + epsilon)
+            return false;
+        last = std::max(last, interval.second);
+    }
+    return last >= curve.domain_end() - epsilon;
+}
+
+bool common_arc(
+    const Graph& graph,
+    const std::vector<Source>& sources,
+    size_t a,
+    size_t b,
+    const Run& run,
+    double tolerance,
+    size_t& budget
+) {
+    for (size_t index : graph.outgoing[a]) {
+        const Directed& edge = graph.edges[index];
+        if (edge.b != b)
+            continue;
+        require(budget > 0, "Common trim intervals exceed the bounded workload");
+        --budget;
+        const NurbsCurve first = interval(sources[run.source].uv, std::min(run.a, run.b), std::max(run.a, run.b));
+        const Run& previous = edge.run;
+        const NurbsCurve second = interval(sources[previous.source].uv,
+            std::min(previous.a, previous.b), std::max(previous.a, previous.b));
+        const curve_intersection::Result events = curve_intersection::intersect(first, second, tolerance);
+        require(events.complete, events.failure);
+        if (covers_interval(first, events.overlaps, false) && covers_interval(second, events.overlaps, true))
+            return true;
+    }
+    return false;
 }
 
 /// Half-edge graph of the cut spans inside the original loops.
@@ -675,10 +1110,17 @@ Graph compute_graph(
 
     Graph graph;
     std::vector<Point> vertices;
+    size_t common_budget = WORK_LIMIT;
+
+    for (const Span& span : spans)
+        for (double parameter : span.events) {
+            const size_t index = node(graph, vertices, sources[span.source].uv.point_at(parameter), tolerance);
+            graph.events[index] = true;
+        }
 
     for (const Span& span : spans) {
-        const std::vector<double> cuts = span_cuts(span, tolerance);
         const Source& source = sources[span.source];
+        const std::vector<double> cuts = span_cuts(span, source.uv, tolerance);
 
         for (size_t i = 1; i < cuts.size(); ++i) {
             const double lo = cuts[i - 1];
@@ -690,7 +1132,10 @@ Graph compute_graph(
             const size_t a = node(graph, vertices, source.uv.point_at(lo), tolerance);
             const size_t b = node(graph, vertices, source.uv.point_at(hi), tolerance);
 
-            if (a == b)
+            if (a == b && vertex_interval(source.uv, lo, hi, vertices[a], tolerance * 4.0))
+                continue;
+
+            if (common_arc(graph, sources, a, b, {span.source, lo, hi}, tolerance, common_budget))
                 continue;
 
             const size_t index = graph.edges.size();
@@ -701,13 +1146,18 @@ Graph compute_graph(
         }
     }
 
+    std::vector<Vector> directions;
     std::vector<double> angles;
-
-    for (const Directed& edge : graph.edges)
-        angles.push_back(angle(sources, edge.run));
-
-    for (std::vector<size_t>& choices : graph.outgoing)
+    for (const Directed& edge : graph.edges) {
+        directions.push_back(run_direction(sources, edge.run));
+        const Vector& direction = directions.back();
+        angles.push_back(std::atan2(direction[1], direction[0]));
+    }
+    size_t sector_budget = WORK_LIMIT;
+    for (std::vector<size_t>& choices : graph.outgoing) {
         std::sort(choices.begin(), choices.end(), [&angles](size_t a, size_t b) { return angles[a] < angles[b]; });
+        order_sector_fan(sources, graph, directions, sector_budget, choices);
+    }
 
     return graph;
 }
@@ -726,6 +1176,12 @@ double signed_area(const std::vector<Point>& points) {
     return area;
 }
 
+/// Continue one original curve across an ordinary knot vertex, retaining every pave event.
+bool continuation(const Graph& graph, size_t vertex, const Run& previous, const Run& next) {
+    return !graph.events[vertex] && graph.outgoing[vertex].size() == 2 && previous.source == next.source &&
+        previous.b == next.a && (previous.b > previous.a) == (next.b > next.a);
+}
+
 /// Loop traced from one half-edge by turning to the previous outgoing half-edge at each vertex.
 Cycle trace_cycle(
     const Graph& graph,
@@ -735,14 +1191,19 @@ Cycle trace_cycle(
     double tolerance
 ) {
 
-    Cycle cycle{0.0, {}, {}};
+    Cycle cycle{0.0, {}, {}, {}};
     size_t edge = initial;
 
     while (!used[edge]) {
         used[edge] = true;
+        cycle.edges.push_back(edge / 2);
         const Directed& item = graph.edges[edge];
         const Run& run = item.run;
-        cycle.loop.push_back(run);
+        const size_t vertex = graph.edges[edge ^ 1].b;
+        if (cycle.loop.empty() || !continuation(graph, vertex, cycle.loop.back(), run))
+            cycle.loop.push_back(run);
+        else
+            cycle.loop.back().b = run.b;
         NurbsCurve part = interval(sources[run.source].uv, std::min(run.a, run.b), std::max(run.a, run.b));
 
         if (run.b < run.a)
@@ -758,7 +1219,13 @@ Cycle trace_cycle(
     }
 
     require(edge == initial, "Invalid trim graph cycle");
+    if (cycle.loop.size() > 1 && continuation(graph, graph.edges[initial ^ 1].b,
+        cycle.loop.back(), cycle.loop.front())) {
+        cycle.loop.front().a = cycle.loop.back().a;
+        cycle.loop.pop_back();
+    }
     cycle.area = signed_area(cycle.points);
+    std::sort(cycle.edges.begin(), cycle.edges.end());
     return cycle;
 }
 
@@ -802,6 +1269,21 @@ std::vector<Cycle> compute_cycles(
     return cycles;
 }
 
+/// True when two cycles use the same undirected graph edge.
+bool shared_edge(const Cycle& first, const Cycle& second) {
+    size_t a = 0;
+    size_t b = 0;
+    while (a < first.edges.size() && b < second.edges.size()) {
+        if (first.edges[a] == second.edges[b])
+            return true;
+        if (first.edges[a] < second.edges[b])
+            ++a;
+        else
+            ++b;
+    }
+    return false;
+}
+
 /// Regions as outer loops, each hole nested in the smallest outer loop around it.
 std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>& cycles, double tolerance) {
 
@@ -824,6 +1306,8 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>&
 
         for (size_t i = 0; i < positive.size(); ++i) {
             const Cycle& outer = cycles[positive[i]];
+            if (shared_edge(cycle, outer))
+                continue;
 
             if (outer.area > std::abs(cycle.area) + tolerance * tolerance && outer.area < smallest && inside(cycle.points[0], outer.points)) {
                 parent = i;
@@ -924,7 +1408,7 @@ std::pair<double, double> world_parameter(const Source& source, double t, const 
     const double hi = source.world.domain_end();
     const double a = source.uv.domain_start();
     const double b = source.uv.domain_end();
-    const double expected = lo + (t - a) / (b - a) * (hi - lo);
+    const double expected = lo == a && hi == b ? t : lo + (t - a) / (b - a) * (hi - lo);
     const double gap = source.world.point_at(expected).distance(p);
 
     if (gap <= tolerance)
@@ -1021,28 +1505,29 @@ BRepRef add_run_edge(
 ) {
 
     const Source& source = sources[run.source];
+    const bool degenerated = source.edge >= 0 && brep.m_edges[source.edge].degenerated;
     double wa = 0.0;
     double wb = 0.0;
     std::tie(wa, wb) = world_run(brep.m_surfaces[surface_index], source, run, tolerance);
     const double lo = std::min(wa, wb);
     const double hi = std::max(wa, wb);
-    const double w0 = source.world.domain_start();
-    const double w1 = source.world.domain_end();
-    require(hi - lo > (w1 - w0) * EPSILON, "Split would create a collapsed edge");
+    require(hi > lo, "Split would create a collapsed edge");
     const BRepOrientation orientation = wa < wb ? FORWARD : REVERSED;
 
     for (const Piece& piece : pieces) {
         const bool same = source.edge >= 0 ? sources[piece.source].edge == source.edge : piece.source == run.source;
 
-        if (same && source.world.point_at(lo).distance(source.world.point_at(piece.lo)) <= tolerance * 4.0 &&
-            source.world.point_at(hi).distance(source.world.point_at(piece.hi)) <= tolerance * 4.0)
+        const bool matching = (lo == piece.lo && hi == piece.hi) || (!degenerated &&
+            vertex_interval(source.world, lo, piece.lo, source.world.point_at(lo), tolerance * 4.0) &&
+            vertex_interval(source.world, hi, piece.hi, source.world.point_at(hi), tolerance * 4.0));
+        if (same && matching)
             return {piece.edge, orientation};
     }
 
     const NurbsCurve world = interval(source.world, lo, hi);
     const int a = vertex(result, world.point_at_start(), tolerance * 4.0);
     const int b = vertex(result, world.point_at_end(), tolerance * 4.0);
-    const int edge = result.add_edge(result.add_curve_3d(world), a, b, tolerance);
+    const int edge = result.add_edge(degenerated ? -1 : result.add_curve_3d(world), a, b, tolerance);
     const Piece piece = {run.source, lo, hi, edge};
 
     if (source.edge >= 0) {
@@ -1075,13 +1560,22 @@ std::vector<std::vector<Point>> boundary_loops(
 
         for (const BRepRef& er : brep.wire_edges(wr)) {
             const BRepEdge& edge = brep.m_edges[er.index];
-            require(!edge.degenerated, "Pole-edge splitting is not supported");
             const int ci = brep.pcurve_index(er.index, face_index, er.orientation);
             require(ci >= 0, "Face has no source UV boundary");
             NurbsCurve uv = brep.m_curves_2d[ci];
             check_curve(uv);
-            check_curve(brep.m_curves_3d[edge.curve_3d_index]);
-            sources.push_back({er.index, brep.m_curves_3d[edge.curve_3d_index], uv});
+            NurbsCurve world;
+            if (edge.degenerated) {
+                world = NurbsCurve(3, false, 2, 2);
+                world.set_nurbsknot(0, uv.domain_start());
+                world.set_nurbsknot(1, uv.domain_end());
+                world.set_cv(0, brep.m_vertices[edge.start_vertex].point);
+                world.set_cv(1, brep.m_vertices[edge.end_vertex].point);
+            } else {
+                world = brep.m_curves_3d[edge.curve_3d_index];
+            }
+            check_curve(world);
+            sources.push_back({er.index, world, uv});
 
             if (er.orientation == REVERSED)
                 require(uv.reverse(), "Kernel refused to reverse a face trim");
@@ -1176,6 +1670,29 @@ void check_wires(const BRep& result) {
         }
 }
 
+void validate_trim(const NurbsCurve& world, const NurbsCurve& uv, const NurbsSurface& surface, double tolerance) {
+    std::string diagnostic;
+    const auto match = curve_surface_intersection::same_parameter(world, uv, surface, tolerance, &diagnostic);
+    if (match == curve_surface_intersection::ParameterMatch::Matched)
+        return;
+
+    double parameter = uv.domain_start();
+    double distance = 0;
+    for (int k = 0; k <= 32; ++k) {
+        const double t = uv.domain_start() + (uv.domain_end() - uv.domain_start()) * k / 32.0;
+        const double w = world.domain_start() + (world.domain_end() - world.domain_start()) * k / 32.0;
+        const Point q = uv.point_at(t);
+        const double gap = world.point_at(w).distance(surface.point_at(q[0], q[1]));
+        if (gap > distance) {
+            parameter = t;
+            distance = gap;
+        }
+    }
+    const std::string status = match == curve_surface_intersection::ParameterMatch::Mismatched
+        ? "is mismatched: " : "is unresolved: ";
+    throw CurveError(world, uv, surface, parameter, distance, tolerance, status + diagnostic);
+}
+
 /// Reject a split that opens a shell, leaves a wire open or moves an edge off its vertices or trims.
 void validate(const BRep& result, const BRep& original, double tolerance) {
 
@@ -1202,35 +1719,15 @@ void validate(const BRep& result, const BRep& original, double tolerance) {
                     continue;
 
                 const NurbsCurve& uv = result.m_curves_2d[ci];
-                const double lo = uv.domain_start();
-                const double hi = uv.domain_end();
-
-                for (int k = 0; k <= 32; ++k) {
-                    const Point q = uv.point_at(lo + (hi - lo) * k / 32.0);
-                    const Point p = result.m_surfaces[pc.surface_index].point_at(q[0], q[1]);
-                    require(closest(world, p).second <= std::max(tolerance, edge.tolerance) * 8.0, "Split edge and surface trim do not coincide");
-                }
+                const double limit = std::max(tolerance, edge.tolerance) * 8.0;
+                validate_trim(world, uv, result.m_surfaces[pc.surface_index], limit);
             }
     }
 }
 
 /// Parameter-space tolerance of a surface: tolerance over its larger world length per unit parameter.
 double surface_uv_tolerance(const NurbsSurface& surface, double tolerance) {
-
-    double u0 = 0.0;
-    double u1 = 0.0;
-    double v0 = 0.0;
-    double v1 = 0.0;
-    std::tie(u0, u1) = surface.domain(0);
-    std::tie(v0, v1) = surface.domain(1);
-    const Point origin = surface.point_at(u0, v0);
-    const double scale = std::max(
-        origin.distance(surface.point_at(u1, v0)) / (u1 - u0),
-        origin.distance(surface.point_at(u0, v1)) / (v1 - v0)
-    );
-    require(scale > EPSILON, "Cannot split a degenerate surface domain");
-
-    return tolerance / scale;
+    return tolerance / nurbs_bounds::surface_metric(surface);
 }
 
 /// Wires of every region, one new edge per run added to result.
@@ -1331,6 +1828,26 @@ BRep split_brep_face_by_curves(
     check_tolerance(tolerance);
     require(brep.is_valid(), "Split requires a valid BRep");
     require(face_index >= 0 && face_index < brep.face_count(), "Select one BRep face to split");
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face_index].surface_index];
+    std::vector<FaceCut> paired;
+    for (const NurbsCurve& cutter : cutters) {
+        check_curve(cutter);
+        for (const NurbsCurve& uv : pullback(surface, cutter, tolerance))
+            paired.push_back({cutter, uv, -1});
+    }
+    return split_brep_face_by_pcurves(brep, face_index, paired, tolerance).brep;
+}
+
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep,
+    int face_index,
+    const std::vector<FaceCut>& cutters,
+    double tolerance
+) {
+
+    check_tolerance(tolerance);
+    require(brep.is_valid(), "Split requires a valid BRep");
+    require(face_index >= 0 && face_index < brep.face_count(), "Select one BRep face to split");
     require(!cutters.empty(), "Select at least one cutter");
     const BRepFace& face = brep.m_faces[face_index];
     const NurbsSurface& surface = brep.m_surfaces[face.surface_index];
@@ -1341,17 +1858,16 @@ BRep split_brep_face_by_curves(
     std::vector<Source> sources;
     const std::vector<std::vector<Point>> original_loops = boundary_loops(brep, face_index, uv_tolerance, sources);
 
-    for (const NurbsCurve& cutter : cutters) {
-        check_curve(cutter);
-
-        for (const NurbsCurve& uv : pullback(surface, cutter, tolerance))
-            sources.push_back({-1, cutter, uv});
+    for (const FaceCut& cutter : cutters) {
+        check_curve(cutter.world);
+        check_curve(cutter.pcurve);
+        sources.push_back({-1, cutter.world, cutter.pcurve, cutter.section});
     }
 
     const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, uv_tolerance);
 
     if (regions.size() < 2)
-        return brep;
+        return {brep, {face_index}, {}};
 
     BRep result = brep;
     std::vector<Piece> pieces;
@@ -1360,7 +1876,14 @@ BRep split_brep_face_by_curves(
     add_faces(result, face, face_index, new_wires);
     validate(result, brep, tolerance);
 
-    return result;
+    FaceSplit split;
+    split.faces.push_back(face_index);
+    for (int i = brep.face_count(); i < result.face_count(); ++i)
+        split.faces.push_back(i);
+    for (const Piece& piece : pieces)
+        split.edges.push_back({sources[piece.source].edge, sources[piece.source].section, piece.edge, piece.lo, piece.hi});
+    split.brep = std::move(result);
+    return split;
 }
 
 BRep split_surface_by_curves(

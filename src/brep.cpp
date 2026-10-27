@@ -1,8 +1,10 @@
 #include "brep.h"
 #include "brep.pb.h"
+#include "brep_measure.h"
 #include "closest.h"
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.h"
+#include "occt_backend.h"
 #include "primitives.h"
 #include "remesh_cdt.h"
 #include "remesh_nurbssurface_grid.h"
@@ -2928,8 +2930,32 @@ bool BRep::is_valid() const {
     if (m_faces.empty())
         return false;
 
+    for (const NurbsSurface& surface : m_surfaces)
+        if (!surface.is_valid())
+            return false;
+
+    for (const std::vector<NurbsCurve>* curves : {&m_curves_3d, &m_curves_2d})
+        for (const NurbsCurve& curve : *curves)
+            if (!curve.is_valid())
+                return false;
+
+    for (const BRepVertex& vertex : m_vertices) {
+        if (!std::isfinite(vertex.tolerance) || vertex.tolerance < 0.0)
+            return false;
+
+        for (int axis = 0; axis < 3; ++axis)
+            if (!std::isfinite(vertex.point[axis]))
+                return false;
+    }
+
     for (const BRepEdge& e : m_edges) {
+        if (!std::isfinite(e.tolerance) || e.tolerance < 0.0)
+            return false;
+
         if (!in_range(e.start_vertex, m_vertices.size()) || !in_range(e.end_vertex, m_vertices.size()))
+            return false;
+
+        if (e.degenerated && e.start_vertex != e.end_vertex)
             return false;
 
         if (!e.degenerated && !in_range(e.curve_3d_index, m_curves_3d.size()))
@@ -2951,9 +2977,32 @@ bool BRep::is_valid() const {
         for (const BRepRef& r : w.edges)
             if (!in_range(r.index, m_edges.size()))
                 return false;
+
+        int start = -1;
+        int previous = -1;
+        for (const BRepRef& r : w.edges) {
+            if (r.orientation == BRepOrientation::Internal || r.orientation == BRepOrientation::External)
+                continue;
+
+            const BRepEdge& edge = m_edges[r.index];
+            const int first = r.orientation == BRepOrientation::Reversed ? edge.end_vertex : edge.start_vertex;
+            const int last = r.orientation == BRepOrientation::Reversed ? edge.start_vertex : edge.end_vertex;
+            if (previous >= 0 && previous != first)
+                return false;
+
+            if (start < 0)
+                start = first;
+            previous = last;
+        }
+
+        if (start >= 0 && previous != start)
+            return false;
     }
 
     for (const BRepFace& f : m_faces) {
+        if (!std::isfinite(f.tolerance) || f.tolerance < 0.0)
+            return false;
+
         if (!in_range(f.surface_index, m_surfaces.size()) || f.wires.empty())
             return false;
 
@@ -2962,15 +3011,23 @@ bool BRep::is_valid() const {
                 return false;
     }
 
-    for (const BRepShell& s : m_shells)
+    for (const BRepShell& s : m_shells) {
+        if (s.faces.empty())
+            return false;
+
         for (const BRepRef& r : s.faces)
             if (!in_range(r.index, m_faces.size()))
                 return false;
+    }
 
-    for (const BRepSolid& s : m_solids)
+    for (const BRepSolid& s : m_solids) {
+        if (s.shells.empty())
+            return false;
+
         for (const BRepRef& r : s.shells)
             if (!in_range(r.index, m_shells.size()))
                 return false;
+    }
 
     return true;
 }
@@ -2981,33 +3038,80 @@ bool BRep::is_closed(int shell_index) const {
         return false;
 
     std::vector<int> uses(m_edges.size(), 0);
+    bool boundary = false;
 
-    for (const BRepRef& fr : m_shells[shell_index].faces)
-        for (const BRepRef& wr : m_faces[fr.index].wires)
-            for (const BRepRef& er : wire_edges(wr))
+    for (const BRepRef& fr : m_shells[shell_index].faces) {
+        if (!in_range(fr.index, m_faces.size()))
+            return false;
+
+        for (const BRepRef& wr : m_faces[fr.index].wires) {
+            if (!in_range(wr.index, m_wires.size()))
+                return false;
+
+            for (const BRepRef& er : wire_edges(wr)) {
+                if (!in_range(er.index, m_edges.size()))
+                    return false;
+
+                const BRepOrientation orientation = brep_compose(fr.orientation, er.orientation);
+                if (m_edges[er.index].degenerated || orientation == BRepOrientation::Internal || orientation == BRepOrientation::External)
+                    continue;
+
+                boundary = true;
                 ++uses[er.index];
+            }
+        }
+    }
 
     for (size_t i = 0; i < m_edges.size(); ++i)
         if (!m_edges[i].degenerated && uses[i] != 0 && uses[i] != 2)
             return false;
 
-    return !m_shells[shell_index].faces.empty();
+    return boundary;
 }
 
 bool BRep::is_solid() const {
 
-    if (m_solids.empty())
+    if (m_solids.empty() || !is_valid())
         return false;
 
     for (const BRepSolid& s : m_solids)
-        for (const BRepRef& r : s.shells)
+        for (const BRepRef& r : s.shells) {
             if (!is_closed(r.index))
                 return false;
+
+            std::vector<int> balance(m_edges.size(), 0);
+            for (const BRepRef& face : m_shells[r.index].faces)
+                for (const BRepRef& wire : m_faces[face.index].wires)
+                    for (const BRepRef& edge : wire_edges(wire)) {
+                        if (m_edges[edge.index].degenerated)
+                            continue;
+
+                        const BRepOrientation orientation = brep_compose(face.orientation, edge.orientation);
+                        if (orientation == BRepOrientation::Forward)
+                            ++balance[edge.index];
+                        else if (orientation == BRepOrientation::Reversed)
+                            --balance[edge.index];
+                    }
+
+            for (int count : balance)
+                if (count != 0)
+                    return false;
+        }
 
     return true;
 }
 
 BRepOrientation BRep::face_orientation(int face_index) const {
+
+    for (const BRepSolid& solid : m_solids)
+        for (const BRepRef& shell : solid.shells) {
+            if (!in_range(shell.index, m_shells.size()))
+                continue;
+
+            for (const BRepRef& face : m_shells[shell.index].faces)
+                if (face.index == face_index)
+                    return brep_compose(shell.orientation, face.orientation);
+        }
 
     for (const BRepShell& s : m_shells)
         for (const BRepRef& r : s.faces)
@@ -3130,6 +3234,11 @@ double BRep::volume() const {
     return mesh().volume();
 }
 
+double BRep::volume_exact(double tolerance) const {
+
+    return brep_measure::volume(*this, tolerance);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Building
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3221,6 +3330,14 @@ int BRep::add_solid(const std::vector<BRepRef>& shells) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
+BRep BRep::hollow(const std::vector<int>& openings, double thickness, double tolerance) const {
+    return occt::hollow(*this, openings, thickness, tolerance);
+}
+
+Mesh BRep::tessellate(double deflection, double angle) const {
+    return occt::tessellate(*this, deflection, angle);
+}
+
 Mesh BRep::mesh() const {
 
     std::vector<std::vector<Point>> polygons;
@@ -3379,6 +3496,203 @@ BRep BRep::transformed(const Xform& xform) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Cutting
 // ═══════════════════════════════════════════════════════════════════════════
+namespace {
+
+/// Vertices of the bounded intersection of outward plane halfspaces.
+std::vector<Point> halfspace_vertices(const std::vector<Plane>& planes, double tolerance) {
+
+    std::vector<Point> points;
+    for (size_t i = 0; i < planes.size(); ++i)
+        for (size_t j = i + 1; j < planes.size(); ++j)
+            for (size_t k = j + 1; k < planes.size(); ++k) {
+                const Vector a = planes[i].z_axis();
+                const Vector b = planes[j].z_axis();
+                const Vector c = planes[k].z_axis();
+                const double determinant = a.dot(b.cross(c));
+                if (std::abs(determinant) < 1e-12)
+                    continue;
+
+                const Point origin = planes[i].origin();
+                const double y = b.dot(planes[j].origin() - origin);
+                const double z = c.dot(planes[k].origin() - origin);
+                const Point point = origin + (c.cross(a) * y + a.cross(b) * z) / determinant;
+                bool inside = true;
+                for (const Plane& plane : planes)
+                    if (plane.z_axis().dot(point - plane.origin()) > tolerance) {
+                        inside = false;
+                        break;
+                    }
+
+                for (const Point& previous : points)
+                    if (previous.distance(point) <= tolerance) {
+                        inside = false;
+                        break;
+                    }
+
+                if (inside)
+                    points.push_back(point);
+            }
+
+    return points;
+}
+
+/// Convex boundary polygons on the supporting planes.
+std::vector<Polyline> halfspace_polylines(
+    const std::vector<Plane>& planes,
+    const std::vector<Point>& vertices,
+    double tolerance
+) {
+
+    std::vector<Polyline> polygons;
+    for (const Plane& plane : planes) {
+        std::vector<Point> points;
+        for (const Point& point : vertices)
+            if (std::abs(plane.z_axis().dot(point - plane.origin())) <= tolerance)
+                points.push_back(point);
+
+        if (points.size() < 3)
+            continue;
+
+        const Point center = Point::centroid(points);
+        std::vector<std::pair<double, size_t>> angles;
+        for (size_t i = 0; i < points.size(); ++i) {
+            const Vector delta = points[i] - center;
+            angles.emplace_back(std::atan2(delta.dot(plane.y_axis()), delta.dot(plane.x_axis())), i);
+        }
+        std::sort(angles.begin(), angles.end());
+
+        std::vector<Point> ordered;
+        for (const std::pair<double, size_t>& angle : angles)
+            ordered.push_back(points[angle.second]);
+        ordered.push_back(ordered.front());
+        polygons.emplace_back(ordered);
+    }
+
+    return polygons;
+}
+
+} // namespace
+
+BRep BRep::offset_convex(double distance, double tolerance) const {
+
+    if (!std::isfinite(distance) || !std::isfinite(tolerance) || tolerance <= 0.0)
+        throw std::invalid_argument("BRep::offset_convex requires finite distance and positive tolerance");
+
+    if (!is_solid() || solid_count() != 1 || m_solids[0].shells.size() != 1)
+        throw std::invalid_argument("BRep::offset_convex requires one closed solid without cavities");
+
+    if (distance == 0.0)
+        return *this;
+
+    std::vector<Plane> planes = face_planes();
+    if (planes.size() != m_faces.size())
+        throw std::invalid_argument("BRep::offset_convex requires planar faces");
+
+    for (const BRepEdge& edge : m_edges)
+        if (edge.degenerated || !m_curves_3d[edge.curve_3d_index].is_linear(tolerance))
+            throw std::invalid_argument("BRep::offset_convex requires straight edges");
+
+    for (const Plane& plane : planes)
+        for (const BRepVertex& vertex : m_vertices)
+            if (plane.z_axis().dot(vertex.point - plane.origin()) > tolerance)
+                throw std::invalid_argument("BRep::offset_convex requires convex geometry");
+
+    std::vector<Plane> unique;
+    for (const Plane& plane : planes) {
+        bool duplicate = false;
+        for (const Plane& previous : unique)
+            if (plane.z_axis().dot(previous.z_axis()) > 1.0 - 1e-12
+                && std::abs(plane.z_axis().dot(plane.origin() - previous.origin())) <= tolerance) {
+                duplicate = true;
+                break;
+            }
+
+        if (!duplicate)
+            unique.push_back(plane);
+    }
+    planes = std::move(unique);
+
+    for (Plane& plane : planes)
+        plane = Plane(plane.origin() + plane.z_axis() * distance, plane.x_axis(), plane.y_axis());
+
+    const std::vector<Point> vertices = halfspace_vertices(planes, tolerance);
+    if (vertices.size() < 4)
+        return BRep();
+
+    Vector axis;
+    for (const Point& point : vertices) {
+        const Vector delta = point - vertices[0];
+        if (delta.dot(delta) > axis.dot(axis))
+            axis = delta;
+    }
+
+    Vector normal;
+    for (const Point& point : vertices) {
+        const Vector cross = axis.cross(point - vertices[0]);
+        if (cross.dot(cross) > normal.dot(normal))
+            normal = cross;
+    }
+
+    double height = 0.0;
+    for (const Point& point : vertices)
+        height = std::max(height, std::abs(normal.dot(point - vertices[0])));
+
+    if (height <= tolerance * normal.magnitude())
+        return BRep();
+
+    const std::vector<Polyline> polygons = halfspace_polylines(planes, vertices, tolerance);
+    BRep result;
+    PolyFaceBuilder builder{result, {}};
+    for (const Polyline& polygon : polygons) {
+        const std::vector<Point> points = open_points(polygon);
+        Point origin;
+        Plane plane;
+        polygon.get_fast_plane(origin, plane);
+        std::vector<int> cycle;
+        for (const Point& point : points)
+            cycle.push_back(find_or_add_vertex(result, point, tolerance));
+
+        const NurbsSurface surface = planar_patch_through(points, origin, plane.x_axis(), plane.y_axis());
+        builder.face(surface, cycle);
+    }
+    close_free_faces(result);
+    if (!result.is_solid())
+        throw std::runtime_error("BRep::offset_convex could not construct a closed offset within tolerance");
+
+    result.name = name;
+    result.is_visible = is_visible;
+    result.is_locked = is_locked;
+    result.width = width;
+    result.surfacecolor = surfacecolor;
+
+    return result;
+}
+
+BRep BRep::boolean_union(const BRep& other, double tolerance) const {
+
+    return occt::boolean_operation(*this, other, occt::BooleanOperation::Union, tolerance);
+}
+
+BRep BRep::boolean_intersection(const BRep& other, double tolerance) const {
+
+    return occt::boolean_operation(*this, other, occt::BooleanOperation::Intersection, tolerance);
+}
+
+BRep BRep::boolean_difference(const BRep& other, double tolerance) const {
+
+    return occt::boolean_operation(*this, other, occt::BooleanOperation::Difference, tolerance);
+}
+
+BRep BRep::boolean_xor(const BRep& other, double tolerance) const {
+
+    return occt::boolean_operation(*this, other, occt::BooleanOperation::Xor, tolerance);
+}
+
+BRep BRep::offset(double distance, double tolerance) const {
+
+    return occt::offset(*this, distance, tolerance);
+}
+
 BRep BRep::cut_by_plane(const Plane& plane) const {
 
     Mesh rings;

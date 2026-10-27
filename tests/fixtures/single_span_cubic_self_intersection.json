@@ -1,0 +1,23 @@
+{
+  "curve": {
+    "control_points": [[0, 0, 0], [1, 0.1875, 0], [1, -0.625, 0], [0, 0.5625, 0]],
+    "degree": 3,
+    "domain": [0, 1],
+    "is_rational": false,
+    "nurbsknots": [0, 0, 0, 1, 1, 1]
+  },
+  "expected": {
+    "closed": false,
+    "crossing": {
+      "parameters": [0.25, 0.75],
+      "point": [0.5625, 0, 0],
+      "tangents": [[1.5, -0.375, 0], [-1.5, 1.125, 0]]
+    },
+    "isolated_self_intersections": 1,
+    "knot_spans": 1,
+    "overlaps": 0
+  },
+  "polynomial": ["3*t*(1-t)", "3*t*(t-1/4)*(t-3/4)", "0"],
+  "split_face_rectangle": [[0, -0.7], [1.2, 0.7]],
+  "tolerance": 1e-7
+}

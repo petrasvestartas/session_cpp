@@ -1,0 +1,13 @@
+{
+  "name": "Same Parameter Tiny Interval At Surface Jump",
+  "surface_degree": [1, 1],
+  "surface_control_counts": [4, 2],
+  "surface_controls": [[0, 0, 0], [0, 1, 0], [0.5, 0, 0], [0.5, 1, 0], [0.5, 0, 1], [0.5, 1, 1], [1, 0, 1], [1, 1, 1]],
+  "surface_knots": [[0, 0.5, 0.5, 1], [0, 1]],
+  "curve_degree": 1,
+  "curve_and_pcurve_controls": [[0, 0.5, 0], [0.5, 0.5, 0], [0.5, 0.5, 0], [0.25, 0.5, 0]],
+  "curve_and_pcurve_knots": [0, 0.5, 0.5000000000000001, 1],
+  "tolerance": 1e-7,
+  "expected": "Not Matched; the surface has a one-unit jump at U=0.5.",
+  "reason": "The Cartesian-product surface image fallback assumes continuity unless every right-hand knot branch is explicitly enclosed. This static prerequisite regression does not claim an observed prior false-Matched result."
+}

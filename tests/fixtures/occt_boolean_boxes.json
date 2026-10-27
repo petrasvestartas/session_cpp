@@ -1,0 +1,1031 @@
+{
+  "occt_commit": "d3056ef80c9668f395da40f5fd7be186cae4501f",
+  "cases": [
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "intersection_volume": 1.0,
+      "sources": [
+        "bopcommon_simple/A1",
+        "bopcut_simple/A1",
+        "bopfuse_simple/A1",
+        "boptuc_simple/A1"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 1.0,
+      "sources": [
+        "bopcommon_simple/A2",
+        "bopcut_simple/A2",
+        "bopfuse_simple/A2",
+        "boptuc_simple/A2"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          1.0,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/A3",
+        "bopcut_simple/A3",
+        "bopfuse_simple/A3",
+        "boptuc_simple/A3"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/A4",
+        "bopcut_simple/A4",
+        "bopfuse_simple/A4",
+        "boptuc_simple/A4"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.5,
+          1.0,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/A5",
+        "bopcut_simple/A5",
+        "bopfuse_simple/A5",
+        "boptuc_simple/A5"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          -0.5,
+          0.0,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/A6",
+        "bopcut_simple/A6",
+        "bopfuse_simple/A6",
+        "boptuc_simple/A6"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          -0.5,
+          0.0,
+          0.5,
+          1.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.5,
+      "sources": [
+        "bopcommon_simple/A7",
+        "bopcut_simple/A7",
+        "bopfuse_simple/A7",
+        "boptuc_simple/A7"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.5,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.5,
+      "sources": [
+        "bopcommon_simple/A8",
+        "bopcut_simple/A8",
+        "bopfuse_simple/A8",
+        "boptuc_simple/A8"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.25,
+          0.0,
+          1.0,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.5,
+      "sources": [
+        "bopcommon_simple/A9",
+        "bopcut_simple/A9",
+        "bopfuse_simple/A9",
+        "boptuc_simple/A9"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.125,
+      "sources": [
+        "bopcommon_simple/B1",
+        "bopcut_simple/B1",
+        "bopfuse_simple/B1",
+        "boptuc_simple/B1"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          -0.5,
+          0.0,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/B2",
+        "bopcut_simple/B2",
+        "bopfuse_simple/B2",
+        "boptuc_simple/B2"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          -0.5,
+          -0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/B3",
+        "bopcut_simple/B3",
+        "bopfuse_simple/B3",
+        "boptuc_simple/B3"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.5,
+          -0.5,
+          -0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/B4",
+        "bopcut_simple/B4",
+        "bopfuse_simple/B4",
+        "boptuc_simple/B4"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/B5",
+        "bopcut_simple/B5",
+        "bopfuse_simple/B5",
+        "boptuc_simple/B5"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          -0.5,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/B6",
+        "bopcut_simple/B6",
+        "bopfuse_simple/B6",
+        "boptuc_simple/B6"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/B7",
+        "bopcut_simple/B7",
+        "bopfuse_simple/B7",
+        "boptuc_simple/B7"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.5,
+          0.0,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/B8",
+        "bopcut_simple/B8",
+        "bopfuse_simple/B8",
+        "boptuc_simple/B8"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          0.5,
+          1.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.5,
+      "sources": [
+        "bopcommon_simple/B9",
+        "bopcut_simple/B9",
+        "bopfuse_simple/B9",
+        "boptuc_simple/B9"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.5,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/C1",
+        "bopcut_simple/C1",
+        "bopfuse_simple/C1",
+        "boptuc_simple/C1"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.5,
+          0.0,
+          -0.5,
+          1.0,
+          1.0,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/C2",
+        "bopcut_simple/C2",
+        "bopfuse_simple/C2",
+        "boptuc_simple/C2"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.125,
+      "sources": [
+        "bopcommon_simple/E2",
+        "bopcut_simple/E2",
+        "bopfuse_simple/E2",
+        "boptuc_simple/E2"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.5,
+          0.0,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/E3",
+        "bopcut_simple/E3",
+        "bopfuse_simple/E3",
+        "boptuc_simple/E3"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.5,
+          -0.5,
+          0.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/E4",
+        "bopcut_simple/E4",
+        "bopfuse_simple/E4",
+        "boptuc_simple/E4"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          0.5,
+          1.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/E5",
+        "bopcut_simple/E5",
+        "bopfuse_simple/E5",
+        "boptuc_simple/E5"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.1875,
+      "sources": [
+        "bopcommon_simple/E6",
+        "bopcut_simple/E6",
+        "bopfuse_simple/E6",
+        "boptuc_simple/E6"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.5,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/E7",
+        "bopcut_simple/E7",
+        "bopfuse_simple/E7",
+        "boptuc_simple/E7"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.5,
+          -0.5,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/E8",
+        "bopcut_simple/E8",
+        "bopfuse_simple/E8",
+        "boptuc_simple/E8"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.0,
+          0.0,
+          1.5,
+          1.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.375,
+      "sources": [
+        "bopcommon_simple/E9",
+        "bopcut_simple/E9",
+        "bopfuse_simple/E9",
+        "boptuc_simple/E9"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.25,
+          0.0,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/F1",
+        "bopcut_simple/F1",
+        "bopfuse_simple/F1",
+        "boptuc_simple/F1"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.25,
+          -0.5,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/F2",
+        "bopcut_simple/F2",
+        "bopfuse_simple/F2",
+        "boptuc_simple/F2"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.25,
+          -0.5,
+          -0.5,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.0,
+      "sources": [
+        "bopcommon_simple/F3",
+        "bopcut_simple/F3",
+        "bopfuse_simple/F3",
+        "boptuc_simple/F3"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.25,
+          0.0,
+          1.5,
+          0.5,
+          0.5
+        ]
+      ],
+      "intersection_volume": 0.1875,
+      "sources": [
+        "bopcommon_simple/F4",
+        "bopcut_simple/F4",
+        "bopfuse_simple/F4",
+        "boptuc_simple/F4"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.25,
+          -0.25,
+          0.0,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.0625,
+      "sources": [
+        "bopcommon_simple/J9",
+        "bopcut_simple/J9",
+        "bopfuse_simple/J9",
+        "boptuc_simple/J9"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.25,
+          0.0,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/K1",
+        "bopcut_simple/K1",
+        "bopfuse_simple/K1",
+        "boptuc_simple/K1"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.25,
+          0.0,
+          0.5,
+          1.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.5,
+      "sources": [
+        "bopcommon_simple/K5",
+        "bopcut_simple/K5",
+        "bopfuse_simple/K5",
+        "boptuc_simple/K5"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          -0.25,
+          -0.25,
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.03125,
+      "sources": [
+        "bopcommon_simple/P3",
+        "bopcut_simple/P3",
+        "bopfuse_simple/P3",
+        "boptuc_simple/P3"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          0.5,
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.125,
+      "sources": [
+        "bopcommon_simple/P4",
+        "bopcut_simple/P4",
+        "bopfuse_simple/P4",
+        "boptuc_simple/P4"
+      ]
+    },
+    {
+      "boxes": [
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          0.25,
+          -0.25,
+          0.5,
+          0.5,
+          1.5,
+          1.0
+        ]
+      ],
+      "intersection_volume": 0.25,
+      "sources": [
+        "bopcommon_simple/P8",
+        "bopcut_simple/P8",
+        "bopfuse_simple/P8",
+        "boptuc_simple/P8"
+      ]
+    }
+  ]
+}

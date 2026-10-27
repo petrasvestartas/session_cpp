@@ -9,6 +9,7 @@
 #include "obb.h"
 #include "spatial_bvh.h"
 #include "element.h"
+#include "nurbscurve.h"
 #include "tolerance.h"
 #include <array>
 #include <tuple>
@@ -20,10 +21,29 @@ namespace session_cpp {
 
 class NurbsCurve;
 class NurbsSurface;
+class BRep;
+
+/// Isolated intersection points and overlapping or section curves.
+struct SectionResult {
+    std::vector<Point> points;
+    std::vector<NurbsCurve> curves;
+};
 
 /// Static intersection routines for lines, planes, rays, NURBS, polylines and elements.
 class Intersection {
 public:
+    /// Intersect bounded 3D curves natively, including certified coincident intervals.
+    static SectionResult curve_curve(const NurbsCurve& a, const NurbsCurve& b, double tolerance = 1e-7);
+
+    /// Intersect a bounded curve and surface natively; unresolved cases raise an error.
+    static SectionResult curve_surface(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance = 1e-7);
+
+    /// Intersect a curve with trimmed BRep boundaries using native geometry and trim classification.
+    static SectionResult curve_brep(const NurbsCurve& curve, const BRep& brep, double tolerance = 1e-7);
+
+    /// Intersect trimmed BRep boundaries through OCCT.
+    static SectionResult brep_brep(const BRep& a, const BRep& b, double tolerance = 1e-7);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Types
     // ═══════════════════════════════════════════════════════════════════════════
@@ -178,7 +198,7 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // NURBS curves
     // ═══════════════════════════════════════════════════════════════════════════
-    /// Curve-plane intersection parameters by sampling, bisection and Newton refinement.
+    /// Isolated curve-plane parameters and endpoints of coplanar knot spans.
     static std::vector<double> curve_plane(
         const NurbsCurve& curve,
         const Plane& plane,
@@ -192,21 +212,21 @@ public:
         double tolerance = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Curve-plane intersection parameters by Bezier clipping.
+    /// Curve-plane parameters using the shared Bernstein root isolator.
     static std::vector<double> curve_plane_bezier_clipping(
         const NurbsCurve& curve,
         const Plane& plane,
         double tolerance = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Curve-plane intersection parameters by hodograph subdivision.
+    /// Curve-plane parameters using the shared Bernstein root isolator.
     static std::vector<double> curve_plane_algebraic(
         const NurbsCurve& curve,
         const Plane& plane,
         double tolerance = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Curve-plane intersection parameters by span subdivision and Newton polishing.
+    /// Curve-plane parameters using the shared Bernstein root isolator.
     static std::vector<double> curve_plane_production(
         const NurbsCurve& curve,
         const Plane& plane,

@@ -1,0 +1,10 @@
+{
+  "name": "Stationary Endpoint Monotone Curve",
+  "degree": 4,
+  "domain": [0, 1],
+  "control_points": [[0, 0, 0], [0, 0, 0], [1, 0, 0], [3, 0, 0], [6, 1, 0]],
+  "weights": [1, 1, 1, 1, 1],
+  "equation": "C(t)=(6*t^2,t^4,0), with exact binary/integer coefficients",
+  "expected": {"complete": true, "interior_crossings": 0, "endpoint_pairs": 0, "overlaps": 0},
+  "proof": "The X derivative has nonnegative Bernstein coefficients, at least one strictly positive, hence is positive in the open interval; zero endpoint derivative does not create a repeated parameter image."
+}

@@ -1,0 +1,694 @@
+{
+  "source": {
+    "curves_2d": [
+      {
+        "control_points": [
+          [
+            -4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            4.0,
+            -4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "0c30bff4-9265-4d96-98d6-784b9f560d04",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            4.0,
+            4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "49f975d3-5562-432c-a9a5-e614371bf7a4",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            4.0,
+            4.0,
+            0.0
+          ],
+          [
+            -4.0,
+            4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "d208af2b-1e68-4f5f-8c63-bdb480239510",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            -4.0,
+            4.0,
+            0.0
+          ],
+          [
+            -4.0,
+            -4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "9bb4f02b-12b1-47e5-8276-08043a0043ac",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      }
+    ],
+    "curves_3d": [
+      {
+        "control_points": [
+          [
+            -4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            4.0,
+            -4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "7b23a7d9-6a1c-4ecf-8ee5-da87340d2fc0",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            4.0,
+            4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "78092862-8e2f-47a1-bbdd-28ce4f887165",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            4.0,
+            4.0,
+            0.0
+          ],
+          [
+            -4.0,
+            4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "88bf6d8c-e06e-45eb-bb2d-420f85993ee9",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      {
+        "control_points": [
+          [
+            -4.0,
+            4.0,
+            0.0
+          ],
+          [
+            -4.0,
+            -4.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "cd5cef5b-7b3a-449a-a2ea-5a2bc59f9ca4",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      }
+    ],
+    "edges": [
+      {
+        "curve_3d_index": 0,
+        "degenerated": false,
+        "end_vertex": 1,
+        "pcurves": [
+          {
+            "curve_2d_index": 0,
+            "curve_2d_index_2": -1,
+            "surface_index": 0
+          }
+        ],
+        "start_vertex": 0,
+        "tolerance": 1e-07
+      },
+      {
+        "curve_3d_index": 1,
+        "degenerated": false,
+        "end_vertex": 2,
+        "pcurves": [
+          {
+            "curve_2d_index": 1,
+            "curve_2d_index_2": -1,
+            "surface_index": 0
+          }
+        ],
+        "start_vertex": 1,
+        "tolerance": 1e-07
+      },
+      {
+        "curve_3d_index": 2,
+        "degenerated": false,
+        "end_vertex": 3,
+        "pcurves": [
+          {
+            "curve_2d_index": 2,
+            "curve_2d_index_2": -1,
+            "surface_index": 0
+          }
+        ],
+        "start_vertex": 2,
+        "tolerance": 1e-07
+      },
+      {
+        "curve_3d_index": 3,
+        "degenerated": false,
+        "end_vertex": 0,
+        "pcurves": [
+          {
+            "curve_2d_index": 3,
+            "curve_2d_index_2": -1,
+            "surface_index": 0
+          }
+        ],
+        "start_vertex": 3,
+        "tolerance": 1e-07
+      }
+    ],
+    "faces": [
+      {
+        "surface_index": 0,
+        "tolerance": 1e-07,
+        "wires": [
+          {
+            "index": 0,
+            "orientation": "forward"
+          }
+        ]
+      }
+    ],
+    "guid": "4650567f-d5fe-463c-9dd4-53fa59422d2c",
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_brep",
+    "shells": [
+      {
+        "faces": [
+          {
+            "index": 0,
+            "orientation": "forward"
+          }
+        ]
+      }
+    ],
+    "solids": [],
+    "surfacecolor": {
+      "a": 1.0,
+      "b": 0.9399999976158142,
+      "g": 0.9399999976158142,
+      "guid": "e0d168be-3d20-409a-93b9-eb512daff9de",
+      "name": "lightgrey",
+      "r": 0.9399999976158142,
+      "type": "Color"
+    },
+    "surfaces": [
+      {
+        "control_points": [
+          -4.0,
+          -4.0,
+          0.0,
+          -4.0,
+          4.0,
+          0.0,
+          4.0,
+          -4.0,
+          0.0,
+          4.0,
+          4.0,
+          0.0
+        ],
+        "cv_count_u": 2,
+        "cv_count_v": 2,
+        "dimension": 3,
+        "facecolors": [],
+        "guid": "b6453cc0-9d3a-462d-8fc3-4bf0b5cb36d2",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbssurface",
+        "nurbsknots_u": [
+          -4.0,
+          4.0
+        ],
+        "nurbsknots_v": [
+          -4.0,
+          4.0
+        ],
+        "order_u": 2,
+        "order_v": 2,
+        "pointcolors": [],
+        "type": "NurbsSurface",
+        "width": 1.0
+      }
+    ],
+    "type": "BRep",
+    "vertices": [
+      {
+        "point": [
+          -4.0,
+          -4.0,
+          0.0
+        ],
+        "tolerance": 1e-07
+      },
+      {
+        "point": [
+          4.0,
+          -4.0,
+          0.0
+        ],
+        "tolerance": 1e-07
+      },
+      {
+        "point": [
+          4.0,
+          4.0,
+          0.0
+        ],
+        "tolerance": 1e-07
+      },
+      {
+        "point": [
+          -4.0,
+          4.0,
+          0.0
+        ],
+        "tolerance": 1e-07
+      }
+    ],
+    "width": 1.0,
+    "wires": [
+      {
+        "edges": [
+          {
+            "index": 0,
+            "orientation": "forward"
+          },
+          {
+            "index": 1,
+            "orientation": "forward"
+          },
+          {
+            "index": 2,
+            "orientation": "forward"
+          },
+          {
+            "index": 3,
+            "orientation": "forward"
+          }
+        ]
+      }
+    ]
+  },
+  "order": [
+    0,
+    1,
+    2
+  ],
+  "tolerance": 1e-07,
+  "cuts": [
+    {
+      "section": 0,
+      "world": {
+        "control_points": [
+          [
+            4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 5,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "0221aa4f-cb2f-4b24-8138-dc448a2bd8e5",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          -1.0,
+          -1.0,
+          -1.0,
+          -1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "order": 5,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      "pcurve": {
+        "control_points": [
+          [
+            4.0,
+            -4.0,
+            0.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 5,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "0221aa4f-cb2f-4b24-8138-dc448a2bd8e5",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          -1.0,
+          -1.0,
+          -1.0,
+          -1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "order": 5,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      }
+    },
+    {
+      "section": 1,
+      "world": {
+        "control_points": [
+          [
+            0.0,
+            4.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "6962c8f3-47d9-4614-bb94-c9e044dbc4a1",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          4.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      "pcurve": {
+        "control_points": [
+          [
+            0.0,
+            4.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "6962c8f3-47d9-4614-bb94-c9e044dbc4a1",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          4.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      }
+    },
+    {
+      "section": 2,
+      "world": {
+        "control_points": [
+          [
+            -4.0,
+            0.0,
+            0.0
+          ],
+          [
+            4.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "ab905efa-a7d6-4e34-928e-194d88487136",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      },
+      "pcurve": {
+        "control_points": [
+          [
+            -4.0,
+            0.0,
+            0.0
+          ],
+          [
+            4.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "cv_count": 2,
+        "cv_stride": 3,
+        "dimension": 3,
+        "guid": "ab905efa-a7d6-4e34-928e-194d88487136",
+        "is_rational": false,
+        "linecolors": [],
+        "is_locked": false,
+        "is_visible": true,
+        "name": "my_nurbscurve",
+        "nurbsknots": [
+          0.0,
+          8.0
+        ],
+        "order": 2,
+        "pointcolors": [],
+        "type": "NurbsCurve",
+        "width": 1.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,474 @@
+{
+  "source": "Standalone OCCT reconstruction of exact saved bilinear supports",
+  "warp_coefficients": {
+    "x_plus_yz": 0.12,
+    "y_plus_xz": 0.09,
+    "z_plus_xy": 0.16
+  },
+  "ocp_version": "7.9.3.1",
+  "offset_tolerance": 1e-08,
+  "inputs": [
+    {
+      "variant": "standard",
+      "volume": 7.8816,
+      "valid": true,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "supports": [
+        {
+          "control_points": [
+            -0.88,
+            -0.91,
+            -0.84,
+            1.12,
+            -1.09,
+            -1.16,
+            -1.12,
+            1.09,
+            -1.16,
+            0.88,
+            0.91,
+            -0.84
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "control_points": [
+            -1.12,
+            -1.09,
+            1.16,
+            -0.88,
+            0.91,
+            0.84,
+            0.88,
+            -0.91,
+            0.84,
+            1.12,
+            1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "control_points": [
+            -0.88,
+            -0.91,
+            -0.84,
+            -1.12,
+            -1.09,
+            1.16,
+            1.12,
+            -1.09,
+            -1.16,
+            0.88,
+            -0.91,
+            0.84
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "control_points": [
+            1.12,
+            -1.09,
+            -1.16,
+            0.88,
+            -0.91,
+            0.84,
+            0.88,
+            0.91,
+            -0.84,
+            1.12,
+            1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "control_points": [
+            0.88,
+            0.91,
+            -0.84,
+            1.12,
+            1.09,
+            1.16,
+            -1.12,
+            1.09,
+            -1.16,
+            -0.88,
+            0.91,
+            0.84
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "control_points": [
+            -1.12,
+            1.09,
+            -1.16,
+            -0.88,
+            0.91,
+            0.84,
+            -0.88,
+            -0.91,
+            -0.84,
+            -1.12,
+            -1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            0.0,
+            1.0
+          ],
+          "nurbsknots_v": [
+            0.0,
+            1.0
+          ]
+        }
+      ],
+      "shells": [
+        {
+          "faces": [
+            {
+              "index": 0,
+              "orientation": "forward"
+            },
+            {
+              "index": 1,
+              "orientation": "forward"
+            },
+            {
+              "index": 2,
+              "orientation": "forward"
+            },
+            {
+              "index": 3,
+              "orientation": "forward"
+            },
+            {
+              "index": 4,
+              "orientation": "forward"
+            },
+            {
+              "index": 5,
+              "orientation": "forward"
+            }
+          ]
+        }
+      ],
+      "solids": [
+        {
+          "shells": [
+            {
+              "index": 0,
+              "orientation": "forward"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "affine",
+      "volume": 7.881600000000001,
+      "valid": true,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "supports": [
+        {
+          "control_points": [
+            -0.88,
+            -0.91,
+            -0.84,
+            1.12,
+            -1.09,
+            -1.16,
+            -1.12,
+            1.09,
+            -1.16,
+            0.88,
+            0.91,
+            -0.84
+          ],
+          "nurbsknots_u": [
+            3.0,
+            7.0
+          ],
+          "nurbsknots_v": [
+            -2.0,
+            4.0
+          ]
+        },
+        {
+          "control_points": [
+            -1.12,
+            -1.09,
+            1.16,
+            -0.88,
+            0.91,
+            0.84,
+            0.88,
+            -0.91,
+            0.84,
+            1.12,
+            1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            4.0,
+            8.0
+          ],
+          "nurbsknots_v": [
+            -2.5,
+            4.25
+          ]
+        },
+        {
+          "control_points": [
+            -0.88,
+            -0.91,
+            -0.84,
+            -1.12,
+            -1.09,
+            1.16,
+            1.12,
+            -1.09,
+            -1.16,
+            0.88,
+            -0.91,
+            0.84
+          ],
+          "nurbsknots_u": [
+            5.0,
+            9.0
+          ],
+          "nurbsknots_v": [
+            -3.0,
+            4.5
+          ]
+        },
+        {
+          "control_points": [
+            1.12,
+            -1.09,
+            -1.16,
+            0.88,
+            -0.91,
+            0.84,
+            0.88,
+            0.91,
+            -0.84,
+            1.12,
+            1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            6.0,
+            10.0
+          ],
+          "nurbsknots_v": [
+            -3.5,
+            4.75
+          ]
+        },
+        {
+          "control_points": [
+            0.88,
+            0.91,
+            -0.84,
+            1.12,
+            1.09,
+            1.16,
+            -1.12,
+            1.09,
+            -1.16,
+            -0.88,
+            0.91,
+            0.84
+          ],
+          "nurbsknots_u": [
+            7.0,
+            11.0
+          ],
+          "nurbsknots_v": [
+            -4.0,
+            5.0
+          ]
+        },
+        {
+          "control_points": [
+            -1.12,
+            1.09,
+            -1.16,
+            -0.88,
+            0.91,
+            0.84,
+            -0.88,
+            -0.91,
+            -0.84,
+            -1.12,
+            -1.09,
+            1.16
+          ],
+          "nurbsknots_u": [
+            8.0,
+            12.0
+          ],
+          "nurbsknots_v": [
+            -4.5,
+            5.25
+          ]
+        }
+      ],
+      "shells": [
+        {
+          "faces": [
+            {
+              "index": 0,
+              "orientation": "forward"
+            },
+            {
+              "index": 1,
+              "orientation": "forward"
+            },
+            {
+              "index": 2,
+              "orientation": "forward"
+            },
+            {
+              "index": 3,
+              "orientation": "forward"
+            },
+            {
+              "index": 4,
+              "orientation": "forward"
+            },
+            {
+              "index": 5,
+              "orientation": "forward"
+            }
+          ]
+        }
+      ],
+      "solids": [
+        {
+          "shells": [
+            {
+              "index": 0,
+              "orientation": "forward"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "variant": "standard",
+      "distance": -0.04,
+      "valid": true,
+      "done": true,
+      "volume": 6.968827585370563,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "native_passed": false,
+      "seconds": 0.12322199996560812
+    },
+    {
+      "variant": "standard",
+      "distance": -0.16,
+      "valid": true,
+      "done": true,
+      "volume": 4.662602980009208,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "native_passed": false,
+      "seconds": 0.10400619998108596
+    },
+    {
+      "variant": "affine",
+      "distance": -0.04,
+      "valid": true,
+      "done": true,
+      "volume": 6.968827556194064,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "native_passed": false,
+      "seconds": 0.10602150007616729
+    },
+    {
+      "variant": "affine",
+      "distance": -0.16,
+      "valid": true,
+      "done": true,
+      "volume": 4.6626029279666135,
+      "topology": {
+        "solids": 1,
+        "shells": 1,
+        "faces": 6,
+        "edges": 12,
+        "vertices": 8
+      },
+      "native_passed": false,
+      "seconds": 0.10466419998556376
+    }
+  ]
+}

@@ -212,42 +212,7 @@ void Vector::reverse() {
 }
 
 double Vector::compute_magnitude() const {
-
-    double ax = std::abs(_x);
-    double ay = std::abs(_y);
-    double az = std::abs(_z);
-    const bool x_zero = ax < Tolerance::ZERO_TOLERANCE;
-    const bool y_zero = ay < Tolerance::ZERO_TOLERANCE;
-    const bool z_zero = az < Tolerance::ZERO_TOLERANCE;
-
-    if (x_zero && y_zero && z_zero)
-        return 0.0;
-
-    if (x_zero && y_zero)
-        return az;
-
-    if (x_zero && z_zero)
-        return ay;
-
-    if (y_zero && z_zero)
-        return ax;
-
-    if (ay >= ax && ay >= az)
-        std::swap(ax, ay);
-    else if (az >= ax && az >= ay)
-        std::swap(ax, az);
-
-    if (ax > std::numeric_limits<double>::min()) {
-        ay /= ax;
-        az /= ax;
-
-        return ax * std::sqrt(1.0 + ay * ay + az * az);
-    }
-
-    if (ax > 0.0 && is_finite(ax))
-        return ax;
-
-    return 0.0;
+    return std::hypot(_x, _y, _z);
 }
 
 double Vector::magnitude() const {
@@ -265,18 +230,18 @@ double Vector::magnitude_squared() const {
 }
 
 bool Vector::normalize_self() {
-
-    const double d = compute_magnitude();
-
-    if (d <= 0.0)
+    if (!std::isfinite(_x) || !std::isfinite(_y) || !std::isfinite(_z))
         return false;
-
-    _x /= d;
-    _y /= d;
-    _z /= d;
+    const double scale = std::max({std::abs(_x), std::abs(_y), std::abs(_z)});
+    if (scale == 0.0)
+        return false;
+    const double x = _x / scale, y = _y / scale, z = _z / scale;
+    const double length = std::hypot(x, y, z);
+    _x = x / length;
+    _y = y / length;
+    _z = z / length;
     _magnitude = 1.0;
     _has_magnitude = true;
-
     return true;
 }
 

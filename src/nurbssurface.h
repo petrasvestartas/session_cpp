@@ -342,7 +342,7 @@ public:
     /// Return H = (EN - 2FM + GL) / (2(EG - F^2)), sign following Su x Sv.
     double mean_curvature(double u, double v) const;
 
-    /// Return the unit normal dS/dv x dS/du, z-axis at singular points.
+    /// Return the unit normal dS/du x dS/dv, z-axis at singular points.
     Vector normal_at(double u, double v) const;
 
     /// Return the frame at (u, v): origin S, x-axis dS/du, y-axis dS/dv.
@@ -374,6 +374,9 @@ public:
 
     /// Restrict dir to the sub-domain.
     bool trim(int dir, const std::pair<double, double>& domain);
+
+    /// Approximate a normal offset with native adaptive residual checks.
+    NurbsSurface offset(double distance, double tolerance = 1e-7) const;
 
     /// Return two surfaces split at c in dir; both invalid when c is outside the domain.
     std::pair<NurbsSurface, NurbsSurface> split(int dir, double c) const;

@@ -352,6 +352,36 @@ target_include_directories(session_core SYSTEM PUBLIC
 target_link_libraries(session_core PUBLIC libprotobuf)
 add_dependencies(session_core proto_objects)
 
+option(SESSION_WITH_OCCT "Enable the OCCT reference adapter for geometry operations" OFF)
+set(SESSION_OCCT_INCLUDE_DIR "" CACHE PATH "Headers of an existing static OCCT build")
+set(SESSION_OCCT_LIBRARY_DIR "" CACHE PATH "Libraries of an existing static OCCT build")
+if(SESSION_WITH_OCCT)
+    target_compile_definitions(session_core PUBLIC SESSION_WITH_OCCT)
+    set(SESSION_OCCT_LIBRARIES TKOffset TKFillet TKBool TKBO TKMesh TKShHealing TKPrim TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d TKG2d TKMath TKernel)
+    if(SESSION_OCCT_INCLUDE_DIR AND SESSION_OCCT_LIBRARY_DIR)
+        target_include_directories(session_core SYSTEM PRIVATE "${SESSION_OCCT_INCLUDE_DIR}")
+        target_compile_definitions(session_core PRIVATE OCCT_STATIC_BUILD NOMINMAX)
+        foreach(library IN LISTS SESSION_OCCT_LIBRARIES)
+            find_library(SESSION_${library}_PATH NAMES ${library} PATHS "${SESSION_OCCT_LIBRARY_DIR}" NO_DEFAULT_PATH REQUIRED)
+            target_link_libraries(session_core PUBLIC "${SESSION_${library}_PATH}")
+        endforeach()
+    else()
+        find_package(OpenCASCADE REQUIRED COMPONENTS FoundationClasses ModelingData ModelingAlgorithms)
+        target_include_directories(session_core SYSTEM PRIVATE "${OpenCASCADE_INCLUDE_DIR}")
+        target_link_libraries(session_core PUBLIC ${SESSION_OCCT_LIBRARIES})
+    endif()
+    if(WIN32)
+        target_link_libraries(session_core PUBLIC ws2_32 psapi advapi32 user32)
+    endif()
+    add_executable(geometry_evidence examples/geometry_evidence.cpp)
+    target_link_libraries(geometry_evidence PRIVATE session_core)
+    target_compile_options(geometry_evidence PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(geometry_evidence)
+    if(MSVC)
+        target_compile_definitions(geometry_evidence PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+endif()
+
 # main_3 — session/quaternion/plane demo driver.
 add_executable(main_3 main_3.cpp)
 target_compile_options(main_3 PRIVATE ${SESSION_COMPILE_OPTIONS})
@@ -398,6 +428,19 @@ set(MINITEST_SOURCES
     src/file_encoders_test.cpp
     src/graph_test.cpp
     src/intersection_test.cpp
+    src/curve_intersection_test.cpp
+    src/curve_self_intersection_test.cpp
+    src/curve_surface_intersection_test.cpp
+    src/brep_section_test.cpp
+    src/brep_assemble_test.cpp
+    src/brep_measure_test.cpp
+    src/brep_offset_test.cpp
+    src/brep_offset_inward_test.cpp
+    src/brep_thicken_test.cpp
+    src/surface_ray_test.cpp
+    src/brep_boolean_test.cpp
+    src/nurbs_offset_test.cpp
+    src/surface_section_test.cpp
     src/file_obj_test.cpp
     src/file_xyz_test.cpp
     src/file_step_test.cpp
@@ -408,6 +451,7 @@ set(MINITEST_SOURCES
     src/history_test.cpp
     src/tree_test.cpp
     src/brep_test.cpp
+    src/brep_classify_test.cpp
     src/element_test.cpp
     src/matrix_test.cpp
     src/convex_hull_test.cpp
@@ -419,11 +463,66 @@ set(MINITEST_SOURCES
     src/interaction_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
+if(MSVC)
+    target_compile_definitions(point_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 target_compile_options(point_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
 target_link_libraries(point_minitest PRIVATE session_core)
 LINK_PROTOBUF(point_minitest)
 if(ENABLE_PCH)
-    target_precompile_headers(point_minitest REUSE_FROM session_core)
+    target_precompile_headers(point_minitest PRIVATE ${PROJECT_SOURCE_DIR}/src/pch.h)
+endif()
+
+if(NOT SESSION_WITH_OCCT)
+    add_executable(native_brep_minitest examples/native_brep_tests.cpp src/mini_test.cpp src/brep_classify_test.cpp)
+    target_link_libraries(native_brep_minitest PRIVATE session_core)
+    target_compile_options(native_brep_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_brep_minitest)
+    if(MSVC)
+        target_compile_definitions(native_brep_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_executable(native_intersection_minitest examples/native_intersection_tests.cpp src/mini_test.cpp src/intersection_test.cpp)
+    target_link_libraries(native_intersection_minitest PRIVATE session_core)
+    target_compile_options(native_intersection_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_intersection_minitest)
+    if(MSVC)
+        target_compile_definitions(native_intersection_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_executable(native_interference_minitest examples/native_intersection_tests.cpp src/mini_test.cpp
+        src/curve_intersection_test.cpp src/curve_self_intersection_test.cpp src/curve_surface_intersection_test.cpp src/split_test.cpp src/split_direction_test.cpp src/split_parameter_contract_test.cpp
+        src/brep_section_test.cpp src/nurbs_offset_test.cpp src/nurbscurve_test.cpp src/nurbssurface_test.cpp
+        src/surface_section_test.cpp src/brep_assemble_test.cpp src/brep_measure_test.cpp src/brep_offset_test.cpp
+        src/brep_thicken_test.cpp src/brep_offset_inward_test.cpp src/brep_offset_mixed_test.cpp
+        src/vector_test.cpp src/surface_ray_test.cpp
+        src/nurbs_surface_span_test.cpp)
+    target_link_libraries(native_interference_minitest PRIVATE session_core)
+    target_compile_options(native_interference_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_interference_minitest)
+    if(MSVC)
+        target_compile_definitions(native_interference_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_executable(native_viewer_evidence examples/native_viewer_evidence.cpp)
+    target_link_libraries(native_viewer_evidence PRIVATE session_core)
+    target_compile_options(native_viewer_evidence PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_viewer_evidence)
+    add_executable(native_boolean_minitest examples/native_intersection_tests.cpp src/mini_test.cpp src/brep_boolean_test.cpp)
+    target_link_libraries(native_boolean_minitest PRIVATE session_core)
+    target_compile_options(native_boolean_minitest PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_boolean_minitest)
+    add_executable(native_chair_sections examples/native_chair_sections.cpp)
+    target_link_libraries(native_chair_sections PRIVATE session_core)
+    target_compile_options(native_chair_sections PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_chair_sections)
+    add_executable(native_chair_booleans examples/native_chair_booleans.cpp)
+    target_link_libraries(native_chair_booleans PRIVATE session_core)
+    target_compile_options(native_chair_booleans PRIVATE ${SESSION_COMPILE_OPTIONS})
+    LINK_PROTOBUF(native_chair_booleans)
+    if(MSVC)
+        target_compile_definitions(native_boolean_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_definitions(native_chair_sections PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_definitions(native_chair_booleans PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_definitions(native_viewer_evidence PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
 endif()
 
 # Optional local scratch driver (untracked): drop a main_dbg.cpp next to this file to get a

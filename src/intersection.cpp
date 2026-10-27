@@ -1,5 +1,13 @@
 #include "intersection.h"
+#include "section_fit_error.h"
+#include "curve_intersection.h"
+#include "curve_surface_intersection.h"
+#include "brep_section.h"
+#include "surface_section.h"
+#include "nurbs_interval.h"
+#include "ssi_diagnostics.h"
 #include "nurbscurve.h"
+#include "occt_backend.h"
 #include "nurbssurface.h"
 #include "boolean_polyline.h"
 #include "closest.h"
@@ -9,10 +17,66 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string_view>
 #include <tuple>
 
 namespace session_cpp {
+
+SectionResult Intersection::curve_curve(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+    const curve_intersection::Result events = curve_intersection::intersect(a, b, tolerance);
+    if (!events.complete)
+        throw std::runtime_error(events.failure);
+    SectionResult result;
+    for (const curve_intersection::Hit& hit : events.points)
+        if (std::none_of(result.points.begin(), result.points.end(), [&](const Point& p) { return p.distance(hit.point) <= tolerance; }))
+            result.points.push_back(hit.point);
+    for (const curve_intersection::Overlap& overlap : events.overlaps) {
+        NurbsCurve curve = a;
+        if (!curve.trim(overlap.a0, overlap.a1))
+            throw std::runtime_error("Native curve intersection could not extract an overlap");
+        result.curves.push_back(std::move(curve));
+    }
+    return result;
+}
+
+SectionResult Intersection::curve_surface(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {
+    const curve_surface_intersection::Result events = curve_surface_intersection::intersect(curve, surface, tolerance);
+    if (!events.complete)
+        throw std::runtime_error(events.failure);
+    SectionResult result;
+    for (const curve_surface_intersection::Hit& hit : events.points)
+        if (std::none_of(result.points.begin(), result.points.end(), [&](const Point& p) { return p.distance(hit.point) <= tolerance; }))
+            result.points.push_back(hit.point);
+    for (const curve_surface_intersection::Overlap& overlap : events.overlaps) {
+        NurbsCurve part = curve;
+        if (!part.trim(overlap.t0, overlap.t1))
+            throw std::runtime_error("Native curve/surface intersection could not extract an overlap");
+        result.curves.push_back(std::move(part));
+    }
+    return result;
+}
+
+SectionResult Intersection::curve_brep(const NurbsCurve& curve, const BRep& brep, double tolerance) {
+    const brep_section::CurveResult events = brep_section::curve(curve, brep, tolerance);
+    if (!events.complete)
+        throw std::runtime_error(events.failure);
+    SectionResult result;
+    for (const brep_section::CurveHit& hit : events.points)
+        if (std::none_of(result.points.begin(), result.points.end(), [&](const Point& p) { return p.distance(hit.point) <= tolerance; }))
+            result.points.push_back(hit.point);
+    for (const brep_section::CurveSpan& span : events.overlaps) {
+        NurbsCurve part = curve;
+        if (!part.trim(span.first, span.last))
+            throw std::runtime_error("Native curve/BRep intersection could not extract an overlap");
+        result.curves.push_back(std::move(part));
+    }
+    return result;
+}
+
+SectionResult Intersection::brep_brep(const BRep& a, const BRep& b, double tolerance) {
+    return occt::section(a, b, tolerance);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Lines and planes
@@ -824,542 +888,163 @@ std::vector<Point> Intersection::ray_mesh_bvh(const Line& line, const Mesh& mesh
 // ═══════════════════════════════════════════════════════════════════════════
 namespace {
 
-/// Sorted values without neighbours closer than tolerance to the last kept one.
-std::vector<double> unique_sorted(const std::vector<double>& values, double tolerance) {
+/// Evaluate Bernstein coefficients by de Casteljau.
+double bernstein_value(std::vector<double> values, double t) {
 
-    std::vector<double> unique;
+    for (size_t count = values.size(); count > 1; --count)
+        for (size_t i = 0; i + 1 < count; ++i)
+            values[i] = (1.0 - t) * values[i] + t * values[i + 1];
 
+    return values[0];
+}
+
+/// Isolate roots between consecutive derivative roots, including stationary contacts.
+std::vector<double> bernstein_roots(const std::vector<double>& values) {
+
+    double scale = 0.0;
     for (double value : values)
-        if (unique.empty() || std::abs(unique.back() - value) >= tolerance)
-            unique.push_back(value);
+        scale = std::max(scale, std::abs(value));
 
-    return unique;
-}
+    if (scale == 0.0)
+        return {0.0, 1.0};
 
-/// Signed distance of a point to the plane.
-double curve_signed_distance_to_plane(const Point& pt, const Plane& plane) {
+    if (values.size() == 1)
+        return {};
 
-    Vector v = pt - plane.origin();
+    const double epsilon = 16.0 * std::numeric_limits<double>::epsilon() * scale * values.size();
+    std::vector<double> derivative;
+    for (size_t i = 1; i < values.size(); ++i)
+        derivative.push_back(values[i] - values[i - 1]);
 
-    return v.dot(plane.z_axis());
-}
+    std::vector<double> bounds{0.0};
+    for (double root : bernstein_roots(derivative))
+        if (root > 0.0 && root < 1.0)
+            bounds.push_back(root);
+    bounds.push_back(1.0);
 
-/// Rate of change of the signed plane distance with the curve parameter.
-double curve_plane_slope(const NurbsCurve& curve, const Plane& plane, double t) {
+    std::vector<double> roots;
+    for (size_t i = 0; i < bounds.size(); ++i) {
+        const double value = bernstein_value(values, bounds[i]);
+        if (std::abs(value) <= epsilon)
+            roots.push_back(bounds[i]);
 
-    const std::vector<Vector> derivs = curve.evaluate(t, 1);
+        if (i + 1 == bounds.size())
+            continue;
 
-    return derivs[1].dot(plane.z_axis());
-}
+        double left = bounds[i];
+        double right = bounds[i + 1];
+        double low = value;
+        const double high = bernstein_value(values, right);
+        if (std::abs(low) <= epsilon || std::abs(high) <= epsilon || std::signbit(low) == std::signbit(high))
+            continue;
 
-/// Appends t unless a value within tolerance is already present.
-void append_unique(std::vector<double>& values, double t, double tolerance) {
+        for (int step = 0; step < 64; ++step) {
+            const double mid = left + (right - left) * 0.5;
+            if (mid == left || mid == right)
+                break;
 
-    for (double existing : values)
-        if (std::abs(existing - t) < tolerance)
-            return;
-
-    values.push_back(t);
-}
-
-/// Newton for the plane crossing in [a, b] from the midpoint, bisecting whenever a step is flat or leaves the bracket.
-bool curve_plane_newton_bracket(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double a,
-    double b,
-    double& t
-) {
-
-    double f_a = curve_signed_distance_to_plane(curve.point_at(a), plane);
-    t = (a + b) * 0.5;
-
-    for (int iter = 0; iter < 10; iter++) {
-        const double f = curve_signed_distance_to_plane(curve.point_at(t), plane);
-
-        if (std::abs(f) < tolerance)
-            return true;
-
-        const double df = curve_plane_slope(curve, plane, t);
-        const bool flat = std::abs(df) < 1e-14;
-        const double t_new = flat ? t : t - f / df;
-
-        if (flat || t_new < a || t_new > b) {
-            if (f * f_a < 0) {
-                b = t;
-            } else {
-                a = t;
-                f_a = f;
+            const double height = bernstein_value(values, mid);
+            if (height == 0.0) {
+                left = right = mid;
+                break;
             }
 
-            t = (a + b) * 0.5;
-            continue;
+            if (std::signbit(height) == std::signbit(low)) {
+                left = mid;
+                low = height;
+            } else {
+                right = mid;
+            }
         }
-
-        if (std::abs(t_new - t) < tolerance) {
-            t = t_new;
-
-            return true;
-        }
-
-        t = t_new;
+        roots.push_back(left + (right - left) * 0.5);
     }
 
-    return false;
+    return roots;
 }
 
-/// Bisect the plane crossing between t0 and t1 down to tolerance.
-bool curve_find_root_bisection(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double t0,
-    double t1,
-    double tolerance,
-    double& t_result
+/// Extract one scalar B-spline span into Bernstein form using its blossom.
+std::vector<double> bernstein_span(
+    const std::vector<double>& values,
+    const std::vector<double>& knots,
+    int span,
+    int degree
 ) {
 
-    const int max_iterations = 50;
-    double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
-    double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
-
-    if (d0 * d1 > 0)
-        return false;
-
-    for (int iter = 0; iter < max_iterations; iter++) {
-        double t_mid = (t0 + t1) * 0.5;
-        double d_mid = curve_signed_distance_to_plane(curve.point_at(t_mid), plane);
-
-        if (std::abs(d_mid) < tolerance || (t1 - t0) < tolerance) {
-            t_result = t_mid;
-
-            return true;
+    std::vector<double> result;
+    for (int pole = 0; pole <= degree; ++pole) {
+        std::vector<double> work(values.begin() + span - degree, values.begin() + span + 1);
+        for (int level = 1; level <= degree; ++level) {
+            const double t = knots[span + (level > degree - pole ? 1 : 0)];
+            for (int j = degree; j >= level; --j) {
+                const int index = span - degree + j;
+                const double width = knots[index + degree - level + 1] - knots[index];
+                const double alpha = width > 0.0 ? (t - knots[index]) / width : 0.0;
+                work[j] = (1.0 - alpha) * work[j - 1] + alpha * work[j];
+            }
         }
-
-        if (d0 * d_mid < 0) {
-            t1 = t_mid;
-            d1 = d_mid;
-        } else {
-            t0 = t_mid;
-            d0 = d_mid;
-        }
+        result.push_back(work[degree]);
     }
 
-    t_result = (t0 + t1) * 0.5;
-
-    return std::abs(curve_signed_distance_to_plane(curve.point_at(t_result), plane)) < tolerance * 10.0;
-}
-
-/// Polish a plane crossing parameter with Newton steps.
-bool curve_refine_intersection_newton(const NurbsCurve& curve, const Plane& plane, double& t, double tolerance) {
-
-    const int max_iterations = 10;
-    const double step_tolerance = tolerance * 0.01;
-
-    for (int iter = 0; iter < max_iterations; iter++) {
-        Point pt = curve.point_at(t);
-
-        double f = curve_signed_distance_to_plane(pt, plane);
-        double df = curve_plane_slope(curve, plane, t);
-
-        if (std::abs(f) < tolerance)
-            return true;
-
-        if (std::abs(df) < 1e-12)
-            return false;
-
-        double dt = -f / df;
-
-        if (std::abs(dt) < step_tolerance)
-            return true;
-
-        t += dt;
-
-        const std::pair<double, double> domain = curve.domain();
-        const double t0 = domain.first;
-        const double t1 = domain.second;
-
-        if (t < t0)
-            t = t0;
-
-        if (t > t1)
-            t = t1;
-    }
-
-    return std::abs(curve_signed_distance_to_plane(curve.point_at(t), plane)) < tolerance * 2.0;
-}
-
-/// Newton refinement of the plane crossing in a tiny interval [ta, tb], kept when it stays inside and on the plane.
-void curve_plane_refine(const NurbsCurve& curve, const Plane& plane, double tolerance, double ta, double tb, std::vector<double>& results) {
-
-    double tm = (ta + tb) * 0.5;
-    Point pm = curve.point_at(tm);
-    double dist = curve_signed_distance_to_plane(pm, plane);
-
-    if (std::abs(dist) >= tolerance)
-        return;
-
-    double t = tm;
-
-    for (int iter = 0; iter < 10; iter++) {
-        Point pt = curve.point_at(t);
-
-        double f = curve_signed_distance_to_plane(pt, plane);
-        double df = curve_plane_slope(curve, plane, t);
-
-        if (std::abs(df) < 1e-12)
-            break;
-
-        double dt = -f / df;
-        t += dt;
-
-        if (std::abs(dt) < tolerance * 0.01)
-            break;
-
-        if (t < ta || t > tb) {
-            t = tm;
-            break;
-        }
-    }
-
-    Point pt_final = curve.point_at(t);
-
-    if (std::abs(curve_signed_distance_to_plane(pt_final, plane)) < tolerance && t >= ta && t <= tb)
-        results.push_back(t);
-}
-
-/// Part of [ta, tb] where the sampled distance crosses the plane, the whole interval when unclear; empty when it misses.
-std::optional<std::pair<double, double>> curve_plane_clip_range(const NurbsCurve& curve, const Plane& plane, double tolerance, double ta, double tb) {
-
-    int num_samples = std::min(curve.order() + 1, 10);
-    std::vector<double> distances;
-    std::vector<double> params;
-
-    double dt = (tb - ta) / (num_samples - 1);
-
-    for (int i = 0; i < num_samples; i++) {
-        double t = ta + i * dt;
-        Point p = curve.point_at(t);
-        distances.push_back(curve_signed_distance_to_plane(p, plane));
-        params.push_back(t);
-    }
-
-    double d_min = *std::min_element(distances.begin(), distances.end());
-    double d_max = *std::max_element(distances.begin(), distances.end());
-
-    if (d_min > tolerance || d_max < -tolerance)
-        return std::nullopt;
-
-    double t_min = ta;
-    double t_max = tb;
-
-    for (size_t i = 0; i < distances.size() - 1; i++) {
-        if (distances[i] * distances[i + 1] < 0) {
-            double d0 = distances[i];
-            double d1 = distances[i + 1];
-            double t_clip = params[i] - d0 * (params[i + 1] - params[i]) / (d1 - d0);
-
-            if (d0 > 0)
-                t_max = std::min(t_max, t_clip + (tb - ta) * 0.1);
-            else
-                t_min = std::max(t_min, t_clip - (tb - ta) * 0.1);
-        }
-    }
-
-    if (t_min >= t_max) {
-        t_min = ta;
-        t_max = tb;
-    }
-
-    t_min = std::max(ta, t_min);
-    t_max = std::min(tb, t_max);
-
-    return std::make_pair(t_min, t_max);
-}
-
-/// Bezier-clipping recursion of the curve-plane distance on [ta, tb].
-void curve_plane_clip(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double ta,
-    double tb,
-    int depth,
-    std::vector<double>& results
-) {
-
-    if (depth > 50) {
-        double tm = (ta + tb) * 0.5;
-        Point pm = curve.point_at(tm);
-        double dist = curve_signed_distance_to_plane(pm, plane);
-
-        if (std::abs(dist) < tolerance)
-            results.push_back(tm);
-
-        return;
-    }
-
-    if (std::abs(tb - ta) < tolerance * 0.01) {
-        curve_plane_refine(curve, plane, tolerance, ta, tb, results);
-
-        return;
-    }
-
-    const std::optional<std::pair<double, double>> range = curve_plane_clip_range(curve, plane, tolerance, ta, tb);
-
-    if (!range)
-        return;
-
-    const double t_min = range->first;
-    const double t_max = range->second;
-    double reduction = (t_max - t_min) / (tb - ta);
-
-    if (reduction > 0.8 || (t_max - t_min) < tolerance * 0.1) {
-        double tm = (ta + tb) * 0.5;
-        curve_plane_clip(curve, plane, tolerance, ta, tm, depth + 1, results);
-        curve_plane_clip(curve, plane, tolerance, tm, tb, depth + 1, results);
-    } else {
-        curve_plane_clip(curve, plane, tolerance, t_min, t_max, depth + 1, results);
-    }
-}
-
-/// Hodograph subdivision of one span with Newton polishing of the crossings.
-void curve_plane_subdivide_algebraic(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double a,
-    double b,
-    int depth,
-    std::vector<double>& results
-) {
-
-    if (depth > 30)
-        return;
-
-    Point p_a = curve.point_at(a);
-    Point p_b = curve.point_at(b);
-
-    Vector normal = plane.z_axis();
-    double f_a = normal.dot(p_a - plane.origin());
-    double f_b = normal.dot(p_b - plane.origin());
-
-    if (f_a * f_b > 0)
-        return;
-
-    double mid_t = (a + b) * 0.5;
-    Point p_mid = curve.point_at(mid_t);
-
-    Vector line_dir = p_b - p_a;
-    double line_len = line_dir.magnitude();
-
-    if (line_len > 1e-14)
-        line_dir = line_dir / line_len;
-
-    double deviation = std::abs((p_mid - p_a).cross(line_dir).magnitude());
-
-    if (deviation < tolerance * 10.0 || (b - a) < tolerance * 10.0) {
-        double t;
-
-        if (curve_plane_newton_bracket(curve, plane, tolerance, a, b, t) && t >= a && t <= b)
-            append_unique(results, t, tolerance * 10.0);
-    } else {
-        curve_plane_subdivide_algebraic(curve, plane, tolerance, a, mid_t, depth + 1, results);
-        curve_plane_subdivide_algebraic(curve, plane, tolerance, mid_t, b, depth + 1, results);
-    }
-}
-
-/// True when the chord of [a, b] deviates less than ten tolerances from the curve.
-bool curve_nearly_linear(const NurbsCurve& curve, double tolerance, double a, double b) {
-
-    Point p_a = curve.point_at(a);
-    Point p_b = curve.point_at(b);
-    Point p_mid = curve.point_at((a + b) * 0.5);
-
-    Vector ab = p_b - p_a;
-    double line_length = ab.magnitude();
-
-    if (line_length < 1e-14)
-        return true;
-
-    Vector am = p_mid - p_a;
-    double cross_mag = ab.cross(am).magnitude();
-    double deviation = cross_mag / line_length;
-
-    return deviation < tolerance * 10.0;
-}
-
-/// Span subdivision to nearly linear pieces with Newton polishing of the crossings.
-void curve_plane_subdivide_production(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double a,
-    double b,
-    int depth,
-    std::vector<double>& results
-) {
-
-    if (depth > 30)
-        return;
-
-    Point p_a = curve.point_at(a);
-    Point p_b = curve.point_at(b);
-
-    Vector normal = plane.z_axis();
-    double f_a = normal.dot(p_a - plane.origin());
-    double f_b = normal.dot(p_b - plane.origin());
-
-    if (f_a * f_b > 0)
-        return;
-
-    if (curve_nearly_linear(curve, tolerance, a, b) || (b - a) < tolerance * 10.0) {
-        double t;
-
-        if (curve_plane_newton_bracket(curve, plane, tolerance, a, b, t) && t >= a && t <= b)
-            append_unique(results, t, tolerance * 10.0);
-    } else {
-        const double mid = (a + b) * 0.5;
-        curve_plane_subdivide_production(curve, plane, tolerance, a, mid, depth + 1, results);
-        curve_plane_subdivide_production(curve, plane, tolerance, mid, b, depth + 1, results);
-    }
+    return result;
 }
 
 } // namespace
 
-// ═══════════════════════════════════════════════════════════════════════════
-// NURBS curves
-// ═══════════════════════════════════════════════════════════════════════════
-/// Appends t unless it lies within tolerance of the last parameter.
-static void append_parameter(std::vector<double>& params, double t, double tolerance) {
-
-    if (params.empty() || std::abs(params.back() - t) >= tolerance)
-        params.push_back(t);
-}
-
-/// Crossing pairs hidden inside a span whose ends lie on one side, found on degree * 2 sub-intervals.
-static void curve_plane_hidden_pairs(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    double t0,
-    double t1,
-    std::vector<double>& intersections
-) {
-
-    const int count = curve.degree() * 2;
-    const double dt = (t1 - t0) / count;
-
-    for (int i = 0; i < count; i++) {
-        const double s0 = t0 + i * dt;
-        const double s1 = t0 + (i + 1) * dt;
-        const double d0 = curve_signed_distance_to_plane(curve.point_at(s0), plane);
-        const double d1 = curve_signed_distance_to_plane(curve.point_at(s1), plane);
-        double t_intersection;
-
-        if (d0 * d1 < 0 && curve_find_root_bisection(curve, plane, s0, s1, tolerance, t_intersection)) {
-            curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
-            intersections.push_back(t_intersection);
-        }
-    }
-}
-
-/// Crossings inside each knot span, plus span starts and the curve end lying on the plane.
-static void curve_plane_spans(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    std::vector<double>& intersections
-) {
-
-    const std::vector<double> span_params = curve.get_span_vector();
-
-    for (size_t i = 0; i < span_params.size() - 1; i++) {
-        const double t0 = span_params[i];
-        const double t1 = span_params[i + 1];
-
-        if (std::abs(t1 - t0) < tolerance)
-            continue;
-
-        const double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
-        const double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
-        double t_intersection;
-
-        if (d0 * d1 < 0) {
-            if (curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection)) {
-                curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
-                intersections.push_back(t_intersection);
-            }
-        } else if (std::abs(d0) < tolerance) {
-            append_parameter(intersections, t0, tolerance);
-        } else if (curve.degree() > 1) {
-            curve_plane_hidden_pairs(curve, plane, tolerance, t0, t1, intersections);
-        }
-    }
-
-    const double t_end = curve.domain().second;
-
-    if (std::abs(curve_signed_distance_to_plane(curve.point_at(t_end), plane)) < tolerance)
-        append_parameter(intersections, t_end, tolerance);
-}
-
-/// Extra crossings of a high-degree curve found on degree * 4 uniform samples.
-static void curve_plane_samples(
-    const NurbsCurve& curve,
-    const Plane& plane,
-    double tolerance,
-    std::vector<double>& intersections
-) {
-
-    const std::pair<double, double> domain = curve.domain();
-    const int num_samples = curve.degree() * 4;
-    const double dt = (domain.second - domain.first) / num_samples;
-
-    for (int i = 0; i < num_samples; i++) {
-        const double t0 = domain.first + i * dt;
-        const double t1 = domain.first + (i + 1) * dt;
-        const double d0 = curve_signed_distance_to_plane(curve.point_at(t0), plane);
-        const double d1 = curve_signed_distance_to_plane(curve.point_at(t1), plane);
-        double t_intersection;
-        const bool crossing = d0 * d1 < 0 && curve_find_root_bisection(curve, plane, t0, t1, tolerance, t_intersection);
-
-        if (!crossing)
-            continue;
-
-        bool is_new = true;
-
-        for (double existing : intersections) {
-            if (std::abs(existing - t_intersection) < tolerance * 2.0) {
-                is_new = false;
-                break;
-            }
-        }
-
-        if (is_new) {
-            curve_refine_intersection_newton(curve, plane, t_intersection, tolerance);
-            intersections.push_back(t_intersection);
-        }
-    }
-}
-
 std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Plane& plane, double tolerance) {
 
-    std::vector<double> intersections;
-
     if (!curve.is_valid())
-        return intersections;
+        return {};
 
-    if (tolerance <= 0.0)
+    if (!std::isfinite(tolerance) || tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    curve_plane_spans(curve, plane, tolerance, intersections);
+    Vector normal = plane.z_axis();
+    const double length = normal.magnitude();
+    if (!std::isfinite(length) || length == 0.0)
+        return {};
+    normal = normal / length;
 
-    if (curve.degree() > 3 && intersections.size() < static_cast<size_t>(curve.degree()))
-        curve_plane_samples(curve, plane, tolerance, intersections);
+    const Point origin = plane.origin();
+    std::vector<double> values;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        double x, y, z, w;
+        std::tie(x, y, z, w) = curve.get_cv_4d(i);
+        values.push_back(normal[0] * (x - origin[0] * w)
+                       + normal[1] * (y - origin[1] * w)
+                       + normal[2] * (z - origin[2] * w));
+    }
 
-    std::sort(intersections.begin(), intersections.end());
+    std::vector<double> knots{curve.nurbsknot(0)};
+    for (int i = 0; i < curve.nurbsknot_count(); ++i)
+        knots.push_back(curve.nurbsknot(i));
+    knots.push_back(knots.back());
 
-    return unique_sorted(intersections, tolerance * 2.0);
+    std::vector<double> roots;
+    for (int span = curve.degree(); span < curve.cv_count(); ++span) {
+        const double start = knots[span];
+        const double end = knots[span + 1];
+        if (start >= end)
+            continue;
+
+        const std::vector<double> coefficients = bernstein_span(
+            values,
+            knots,
+            span,
+            curve.degree()
+        );
+        for (double root : bernstein_roots(coefficients)) {
+            const double t = start + (end - start) * root;
+            const Point point = curve.point_at(t);
+            const double distance = normal.dot(point - origin);
+            if (std::isfinite(distance) && std::abs(distance) <= tolerance)
+                roots.push_back(t);
+        }
+    }
+
+    std::sort(roots.begin(), roots.end());
+    roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
+
+    return roots;
 }
 
 std::vector<Point> Intersection::curve_plane_points(const NurbsCurve& curve, const Plane& plane, double tolerance) {
@@ -1380,50 +1065,12 @@ std::vector<double> Intersection::curve_plane_bezier_clipping(
     double tolerance
 ) {
 
-    std::vector<double> results;
-
-    if (!curve.is_valid())
-        return results;
-
-    if (tolerance <= 0.0)
-        tolerance = Tolerance::ZERO_TOLERANCE;
-
-    const std::pair<double, double> domain = curve.domain();
-    const double t0 = domain.first;
-    const double t1 = domain.second;
-
-    curve_plane_clip(curve, plane, tolerance, t0, t1, 0, results);
-
-    std::sort(results.begin(), results.end());
-
-    return unique_sorted(results, tolerance * 10.0);
+    return curve_plane(curve, plane, tolerance);
 }
 
 std::vector<double> Intersection::curve_plane_algebraic(const NurbsCurve& curve, const Plane& plane, double tolerance) {
 
-    if (!curve.is_valid())
-        return {};
-
-    std::vector<double> results;
-
-    std::vector<double> spans = curve.get_span_vector();
-
-    if (spans.size() < 2)
-        return {};
-
-    for (size_t i = 0; i < spans.size() - 1; i++) {
-        double span_t0 = spans[i];
-        double span_t1 = spans[i + 1];
-
-        if (std::abs(span_t1 - span_t0) < tolerance)
-            continue;
-
-        curve_plane_subdivide_algebraic(curve, plane, tolerance, span_t0, span_t1, 0, results);
-    }
-
-    std::sort(results.begin(), results.end());
-
-    return unique_sorted(results, tolerance * 10.0);
+    return curve_plane(curve, plane, tolerance);
 }
 
 std::vector<double> Intersection::curve_plane_production(
@@ -1432,29 +1079,7 @@ std::vector<double> Intersection::curve_plane_production(
     double tolerance
 ) {
 
-    if (!curve.is_valid())
-        return {};
-
-    std::vector<double> results;
-
-    std::vector<double> spans = curve.get_span_vector();
-
-    if (spans.size() < 2)
-        return {};
-
-    for (size_t i = 0; i < spans.size() - 1; i++) {
-        double span_t0 = spans[i];
-        double span_t1 = spans[i + 1];
-
-        if (std::abs(span_t1 - span_t0) < tolerance)
-            continue;
-
-        curve_plane_subdivide_production(curve, plane, tolerance, span_t0, span_t1, 0, results);
-    }
-
-    std::sort(results.begin(), results.end());
-
-    return unique_sorted(results, tolerance * 10.0);
+    return curve_plane(curve, plane, tolerance);
 }
 
 std::pair<double, double> Intersection::curve_closest_point(
@@ -1720,7 +1345,7 @@ bool SurfacePlaneField::polish(double& u, double& v) const {
         double gv;
         value_and_gradient(u, v, val, gu, gv);
 
-        if (std::abs(val) < 1e-12)
+        if (std::abs(val) <= std::min(1e-12, tolerance * 0.1))
             return true;
 
         const double mag2 = gu * gu + gv * gv;
@@ -1732,7 +1357,7 @@ bool SurfacePlaneField::polish(double& u, double& v) const {
         v -= val * gv / mag2;
     }
 
-    return true;
+    return std::abs(value(u, v)) <= std::min(1e-12, tolerance * 0.1);
 }
 
 /// Signed plane distance on the (nu + 1) x (nv + 1) grid, exact zeros nudged negative.
@@ -1945,7 +1570,18 @@ bool march_tangent(
     return true;
 }
 
-/// March the zero set from (su, sv) in direction dir; true when it closes on its start.
+bool closes_plane_trace(const Point& start, const Vector& tangent, const Point& previous, const Point& current) {
+    if ((previous - start).dot(tangent) >= 0.0 || (current - start).dot(tangent) < 0.0)
+        return false;
+    const Vector segment = current - previous;
+    const double squared = segment.dot(segment);
+    if (!(squared > 0.0))
+        return false;
+    const double t = std::clamp((start - previous).dot(segment) / squared, 0.0, 1.0);
+    return start.distance(previous + segment * t) <= std::sqrt(squared) * 0.5;
+}
+
+/// March the zero set from (su, sv) in direction dir; true when it crosses its starting section.
 bool surface_plane_march(
     const SurfacePlaneField& field,
     double su,
@@ -1962,6 +1598,12 @@ bool surface_plane_march(
     const Point p_start = field.point({su, sv});
     Point p_prev = p_start;
     double dist_traveled = 0;
+    double start_u = 0.0;
+    double start_v = 0.0;
+    if (!field.tangent(su, sv, dir, start_u, start_v))
+        return false;
+    const std::vector<Vector> derivatives = field.surface.evaluate(su, sv, 1);
+    const Vector start_tangent = derivatives[2] * start_u + derivatives[1] * start_v;
 
     for (int s = 0; s < field.max_steps; s++) {
         double tu;
@@ -1984,11 +1626,14 @@ bool surface_plane_march(
             break;
 
         const Point p_cur = field.point({un, vn});
-        dist_traveled += p_prev.distance(p_cur);
+        const double step_length = p_prev.distance(p_cur);
+        dist_traveled += step_length;
         out.push_back({un, vn});
 
-        if (dist_traveled > field.close_tol_3d * 3.0 && p_start.distance(p_cur) < field.close_tol_3d)
+        if (out.size() >= 4 && dist_traveled > step_length * 3.0 && closes_plane_trace(p_start, start_tangent, p_prev, p_cur)) {
+            out.back() = {su, sv};
             return true;
+        }
 
         u = un;
         v = vn;
@@ -3107,132 +2752,109 @@ std::vector<Point> densify_piece(const SurfacePlaneField& field, const std::vect
     return pts_uv;
 }
 
-/// Largest distance from each point to the curve at its chord parameter.
-double chord_max_deviation(const NurbsCurve& cand, const std::vector<Point>& pts, const std::vector<double>& chords) {
-
-    const std::pair<double, double> domain_ft = cand.domain();
-    const double ft0 = domain_ft.first;
-    const double ft1 = domain_ft.second;
-    double max_dev = 0;
-
-    for (size_t i = 0; i < pts.size(); i++) {
-        const double t = ft0 + (ft1 - ft0) * chords[i];
-        max_dev = std::max(max_dev, cand.point_at(t).distance(pts[i]));
+std::vector<double> track_parameters(const std::vector<Point>& points, bool is_loop) {
+    std::vector<double> parameters(points.size(), 0.0);
+    for (size_t i = 1; i < points.size(); ++i) {
+        const Point& point = is_loop && i + 1 == points.size() ? points.front() : points[i];
+        parameters[i] = parameters[i - 1] + points[i - 1].distance(point);
     }
-
-    return max_dev;
+    if (parameters.back() > 0.0)
+        for (double& parameter : parameters)
+            parameter /= parameters.back();
+    return parameters;
 }
 
-/// Cubic pcurve through the uv samples, CVs doubled until within step * 2e-3; target_cvs keeps the last count.
-NurbsCurve fit_pcurve(const std::vector<Point>& pts_uv, bool piece_loop, double step, int& target_cvs) {
-
-    const int mp = (int)pts_uv.size();
-    const std::vector<double> chords = chord_parameters(pts_uv, piece_loop);
-    const int max_cvs = std::min(mp - 1, 96);
-    NurbsCurve pcurve;
-    double pcurve_dev = 1e300;
-    target_cvs = std::max(8, (int)(total_turning(pts_uv) / 0.5) + 6);
-
-    for (int attempt = 0; attempt < 6; attempt++) {
-        if (target_cvs > max_cvs)
-            break;
-
-        NurbsCurve cand = NurbsCurve::create_fitted(pts_uv, target_cvs, 3, piece_loop);
-
-        if (!cand.is_valid())
-            break;
-
-        const double max_dev = chord_max_deviation(cand, pts_uv, chords);
-
-        if (max_dev < pcurve_dev) {
-            pcurve_dev = max_dev;
-            pcurve = cand;
-        }
-
-        if (max_dev < step * 2e-3)
-            break;
-
-        target_cvs = std::min(target_cvs * 2, max_cvs + 1);
-    }
-
-    if (!pcurve.is_valid())
-        pcurve = piece_loop ? NurbsCurve::create_interpolated(pts_uv, CurveNurbsKnotStyle::ChordPeriodic)
-                            : NurbsCurve::create_interpolated(pts_uv);
-
-    return pcurve;
+/// World chord parameters shared by the section curve and its pcurves.
+NurbsCurve fit_track(const std::vector<Point>& pts, const std::vector<double>& parameters, bool is_loop) {
+    std::vector<Point> samples = pts;
+    if (is_loop && samples.size() > 3)
+        samples.pop_back();
+    NurbsCurve curve = NurbsCurve::create_interpolated(samples, parameters, is_loop);
+    if (!curve.is_valid() || !curve.set_domain(0.0, 1.0))
+        throw section_fit::Error(samples, parameters, is_loop);
+    return curve;
 }
 
-/// Refit the pcurve with twice the CVs when it strays from the zero set by more than vali_tol.
-void refit_pcurve(
+/// Evaluate a previously validated curve without rescanning every control point.
+Point evaluate_valid_curve(const NurbsCurve& curve, double t) {
+    const int span = nurbsknot::find_span(curve.m_order, curve.m_cv_count, curve.m_nurbsknot, t);
+    const std::vector<double> basis = nurbsknot::eval_basis(curve.m_order, curve.m_nurbsknot, span, t);
+    Point point;
+    double weight = curve.m_is_rat ? 0.0 : 1.0;
+    for (int i = 0; i < curve.m_order; ++i) {
+        const double* cv = curve.cv(span + i);
+        for (int d = 0; d < std::min(3, curve.m_dim); ++d)
+            point[d] += basis[i] * cv[d];
+        if (curve.m_is_rat)
+            weight += basis[i] * cv[curve.m_dim];
+    }
+    if (weight == 0.0 || !std::isfinite(weight))
+        throw std::runtime_error("Native section evaluation has an invalid rational denominator");
+    return {point[0] / weight, point[1] / weight, point[2] / weight};
+}
+
+/// Refine intervals whose world and parameter-space fits disagree.
+bool refine_plane_fit(
     const SurfacePlaneField& field,
-    const std::vector<Point>& pts_uv,
-    bool piece_loop,
-    int target_cvs,
-    double vali_tol,
-    NurbsCurve& pcurve
+    const NurbsCurve& crv3,
+    const NurbsCurve& pcurve,
+    const std::vector<double>& parameters,
+    std::vector<Point>& samples
 ) {
-
-    const int max_cvs = std::min((int)pts_uv.size() - 1, 96);
-    double max_off = 0;
-
-    for (int i = 0; i < 17; i++) {
-        const Point pc = pcurve.point_at(i / 16.0);
-        double val;
-        double gu;
-        double gv;
-        field.value_and_gradient(pc[0], pc[1], val, gu, gv);
-        max_off = std::max(max_off, std::abs(val));
-    }
-
-    if (max_off > vali_tol && target_cvs * 2 <= max_cvs) {
-        NurbsCurve refit = NurbsCurve::create_fitted(pts_uv, target_cvs * 2, 3, piece_loop);
-
-        if (refit.is_valid()) {
-            refit.set_domain(0.0, 1.0);
-            pcurve = refit;
+    std::vector<Point> refined = {samples.front()};
+    for (size_t i = 1; i < samples.size(); ++i) {
+        bool split = false;
+        for (double fraction : {0.25, 0.5, 0.75}) {
+            const double t = parameters[i - 1] + fraction * (parameters[i] - parameters[i - 1]);
+            const Point uv = evaluate_valid_curve(pcurve, t);
+            const Point world = evaluate_valid_curve(crv3, t);
+            const Point lifted = field.point({uv[0], uv[1]});
+            split = split || world.distance(lifted) > field.tolerance * 0.5 ||
+                std::abs((world - field.p0).dot(field.pn)) > field.tolerance * 0.5;
         }
+        if (split) {
+            Point uv = evaluate_valid_curve(pcurve, (parameters[i - 1] + parameters[i]) * 0.5);
+            if (!field.polish(uv[0], uv[1]))
+                throw std::runtime_error("Native plane section refinement did not converge");
+            refined.push_back(uv);
+        }
+        refined.push_back(samples[i]);
     }
+    if (refined.size() == samples.size())
+        return false;
+    samples = std::move(refined);
+    return true;
 }
 
-/// 3D section curve and uv pcurve of one seam-free piece; false when a fit fails.
 bool piece_curves(
     const SurfacePlaneField& field,
-    const Plane& plane,
     SurfacePlanePiece& piece,
     NurbsCurve& crv3,
     NurbsCurve& pcurve
 ) {
-
     shift_piece_to_domain(field, piece.uv);
-
-    const std::vector<Point> pts_uv = densify_piece(field, piece.uv);
-    std::vector<Point> pts3(pts_uv.size());
-
-    for (size_t i = 0; i < pts_uv.size(); i++)
-        pts3[i] = field.point({field.wrap_u(pts_uv[i][0]), field.wrap_v(pts_uv[i][1])});
-
-    crv3 = surface_plane_fit_3d(pts3, piece.is_loop, plane, field.step, field.uv_to_3d, field.uv_to_3d_min, false);
-
-    if (!crv3.is_valid())
-        crv3 = piece.is_loop ? NurbsCurve::create_interpolated(pts3, CurveNurbsKnotStyle::ChordPeriodic)
-                             : NurbsCurve::create_interpolated(pts3);
-
-    if (!crv3.is_valid())
-        return false;
-
-    int target_cvs;
-    pcurve = fit_pcurve(pts_uv, piece.is_loop, field.step, target_cvs);
-
-    if (!pcurve.is_valid())
-        return false;
-
-    crv3.set_domain(0.0, 1.0);
-    pcurve.set_domain(0.0, 1.0);
-
-    const double fit_tol = field.step * (field.uv_to_3d + field.uv_to_3d_min) * 0.5;
-    refit_pcurve(field, pts_uv, piece.is_loop, target_cvs, std::max(10.0 * field.tolerance, fit_tol * 2.0), pcurve);
-
-    return true;
+    std::vector<Point> pts_uv = densify_piece(field, piece.uv);
+    for (Point& uv : pts_uv)
+        if (!field.polish(uv[0], uv[1]))
+            throw std::runtime_error("Native plane section point did not converge");
+    for (int iteration = 0; iteration < 20 && pts_uv.size() <= 32768; ++iteration) {
+        std::vector<Point> pts3(pts_uv.size());
+        for (size_t i = 0; i < pts_uv.size(); i++)
+            pts3[i] = field.point({pts_uv[i][0], pts_uv[i][1]});
+        const std::vector<double> parameters = track_parameters(pts3, piece.is_loop);
+        try {
+            crv3 = fit_track(pts3, parameters, piece.is_loop);
+            pcurve = fit_track(pts_uv, parameters, piece.is_loop);
+        } catch (section_fit::Error& error) {
+            error.pcurve_samples = pts_uv;
+            error.world_samples = pts3;
+            throw;
+        }
+        if (!refine_plane_fit(field, crv3, pcurve, parameters, pts_uv))
+            return true;
+    }
+    throw std::runtime_error("Native plane section approximation exceeded its refinement budget with " +
+        std::to_string(pts_uv.size()) + " samples");
 }
 
 /// Solve an n x n linear system by Gaussian elimination with partial pivoting.
@@ -5766,7 +5388,7 @@ static double frame_tube_angle(const AxisFrame& f, double rmaj, double rmin, con
 /// Angle of surface points along one parameter line: longitude, or the torus tube angle.
 struct AngleProbe {
     const NurbsSurface& srf; // Sampled surface.
-    AxisFrame frame; // Frame about the surface axis.
+    AxisFrame frame{}; // Frame about the surface axis.
     double fixed; // The parameter held fixed.
     bool x_is_u; // Whether the free parameter is u.
     bool tube; // Tube angle instead of longitude.
@@ -6013,7 +5635,7 @@ static std::vector<PullbackRun> analytic_sphere_pullback(
     Point sp = srf.point_at(um, v0);
     Point np = srf.point_at(um, v1);
     std::array<double, 3> axis{np[0] - sp[0], np[1] - sp[1], np[2] - sp[2]};
-    AxisFrame frame;
+    AxisFrame frame{};
 
     if (!normalize_axis(axis) || !axis_frame(recog.p1, axis, srf.point_at(u0, vm), frame))
         return {};
@@ -6151,7 +5773,7 @@ static std::vector<PullbackRun> analytic_cone_pullback(
         return {};
 
     double v_ref = (std::abs(h0) >= std::abs(h1)) ? v0 : v1;
-    AxisFrame frame;
+    AxisFrame frame{};
 
     if (!axis_frame(recog.p1, axis, srf.point_at(u0, v_ref), frame))
         return {};
@@ -6353,7 +5975,7 @@ static std::vector<PullbackRun> analytic_torus_pullback(
     if (!normalize_axis(axis) || rmaj < 1e-12 || rmin < 1e-12)
         return {};
 
-    AxisFrame frame;
+    AxisFrame frame{};
 
     if (!axis_frame(recog.p1, axis, farthest_from_axis(srf, recog.p1, axis), frame))
         return {};
@@ -7522,6 +7144,53 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
     return result;
 }
 
+/// Plane distance independent of one parameter, certified by the tensor control net.
+static std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> iso_plane_sections(
+    const NurbsSurface& surface, const Plane& plane, double tolerance
+) {
+    const Vector normal = plane.z_axis().normalized();
+    for (int varying = 0; varying < 2; ++varying) {
+        const auto cv = [&](int i, int j) { return varying == 0 ? surface.get_cv(i, j) : surface.get_cv(j, i); };
+        const auto weight = [&](int i, int j) { return varying == 0 ? surface.weight(i, j) : surface.weight(j, i); };
+        bool independent = true;
+        double extent = 0.0;
+        for (int j = 0; j < surface.cv_count(1 - varying); ++j) {
+            const double height = (cv(0, j) - plane.origin()).dot(normal);
+            extent = std::max(extent, std::abs(height));
+            for (int i = 0; i < surface.cv_count(varying); ++i) {
+                const double ratio = weight(i, j) / weight(0, j);
+                const double reference = weight(i, 0) / weight(0, 0);
+                independent = independent && weight(i, j) > 0.0 &&
+                    std::abs((cv(i, j) - plane.origin()).dot(normal) - height) <= tolerance * 0.0625 &&
+                    std::abs(ratio - reference) <= 32 * std::numeric_limits<double>::epsilon() * std::abs(reference);
+            }
+        }
+        if (!independent || extent <= tolerance)
+            continue;
+        const auto variable = surface.domain(varying);
+        const auto fixed = surface.domain(1 - varying);
+        const NurbsCurve transverse = surface.iso_curve(1 - varying, variable.first);
+        std::vector<double> roots = Intersection::curve_plane(transverse, plane, tolerance * 0.125);
+        if (surface.is_closed(1 - varying) && roots.size() >= 2 &&
+            roots.front() == fixed.first && roots.back() == fixed.second)
+            roots.pop_back();
+        std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
+        for (double root : roots) {
+            NurbsCurve world = surface.iso_curve(varying, root);
+            Point first, last;
+            first[varying] = variable.first;
+            last[varying] = variable.second;
+            first[1 - varying] = last[1 - varying] = root;
+            NurbsCurve pcurve = NurbsCurve::create(false, 1, {first, last});
+            if (!world.set_domain(0, 1) || !pcurve.set_domain(0, 1))
+                throw std::runtime_error("Native iso section could not normalize shared parameters");
+            result.push_back({std::move(world), std::move(pcurve)});
+        }
+        return result;
+    }
+    return std::nullopt;
+}
+
 std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     const NurbsSurface& surface,
     const Plane& plane,
@@ -7533,6 +7202,11 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
 
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
+
+    if (const auto exact = iso_plane_sections(surface, plane, tolerance))
+        return *exact;
+    if (const auto exact = surface_section::extrusion_plane(surface, plane, tolerance))
+        return *exact;
 
     const SurfacePlaneField field(surface, plane, tolerance);
     const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
@@ -7559,7 +7233,7 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
             NurbsCurve crv3;
             NurbsCurve pcurve;
 
-            if (piece_curves(field, plane, piece, crv3, pcurve))
+            if (piece_curves(field, piece, crv3, pcurve))
                 result.push_back({std::move(crv3), std::move(pcurve)});
         }
     }
@@ -7604,15 +7278,15 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> planar_section_tripl
 
     for (const std::pair<NurbsCurve, NurbsCurve>& section : Intersection::surface_plane_uv(other, surface_mid_plane(planar), tolerance)) {
         const NurbsCurve& c3 = section.first;
-        std::vector<NurbsCurve> pps = Closest::surface_curve(planar, c3);
+        NurbsCurve pp = plane_pcurve(planar, c3);
 
-        if (pps.size() != 1)
+        if (!pp.is_valid())
             continue;
 
         if (planar_first)
-            result.push_back({c3, pps[0], section.second});
+            result.push_back({c3, pp, section.second});
         else
-            result.push_back({c3, section.second, pps[0]});
+            result.push_back({c3, section.second, pp});
     }
 
     drop_point_sections(result, tolerance);
@@ -7620,106 +7294,99 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> planar_section_tripl
     return result;
 }
 
-/// Bounding box of one grid cell from its 3 x 3 samples, inflated by twice its sag, and the cell center.
-std::array<double, 8> cell_box(
-    const std::vector<std::vector<Point>>& samples,
-    int ci,
-    int cj,
-    double c0u,
-    double dcu,
-    double c0v,
-    double dcv,
-    double tolerance
-) {
-
-    double minx = std::numeric_limits<double>::infinity();
-    double miny = minx;
-    double minz = minx;
-    double maxx = -minx;
-    double maxy = -minx;
-    double maxz = -minx;
-
-    for (int i = 2 * ci; i < 2 * ci + 3; i++) {
-        for (int j = 2 * cj; j < 2 * cj + 3; j++) {
-            const Point& p = samples[i][j];
-            minx = std::min(minx, p[0]);
-            maxx = std::max(maxx, p[0]);
-            miny = std::min(miny, p[1]);
-            maxy = std::max(maxy, p[1]);
-            minz = std::min(minz, p[2]);
-            maxz = std::max(maxz, p[2]);
+/// Positive rational control-hull bounds and the exact parameter rectangle.
+std::array<double, 12> cell_box(const NurbsSurface& surface, double tolerance) {
+    const double infinity = std::numeric_limits<double>::infinity();
+    std::array<double, 12> box = {infinity, infinity, infinity, -infinity, -infinity, -infinity};
+    double error = 0.0;
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j) {
+            const Point point = surface.get_cv(i, j);
+            const double weight = surface.weight(i, j);
+            if (!(weight > 0.0) || !std::isfinite(weight))
+                throw std::runtime_error("Native SSI requires positive finite rational weights");
+            for (int d = 0; d < 3; ++d) {
+                if (!std::isfinite(point[d]))
+                    throw std::runtime_error("Native SSI encountered a nonfinite control point");
+                box[d] = std::min(box[d], point[d]);
+                box[d + 3] = std::max(box[d + 3], point[d]);
+                error = std::max(error, std::abs(point[d]) * 32.0 * std::numeric_limits<double>::epsilon());
+            }
         }
+    if (error > tolerance * 0.25)
+        throw std::runtime_error("Native SSI tolerance is below coordinate resolution");
+    for (int d = 0; d < 3; ++d) {
+        box[d] -= error;
+        box[d + 3] += error;
     }
-
-    const Point& ctr = samples[2 * ci + 1][2 * cj + 1];
-    const Point& p00 = samples[2 * ci][2 * cj];
-    const Point& p10 = samples[2 * ci + 2][2 * cj];
-    const Point& p01 = samples[2 * ci][2 * cj + 2];
-    const Point& p11 = samples[2 * ci + 2][2 * cj + 2];
-    double cx = (p00[0] + p10[0] + p01[0] + p11[0]) * 0.25;
-    double cy = (p00[1] + p10[1] + p01[1] + p11[1]) * 0.25;
-    double cz = (p00[2] + p10[2] + p01[2] + p11[2]) * 0.25;
-    double sag = std::sqrt((ctr[0] - cx) * (ctr[0] - cx) + (ctr[1] - cy) * (ctr[1] - cy) + (ctr[2] - cz) * (ctr[2] - cz));
-    double inf = 2.0 * sag + tolerance;
-
-    return {minx - inf, miny - inf, minz - inf, maxx + inf, maxy + inf, maxz + inf, c0u + dcu * (ci + 0.5), c0v + dcv * (cj + 0.5)};
+    for (int d = 0; d < 2; ++d) {
+        const std::pair<double, double> domain = surface.domain(d);
+        box[6 + d] = std::midpoint(domain.first, domain.second);
+        box[8 + 2 * d] = domain.first;
+        box[9 + 2 * d] = domain.second;
+    }
+    return box;
 }
 
-/// Inflated bounding boxes and centers of an ncu x ncv grid of surface cells.
-std::vector<std::array<double, 8>> surface_cell_boxes(
-    const NurbsSurface& srf,
-    double c0u,
-    double dcu,
-    int ncu,
-    double c0v,
-    double dcv,
-    int ncv,
-    double tolerance
-) {
-
-    std::vector<std::vector<Point>> samples;
-
-    for (int i = 0; i < 2 * ncu + 1; i++) {
-        std::vector<Point> row;
-
-        for (int j = 0; j < 2 * ncv + 1; j++)
-            row.push_back(srf.point_at(c0u + dcu * 0.5 * i, c0v + dcv * 0.5 * j));
-
-        samples.push_back(row);
+/// Quarter each actual knot span before bounding its trimmed NURBS control hull.
+std::vector<std::array<double, 12>> surface_cell_boxes(const NurbsSurface& surface, double tolerance) {
+    std::array<std::vector<double>, 2> cuts;
+    for (int d = 0; d < 2; ++d) {
+        const std::vector<double> spans = surface.get_span_vector(d);
+        for (size_t i = 1; i < spans.size(); ++i)
+            for (int j = 0; j < 4; ++j)
+                cuts[d].push_back(spans[i - 1] + (spans[i] - spans[i - 1]) * j / 4.0);
+        cuts[d].push_back(spans.back());
     }
-
-    std::vector<std::array<double, 8>> boxes;
-
-    for (int ci = 0; ci < ncu; ci++)
-        for (int cj = 0; cj < ncv; cj++)
-            boxes.push_back(cell_box(samples, ci, cj, c0u, dcu, c0v, dcv, tolerance));
-
+    std::vector<std::array<double, 12>> boxes;
+    for (size_t i = 1; i < cuts[0].size(); ++i) {
+        NurbsSurface strip = surface;
+        if (!strip.trim(0, {cuts[0][i - 1], cuts[0][i]}))
+            throw std::runtime_error("Native SSI knot-span subdivision failed");
+        for (size_t j = 1; j < cuts[1].size(); ++j) {
+            NurbsSurface patch = strip;
+            if (!patch.trim(1, {cuts[1][j - 1], cuts[1][j]}))
+                throw std::runtime_error("Native SSI knot-span subdivision failed");
+            boxes.push_back(cell_box(patch, tolerance));
+        }
+    }
     return boxes;
 }
 
-/// Smallest non-degenerate diagonal among the first 64 boxes, 1 when none.
-double cell_diagonal(const std::vector<std::array<double, 8>>& boxes) {
-
-    double best = std::numeric_limits<double>::infinity();
-
-    for (size_t i = 0; i < boxes.size() && i < 64; i++) {
-        const std::array<double, 8>& bx = boxes[i];
-        double d = std::sqrt((bx[3] - bx[0]) * (bx[3] - bx[0]) + (bx[4] - bx[1]) * (bx[4] - bx[1]) + (bx[5] - bx[2]) * (bx[5] - bx[2]));
-
-        if (1e-12 < d && d < best)
-            best = d;
-    }
-
-    return best < std::numeric_limits<double>::infinity() ? best : 1.0;
+double cell_size(const std::array<double, 12>& box) {
+    return std::hypot(box[3] - box[0], box[4] - box[1], box[5] - box[2]);
 }
 
-/// Grid seed of a surface-surface trace in joint parameters.
+/// Median nonzero cell diagonal for the initial world-space marching step.
+double cell_diagonal(const std::vector<std::array<double, 12>>& boxes) {
+    std::vector<double> sizes;
+    for (const std::array<double, 12>& box : boxes)
+        if (cell_size(box) > 0.0)
+            sizes.push_back(cell_size(box));
+    if (sizes.empty())
+        throw std::runtime_error("Native SSI cannot trace a collapsed surface");
+    std::sort(sizes.begin(), sizes.end());
+    return sizes[sizes.size() / 2];
+}
+
+struct SurfaceSurfaceGraph {
+    int fixed = -1;
+    std::array<int, 3> free{};
+    std::array<double, 4> lower{}, upper{}, center{};
+    std::array<double, 3> scale{};
+    std::array<std::array<double, 3>, 3> inverse{};
+    double contraction = 0.0;
+    std::array<nurbs_interval::Interval, 4> image{}, anchor{};
+};
+
+/// Grid seed with retained unique parameter-graph certificates.
 struct SurfaceSurfaceSeed {
     double u; // Seed u on a.
     double v; // Seed v on a.
     double s; // Seed u on b.
     double t; // Seed v on b.
     bool used; // Whether a trace already passed the seed.
+    std::vector<SurfaceSurfaceGraph> graphs;
 };
 
 /// Joint parameter space (au, av, bu, bv) of two surfaces with the marching scales.
@@ -7733,20 +7400,21 @@ public:
     std::array<double, 4> range; // Domain lengths.
     std::array<bool, 4> closed; // Whether each parameter wraps around a seam.
     std::array<double, 4> step; // Grid cell size per parameter.
-    std::vector<std::array<double, 8>> boxes_a; // Cell boxes of a.
-    std::vector<std::array<double, 8>> boxes_b; // Cell boxes of b.
+    std::array<std::vector<double>, 4> knots; // Distinct parameter spans.
+    std::vector<std::array<double, 12>> boxes_a; // Cell boxes of a.
+    std::vector<std::array<double, 12>> boxes_b; // Cell boxes of b.
     double h_init; // Initial 3D marching step.
     double conv_tol; // Corrector convergence tolerance.
-    double seed_tol; // 3D distance that merges two seeds.
     int max_steps; // Marching step cap per direction.
     double close_tol; // 3D distance that closes a loop.
-    double consume_tol; // 3D distance that consumes a seed.
 
     /// Sample both domains into cell boxes and derive the marching scales.
     SurfaceSurfaceField(const NurbsSurface& a_, const NurbsSurface& b_, double tolerance_);
 
     /// Wrap parameter k across a closed seam or clamp it to the domain.
     double wrap(int k, double t) const;
+
+    double parameter_width(int k, double t) const;
 
     /// Point and first derivatives of a at (u, v).
     void eval_a(double u, double v, Vector& s, Vector& su, Vector& sv) const;
@@ -7769,7 +7437,7 @@ public:
     ) const;
 
     /// Newton-project x onto the section with parameter k held fixed; x is kept when it fails.
-    bool correct_on_seam(std::array<double, 4>& x, int k) const;
+    bool correct_on_seam(std::array<double, 4>& x, int k, const SurfaceSurfaceGraph* chart = nullptr) const;
 
     /// Unit 3D section tangent at x in direction dir_sign, with both surfaces' derivatives.
     bool tangent(
@@ -7797,18 +7465,25 @@ SurfaceSurfaceField::SurfaceSurfaceField(const NurbsSurface& a_, const NurbsSurf
         hi[k] = domain.second;
         range[k] = hi[k] - lo[k];
         closed[k] = srf.is_closed(k % 2);
-        cells[k] = std::max((int)srf.get_span_vector(k % 2).size() - 1, 1) * 4;
+        knots[k] = srf.get_span_vector(k % 2);
+        cells[k] = std::max(static_cast<int>(knots[k].size()) - 1, 1) * 4;
         step[k] = range[k] / cells[k];
     }
 
-    boxes_a = surface_cell_boxes(a, lo[0], step[0], cells[0], lo[1], step[1], cells[1], tolerance);
-    boxes_b = surface_cell_boxes(b, lo[2], step[2], cells[2], lo[3], step[3], cells[3], tolerance);
+    boxes_a = surface_cell_boxes(a, tolerance);
+    boxes_b = surface_cell_boxes(b, tolerance);
     h_init = std::min(cell_diagonal(boxes_a), cell_diagonal(boxes_b)) * 0.25;
-    conv_tol = std::max(tolerance, h_init * 1e-7);
-    seed_tol = std::max(cell_diagonal(boxes_a), cell_diagonal(boxes_b));
-    max_steps = (cells[0] * cells[1] + cells[2] * cells[3]) * 32;
+    conv_tol = tolerance * 0.1;
+    max_steps = std::min(100000, std::max(4096, (cells[0] * cells[1] + cells[2] * cells[3]) * 128));
     close_tol = h_init * 3.0;
-    consume_tol = h_init * 2.0;
+}
+
+double SurfaceSurfaceField::parameter_width(int k, double t) const {
+    const double parameter = wrap(k, t);
+    const std::vector<double>& spans = knots[k];
+    const auto found = std::upper_bound(spans.begin(), spans.end(), parameter);
+    const size_t index = std::clamp(static_cast<size_t>(found - spans.begin()), size_t(1), spans.size() - 1);
+    return spans[index] - spans[index - 1];
 }
 
 double SurfaceSurfaceField::wrap(int k, double t) const {
@@ -7936,28 +7611,35 @@ bool SurfaceSurfaceField::correct(
     Vector sbu;
     Vector sbv;
 
-    for (int it = 0; it < 8; it++) {
+    for (int it = 0; it < 24; it++) {
         eval_a(x[0], x[1], sa, sau, sav);
         eval_b(x[2], x[3], sb, sbu, sbv);
         double res[3] = {sa[0] - sb[0], sa[1] - sb[1], sa[2] - sb[2]};
 
-        if (std::sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2]) < conv_tol)
+        const double pin = has_pin ? std::abs(pd[0] * (sa[0] - pp[0]) + pd[1] * (sa[1] - pp[1]) + pd[2] * (sa[2] - pp[2])) : 0.0;
+        if (std::hypot(res[0], res[1], res[2]) <= conv_tol && pin <= conv_tol)
             return true;
 
         double jac[3][4];
+        std::array<double, 4> scale;
+        for (int k = 0; k < 4; ++k)
+            scale[k] = parameter_width(k, x[k]);
 
         for (int k = 0; k < 3; k++) {
-            jac[k][0] = sau[k];
-            jac[k][1] = sav[k];
-            jac[k][2] = -sbu[k];
-            jac[k][3] = -sbv[k];
+            jac[k][0] = sau[k] * scale[0];
+            jac[k][1] = sav[k] * scale[1];
+            jac[k][2] = -sbu[k] * scale[2];
+            jac[k][3] = -sbv[k] * scale[3];
         }
 
-        bool ok = has_pin ? newton_step_pinned(jac, res, sa, sau, sav, pd, pp, x) : newton_step_free(jac, res, x);
+        std::array<double, 4> change = {};
+        const bool ok = has_pin ? newton_step_pinned(jac, res, sa, sau * scale[0], sav * scale[1], pd, pp, change)
+            : newton_step_free(jac, res, change);
 
         if (!ok)
             return false;
-
+        for (int k = 0; k < 4; ++k)
+            x[k] += change[k] * scale[k];
         clamp_open(x);
     }
 
@@ -7965,10 +7647,11 @@ bool SurfaceSurfaceField::correct(
     eval_b(x[2], x[3], sb, sbu, sbv);
     double g = std::sqrt((sa[0] - sb[0]) * (sa[0] - sb[0]) + (sa[1] - sb[1]) * (sa[1] - sb[1]) + (sa[2] - sb[2]) * (sa[2] - sb[2]));
 
-    return g < conv_tol * 10.0;
+    const double pin = has_pin ? std::abs(pd[0] * (sa[0] - pp[0]) + pd[1] * (sa[1] - pp[1]) + pd[2] * (sa[2] - pp[2])) : 0.0;
+    return g <= conv_tol * 2.0 && pin <= conv_tol * 2.0;
 }
 
-bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k) const {
+bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k, const SurfaceSurfaceGraph* chart) const {
 
     std::array<double, 4> y = x;
     std::array<int, 3> free;
@@ -7983,7 +7666,11 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k) const
         if (c != k)
             free[j++] = c;
 
-    for (int it = 0; it < 8; it++) {
+    for (int it = 0; it < 24; it++) {
+        if (chart)
+            for (int c = 0; c < 4; ++c)
+                if (!std::isfinite(y[c]) || y[c] < chart->lower[c] || y[c] > chart->upper[c])
+                    return false;
         eval_a(y[0], y[1], sa, sau, sav);
         eval_b(y[2], y[3], sb, sbu, sbv);
         std::vector<double> res = {sa[0] - sb[0], sa[1] - sb[1], sa[2] - sb[2]};
@@ -7996,10 +7683,13 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k) const
 
         const Vector cols[4] = {sau, sav, -sbu, -sbv};
         std::vector<std::vector<double>> jac(3, std::vector<double>(3));
+        std::array<double, 3> scale;
+        for (int c = 0; c < 3; ++c)
+            scale[c] = parameter_width(free[c], y[free[c]]);
 
         for (int r = 0; r < 3; r++)
             for (int c = 0; c < 3; c++)
-                jac[r][c] = cols[free[c]][r];
+                jac[r][c] = cols[free[c]][r] * scale[c];
 
         std::vector<double> dx;
 
@@ -8007,17 +7697,21 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k) const
             return false;
 
         for (int c = 0; c < 3; c++)
-            y[free[c]] -= dx[c];
+            y[free[c]] -= dx[c] * scale[c];
 
         clamp_open(y);
     }
 
+    if (chart)
+        for (int c = 0; c < 4; ++c)
+            if (!std::isfinite(y[c]) || y[c] < chart->lower[c] || y[c] > chart->upper[c])
+                return false;
     eval_a(y[0], y[1], sa, sau, sav);
     eval_b(y[2], y[3], sb, sbu, sbv);
 
     double g = std::sqrt((sa[0] - sb[0]) * (sa[0] - sb[0]) + (sa[1] - sb[1]) * (sa[1] - sb[1]) + (sa[2] - sb[2]) * (sa[2] - sb[2]));
 
-    if (g >= conv_tol * 10.0)
+    if (!std::isfinite(g) || g > conv_tol * 2.0)
         return false;
 
     x = y;
@@ -8059,47 +7753,606 @@ double triple_distance(const std::array<double, 3>& p, const std::array<double, 
     return std::sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]));
 }
 
-/// Whether a's point at x lies within the seed tolerance of an existing seed.
-bool seed_is_duplicate(const SurfaceSurfaceField& field, const std::array<double, 4>& x, const std::vector<SurfaceSurfaceSeed>& seeds) {
+double parameter_difference(const SurfaceSurfaceField& field, int k, double a, double b) {
+    double difference = std::abs(a - b);
+    if (field.closed[k]) {
+        difference = std::fmod(difference, field.range[k]);
+        difference = std::min(difference, field.range[k] - difference);
+    }
+    return difference;
+}
 
-    std::array<double, 3> p = field.point(x);
+bool graph_contains(const SurfaceSurfaceGraph& graph,
+    const std::array<nurbs_interval::Interval, 4>& root) {
+    for (int k = 0; k < 4; ++k)
+        if (!nurbs_interval::finite(root[k]) || root[k].lo < graph.lower[k] || root[k].hi > graph.upper[k])
+            return false;
+    return true;
+}
 
-    for (const SurfaceSurfaceSeed& sd : seeds)
-        if (triple_distance(p, field.point({sd.u, sd.v, 0.0, 0.0})) < field.seed_tol)
+bool same_graph(const SurfaceSurfaceGraph& a, const SurfaceSurfaceGraph& b) {
+    return graph_contains(a, b.anchor) || graph_contains(b, a.anchor);
+}
+
+bool seed_is_duplicate(const std::array<double, 4>& x, const SurfaceSurfaceGraph& graph,
+    std::vector<SurfaceSurfaceSeed>& seeds) {
+    for (SurfaceSurfaceSeed& seed : seeds) {
+        if (ssi_diagnostics::active)
+            ++ssi_diagnostics::active->seed_comparisons;
+        if (std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& other) { return same_graph(graph, other); })) {
+            if (ssi_diagnostics::active)
+                ssi_diagnostics::active->duplicate_seeds.push_back({x, {seed.u, seed.v, seed.s, seed.t}});
+            seed.graphs.push_back(graph);
             return true;
-
+        }
+    }
     return false;
 }
 
-/// Corrected centers of overlapping cell-box pairs, one per distinct 3D point, at most 20000 pairs.
-std::vector<SurfaceSurfaceSeed> surface_surface_seeds(const SurfaceSurfaceField& field) {
+bool cell_overlap(const std::array<double, 12>& a, const std::array<double, 12>& b) {
+    for (int d = 0; d < 3; ++d)
+        if (a[d] > b[d + 3] || b[d] > a[d + 3])
+            return false;
+    return true;
+}
 
-    std::vector<SurfaceSurfaceSeed> seeds;
-    int pair_budget = 20000;
-    const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
+bool in_seed_cell(const SurfaceSurfaceField& field, std::array<double, 4>& x,
+    const std::array<double, 12>& a, const std::array<double, 12>& b) {
+    Vector point, au, av, bu, bv;
+    field.eval_a(x[0], x[1], point, au, av);
+    field.eval_b(x[2], x[3], point, bu, bv);
+    const Vector derivatives[4] = {au, av, bu, bv};
+    for (int k = 0; k < 4; ++k) {
+        const std::array<double, 12>& box = k < 2 ? a : b;
+        const int d = k % 2;
+        if (field.closed[k])
+            x[k] += std::round((box[6 + d] - x[k]) / field.range[k]) * field.range[k];
+        const double speed = std::hypot(derivatives[k][0], derivatives[k][1], derivatives[k][2]);
+        const double rounding = 64.0 * std::numeric_limits<double>::epsilon() *
+            std::max(std::abs(box[8 + 2 * d]), std::abs(box[9 + 2 * d]));
+        const double error = rounding + (speed > 0.0 ? field.conv_tol * 4.0 / speed : 0.0);
+        if (x[k] < box[8 + 2 * d] - error || x[k] > box[9 + 2 * d] + error)
+            return false;
+    }
+    return true;
+}
 
-    for (const std::array<double, 8>& ba : field.boxes_a) {
-        if (pair_budget < 0)
-            break;
+std::pair<std::array<double, 12>, std::array<double, 12>> split_seed_cell(
+    const NurbsSurface& surface,
+    const std::array<double, 12>& box,
+    double tolerance
+) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Subdivision);
+    NurbsSurface patch = surface;
+    if (!patch.trim(0, {box[8], box[9]}) || !patch.trim(1, {box[10], box[11]}))
+        throw std::runtime_error("Native SSI candidate trim failed");
+    std::array<double, 2> extent = {};
+    for (int i = 0; i < patch.cv_count(0); ++i)
+        for (int j = 0; j < patch.cv_count(1); ++j) {
+            const Point point = patch.get_cv(i, j);
+            if (i > 0)
+                extent[0] = std::max(extent[0], point.distance(patch.get_cv(i - 1, j)));
+            if (j > 0)
+                extent[1] = std::max(extent[1], point.distance(patch.get_cv(i, j - 1)));
+        }
+    const int direction = extent[0] >= extent[1] ? 0 : 1;
+    const std::pair<NurbsSurface, NurbsSurface> halves = patch.split(direction, box[6 + direction]);
+    if (!halves.first.is_valid() || !halves.second.is_valid())
+        throw std::runtime_error("Native SSI candidate subdivision failed");
+    return {cell_box(halves.first, tolerance), cell_box(halves.second, tolerance)};
+}
 
-        for (const std::array<double, 8>& bb : field.boxes_b) {
-            if (bb[0] > ba[3] || bb[3] < ba[0] || bb[1] > ba[4] || bb[4] < ba[1] || bb[2] > ba[5] || bb[5] < ba[2])
-                continue;
+struct SeedCellPair {
+    std::array<double, 12> a;
+    std::array<double, 12> b;
+    int depth = 0;
+};
 
-            pair_budget -= 1;
+std::array<int, 4> seed_isoparameters(const SurfaceSurfaceField& field, const std::array<double, 4>& x) {
+    Vector point, au, av, bu, bv;
+    field.eval_a(x[0], x[1], point, au, av);
+    field.eval_b(x[2], x[3], point, bu, bv);
+    Vector columns[4] = {au, av, -bu, -bv};
+    for (int k = 0; k < 4; ++k)
+        columns[k] *= field.parameter_width(k, x[k]);
+    std::array<double, 4> scores;
+    for (int fixed = 0; fixed < 4; ++fixed) {
+        std::array<int, 3> free;
+        for (int k = 0, n = 0; k < 4; ++k)
+            if (k != fixed)
+                free[n++] = k;
+        scores[fixed] = std::abs(columns[free[0]].dot(columns[free[1]].cross(columns[free[2]])));
+    }
+    std::array<int, 4> order = {0, 1, 2, 3};
+    std::sort(order.begin(), order.end(), [&](int a, int b) { return scores[a] > scores[b]; });
+    return order;
+}
 
-            if (pair_budget < 0)
-                break;
-
-            std::array<double, 4> x = {ba[6], ba[7], bb[6], bb[7]};
-
-            if (!field.correct(x, false, dummy3, dummy3) || seed_is_duplicate(field, x, seeds))
-                continue;
-
-            seeds.push_back({field.wrap(0, x[0]), field.wrap(1, x[1]), field.wrap(2, x[2]), field.wrap(3, x[3]), false});
+/// Try ranked locked isoparameters, including candidate boundaries, before subdividing.
+bool seed_cell_root(const SurfaceSurfaceField& field, const SeedCellPair& pair, std::array<double, 4>& x) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Root);
+    if (ssi_diagnostics::active) {
+        ++ssi_diagnostics::active->root_searches;
+        ++ssi_diagnostics::active->corrections;
+    }
+    const std::array<double, 4> middle = {pair.a[6], pair.a[7], pair.b[6], pair.b[7]};
+    const std::array<double, 3> dummy = {};
+    x = middle;
+    if (field.correct(x, false, dummy, dummy) && in_seed_cell(field, x, pair.a, pair.b))
+        return true;
+    for (int fixed : seed_isoparameters(field, middle)) {
+        const std::array<double, 12>& box = fixed < 2 ? pair.a : pair.b;
+        const int d = fixed % 2;
+        for (double parameter : {middle[fixed], box[8 + 2 * d], box[9 + 2 * d]}) {
+            x = middle;
+            x[fixed] = parameter;
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->corrections;
+            if (field.correct_on_seam(x, fixed) && in_seed_cell(field, x, pair.a, pair.b))
+                return true;
         }
     }
+    return false;
+}
 
+using SsiInterval = nurbs_interval::Interval;
+using SsiHomogeneous = nurbs_interval::Homogeneous;
+using SsiPatchBounds = nurbs_interval::SurfaceBounds;
+
+std::array<double, 12> bound_seed_cell(const NurbsSurface& surface, std::array<double, 12> box) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Bounds);
+    const Point point = surface.get_cv(0, 0);
+    const std::array<double, 3> origin = {point[0], point[1], point[2]};
+    SsiPatchBounds bounds;
+    if (!nurbs_interval::surface_bounds(surface, {box[8], box[9], box[10], box[11]}, origin, bounds, false))
+        throw std::runtime_error("Native SSI could not bound a rational candidate");
+    for (int d = 0; d < 3; ++d) {
+        const SsiInterval world = bounds.point[d] + SsiInterval(origin[d]);
+        if (!std::isfinite(world.lo) || !std::isfinite(world.hi))
+            throw std::runtime_error("Native SSI rational candidate bound overflowed");
+        box[d] = world.lo;
+        box[d + 3] = world.hi;
+    }
+    return box;
+}
+
+SsiInterval project_seed_controls(const std::vector<SsiHomogeneous>& controls, const Vector& axis) {
+    SsiInterval result;
+    bool first = true;
+    for (const auto& cv : controls) {
+        SsiInterval projection;
+        for (int d = 0; d < 3; ++d)
+            projection = projection + SsiInterval(axis[d]) * cv[d];
+        projection = projection / cv[3];
+        result = first ? projection : nurbs_interval::interval_hull(result, projection);
+        first = false;
+    }
+    return result;
+}
+
+/// Separating axes reject disjoint positive-rational control hulls despite overlapping AABBs.
+bool seed_cell_separated(const SurfaceSurfaceField& field, const SeedCellPair& pair) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Separation);
+    const std::array<double, 3> origin = field.point({pair.a[6], pair.a[7], pair.b[6], pair.b[7]});
+    const auto a = nurbs_interval::surface_controls(field.a, {pair.a[8], pair.a[9], pair.a[10], pair.a[11]}, origin);
+    const auto b = nurbs_interval::surface_controls(field.b, {pair.b[8], pair.b[9], pair.b[10], pair.b[11]}, origin);
+    if (a.empty() || b.empty())
+        throw std::runtime_error("Native SSI could not bound candidate projections");
+    Vector point, au, av, bu, bv;
+    field.eval_a(pair.a[6], pair.a[7], point, au, av);
+    field.eval_b(pair.b[6], pair.b[7], point, bu, bv);
+    for (Vector* derivative : {&au, &av, &bu, &bv}) {
+        const double scale = std::max({std::abs((*derivative)[0]), std::abs((*derivative)[1]), std::abs((*derivative)[2])});
+        if (std::isfinite(scale) && scale > 0.0)
+            *derivative /= scale;
+        else
+            *derivative = Vector(0, 0, 0);
+    }
+    const Vector na = au.cross(av);
+    const Vector nb = bu.cross(bv);
+    const std::array<Vector, 10> axes = {na, nb, au.cross(bu), au.cross(bv), av.cross(bu), av.cross(bv),
+        au.cross(na), av.cross(na), bu.cross(nb), bv.cross(nb)};
+    for (Vector axis : axes) {
+        const double scale = std::max({std::abs(axis[0]), std::abs(axis[1]), std::abs(axis[2])});
+        if (!(scale > 0.0) || !std::isfinite(scale))
+            continue;
+        axis /= scale;
+        const SsiInterval first = project_seed_controls(a, axis);
+        const SsiInterval second = project_seed_controls(b, axis);
+        if (nurbs_interval::finite(first) && nurbs_interval::finite(second) && (first.hi < second.lo || second.hi < first.lo))
+            return true;
+    }
+    return false;
+}
+
+bool ssi_continuous(const NurbsSurface& surface, const std::array<double, 4>& rectangle) {
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        const auto& knots = surface.m_nurbsknot[d];
+        for (size_t i = 0; i < knots.size();) {
+            size_t j = i + 1;
+            while (j < knots.size() && knots[j] == knots[i])
+                ++j;
+            if (j - i > static_cast<size_t>(surface.degree(d)) && knots[i] > domain.first && knots[i] < domain.second &&
+                knots[i] >= rectangle[2 * d] && knots[i] <= rectangle[2 * d + 1])
+                return false;
+            i = j;
+        }
+    }
+    return true;
+}
+
+bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::array<double, 4>& root,
+    const std::array<int, 3>& free, const std::array<double, 3>& scale,
+    const std::array<SsiInterval, 3>& image, const SsiInterval matrix[3][3],
+    const std::array<SsiInterval, 3>& forcing, double contraction, const double inverse[3][3],
+    std::string* failure = nullptr) {
+    if (failure)
+        *failure = "invalid_graph_enclosure";
+    std::array<bool, 3> clipped;
+    bool needs_clip = false;
+    double magnitude = 0.0;
+    for (int c = 0; c < 3; ++c) {
+        const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
+        if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
+            return false;
+        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
+        needs_clip = needs_clip || clipped[c];
+        magnitude = std::max(magnitude, nurbs_interval::magnitude(forcing[c]));
+    }
+    if (!needs_clip)
+        return true;
+    if (failure)
+        *failure = "retained_seed_bounds_unproved";
+    const std::array<double, 3> origin = field.point(root);
+    SsiPatchBounds a, b;
+    if (!nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, a, false) ||
+        !nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, b, false))
+        return false;
+    double displacement = 0.0;
+    for (int r = 0; r < 3; ++r) {
+        SsiInterval residual;
+        for (int d = 0; d < 3; ++d)
+            residual = residual - SsiInterval(inverse[r][d]) * (a.point[d] - b.point[d]);
+        displacement = std::max(displacement, nurbs_interval::magnitude(residual));
+    }
+    const SsiInterval seed_radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(contraction));
+    if (!nurbs_interval::finite(seed_radius))
+        return false;
+    if (failure)
+        *failure = "retained_seed_outside_original_domain";
+    for (int c = 0; c < 3; ++c) {
+        const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
+            SsiInterval(-seed_radius.hi, seed_radius.hi);
+        if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
+            return false;
+    }
+    if (failure)
+        *failure = "implicit_derivative_unbounded";
+    const SsiInterval radius = SsiInterval(magnitude) / (SsiInterval(1.0) - SsiInterval(contraction));
+    if (!nurbs_interval::finite(radius))
+        return false;
+    std::array<SsiInterval, 3> derivative;
+    derivative.fill(SsiInterval(-radius.hi, radius.hi));
+    for (int iteration = 0; iteration < 8; ++iteration) {
+        std::array<SsiInterval, 3> next = forcing;
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c)
+                next[r] = next[r] + matrix[r][c] * derivative[c];
+            next[r] = {std::max(derivative[r].lo, next[r].lo), std::min(derivative[r].hi, next[r].hi)};
+            if (!nurbs_interval::finite(next[r]))
+                return false;
+        }
+        derivative = next;
+    }
+    if (failure)
+        *failure = "clipped_coordinate_monotonicity_unproved";
+    for (int c = 0; c < 3; ++c)
+        if (clipped[c] && derivative[c].lo < 0.0 && derivative[c].hi > 0.0)
+            return false;
+    return true;
+}
+
+bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph,
+    const std::array<double, 4>& point, std::array<SsiInterval, 4>& box) {
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(point[k]) || point[k] < graph.lower[k] || point[k] > graph.upper[k])
+            return false;
+    const std::array<double, 3> origin = field.point(point);
+    SsiPatchBounds a, b;
+    if (!nurbs_interval::surface_bounds(field.a, {point[0], point[0], point[1], point[1]}, origin, a, false, true) ||
+        !nurbs_interval::surface_bounds(field.b, {point[2], point[2], point[3], point[3]}, origin, b, false, true))
+        return false;
+    double displacement = 0.0;
+    for (int r = 0; r < 3; ++r) {
+        SsiInterval residual;
+        for (int d = 0; d < 3; ++d)
+            residual = residual - SsiInterval(graph.inverse[r][d]) * (a.point[d] - b.point[d]);
+        if (!nurbs_interval::finite(residual))
+            return false;
+        displacement = std::max(displacement, nurbs_interval::magnitude(residual));
+    }
+    const SsiInterval radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(graph.contraction));
+    if (!nurbs_interval::finite(radius))
+        return false;
+    box[graph.fixed] = SsiInterval(point[graph.fixed]);
+    for (int c = 0; c < 3; ++c) {
+        const int k = graph.free[c];
+        const SsiInterval value = SsiInterval(point[k]) + SsiInterval(graph.scale[c]) * SsiInterval(-radius.hi, radius.hi);
+        box[k] = {std::max(value.lo, graph.image[k].lo), std::min(value.hi, graph.image[k].hi)};
+        if (!nurbs_interval::finite(box[k]))
+            return false;
+    }
+    return graph_contains(graph, box);
+}
+
+/// Every root in this candidate belongs to one continuous, regular parameter graph.
+bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pair,
+    const std::array<double, 4>& root, SurfaceSurfaceGraph* provenance = nullptr,
+    nlohmann::ordered_json* diagnostics = nullptr) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Coverage);
+    if (ssi_diagnostics::active)
+        ++ssi_diagnostics::active->coverage_checks;
+    const std::array<double, 4> lo = {pair.a[8], pair.a[10], pair.b[8], pair.b[10]};
+    const std::array<double, 4> hi = {pair.a[9], pair.a[11], pair.b[9], pair.b[11]};
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(root[k]) || root[k] < field.lo[k] || root[k] > field.hi[k])
+            return false;
+    const std::array<double, 3> origin = field.point(root);
+    Vector point, au, av, bu, bv;
+    field.eval_a(root[0], root[1], point, au, av);
+    field.eval_b(root[2], root[3], point, bu, bv);
+    const Vector columns[4] = {au, av, -bu, -bv};
+    for (int fixed : seed_isoparameters(field, root)) {
+        nlohmann::ordered_json* chart = nullptr;
+        if (diagnostics) {
+            diagnostics->push_back({{"fixed", fixed}, {"status", "fixed_seed_outside_candidate"}});
+            chart = &diagnostics->back();
+        }
+        if (root[fixed] < lo[fixed] || root[fixed] > hi[fixed])
+            continue;
+        if (chart)
+            (*chart)["status"] = "singular_scaled_jacobian";
+        std::array<int, 3> free;
+        for (int k = 0, n = 0; k < 4; ++k)
+            if (k != fixed)
+                free[n++] = k;
+        std::array<double, 3> scale;
+        std::vector<std::vector<double>> jac(3, std::vector<double>(3));
+        for (int c = 0; c < 3; ++c) {
+            scale[c] = hi[free[c]] - lo[free[c]];
+            for (int r = 0; r < 3; ++r)
+                jac[r][c] = columns[free[c]][r] * scale[c];
+        }
+        double inverse[3][3];
+        bool invertible = true;
+        for (int c = 0; c < 3; ++c) {
+            std::vector<double> rhs(3), solution;
+            rhs[c] = 1.0;
+            if (!solve_gauss(jac, rhs, 3, solution)) {
+                invertible = false;
+                break;
+            }
+            for (int r = 0; r < 3; ++r) {
+                inverse[r][c] = solution[r];
+                invertible = invertible && std::isfinite(solution[r]);
+            }
+        }
+        if (!invertible)
+            continue;
+        if (chart)
+            (*chart)["status"] = "invalid_or_discontinuous_chart";
+        std::array<double, 4> lower = lo;
+        std::array<double, 4> upper = hi;
+        const double free_width = hi[fixed] - lo[fixed];
+        bool centered = true;
+        for (int c = 0; c < 3; ++c) {
+            const int k = free[c];
+            double tangent = 0.0;
+            for (int d = 0; d < 3; ++d)
+                tangent -= inverse[c][d] * columns[fixed][d] * free_width;
+            const double radius = std::max(std::abs(lo[k] - root[k]), std::abs(hi[k] - root[k])) +
+                (std::abs(tangent) + 1.0) * scale[c];
+            lower[k] = std::min(lo[k], root[k] - radius);
+            upper[k] = std::max(hi[k], root[k] + radius);
+            centered = centered && std::isfinite(lower[k]) && std::isfinite(upper[k]) &&
+                root[k] >= lower[k] && root[k] <= upper[k];
+        }
+        if (!centered || !ssi_continuous(field.a, {lower[0], upper[0], lower[1], upper[1]}) ||
+            !ssi_continuous(field.b, {lower[2], upper[2], lower[3], upper[3]}))
+            continue;
+        if (chart) {
+            (*chart)["status"] = "chart_derivative_bounds_unproved";
+            (*chart)["lower"] = lower;
+            (*chart)["upper"] = upper;
+            (*chart)["scale"] = scale;
+        }
+        SsiPatchBounds a, b;
+        if (!nurbs_interval::surface_bounds(field.a, {lower[0], upper[0], lower[1], upper[1]}, origin, a, true, true) ||
+            !nurbs_interval::surface_bounds(field.b, {lower[2], upper[2], lower[3], upper[3]}, origin, b, true, true))
+            continue;
+        std::array<double, 4> center_lo = root;
+        std::array<double, 4> center_hi = root;
+        center_lo[fixed] = lo[fixed];
+        center_hi[fixed] = hi[fixed];
+        SsiPatchBounds a0, b0;
+        if (chart)
+            (*chart)["status"] = "center_residual_bounds_unproved";
+        if (!nurbs_interval::surface_bounds(field.a, {center_lo[0], center_hi[0], center_lo[1], center_hi[1]}, origin, a0, false) ||
+            !nurbs_interval::surface_bounds(field.b, {center_lo[2], center_hi[2], center_lo[3], center_hi[3]}, origin, b0, false))
+            continue;
+        std::array<SsiInterval, 3> domain;
+        std::array<SsiInterval, 3> interior;
+        for (int c = 0; c < 3; ++c) {
+            const SsiInterval first = (SsiInterval(lower[free[c]]) - SsiInterval(root[free[c]])) / SsiInterval(scale[c]);
+            const SsiInterval last = (SsiInterval(upper[free[c]]) - SsiInterval(root[free[c]])) / SsiInterval(scale[c]);
+            domain[c] = {first.lo, last.hi};
+            interior[c] = {first.hi, last.lo};
+        }
+        bool covered = true;
+        std::array<SsiInterval, 3> image;
+        std::array<SsiInterval, 3> forcing;
+        SsiInterval matrix[3][3];
+        double contraction_bound = 0.0;
+        for (int r = 0; r < 3; ++r) {
+            for (int d = 0; d < 3; ++d) {
+                image[r] = image[r] - SsiInterval(inverse[r][d]) * (a0.point[d] - b0.point[d]);
+                const SsiInterval derivative = fixed < 2 ? a.derivative[fixed][d] : SsiInterval(-1.0) * b.derivative[fixed - 2][d];
+                forcing[r] = forcing[r] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(free_width);
+            }
+            SsiInterval contraction;
+            for (int c = 0; c < 3; ++c) {
+                matrix[r][c] = SsiInterval(r == c ? 1.0 : 0.0);
+                const int k = free[c];
+                for (int d = 0; d < 3; ++d) {
+                    const SsiInterval derivative = k < 2 ? a.derivative[k][d] : SsiInterval(-1.0) * b.derivative[k - 2][d];
+                    matrix[r][c] = matrix[r][c] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(scale[c]);
+                }
+                contraction = contraction + SsiInterval(nurbs_interval::magnitude(matrix[r][c]));
+                image[r] = image[r] + matrix[r][c] * domain[c];
+            }
+            contraction_bound = std::max(contraction_bound, contraction.hi);
+            covered = covered && contraction.hi < 1.0 && image[r].lo > interior[r].lo && image[r].hi < interior[r].hi;
+        }
+        if (chart) {
+            (*chart)["status"] = "krawczyk_inclusion_unproved";
+            (*chart)["contraction"] = contraction_bound;
+            (*chart)["image"] = {{image[0].lo, image[0].hi}, {image[1].lo, image[1].hi}, {image[2].lo, image[2].hi}};
+            (*chart)["interior"] = {{interior[0].lo, interior[0].hi}, {interior[1].lo, interior[1].hi}, {interior[2].lo, interior[2].hi}};
+        }
+        if (covered) {
+            std::string failure;
+            const bool connected = ssi_graph_domain_connected(field, root, free, scale, image, matrix, forcing,
+                contraction_bound, inverse, chart ? &failure : nullptr);
+            if (chart)
+                (*chart)["status"] = connected ? "covered" : failure;
+            if (connected) {
+                SurfaceSurfaceGraph graph;
+                graph.fixed = fixed;
+                graph.free = free;
+                graph.lower = lower;
+                graph.upper = upper;
+                graph.center = root;
+                graph.scale = scale;
+                graph.contraction = contraction_bound;
+                graph.image[fixed] = SsiInterval(lo[fixed], hi[fixed]);
+                for (int r = 0; r < 3; ++r) {
+                    const int k = free[r];
+                    graph.image[k] = SsiInterval(root[k]) + SsiInterval(scale[r]) * image[r];
+                    for (int d = 0; d < 3; ++d)
+                        graph.inverse[r][d] = inverse[r][d];
+                }
+                if (!graph_root_box(field, graph, root, graph.anchor))
+                    continue;
+                bool retained = true;
+                for (int k = 0; k < 4; ++k)
+                    retained = retained && graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
+                if (!retained)
+                    continue;
+                if (provenance)
+                    *provenance = graph;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void seed_cell_pair(
+    const SurfaceSurfaceField& field,
+    const SeedCellPair& initial,
+    std::vector<SurfaceSurfaceSeed>& seeds,
+    size_t& remaining
+) {
+    std::vector<SeedCellPair> work = {initial};
+    while (!work.empty() && remaining > 0) {
+        --remaining;
+        const SeedCellPair pair = work.back();
+        work.pop_back();
+        if (ssi_diagnostics::active) {
+            ++ssi_diagnostics::active->cells;
+            ssi_diagnostics::active->max_depth = std::max(ssi_diagnostics::active->max_depth, pair.depth);
+        }
+        if (!cell_overlap(pair.a, pair.b)) {
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->box_rejections;
+            continue;
+        }
+        if (seed_cell_separated(field, pair)) {
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->projection_rejections;
+            continue;
+        }
+        std::array<double, 4> x;
+        const bool found = seed_cell_root(field, pair, x);
+        if (found && ssi_diagnostics::active)
+            ++ssi_diagnostics::active->roots_found;
+        nlohmann::ordered_json charts;
+        SurfaceSurfaceGraph graph;
+        if (found && seed_cell_covered(field, pair, x, &graph, pair.depth >= 48 ? &charts : nullptr)) {
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->covered;
+            if (!seed_is_duplicate(x, graph, seeds)) {
+                seeds.push_back({x[0], x[1], x[2], x[3], false, {graph}});
+                if (ssi_diagnostics::active)
+                    ssi_diagnostics::active->accepted_seeds.push_back(x);
+            }
+            continue;
+        }
+        if (pair.depth >= 48) {
+            const nlohmann::ordered_json diagnostic = {{"depth", pair.depth}, {"root_found", found},
+                {"reason", found ? "root_graph_coverage_unproved" : "root_not_found_and_hulls_not_separated"},
+                {"a", pair.a}, {"b", pair.b}, {"last_parameters", x}, {"charts", charts}};
+            throw std::runtime_error("Native SSI could not resolve an overlapping rational hull pair: " + diagnostic.dump());
+        }
+        const bool first = cell_size(pair.a) >= cell_size(pair.b);
+        const NurbsSurface& surface = first ? field.a : field.b;
+        auto halves = split_seed_cell(surface, first ? pair.a : pair.b, field.tolerance);
+        halves.first = bound_seed_cell(surface, halves.first);
+        halves.second = bound_seed_cell(surface, halves.second);
+        if (first) {
+            work.push_back({halves.second, pair.b, pair.depth + 1});
+            work.push_back({halves.first, pair.b, pair.depth + 1});
+        } else {
+            work.push_back({pair.a, halves.second, pair.depth + 1});
+            work.push_back({pair.a, halves.first, pair.depth + 1});
+        }
+    }
+    if (!work.empty())
+        throw std::runtime_error("Native SSI candidate subdivision work limit exceeded");
+}
+
+SurfaceSurfaceField precise_surface_field(const SurfaceSurfaceField& field) {
+    SurfaceSurfaceField precise = field;
+    double scale = 1.0;
+    for (const auto* boxes : {&field.boxes_a, &field.boxes_b})
+        for (const std::array<double, 12>& box : *boxes)
+            for (int k = 0; k < 6; ++k)
+                scale = std::max(scale, std::abs(box[k]));
+    precise.conv_tol = std::min(field.conv_tol, scale * 64.0 * std::numeric_limits<double>::epsilon());
+    return precise;
+}
+
+/// Preserve parameter-distinct roots of all conservatively overlapping knot-span cells.
+std::vector<SurfaceSurfaceSeed> surface_surface_seeds(const SurfaceSurfaceField& field) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Discovery);
+    std::vector<SurfaceSurfaceSeed> seeds;
+    const SurfaceSurfaceField precise = precise_surface_field(field);
+    auto boxes_a = field.boxes_a;
+    auto boxes_b = field.boxes_b;
+    for (auto& box : boxes_a)
+        box = bound_seed_cell(field.a, box);
+    for (auto& box : boxes_b)
+        box = bound_seed_cell(field.b, box);
+    size_t remaining = 200000;
+    for (const std::array<double, 12>& a : boxes_a)
+        for (const std::array<double, 12>& b : boxes_b) {
+            if (!cell_overlap(a, b))
+                continue;
+            if (remaining == 0)
+                throw std::runtime_error("Native SSI candidate work limit exceeded");
+            seed_cell_pair(precise, {a, b, 0}, seeds, remaining);
+        }
     return seeds;
 }
 
@@ -8122,7 +8375,8 @@ struct SurfaceSurfaceMarch {
     std::array<double, 4> xn; // Accepted next parameters.
     std::array<double, 3> p_cur; // Accepted next 3D point.
     double step_len; // Accepted 3D step length.
-    bool hit_boundary; // Whether the accepted step reached an open boundary.
+    int boundary; // Fixed open-boundary coordinate, or -1 for an interior step.
+    double boundary_value;
 };
 
 /// Direction of the next step, reusing the previous one up to three times at tangencies.
@@ -8150,10 +8404,13 @@ bool march_direction(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m, d
 /// Parameters after a step h along d, cut back at open boundaries, and the predicted point; false when a surface is singular.
 bool march_predict(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m, std::array<double, 3>& p_pred) {
 
-    const Vector& sau = m.sau;
-    const Vector& sav = m.sav;
-    const Vector& sbu = m.sbu;
-    const Vector& sbv = m.sbv;
+    std::array<double, 4> scale;
+    for (int k = 0; k < 4; ++k)
+        scale[k] = field.parameter_width(k, m.x[k]);
+    const Vector sau = m.sau * scale[0];
+    const Vector sav = m.sav * scale[1];
+    const Vector sbu = m.sbu * scale[2];
+    const Vector sbv = m.sbv * scale[3];
     const std::array<double, 3>& d = m.d;
 
     std::vector<std::vector<double>> ma = {
@@ -8175,27 +8432,37 @@ bool march_predict(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m, std
     if (!solve_gauss(ma, ra, 2, duv_a) || !solve_gauss(mb, rb, 2, duv_b))
         return false;
 
-    double delta[4] = {duv_a[0], duv_a[1], duv_b[0], duv_b[1]};
+    double delta[4] = {duv_a[0] * scale[0], duv_a[1] * scale[1], duv_b[0] * scale[2], duv_b[1] * scale[3]};
     double tc = 1.0;
-    m.hit_boundary = false;
+    m.boundary = -1;
 
     for (int k = 0; k < 4; k++) {
-        if (field.closed[k] || std::abs(delta[k]) < 1e-15)
+        if (field.closed[k] || delta[k] == 0.0)
             continue;
 
         if (m.x[k] + delta[k] > field.hi[k]) {
-            tc = std::min(tc, (field.hi[k] - m.x[k]) / delta[k]);
-            m.hit_boundary = true;
+            const double fraction = (field.hi[k] - m.x[k]) / delta[k];
+            if (fraction <= tc) {
+                tc = fraction;
+                m.boundary = k;
+                m.boundary_value = field.hi[k];
+            }
         }
 
         if (m.x[k] + delta[k] < field.lo[k]) {
-            tc = std::min(tc, (field.lo[k] - m.x[k]) / delta[k]);
-            m.hit_boundary = true;
+            const double fraction = (field.lo[k] - m.x[k]) / delta[k];
+            if (fraction <= tc) {
+                tc = fraction;
+                m.boundary = k;
+                m.boundary_value = field.lo[k];
+            }
         }
     }
 
     for (int k = 0; k < 4; k++)
         m.xn[k] = m.x[k] + tc * delta[k];
+    if (m.boundary >= 0)
+        m.xn[m.boundary] = m.boundary_value;
 
     p_pred = {m.sa[0] + d[0] * m.h * tc, m.sa[1] + d[1] * m.h * tc, m.sa[2] + d[2] * m.h * tc};
 
@@ -8212,6 +8479,18 @@ bool march_turns_sharply(const SurfaceSurfaceMarch& m) {
     return sd0 * m.prev_d[0] + sd1 * m.prev_d[1] + sd2 * m.prev_d[2] < 0.985;
 }
 
+bool correct_boundary_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
+    if (!field.correct_on_seam(m.xn, m.boundary) || m.xn[m.boundary] != m.boundary_value)
+        return false;
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(m.xn[k]) || (!field.closed[k] && (m.xn[k] < field.lo[k] || m.xn[k] > field.hi[k])))
+            return false;
+    const Point a = field.a.point_at(field.wrap(0, m.xn[0]), field.wrap(1, m.xn[1]));
+    const Point b = field.b.point_at(field.wrap(2, m.xn[2]), field.wrap(3, m.xn[3]));
+    const double residual = a.distance(b);
+    return std::isfinite(residual) && residual <= field.conv_tol * 2.0;
+}
+
 /// Up to seven attempts at one step, halving h after a failed corrector or a sharp turn.
 bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
 
@@ -8226,8 +8505,10 @@ bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
             return false;
         }
 
-        if (!field.correct(m.xn, true, m.d, p_pred)) {
-            m.why = "corrector";
+        const bool corrected = m.boundary >= 0 ? correct_boundary_step(field, m)
+            : field.correct(m.xn, true, m.d, p_pred);
+        if (!corrected) {
+            m.why = m.boundary >= 0 ? "boundary corrector" : "corrector";
             m.h *= 0.5;
             attempts += 1;
             m.smooth = 0;
@@ -8237,7 +8518,7 @@ bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
         m.p_cur = field.point(m.xn);
         m.step_len = triple_distance(m.p_cur, m.p_prev);
 
-        if (m.have_prev_d && m.step_len > 1e-14 && march_turns_sharply(m) && attempts < 6 && !m.hit_boundary) {
+        if (m.have_prev_d && m.step_len > 1e-14 && march_turns_sharply(m) && attempts < 6 && m.boundary < 0) {
             m.why = "angle";
             m.h *= 0.5;
             attempts += 1;
@@ -8249,14 +8530,6 @@ bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
     }
 
     return false;
-}
-
-/// Mark the unused seeds within the consume tolerance of p as used.
-void consume_seeds_near(const SurfaceSurfaceField& field, const std::array<double, 3>& p, std::vector<SurfaceSurfaceSeed>& seeds) {
-
-    for (SurfaceSurfaceSeed& sd : seeds)
-        if (!sd.used && triple_distance(p, field.point({sd.u, sd.v, 0.0, 0.0})) < field.consume_tol)
-            sd.used = true;
 }
 
 /// Marching state at x0 with the initial step and no previous direction.
@@ -8274,7 +8547,8 @@ SurfaceSurfaceMarch start_march(const SurfaceSurfaceField& field, const std::arr
     m.xn = {0.0, 0.0, 0.0, 0.0};
     m.p_cur = {0.0, 0.0, 0.0};
     m.step_len = 0.0;
-    m.hit_boundary = false;
+    m.boundary = -1;
+    m.boundary_value = 0.0;
 
     return m;
 }
@@ -8284,7 +8558,6 @@ bool trace_dir(
     const SurfaceSurfaceField& field,
     const std::array<double, 4>& x0,
     double dir_sign,
-    std::vector<SurfaceSurfaceSeed>& seeds,
     std::vector<std::array<double, 4>>& out,
     std::string_view& why_out
 ) {
@@ -8293,10 +8566,18 @@ bool trace_dir(
     const std::array<double, 3> p_start = field.point(x0);
     SurfaceSurfaceMarch m = start_march(field, x0, p_start);
     double dist_traveled = 0.0;
+    std::array<double, 3> start_direction = {};
 
     for (int step_i = 0; step_i < field.max_steps; step_i++) {
         if (!march_direction(field, m, dir_sign) || !march_step(field, m))
             break;
+
+        if (step_i == 0)
+            start_direction = m.d;
+        if (m.step_len <= field.tolerance * 0.1 && m.boundary < 0) {
+            m.why = "stalled";
+            break;
+        }
 
         m.why = "maxsteps";
         m.prev_d = m.d;
@@ -8312,20 +8593,32 @@ bool trace_dir(
         dist_traveled += m.step_len;
         out.push_back(m.x);
 
-        if (dist_traveled > field.close_tol * 3.0 && triple_distance(m.p_cur, p_start) < field.close_tol) {
+        double before = 0.0;
+        double after = 0.0;
+        for (int d = 0; d < 3; ++d) {
+            before += (m.p_prev[d] - p_start[d]) * start_direction[d];
+            after += (m.p_cur[d] - p_start[d]) * start_direction[d];
+        }
+        bool close_parameters = true;
+        for (int k = 0; k < 4; ++k)
+            close_parameters = close_parameters && parameter_difference(field, k, m.x[k], x0[k]) <= field.parameter_width(k, x0[k]) * 0.5;
+        if (step_i >= 4 && dist_traveled > m.step_len * 3.0 && before < 0.0 && after >= 0.0 && close_parameters &&
+            triple_distance(m.p_cur, p_start) <= m.step_len * 1.5) {
+            out.back() = x0;
+            for (int k = 0; k < 4; ++k)
+                if (field.closed[k])
+                    out.back()[k] += std::round((m.x[k] - x0[k]) / field.range[k]) * field.range[k];
             why_out = "closed";
-
             return true;
         }
 
         m.p_prev = m.p_cur;
 
-        if (m.hit_boundary) {
+        if (m.boundary >= 0) {
             m.why = "boundary";
             break;
         }
 
-        consume_seeds_near(field, m.p_cur, seeds);
     }
 
     why_out = m.why;
@@ -8355,7 +8648,6 @@ void unwrap_quad(const SurfaceSurfaceField& field, std::vector<std::array<double
 bool trace_seed(
     const SurfaceSurfaceField& field,
     const std::array<double, 4>& x0,
-    std::vector<SurfaceSurfaceSeed>& seeds,
     std::vector<std::array<double, 4>>& quad,
     bool& is_loop
 ) {
@@ -8364,10 +8656,15 @@ bool trace_seed(
     std::vector<std::array<double, 4>> bwd;
     std::string_view fwd_why = "?";
     std::string_view bwd_why = "?";
-    bool fwd_closed = trace_dir(field, x0, +1, seeds, fwd, fwd_why);
-
-    if (!fwd_closed)
-        trace_dir(field, x0, -1, seeds, bwd, bwd_why);
+    bool fwd_closed = trace_dir(field, x0, +1, fwd, fwd_why);
+    const bool bwd_closed = !fwd_closed && trace_dir(field, x0, -1, bwd, bwd_why);
+    if (bwd_closed) {
+        fwd.swap(bwd);
+        bwd.clear();
+        fwd_closed = true;
+    }
+    if (!fwd_closed && (fwd_why != "boundary" || bwd_why != "boundary"))
+        throw std::runtime_error("Native SSI unresolved trace: " + std::string(fwd_why) + "/" + std::string(bwd_why));
 
     quad.clear();
 
@@ -8385,45 +8682,12 @@ bool trace_seed(
         return false;
 
     unwrap_quad(field, quad);
-    double gap = triple_distance(field.point(quad.front()), field.point(quad.back()));
-    is_loop = fwd_closed || (quad.size() >= 6 && gap < field.close_tol);
+    is_loop = fwd_closed;
 
     if (is_loop)
         quad.pop_back();
 
     return quad.size() >= min_pts;
-}
-
-/// Whether the quarter, half and three-quarter samples all lie within dup_tol of one kept run.
-bool is_duplicate_quad(
-    const std::vector<std::array<double, 3>>& trace_pts3,
-    const std::vector<std::vector<std::array<double, 3>>>& kept_pts3,
-    double dup_tol
-) {
-
-    const int m = (int)trace_pts3.size();
-
-    for (const std::vector<std::array<double, 3>>& other : kept_pts3) {
-        bool all_close = true;
-
-        for (double f : {0.25, 0.5, 0.75}) {
-            const std::array<double, 3>& cp = trace_pts3[(int)((m - 1) * f)];
-            double dmin = dup_tol + 1.0;
-
-            for (const std::array<double, 3>& op : other)
-                dmin = std::min(dmin, triple_distance(cp, op));
-
-            if (dmin > dup_tol) {
-                all_close = false;
-                break;
-            }
-        }
-
-        if (all_close)
-            return true;
-    }
-
-    return false;
 }
 
 /// Insert corrected midpoints into gaps longer than 1.5 median gaps, at most four passes.
@@ -8570,7 +8834,8 @@ void split_quad_at_seams(
                 cp[k] = pa[k] + (pb[k] - pa[k]) * t;
 
             cp[std::get<1>(crossing)] = std::get<2>(crossing);
-            field.correct_on_seam(cp, std::get<1>(crossing));
+            if (!field.correct_on_seam(cp, std::get<1>(crossing)))
+                throw std::runtime_error("Native SSI seam crossing could not be refined");
             out_pts.push_back(cp);
             cross_idx.push_back((int)out_pts.size() - 1);
         }
@@ -8678,14 +8943,16 @@ double chord_deviation(const std::array<double, 3>& pa, const std::array<double,
 void refine_quad_piece(const SurfaceSurfaceField& field, std::vector<std::array<double, 4>>& piece_pts) {
 
     const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
-    const double refine_tol = std::max(field.tolerance * 100.0, 5e-6);
+    const double refine_tol = std::max(field.tolerance * 10.0, 1e-6);
 
     for (int dp = 0; dp < 8; dp++) {
+        if (piece_pts.size() >= 3000)
+            break;
         bool refined = false;
         std::vector<std::array<double, 4>> new_pp;
         new_pp.push_back(piece_pts[0]);
 
-        for (size_t i = 0; i + 1 < piece_pts.size() && piece_pts.size() < 3000; i++) {
+        for (size_t i = 0; i + 1 < piece_pts.size(); i++) {
             std::array<double, 4> midq;
 
             for (int k = 0; k < 4; k++)
@@ -8710,75 +8977,107 @@ void refine_quad_piece(const SurfaceSurfaceField& field, std::vector<std::array<
     }
 }
 
-/// Sum of the turning angles along a 3D polyline.
-double total_turning_3d(const std::vector<Point>& pts) {
-
-    double turning = 0.0;
-
-    for (size_t i = 1; i + 1 < pts.size(); i++) {
-        double dx1 = pts[i][0] - pts[i - 1][0];
-        double dy1 = pts[i][1] - pts[i - 1][1];
-        double dz1 = pts[i][2] - pts[i - 1][2];
-        double dx2 = pts[i + 1][0] - pts[i][0];
-        double dy2 = pts[i + 1][1] - pts[i][1];
-        double dz2 = pts[i + 1][2] - pts[i][2];
-        double l1 = std::sqrt(dx1 * dx1 + dy1 * dy1 + dz1 * dz1);
-        double l2 = std::sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
-
-        if (l1 > 1e-14 && l2 > 1e-14) {
-            double c = (dx1 * dx2 + dy1 * dy2 + dz1 * dz2) / (l1 * l2);
-            c = std::max(-1.0, std::min(1.0, c));
-            turning += std::acos(c);
-        }
-    }
-
-    return turning;
+/// Paired world and pcurve residual at a common section parameter.
+double surface_fit_error(const SurfaceSurfaceField& field, const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple, double t) {
+    const Point world = evaluate_valid_curve(std::get<0>(triple), t);
+    const Point pa = evaluate_valid_curve(std::get<1>(triple), t);
+    const Point pb = evaluate_valid_curve(std::get<2>(triple), t);
+    const std::array<double, 4> uv = {pa[0], pa[1], pb[0], pb[1]};
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(uv[k]) || (!field.closed[k] &&
+            (uv[k] < field.lo[k] - field.range[k] * 1e-12 || uv[k] > field.hi[k] + field.range[k] * 1e-12)))
+            return std::numeric_limits<double>::infinity();
+    const Point a = field.a.point_at(field.wrap(0, pa[0]), field.wrap(1, pa[1]));
+    const Point b = field.b.point_at(field.wrap(2, pb[0]), field.wrap(3, pb[1]));
+    const double error = std::max(world.distance(a), world.distance(b));
+    return std::isfinite(error) ? error : std::numeric_limits<double>::infinity();
 }
 
-/// Cubic fitted to a traced run, CVs doubled until within fit_tol, interpolated when fitting fails.
-NurbsCurve fit_track(const std::vector<Point>& pts, double fit_tol, bool is_loop) {
-
-    const int mp = (int)pts.size();
-    const std::vector<double> chords = chord_parameters(pts, is_loop);
-    int target_cvs = std::max(8, (int)(total_turning_3d(pts) / 0.5) + 6);
-    const int max_cvs = std::max(8, std::min(mp - 1, mp / 3));
-    NurbsCurve best;
-    double best_dev = std::numeric_limits<double>::infinity();
-
-    while (target_cvs <= max_cvs) {
-        NurbsCurve crv = NurbsCurve::create_fitted(pts, target_cvs, 3, is_loop);
-
-        if (!crv.is_valid())
-            break;
-
-        double dev = fitted_max_deviation(crv, pts, chords, 24);
-
-        if (dev < best_dev) {
-            best = crv;
-            best_dev = dev;
+/// Refine every interval whose world fit disagrees with either lifted pcurve.
+bool refine_surface_fit(
+    const SurfaceSurfaceField& field,
+    const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
+    const std::vector<double>& parameters,
+    std::vector<std::array<double, 4>>& samples
+) {
+    std::vector<std::array<double, 4>> refined = {samples.front()};
+    const std::array<double, 3> dummy = {};
+    for (size_t i = 1; i < samples.size(); ++i) {
+        bool split = false;
+        for (double fraction : {0.25, 0.5, 0.75}) {
+            const double t = parameters[i - 1] + fraction * (parameters[i] - parameters[i - 1]);
+            split = split || surface_fit_error(field, triple, t) > field.tolerance * 0.5;
         }
-
-        if (dev < fit_tol)
-            break;
-
-        target_cvs *= 2;
+        if (split) {
+            const double t = std::midpoint(parameters[i - 1], parameters[i]);
+            const Point pa = evaluate_valid_curve(std::get<1>(triple), t);
+            const Point pb = evaluate_valid_curve(std::get<2>(triple), t);
+            std::array<double, 4> uv = {pa[0], pa[1], pb[0], pb[1]};
+            if (!field.correct(uv, false, dummy, dummy))
+                throw std::runtime_error("Native SSI paired fit refinement did not converge");
+            refined.push_back(uv);
+        }
+        refined.push_back(samples[i]);
     }
-
-    if (best_dev >= fit_tol) {
-        NurbsCurve interp = is_loop ? NurbsCurve::create_interpolated(pts, CurveNurbsKnotStyle::ChordPeriodic)
-                                    : NurbsCurve::create_interpolated(pts);
-
-        if (interp.is_valid())
-            best = interp;
-    }
-
-    if (best.is_valid())
-        best.set_domain(0.0, 1.0);
-
-    return best;
+    if (refined.size() == samples.size())
+        return false;
+    samples = std::move(refined);
+    return true;
 }
 
-/// Section triple of one seam-free piece: refined, then its 3D curve and both pcurves fitted.
+std::string surface_fit_failure(const SurfaceSurfaceField& field,
+    const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple, size_t sample_count) {
+    double worst = -1.0;
+    double parameter = 0.0;
+    const std::vector<double> spans = std::get<0>(triple).get_span_vector();
+    for (size_t i = 1; i < spans.size(); ++i)
+        for (double fraction : {0.0, 0.25, 0.5, 0.75, 1.0}) {
+            const double t = spans[i - 1] + fraction * (spans[i] - spans[i - 1]);
+            const double error = surface_fit_error(field, triple, t);
+            if (error > worst) {
+                worst = error;
+                parameter = t;
+            }
+        }
+    const Point pa = evaluate_valid_curve(std::get<1>(triple), parameter);
+    const Point pb = evaluate_valid_curve(std::get<2>(triple), parameter);
+    const Point world = evaluate_valid_curve(std::get<0>(triple), parameter);
+    const Point a = field.a.point_at(field.wrap(0, pa[0]), field.wrap(1, pa[1]));
+    const Point b = field.b.point_at(field.wrap(2, pb[0]), field.wrap(3, pb[1]));
+    return "Native SSI paired fit exceeded its refinement budget with " + std::to_string(sample_count) +
+        " samples, t=" + std::to_string(parameter) + ", error/tol=" + std::to_string(worst / field.tolerance) +
+        ", lifts/tol=" + std::to_string(world.distance(a) / field.tolerance) + "/" +
+        std::to_string(world.distance(b) / field.tolerance) + ", UV=" + std::to_string(pa[0]) + "," +
+        std::to_string(pa[1]) + "/" + std::to_string(pb[0]) + "," + std::to_string(pb[1]);
+}
+
+NurbsCurve fit_surface_track(const std::vector<Point>& samples, const std::vector<double>& parameters, bool loop) {
+    const Point origin = samples.front();
+    std::vector<Point> local = samples;
+    for (Point& point : local)
+        for (int d = 0; d < 3; ++d)
+            point[d] -= origin[d];
+    NurbsCurve curve = fit_track(local, parameters, loop);
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        Point point = curve.get_cv(i);
+        for (int d = 0; d < 3; ++d)
+            point[d] += origin[d];
+        curve.set_cv(i, point);
+    }
+    return curve;
+}
+
+bool certified_surface_fit(const SurfaceSurfaceField& field,
+    const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Certificate);
+    using curve_surface_intersection::ParameterMatch;
+    return curve_surface_intersection::same_parameter(std::get<0>(triple), std::get<1>(triple), field.a,
+               field.tolerance) == ParameterMatch::Matched &&
+        curve_surface_intersection::same_parameter(std::get<0>(triple), std::get<2>(triple), field.b,
+               field.tolerance) == ParameterMatch::Matched;
+}
+
+/// Section triple of one seam-free piece with adaptive paired-lift residual checks.
 bool piece_triple(
     const SurfaceSurfaceField& field,
     std::vector<std::array<double, 4>>& piece_pts,
@@ -8786,37 +9085,370 @@ bool piece_triple(
     std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple
 ) {
 
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Fit);
+    if (ssi_diagnostics::active)
+        ++ssi_diagnostics::active->pieces;
     shift_quad_piece(field, piece_pts);
     double chord3 = 0.0;
 
     for (size_t i = 1; i < piece_pts.size(); i++)
         chord3 += triple_distance(field.point(piece_pts[i]), field.point(piece_pts[i - 1]));
 
-    if (chord3 < field.h_init * 0.05)
+    if (chord3 <= field.tolerance)
         return false;
 
-    refine_quad_piece(field, piece_pts);
-    std::vector<Point> pts3(piece_pts.size());
-    std::vector<Point> pts_pa(piece_pts.size());
-    std::vector<Point> pts_pb(piece_pts.size());
-
-    for (size_t i = 0; i < piece_pts.size(); i++) {
-        const std::array<double, 3> p = field.point(piece_pts[i]);
-        pts3[i] = Point(p[0], p[1], p[2]);
-        pts_pa[i] = Point(piece_pts[i][0], piece_pts[i][1], 0.0);
-        pts_pb[i] = Point(piece_pts[i][2], piece_pts[i][3], 0.0);
+    SurfaceSurfaceField refined = field;
+    const std::array<double, 3> dummy = {0.0, 0.0, 0.0};
+    for (std::array<double, 4>& parameters : piece_pts)
+        if (!refined.correct(parameters, false, dummy, dummy))
+            throw std::runtime_error("Native surface section point could not be refined");
+    refine_quad_piece(refined, piece_pts);
+    for (int iteration = 0; iteration < 20 && piece_pts.size() <= 32768; ++iteration) {
+        piece_pts.erase(std::unique(piece_pts.begin(), piece_pts.end()), piece_pts.end());
+        if (piece_pts.size() < (piece_loop ? 4u : 2u))
+            throw std::runtime_error("Native SSI walking line has too few distinct parameter samples");
+        std::vector<Point> pts3(piece_pts.size());
+        std::vector<Point> pts_pa(piece_pts.size());
+        std::vector<Point> pts_pb(piece_pts.size());
+        for (size_t i = 0; i < piece_pts.size(); i++) {
+            const std::array<double, 3> p = field.point(piece_pts[i]);
+            pts3[i] = Point(p[0], p[1], p[2]);
+            pts_pa[i] = Point(piece_pts[i][0], piece_pts[i][1], 0.0);
+            pts_pb[i] = Point(piece_pts[i][2], piece_pts[i][3], 0.0);
+        }
+        const std::vector<double> parameters = track_parameters(pts3, piece_loop);
+        if (ssi_diagnostics::active) {
+            ++ssi_diagnostics::active->fit_iterations;
+            ssi_diagnostics::active->fit_sizes.push_back(piece_pts.size());
+        }
+        try {
+            ssi_diagnostics::Timer interpolation(ssi_diagnostics::Stage::Interpolation);
+            triple = {fit_surface_track(pts3, parameters, piece_loop), fit_surface_track(pts_pa, parameters, piece_loop),
+                fit_surface_track(pts_pb, parameters, piece_loop)};
+        } catch (section_fit::Error& error) {
+            error.world_samples = pts3;
+            error.pcurve_samples = pts_pa;
+            error.second_pcurve_samples = pts_pb;
+            throw;
+        }
+        ssi_diagnostics::Timer refinement(ssi_diagnostics::Stage::Refinement);
+        if (!refine_surface_fit(refined, triple, parameters, piece_pts))
+            return true;
     }
+    if (certified_surface_fit(field, triple))
+        return true;
+    throw std::runtime_error(surface_fit_failure(field, triple, piece_pts.size()));
+}
 
-    NurbsCurve crv3 = fit_track(pts3, std::max(field.tolerance * 10.0, 1e-7), piece_loop);
-    NurbsCurve pcurve_a = fit_track(pts_pa, std::min(field.step[0], field.step[1]) * 1e-4, piece_loop);
-    NurbsCurve pcurve_b = fit_track(pts_pb, std::min(field.step[2], field.step[3]) * 1e-4, piece_loop);
+struct SurfaceSurfaceArc {
+    SurfaceSurfaceGraph graph;
+    const char* failure = "middle_corrector_failed";
+    std::array<double, 4> start{}, end{};
+    std::array<SsiInterval, 4> first, last;
+};
 
-    if (!crv3.is_valid() || !pcurve_a.is_valid() || !pcurve_b.is_valid())
+bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double, 4>& first,
+    const std::array<double, 4>& last, std::array<double, 4>& middle, SurfaceSurfaceArc& arc,
+    nlohmann::ordered_json* diagnostic = nullptr) {
+    arc.start = first;
+    arc.end = last;
+    const std::array<double, 3> dummy = {};
+    for (int k = 0; k < 4; ++k)
+        middle[k] = std::midpoint(first[k], last[k]);
+    arc.failure = "middle_corrector_failed";
+    if (diagnostic)
+        (*diagnostic)["status"] = arc.failure;
+    if (!field.correct(middle, false, dummy, dummy))
         return false;
+    arc.failure = "middle_invalid_or_outside_domain";
+    if (diagnostic)
+        (*diagnostic)["status"] = arc.failure;
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(middle[k]) || middle[k] < field.lo[k] || middle[k] > field.hi[k])
+            return false;
+    Vector point, au, av, bu, bv;
+    field.eval_a(middle[0], middle[1], point, au, av);
+    field.eval_b(middle[2], middle[3], point, bu, bv);
+    const Vector derivatives[4] = {au, av, bu, bv};
+    const double distance = triple_distance(field.point(first), field.point(last));
+    SeedCellPair pair{};
+    for (int k = 0; k < 4; ++k) {
+        const double speed = std::hypot(derivatives[k][0], derivatives[k][1], derivatives[k][2]);
+        const double rounding = 128.0 * std::numeric_limits<double>::epsilon() *
+            std::max({std::abs(first[k]), std::abs(last[k]), std::numeric_limits<double>::min()});
+        const double padding = std::max(rounding, std::min(field.parameter_width(k, middle[k]) / 16.0,
+            std::max(distance, field.tolerance) / (8.0 * std::max(speed, 1e-300))));
+        auto& box = k < 2 ? pair.a : pair.b;
+        box[8 + 2 * (k % 2)] = std::max(field.lo[k], std::min({first[k], last[k], middle[k]}) - padding);
+        box[9 + 2 * (k % 2)] = std::min(field.hi[k], std::max({first[k], last[k], middle[k]}) + padding);
+    }
+    arc.failure = "graph_unproved";
+    if (diagnostic) {
+        (*diagnostic)["status"] = arc.failure;
+        (*diagnostic)["a"] = pair.a;
+        (*diagnostic)["b"] = pair.b;
+        (*diagnostic)["charts"] = nlohmann::ordered_json::array();
+    }
+    if (!seed_cell_covered(field, pair, middle, &arc.graph, diagnostic ? &(*diagnostic)["charts"] : nullptr))
+        return false;
+    arc.failure = "endpoint_roots_unproved";
+    if (diagnostic)
+        (*diagnostic)["status"] = arc.failure;
+    return graph_root_box(field, arc.graph, first, arc.first) && graph_root_box(field, arc.graph, last, arc.last);
+}
 
-    triple = std::make_tuple(std::move(crv3), std::move(pcurve_a), std::move(pcurve_b));
-
+bool retained_root(const SurfaceSurfaceField& field, const std::array<SsiInterval, 4>& root) {
+    for (int k = 0; k < 4; ++k)
+        if (!nurbs_interval::finite(root[k]) || root[k].lo < field.lo[k] || root[k].hi > field.hi[k])
+            return false;
     return true;
+}
+
+bool connected_arcs(const SurfaceSurfaceField& field, const SurfaceSurfaceArc& a, const SurfaceSurfaceArc& b) {
+    if (same_graph(a.graph, b.graph) ||
+        (retained_root(field, a.last) && graph_contains(b.graph, a.last)) ||
+        (retained_root(field, b.first) && graph_contains(a.graph, b.first)))
+        return true;
+    SurfaceSurfaceField precise = field;
+    const auto position = field.point(a.end);
+    const double scale = std::max({1.0, std::abs(position[0]), std::abs(position[1]), std::abs(position[2])});
+    precise.conv_tol = std::min(field.conv_tol, scale * 64.0 * std::numeric_limits<double>::epsilon());
+    const SurfaceSurfaceGraph* graphs[] = {&a.graph, &b.graph};
+    const std::array<double, 4> points[] = {a.end, b.start};
+    for (int side = 0; side < 2; ++side) {
+        const auto& graph = *graphs[side];
+        auto point = points[side];
+        std::array<SsiInterval, 4> root;
+        if (ssi_diagnostics::active)
+            ++ssi_diagnostics::active->junction_polishes;
+        if (precise.correct_on_seam(point, graph.fixed, &graph) && point[graph.fixed] == points[side][graph.fixed] &&
+            graph_root_box(field, graph, point, root) && retained_root(field, root) &&
+            graph_contains(*graphs[1 - side], root)) {
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->polished_junctions;
+            return true;
+        }
+    }
+    return false;
+}
+
+nlohmann::ordered_json graph_diagnostic(const SurfaceSurfaceArc& arc) {
+    const auto intervals = [](const std::array<SsiInterval, 4>& values) {
+        nlohmann::ordered_json result = nlohmann::ordered_json::array();
+        for (const auto& value : values)
+            result.push_back({value.lo, value.hi});
+        return result;
+    };
+    return {{"start", arc.start}, {"end", arc.end}, {"fixed", arc.graph.fixed},
+        {"free", arc.graph.free}, {"lower", arc.graph.lower}, {"upper", arc.graph.upper},
+        {"center", arc.graph.center}, {"scale", arc.graph.scale}, {"inverse", arc.graph.inverse},
+        {"contraction", arc.graph.contraction}, {"image", intervals(arc.graph.image)},
+        {"anchor", intervals(arc.graph.anchor)}, {"first", intervals(arc.first)}, {"last", intervals(arc.last)}};
+}
+
+void record_continuation_failure(
+    const SurfaceSurfaceField& field,
+    const std::array<double, 4>& first,
+    const std::array<double, 4>& last,
+    const std::array<double, 4>& middle,
+    int depth,
+    const char* failure
+) {
+    auto* stats = ssi_diagnostics::active;
+    if (!stats)
+        return;
+    ++stats->continuation_failures;
+    if (depth > stats->continuation_max_depth) {
+        stats->continuation_max_depth = depth;
+        stats->continuation_first = first;
+        stats->continuation_last = last;
+        stats->continuation_middle = middle;
+        stats->continuation_failure_stage = failure;
+    }
+    if (depth < stats->continuation_diagnostic_depth + 8)
+        return;
+    stats->continuation_diagnostic_depth = depth;
+    ++stats->continuation_diagnostic_calls;
+    auto proposal = middle;
+    SurfaceSurfaceArc rejected;
+    nlohmann::ordered_json diagnostic = {{"first", first}, {"last", last}, {"middle", middle}, {"depth", depth}};
+    continuation_arc(field, first, last, proposal, rejected, &diagnostic);
+    diagnostic["world_residuals"] = nlohmann::ordered_json::array();
+    for (const auto& parameters : {first, last, middle}) {
+        bool retained = true;
+        for (int k = 0; k < 4; ++k)
+            retained = retained && std::isfinite(parameters[k]) && parameters[k] >= field.lo[k] && parameters[k] <= field.hi[k];
+        if (!retained) {
+            diagnostic["world_residuals"].push_back(nullptr);
+            continue;
+        }
+        Vector a, b, u, v;
+        field.eval_a(parameters[0], parameters[1], a, u, v);
+        field.eval_b(parameters[2], parameters[3], b, u, v);
+        diagnostic["world_residuals"].push_back(std::hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
+    }
+    if (std::string_view(failure) == "endpoint_roots_unproved")
+        diagnostic["graph"] = graph_diagnostic(rejected);
+    stats->continuation_diagnostic = diagnostic.dump();
+}
+
+/// Each neighbouring walking pair must belong to one connected, unique root graph.
+std::vector<SurfaceSurfaceArc> continuation_arcs(const SurfaceSurfaceField& field,
+    const std::vector<std::array<double, 4>>& points, bool loop) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Continuation);
+    const SurfaceSurfaceField precise = precise_surface_field(field);
+    struct Segment { std::array<double, 4> first, last; int depth; };
+    std::vector<Segment> work;
+    if (loop && points.back() != points.front())
+        work.push_back({points.back(), points.front(), 0});
+    for (size_t i = points.size() - 1; i > 0; --i)
+        work.push_back({points[i - 1], points[i], 0});
+    std::vector<SurfaceSurfaceArc> result;
+    size_t attempts = 0;
+    while (!work.empty()) {
+        const Segment segment = work.back();
+        work.pop_back();
+        std::array<double, 4> middle;
+        SurfaceSurfaceArc arc;
+        if (continuation_arc(precise, segment.first, segment.last, middle, arc)) {
+            if (!result.empty() && !connected_arcs(field, result.back(), arc))
+                throw std::runtime_error("Native SSI could not certify adjacent walking graphs: " +
+                    nlohmann::ordered_json({{"previous", graph_diagnostic(result.back())},
+                        {"next", graph_diagnostic(arc)}}).dump());
+            result.push_back(std::move(arc));
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->continuation_arcs;
+            continue;
+        }
+        record_continuation_failure(precise, segment.first, segment.last, middle, segment.depth, arc.failure);
+        if (++attempts >= 32768 || segment.depth >= 48 || middle == segment.first || middle == segment.last) {
+            nlohmann::ordered_json diagnostic = {{"first", segment.first}, {"last", segment.last},
+                {"middle", middle}, {"depth", segment.depth}};
+            continuation_arc(precise, segment.first, segment.last, middle, arc, &diagnostic);
+            throw std::runtime_error("Native SSI could not certify walking continuation: " + diagnostic.dump());
+        }
+        work.push_back({middle, segment.last, segment.depth + 1});
+        work.push_back({segment.first, middle, segment.depth + 1});
+    }
+    if (loop && !result.empty() && !connected_arcs(field, result.back(), result.front()))
+        throw std::runtime_error("Native SSI could not certify walking-loop closure");
+    return result;
+}
+
+struct SectionSpan {
+    double first, last;
+    std::array<SsiInterval, 3> world;
+    std::array<SsiInterval, 4> parameters;
+};
+
+std::array<SsiInterval, 3> curve_span_hull(const NurbsCurve& curve, double first) {
+    const auto found = std::upper_bound(curve.m_nurbsknot.begin(), curve.m_nurbsknot.end(), first);
+    const int span = static_cast<int>(found - curve.m_nurbsknot.begin());
+    std::array<SsiInterval, 3> result;
+    for (int i = span - curve.degree(); i <= span; ++i) {
+        if (i < 0 || i >= curve.cv_count())
+            throw std::runtime_error("Native SSI section span is outside the curve support");
+        const double* cv = curve.cv(i);
+        const SsiInterval weight(curve.is_rational() ? cv[curve.dimension()] : 1.0);
+        if (!(weight.lo > 0.0) || !nurbs_interval::finite(weight))
+            throw std::runtime_error("Native SSI section bounds require positive finite weights");
+        for (int d = 0; d < 3; ++d) {
+            const SsiInterval value = SsiInterval(d < curve.dimension() ? cv[d] : 0.0) / weight;
+            if (!nurbs_interval::finite(value))
+                throw std::runtime_error("Native SSI section bounds are not finite");
+            result[d] = i == span - curve.degree() ? value :
+                SsiInterval(std::min(result[d].lo, value.lo), std::max(result[d].hi, value.hi));
+        }
+    }
+    return result;
+}
+
+std::vector<SectionSpan> section_spans(const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple) {
+    std::vector<double> knots;
+    const NurbsCurve* curves[] = {&std::get<0>(triple), &std::get<1>(triple), &std::get<2>(triple)};
+    for (const NurbsCurve* curve : curves) {
+        const auto spans = curve->get_span_vector();
+        knots.insert(knots.end(), spans.begin(), spans.end());
+    }
+    std::sort(knots.begin(), knots.end());
+    knots.erase(std::unique(knots.begin(), knots.end()), knots.end());
+    std::vector<SectionSpan> result;
+    for (size_t i = 1; i < knots.size(); ++i) {
+        SectionSpan span{knots[i - 1], knots[i]};
+        span.world = curve_span_hull(*curves[0], span.first);
+        const auto a = curve_span_hull(*curves[1], span.first);
+        const auto b = curve_span_hull(*curves[2], span.first);
+        span.parameters = {a[0], a[1], b[0], b[1]};
+        result.push_back(span);
+    }
+    return result;
+}
+
+bool span_contains(SsiInterval interval, double value, double allowance, double period = 0.0) {
+    interval = interval + SsiInterval(-allowance, allowance);
+    if (value >= interval.lo && value <= interval.hi)
+        return true;
+    if (!(period > 0.0))
+        return false;
+    // A failed periodic filter must not discard a candidate through rounded period arithmetic.
+    const SsiInterval turns = (interval - SsiInterval(value)) / SsiInterval(period);
+    return !nurbs_interval::finite(turns) || std::ceil(turns.lo) <= std::floor(turns.hi);
+}
+
+/// Identity is certified in four parameters; the old residual allowances only check fit coverage.
+void consume_section_seeds(const SurfaceSurfaceField& field,
+    const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
+    const std::vector<SurfaceSurfaceArc>& arcs, std::vector<SurfaceSurfaceSeed>& seeds) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::SectionConsumption);
+    const auto spans = section_spans(triple);
+    for (SurfaceSurfaceSeed& seed : seeds) {
+        if (seed.used)
+            continue;
+        const bool same_branch = std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& graph) {
+            return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph); });
+        });
+        if (!same_branch)
+            continue;
+        const std::array<double, 4> x = {seed.u, seed.v, seed.s, seed.t};
+        const std::array<double, 3> p = field.point(x);
+        Vector point, au, av, bu, bv;
+        field.eval_a(x[0], x[1], point, au, av);
+        field.eval_b(x[2], x[3], point, bu, bv);
+        const Vector derivatives[4] = {au, av, bu, bv};
+        std::array<double, 4> allowed;
+        for (int k = 0; k < 4; ++k) {
+            const double speed = std::hypot(derivatives[k][0], derivatives[k][1], derivatives[k][2]);
+            allowed[k] = std::min(field.parameter_width(k, x[k]) * 1e-5,
+                field.tolerance * 4.0 / std::max(speed, 1e-300));
+        }
+        for (const SectionSpan& span : spans) {
+            bool candidate = true;
+            for (int d = 0; d < 3; ++d)
+                candidate = candidate && span_contains(span.world[d], p[d], field.tolerance * 4.0);
+            for (int k = 0; k < 4; ++k)
+                candidate = candidate && span_contains(span.parameters[k], x[k], allowed[k],
+                    field.closed[k] ? field.range[k] : 0.0);
+            if (!candidate)
+                continue;
+            if (ssi_diagnostics::active)
+                ++ssi_diagnostics::active->local_projections;
+            const auto closest = Closest::curve_point(std::get<0>(triple), {p[0], p[1], p[2]}, span.first, span.last);
+            if (closest.second > field.tolerance * 4.0)
+                continue;
+            const Point pa = evaluate_valid_curve(std::get<1>(triple), closest.first);
+            const Point pb = evaluate_valid_curve(std::get<2>(triple), closest.first);
+            const std::array<double, 4> y = {pa[0], pa[1], pb[0], pb[1]};
+            bool matches = true;
+            for (int k = 0; k < 4; ++k)
+                matches = matches && parameter_difference(field, k, x[k], y[k]) <= allowed[k];
+            if (matches) {
+                seed.used = true;
+                if (ssi_diagnostics::active)
+                    ssi_diagnostics::active->consumed_seeds.push_back({x, y});
+                break;
+            }
+        }
+    }
 }
 
 /// Section triples of two freeform surfaces by seeding, marching and fitting every trace.
@@ -8826,45 +9458,49 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
     double tolerance
 ) {
 
+    ssi_diagnostics::Timer total(ssi_diagnostics::Stage::Total);
+    ssi_diagnostics::Timer initialize(ssi_diagnostics::Stage::Initialize);
     const SurfaceSurfaceField field(a, b, tolerance);
+    initialize.stop();
     const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
     std::vector<SurfaceSurfaceSeed> seeds = surface_surface_seeds(field);
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
-    std::vector<std::vector<std::array<double, 3>>> kept_pts3;
 
     for (size_t si = 0; si < seeds.size(); si++) {
         if (seeds[si].used)
             continue;
 
-        seeds[si].used = true;
         std::array<double, 4> x0 = {seeds[si].u, seeds[si].v, seeds[si].s, seeds[si].t};
         std::vector<std::array<double, 4>> quad;
         bool is_loop = false;
 
-        if (!field.correct(x0, false, dummy3, dummy3) || !trace_seed(field, x0, seeds, quad, is_loop))
-            continue;
-
-        std::vector<std::array<double, 3>> trace_pts3(quad.size());
-
-        for (size_t i = 0; i < quad.size(); i++)
-            trace_pts3[i] = field.point(quad[i]);
-
-        if (is_duplicate_quad(trace_pts3, kept_pts3, field.h_init * 2.0))
-            continue;
-
-        kept_pts3.push_back(trace_pts3);
+        if (ssi_diagnostics::active) {
+            ++ssi_diagnostics::active->traces;
+            ssi_diagnostics::active->trace_starts.push_back(x0);
+        }
+        ssi_diagnostics::Timer trace(ssi_diagnostics::Stage::Trace);
+        if (!field.correct(x0, false, dummy3, dummy3) || !trace_seed(field, x0, quad, is_loop))
+            throw std::runtime_error("Native SSI seed did not produce a resolved section");
+        trace.stop();
+        ssi_diagnostics::Timer densify(ssi_diagnostics::Stage::DensifyAndSeams);
         densify_quad(field, quad);
         const std::array<double, 4> closure = close_quad(field, quad, is_loop);
         std::vector<std::array<double, 4>> out_pts;
         std::vector<int> cross_idx;
         split_quad_at_seams(field, quad, out_pts, cross_idx);
+        densify.stop();
 
         for (std::pair<std::vector<std::array<double, 4>>, bool>& piece : quad_pieces(field, out_pts, cross_idx, is_loop, closure)) {
             std::tuple<NurbsCurve, NurbsCurve, NurbsCurve> triple;
 
-            if (piece.first.size() >= 2 && piece_triple(field, piece.first, piece.second, triple))
+            if (piece.first.size() >= 2 && piece_triple(field, piece.first, piece.second, triple)) {
+                const auto arcs = continuation_arcs(field, piece.first, piece.second);
+                consume_section_seeds(field, triple, arcs, seeds);
                 result.push_back(std::move(triple));
+            }
         }
+        if (!seeds[si].used)
+            throw std::runtime_error("Native SSI fitted section does not cover its certified starting seed");
     }
 
     drop_point_sections(result, tolerance);
@@ -8957,7 +9593,7 @@ CutterGap::CutterGap(const NurbsSurface& target_, const NurbsCurve& pc_, const N
 
 double CutterGap::gap(double t) const {
 
-    Point uv = pc.point_at(t);
+    Point uv = evaluate_valid_curve(pc, t);
     Point p3 = target.point_at(uv[0], uv[1]);
 
     if (rectangle)
@@ -9133,7 +9769,25 @@ std::vector<NurbsCurve> clip_pcurve_to_cutter(const NurbsSurface& target, const 
     return pieces;
 }
 
-/// Pcurves of one section on the target: analytic, pulled back, projected, then the traced pcurve.
+bool matching_pcurve(const NurbsSurface& surface, const NurbsCurve& world, const NurbsCurve& pcurve, double tolerance) {
+    if (!pcurve.is_valid() || pcurve.domain() != world.domain())
+        return false;
+    const std::pair<double, double> u = surface.domain(0);
+    const std::pair<double, double> v = surface.domain(1);
+    for (int i = 0; i < pcurve.cv_count(); ++i) {
+        const Point p = pcurve.get_cv(i);
+        if (p[0] < u.first - 1e-12 || p[0] > u.second + 1e-12 || p[1] < v.first - 1e-12 || p[1] > v.second + 1e-12)
+            return false;
+    }
+    for (double parameter : pcurve.get_span_vector()) {
+        const Point uv = evaluate_valid_curve(pcurve, parameter);
+        if (surface.point_at(uv[0], uv[1]).distance(evaluate_valid_curve(world, parameter)) > tolerance)
+            return false;
+    }
+    return true;
+}
+
+/// Keep a matching traced pcurve before attempting a separate pullback.
 std::vector<NurbsCurve> target_pcurves(
     const NurbsSurface& target,
     const RecogSurface& rt,
@@ -9147,6 +9801,9 @@ std::vector<NurbsCurve> target_pcurves(
 
     if (pa_an.is_valid())
         return {pa_an};
+
+    if (matching_pcurve(target, c3d, pa_tr, tolerance))
+        return {pa_tr};
 
     if (rt.kind == RecogSurface::NONE || rt.kind == RecogSurface::PLANE) {
         if (pa_tr.is_valid())

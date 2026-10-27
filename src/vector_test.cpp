@@ -6,6 +6,8 @@
 #include "xform.h"
 #include "tolerance.h"
 #include <array>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -111,6 +113,45 @@ namespace session_cpp {
 
         MINI_CHECK(length == 5.0);
         MINI_CHECK(length_squared == 25.0);
+    }
+
+    MINI_TEST("Vector", "Magnitude Preserves Differential Scale") {
+        for (double scale : {1e-300, 1e-19, 1e-13, 1.0, 1e150, 1e300}) {
+            Vector value(3 * scale, 4 * scale, 12 * scale);
+            const double length = value.magnitude();
+            MINI_CHECK(std::isfinite(length) && length > 0);
+            MINI_CHECK(std::abs(length / scale - 13) <= 1e-13);
+            MINI_CHECK(value.normalize_self());
+            MINI_CHECK(std::abs(value[0] - 3.0 / 13) <= 1e-15);
+            MINI_CHECK(std::abs(value[1] - 4.0 / 13) <= 1e-15);
+            MINI_CHECK(std::abs(value[2] - 12.0 / 13) <= 1e-15);
+        }
+        const double minimum = std::numeric_limits<double>::denorm_min();
+        const Vector subnormal(minimum, 0, 0);
+        MINI_CHECK(subnormal.magnitude() == minimum);
+        const Vector tangent(2.5e-19, 2.5e-19, 0);
+        MINI_CHECK(std::abs(tangent.magnitude() / 2.5e-19 - std::sqrt(2.0)) < 1e-15);
+    }
+
+    MINI_TEST("Vector", "Normalize Extreme And Invalid Vectors") {
+        for (double scale : {std::numeric_limits<double>::denorm_min(), 1.7e308}) {
+            Vector value(scale, scale, scale);
+            MINI_CHECK(value.normalize_self());
+            for (int d = 0; d < 3; ++d)
+                MINI_CHECK(std::abs(value[d] - 1 / std::sqrt(3.0)) <= 1e-15);
+            MINI_CHECK(std::abs(value.magnitude_squared() - 1) <= 1e-15);
+        }
+        for (double invalid : {std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()}) {
+            for (int d = 0; d < 3; ++d) {
+                Vector value(1, 2, 3);
+                value[d] = invalid;
+                MINI_CHECK(!value.normalize_self());
+                MINI_CHECK(std::isnan(invalid) ? std::isnan(value[d]) : value[d] == invalid);
+            }
+        }
+        Vector zero;
+        MINI_CHECK(!zero.normalize_self());
     }
 
     MINI_TEST("Vector", "Normalize") {

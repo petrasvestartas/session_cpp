@@ -1,13 +1,23 @@
 #include "nurbscurve.h"
+#include "nurbs_offset.h"
 #include "closest.h"
 #include "nurbscurve.pb.h"
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 namespace session_cpp {
 
+NurbsCurve NurbsCurve::offset(double distance, const Vector& normal, double tolerance) const {
+    return nurbs_offset::curve(*this, distance, normal, tolerance);
+}
+
 constexpr double SQRT_EPSILON = 1.490116119385e-8;
+
+static double curve_parameter_tolerance(double a, double b) {
+    return std::max({std::abs(a), std::abs(b), std::abs(b - a)}) * 4.0 * std::numeric_limits<double>::epsilon();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constructors
@@ -724,8 +734,8 @@ bool NurbsCurve::is_valid_nurbsknot_vector() const {
     if (static_cast<int>(m_nurbsknot.size()) != kc)
         return false;
 
-    for (int i = 1; i < kc; i++)
-        if (m_nurbsknot[i] < m_nurbsknot[i - 1])
+    for (int i = 0; i < kc; i++)
+        if (!std::isfinite(m_nurbsknot[i]) || (i > 0 && m_nurbsknot[i] < m_nurbsknot[i - 1]))
             return false;
 
     if (m_nurbsknot[m_order - 2] >= m_nurbsknot[m_cv_count - 1])
@@ -794,7 +804,7 @@ Point NurbsCurve::get_cv(int cv_index) const {
     if (m_is_rat) {
         const double w = cv_ptr[m_dim];
 
-        if (std::abs(w) < 1e-14)
+        if (w == 0.0)
             return Point(0, 0, 0);
 
         return Point(cv_ptr[0] / w, cv_ptr[1] / w, m_dim > 2 ? cv_ptr[2] / w : 0.0);
@@ -971,7 +981,7 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
 
     const double d0 = domain_start();
     const double d1 = domain_end();
-    const double tol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * SQRT_EPSILON;
+    const double tol = curve_parameter_tolerance(d0, d1);
 
     if (is_wrapped()) {
         double t = nurbsknot_value - std::floor((nurbsknot_value - d0) / (d1 - d0)) * (d1 - d0);
@@ -1134,7 +1144,7 @@ bool NurbsCurve::set_domain(double t0, double t1) {
         return false;
 
     const bool clamped_start = (m_order >= 2 && std::abs(m_nurbsknot[0] - m_nurbsknot[m_order - 2]) < Tolerance::ZERO_TOLERANCE);
-    const bool clamped_end = (m_cv_count < static_cast<int>(m_nurbsknot.size()) && std::abs(m_nurbsknot.back() - m_nurbsknot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
+    const bool clamped_end = (m_cv_count <= static_cast<int>(m_nurbsknot.size()) && std::abs(m_nurbsknot.back() - m_nurbsknot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
     const double scale = (t1 - t0) / (d1 - d0);
 
     for (double& k : m_nurbsknot)
@@ -1338,23 +1348,11 @@ bool NurbsCurve::divide_by_count(int count, std::vector<Point>& points, std::vec
     if (count < 2)
         return false;
 
-    const double t0 = domain_start();
-    const double t1 = domain_end();
-    const double h = (t1 - t0) * 1e-8;
-    const int n_samples = std::max(1000, count * 100);
-    const double dt = (t1 - t0) / n_samples;
-    std::vector<double> t_vals(n_samples + 1);
-    std::vector<double> s_vals(n_samples + 1);
-    t_vals[0] = t0;
-    s_vals[0] = 0.0;
-
-    for (int i = 1; i <= n_samples; i++) {
-        t_vals[i] = t0 + i * dt;
-        s_vals[i] = s_vals[i - 1] + arc_length_gauss(t_vals[i - 1], t_vals[i], h);
-    }
+    std::vector<double> t_vals, s_vals;
+    arc_length_table(std::max(1000, count * 100), t_vals, s_vals);
 
     const int n_segs = include_endpoints ? (count - 1) : (count + 1);
-    const double seg_len = s_vals[n_samples] / n_segs;
+    const double seg_len = s_vals.back() / n_segs;
     points.reserve(count);
 
     if (params)
@@ -1362,7 +1360,7 @@ bool NurbsCurve::divide_by_count(int count, std::vector<Point>& points, std::vec
 
     for (int i = 0; i < count; i++) {
         const double s_target = include_endpoints ? seg_len * i : seg_len * (i + 1);
-        const double t = find_t_at_s(s_target, t_vals, s_vals, h);
+        const double t = find_t_at_s(s_target, t_vals, s_vals);
         points.push_back(point_at(t));
 
         if (params)
@@ -1394,25 +1392,12 @@ bool NurbsCurve::divide_by_length(double segment_length, std::vector<Point>& poi
     if (segment_length <= 0.0)
         return false;
 
-    const double t0 = domain_start();
-    const double t1 = domain_end();
-    const double h = (t1 - t0) * 1e-8;
-    const int n_samples = std::max(1000, static_cast<int>(length() / segment_length) * 100);
-    const double dt = (t1 - t0) / n_samples;
-    std::vector<double> t_vals(n_samples + 1);
-    std::vector<double> s_vals(n_samples + 1);
-    t_vals[0] = t0;
-    s_vals[0] = 0.0;
-
-    for (int i = 1; i <= n_samples; i++) {
-        t_vals[i] = t0 + i * dt;
-        s_vals[i] = s_vals[i - 1] + arc_length_gauss(t_vals[i - 1], t_vals[i], h);
-    }
-
-    const double total_len = s_vals[n_samples];
+    std::vector<double> t_vals, s_vals;
+    arc_length_table(std::max(1000, static_cast<int>(length() / segment_length) * 100), t_vals, s_vals);
+    const double total_len = s_vals.back();
 
     for (double s = 0.0; s <= total_len + 1e-10; s += segment_length) {
-        const double t = find_t_at_s(s, t_vals, s_vals, h);
+        const double t = find_t_at_s(s, t_vals, s_vals);
         points.push_back(point_at(t));
 
         if (params)
@@ -1481,12 +1466,14 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
         return result;
     }
 
-    const int max_derivs = std::min(derivative_count, degree());
+    derivative_count = std::max(derivative_count, 0);
+    const int max_derivs = m_is_rat ? derivative_count : std::min(derivative_count, degree());
     const int span = find_span(t);
     std::vector<std::vector<double>> ders;
-    basis_functions_derivatives(span, t, max_derivs, ders);
+    basis_functions_derivatives(span, t, std::min(max_derivs, degree()), ders);
 
-    const std::vector<std::array<double, 4>> Aders = homogeneous_derivatives(span, ders);
+    std::vector<std::array<double, 4>> Aders = homogeneous_derivatives(span, ders);
+    Aders.resize(max_derivs + 1, {0.0, 0.0, 0.0, 0.0});
     std::vector<std::array<double, 3>> Cders(max_derivs + 1);
 
     if (!m_is_rat) {
@@ -1500,8 +1487,9 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
             double Ck_y = Aders[k][1];
             double Ck_z = Aders[k][2];
 
-            for (int j = 1; j <= k; ++j) {
-                const double coeff = std::tgamma(k + 1) / (std::tgamma(j + 1) * std::tgamma(k - j + 1));
+            double coeff = 1.0;
+            for (int j = 1; j <= std::min(k, degree()); ++j) {
+                coeff *= static_cast<double>(k - j + 1) / j;
                 const double wj = Aders[j][3];
                 Ck_x -= coeff * wj * Cders[k - j][0];
                 Ck_y -= coeff * wj * Cders[k - j][1];
@@ -1820,26 +1808,27 @@ bool NurbsCurve::swap_coordinates(int axis_i, int axis_j) {
 
 bool NurbsCurve::trim(double t0, double t1) {
 
-    if (!is_valid() || t0 >= t1)
+    if (!is_valid() || !std::isfinite(t0) || !std::isfinite(t1) || t0 >= t1)
         return false;
 
     const double d0 = domain_start();
     const double d1 = domain_end();
+    const double parameter_tolerance = curve_parameter_tolerance(d0, d1);
 
-    if (t0 < d0 - Tolerance::ZERO_TOLERANCE || t1 > d1 + Tolerance::ZERO_TOLERANCE)
+    if (t0 < d0 - parameter_tolerance || t1 > d1 + parameter_tolerance)
         return false;
 
     t0 = std::max(t0, d0);
     t1 = std::min(t1, d1);
 
-    if (std::abs(t0 - d0) < Tolerance::ZERO_TOLERANCE && std::abs(t1 - d1) < Tolerance::ZERO_TOLERANCE)
+    if (t0 == d0 && t1 == d1)
         return true;
 
     const int p = degree();
-    const bool trim_start = (t0 > d0 + Tolerance::ZERO_TOLERANCE);
-    const bool trim_end = (t1 < d1 - Tolerance::ZERO_TOLERANCE);
+    const bool trim_start = t0 > d0;
+    const bool trim_end = t1 < d1;
 
-    const double stol = (std::abs(d0) + std::abs(d1) + std::abs(d1 - d0)) * SQRT_EPSILON;
+    const double stol = parameter_tolerance;
 
     for (double k : m_nurbsknot) {
         if (trim_start && std::abs(k - t0) <= stol && std::abs(k - t0) > 0.0)
@@ -2905,32 +2894,22 @@ bool NurbsCurve::solve_dense(std::vector<std::vector<double>>& matrix, std::vect
     return true;
 }
 
-Vector NurbsCurve::derivative_at(double t, double h) const {
-
-    const double t0 = domain_start();
-    const double t1 = domain_end();
-    Point p1;
-    Point p2;
-    double dt;
-
-    if (t <= t0 + h) {
-        p1 = point_at(t0);
-        p2 = point_at(t0 + h);
-        dt = h;
-    } else if (t >= t1 - h) {
-        p1 = point_at(t1 - h);
-        p2 = point_at(t1);
-        dt = h;
-    } else {
-        p1 = point_at(t - h);
-        p2 = point_at(t + h);
-        dt = 2.0 * h;
-    }
-
-    return (p2 - p1) / dt;
+void NurbsCurve::arc_length_table(int samples, std::vector<double>& parameters, std::vector<double>& lengths) const {
+    const double first = domain_start(), last = domain_end();
+    parameters = get_span_vector();
+    parameters.reserve(parameters.size() + samples + 1);
+    for (int i = 1; i < samples; ++i)
+        parameters.push_back(first + (last - first) * (static_cast<double>(i) / samples));
+    parameters.push_back(first);
+    parameters.push_back(last);
+    std::sort(parameters.begin(), parameters.end());
+    parameters.erase(std::unique(parameters.begin(), parameters.end()), parameters.end());
+    lengths.assign(parameters.size(), 0.0);
+    for (size_t i = 1; i < parameters.size(); ++i)
+        lengths[i] = lengths[i - 1] + arc_length_gauss(parameters[i - 1], parameters[i]);
 }
 
-double NurbsCurve::arc_length_gauss(double ta, double tb, double h) const {
+double NurbsCurve::arc_length_gauss(double ta, double tb) const {
 
     static const double GL_NODES[5] = {-0.9061798459386640, -0.5384693101056831, 0.0, 0.5384693101056831, 0.9061798459386640};
     static const double GL_WEIGHTS[5] = {0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891};
@@ -2940,12 +2919,12 @@ double NurbsCurve::arc_length_gauss(double ta, double tb, double h) const {
     double sum = 0.0;
 
     for (int i = 0; i < 5; i++)
-        sum += GL_WEIGHTS[i] * derivative_at(mid + half * GL_NODES[i], h).magnitude();
+        sum += GL_WEIGHTS[i] * evaluate(mid + half * GL_NODES[i], 1)[1].magnitude();
 
     return half * sum;
 }
 
-double NurbsCurve::find_t_at_s(double s_target, const std::vector<double>& t_vals, const std::vector<double>& s_vals, double h) const {
+double NurbsCurve::find_t_at_s(double s_target, const std::vector<double>& t_vals, const std::vector<double>& s_vals) const {
 
     const int n_samples = static_cast<int>(t_vals.size()) - 1;
 
@@ -2973,12 +2952,12 @@ double NurbsCurve::find_t_at_s(double s_target, const std::vector<double>& t_val
     double t_hi = t_vals[hi];
 
     for (int iter = 0; iter < 20; iter++) {
-        const double error = s_vals[lo] + arc_length_gauss(t_vals[lo], t, h) - s_target;
+        const double error = s_vals[lo] + arc_length_gauss(t_vals[lo], t) - s_target;
 
         if (std::abs(error) < 1e-12)
             break;
 
-        const double speed = derivative_at(t, h).magnitude();
+        const double speed = evaluate(t, 1)[1].magnitude();
         const double t_new = t - error / speed;
 
         if (speed < 1e-14 || t_new <= t_lo || t_new >= t_hi) {
@@ -3084,18 +3063,79 @@ Vector NurbsCurve::lagrange_tangent(const std::vector<Point>& points, const std:
     return result;
 }
 
+static bool periodic_interpolation_cvs(
+    const std::vector<Point>& points,
+    const std::vector<double>& params,
+    const std::vector<double>& knots,
+    std::vector<double>& cv
+) {
+    const int n = static_cast<int>(points.size());
+    std::vector<double> lower(n), diagonal(n), upper(n), rhs(n * 4, 0.0);
+    for (int i = 0; i < n; ++i) {
+        const std::vector<double> basis = nurbsknot::eval_basis(4, knots, i, params[i]);
+        lower[i] = basis[0];
+        diagonal[i] = basis[1];
+        upper[i] = basis[2];
+        for (int d = 0; d < 3; ++d)
+            rhs[i * 4 + d] = points[i][d];
+    }
+    const double alpha = lower.front();
+    const double beta = upper.back();
+    const double gamma = -diagonal.front();
+    if (std::abs(gamma) < 1e-14)
+        return false;
+    diagonal.front() -= gamma;
+    diagonal.back() -= alpha * beta / gamma;
+    lower.front() = 0.0;
+    upper.back() = 0.0;
+    rhs[3] = gamma;
+    rhs[(n - 1) * 4 + 3] = beta;
+    std::vector<double> solution;
+    if (!nurbsknot::solve_tridiagonal(4, n, lower, diagonal, upper, rhs, solution))
+        return false;
+    const double divisor = 1.0 + solution[3] + alpha * solution[(n - 1) * 4 + 3] / gamma;
+    if (std::abs(divisor) < 1e-14)
+        return false;
+    cv.resize(n * 3);
+    for (int d = 0; d < 3; ++d) {
+        const double correction = (solution[d] + alpha * solution[(n - 1) * 4 + d] / gamma) / divisor;
+        for (int i = 0; i < n; ++i)
+            cv[((i + 1) % n) * 3 + d] = solution[i * 4 + d] - correction * solution[i * 4 + 3];
+    }
+    return true;
+}
+
 NurbsCurve NurbsCurve::create_interpolated_periodic(const std::vector<Point>& points, CurveNurbsKnotStyle parameterization) {
 
+    return create_interpolated(points, periodic_interpolation_parameters(points, parameterization), true);
+}
+
+NurbsCurve NurbsCurve::create_interpolated(
+    const std::vector<Point>& points,
+    const std::vector<double>& params,
+    bool periodic,
+    CurveInterpStyle end_condition
+) {
+
     const int n = static_cast<int>(points.size());
+    if (n < 2 || (periodic && n < 3) || params.size() != points.size() + (periodic ? 1 : 0))
+        return NurbsCurve();
+    for (size_t i = 0; i < params.size(); ++i)
+        if (!std::isfinite(params[i]) || (i && params[i] <= params[i - 1]))
+            return NurbsCurve();
+    if (n == 2) {
+        NurbsCurve curve = create(false, 1, points);
+        curve.set_domain(params.front(), params.back());
+        return curve;
+    }
     const int dim = 3;
     const int order = 4;
-    const int cv_count = n + 3;
+    const int cv_count = n + (periodic ? 3 : 2);
     const int kc = cv_count + order - 2;
-    const std::vector<double> params = periodic_interpolation_parameters(points, parameterization);
     double dmin = 1e300;
     double dmax = 0.0;
 
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i + 1 < params.size(); i++) {
         const double d = params[i + 1] - params[i];
 
         if (d < dmin)
@@ -3108,34 +3148,32 @@ NurbsCurve NurbsCurve::create_interpolated_periodic(const std::vector<Point>& po
     if (dmax <= 0.0 || dmax * SQRT_EPSILON >= dmin)
         return NurbsCurve();
 
-    const std::vector<double> nurbsknots = periodic_interpolation_nurbsknots(params, cv_count);
-    std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
-    std::vector<double> cv(n * dim);
-
-    for (int i = 0; i < n; i++) {
-        const std::vector<double> basis = nurbsknot::eval_basis(order, nurbsknots, i, params[i]);
-        A[i][i % n] += basis[0];
-        A[i][(i + 1) % n] += basis[1];
-        A[i][(i + 2) % n] += basis[2];
-
-        for (int d = 0; d < dim; d++)
-            cv[i * dim + d] = points[i][d];
+    const std::vector<double> nurbsknots = periodic
+        ? periodic_interpolation_nurbsknots(params, cv_count)
+        : nurbsknot::build_interp_nurbsknots(params, order - 1);
+    std::vector<double> cv;
+    if (periodic) {
+        if (!periodic_interpolation_cvs(points, params, nurbsknots, cv))
+            return NurbsCurve();
+    } else {
+        cv = interpolation_end_cvs(points, params, end_condition);
+        if (!solve_interpolation_cvs(points, params, nurbsknots, cv))
+            return NurbsCurve();
     }
-
-    if (!solve_dense(A, cv, n, dim))
-        return NurbsCurve();
 
     NurbsCurve curve(dim, false, order, cv_count);
 
     for (int i = 0; i < kc; i++)
         curve.set_nurbsknot(i, nurbsknots[i]);
 
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < (periodic ? n : cv_count); i++)
         curve.set_cv(i, Point(cv[i * 3], cv[i * 3 + 1], cv[i * 3 + 2]));
 
-    curve.set_cv(n, curve.get_cv(0));
-    curve.set_cv(n + 1, curve.get_cv(1));
-    curve.set_cv(n + 2, curve.get_cv(2));
+    if (periodic) {
+        curve.set_cv(n, curve.get_cv(0));
+        curve.set_cv(n + 1, curve.get_cv(1));
+        curve.set_cv(n + 2, curve.get_cv(2));
+    }
 
     return curve;
 }
@@ -3198,27 +3236,8 @@ std::vector<double> NurbsCurve::periodic_interpolation_nurbsknots(const std::vec
 NurbsCurve NurbsCurve::create_interpolated_clamped(const std::vector<Point>& points, CurveNurbsKnotStyle parameterization, CurveInterpStyle end_condition) {
 
     const int n = static_cast<int>(points.size());
-    const int dim = 3;
-    const int degree = 3;
-    const int cv_count = n + 2;
     const std::vector<double> pts = flatten_points(points, n);
-    const std::vector<double> params = nurbsknot::compute_parameters(pts.data(), n, dim, parameterization);
-    const std::vector<double> nurbsknots = nurbsknot::build_interp_nurbsknots(params, degree);
-    const int kc = static_cast<int>(nurbsknots.size());
-    std::vector<double> cv = interpolation_end_cvs(points, params, end_condition);
-
-    if (!solve_interpolation_cvs(points, params, nurbsknots, cv))
-        return NurbsCurve();
-
-    NurbsCurve curve(dim, false, degree + 1, cv_count);
-
-    for (int i = 0; i < kc; i++)
-        curve.set_nurbsknot(i, nurbsknots[i]);
-
-    for (int i = 0; i < cv_count; i++)
-        curve.set_cv(i, Point(cv[i * 3], cv[i * 3 + 1], cv[i * 3 + 2]));
-
-    return curve;
+    return create_interpolated(points, nurbsknot::compute_parameters(pts.data(), n, 3, parameterization), false, end_condition);
 }
 
 std::vector<double> NurbsCurve::interpolation_end_cvs(const std::vector<Point>& points, const std::vector<double>& params, CurveInterpStyle end_condition) {
@@ -3996,11 +4015,10 @@ bool NurbsCurve::keep_span_range(double t0, double t1) {
     const int p = degree();
     const std::vector<double> U = full_nurbsknots();
     const int full_nurbsknot_count = static_cast<int>(U.size());
-    const double tol = Tolerance::ZERO_TOLERANCE;
     int start_span = -1;
 
     for (int i = full_nurbsknot_count - 1; i >= 0; --i) {
-        if (std::abs(U[i] - t0) < tol) {
+        if (U[i] == t0) {
             start_span = i;
             break;
         }
@@ -4009,7 +4027,7 @@ bool NurbsCurve::keep_span_range(double t0, double t1) {
     int end_span = -1;
 
     for (int i = 0; i < full_nurbsknot_count; ++i) {
-        if (std::abs(U[i] - t1) < tol) {
+        if (U[i] == t1) {
             end_span = i;
             break;
         }
