@@ -61,12 +61,37 @@ struct FaceSplit {
     std::vector<EdgePiece> edges;
 };
 
+struct ArrangementCycleDiagnostic {
+    double area = 0;
+    size_t runs = 0;
+    size_t first_source = 0;
+    double first_parameter = 0;
+    double last_parameter = 0;
+    bool probe_evaluated = false;
+    Point probe;
+    std::string disposition;
+};
+
+struct ArrangementDiagnostic {
+    size_t sources = 0, spans = 0, nodes = 0, half_edges = 0, retained_cycles = 0, regions = 0;
+    double uv_tolerance = 0;
+    std::vector<ArrangementCycleDiagnostic> cycles;
+    std::string first_discarded_reason;
+    std::vector<Point> first_discarded_uv;
+};
+
 /// Partition a face using existing pcurves, retaining source-edge and section identity.
 FaceSplit split_brep_face_by_pcurves(
     const BRep& brep,
     int face_index,
     const std::vector<FaceCut>& cutters,
     double tolerance
+);
+
+/// Observe existing arrangement decisions without additional geometry evaluations.
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic
 );
 
 // ═══════════════════════════════════════════════════════════════════════════

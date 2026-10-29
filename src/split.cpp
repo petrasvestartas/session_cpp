@@ -1260,7 +1260,8 @@ std::vector<Cycle> compute_cycles(
     const Graph& graph,
     const std::vector<Source>& sources,
     const std::vector<std::vector<Point>>& original_loops,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
 
     std::vector<Cycle> cycles;
@@ -1272,11 +1273,34 @@ std::vector<Cycle> compute_cycles(
 
         const Cycle cycle = trace_cycle(graph, sources, initial, used, tolerance);
 
-        if (std::abs(cycle.area) <= tolerance * tolerance)
-            continue;
-
-        if (inside_loops(left_of(sources, cycle.loop[0], tolerance), original_loops))
+        ArrangementCycleDiagnostic observed;
+        if (diagnostic) {
+            observed.area = cycle.area;
+            observed.runs = cycle.loop.size();
+            observed.first_source = cycle.loop[0].source;
+            observed.first_parameter = cycle.loop[0].a;
+            observed.last_parameter = cycle.loop[0].b;
+        }
+        const bool small = std::abs(cycle.area) <= tolerance * tolerance;
+        bool accepted = false;
+        if (!small) {
+            const Point probe = left_of(sources, cycle.loop[0], tolerance);
+            accepted = inside_loops(probe, original_loops);
+            if (diagnostic) {
+                observed.probe_evaluated = true;
+                observed.probe = probe;
+            }
+        }
+        if (accepted)
             cycles.push_back(cycle);
+        if (diagnostic) {
+            observed.disposition = accepted ? "retained" : small ? "area_tolerance" : "outside_original_loops";
+            diagnostic->cycles.push_back(observed);
+            if (!accepted && diagnostic->first_discarded_reason.empty()) {
+                diagnostic->first_discarded_reason = observed.disposition;
+                diagnostic->first_discarded_uv = cycle.points;
+            }
+        }
     }
 
     return cycles;
@@ -1339,13 +1363,24 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>&
 std::vector<std::vector<std::vector<Run>>> arrange(
     const std::vector<Source>& sources,
     const std::vector<std::vector<Point>>& original_loops,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
 
     const std::vector<Span> spans = compute_spans(sources, tolerance);
     const Graph graph = compute_graph(spans, sources, original_loops, tolerance);
-    const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance);
-    return nest_cycles(cycles, tolerance);
+    const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance, diagnostic);
+    const std::vector<std::vector<std::vector<Run>>> regions = nest_cycles(cycles, tolerance);
+    if (diagnostic) {
+        diagnostic->sources = sources.size();
+        diagnostic->spans = spans.size();
+        diagnostic->nodes = graph.outgoing.size();
+        diagnostic->half_edges = graph.edges.size();
+        diagnostic->retained_cycles = cycles.size();
+        diagnostic->regions = regions.size();
+        diagnostic->uv_tolerance = tolerance;
+    }
+    return regions;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1857,6 +1892,15 @@ FaceSplit split_brep_face_by_pcurves(
     const std::vector<FaceCut>& cutters,
     double tolerance
 ) {
+    return split_brep_face_by_pcurves(brep, face_index, cutters, tolerance, nullptr);
+}
+
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic
+) {
+    if (diagnostic)
+        *diagnostic = ArrangementDiagnostic{};
 
     check_tolerance(tolerance);
     require(brep.is_valid(), "Split requires a valid BRep");
@@ -1877,7 +1921,7 @@ FaceSplit split_brep_face_by_pcurves(
         sources.push_back({-1, cutter.world, cutter.pcurve, cutter.section});
     }
 
-    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, uv_tolerance);
+    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, uv_tolerance, diagnostic);
 
     if (regions.size() < 2)
         return {brep, {face_index}, {}};

@@ -202,6 +202,25 @@ void save_classification_failure(const std::string& name, const brep_boolean::Cl
     std::ofstream(folder / (name + ".classification_failure.json")) << record.dump(2);
 }
 
+nlohmann::ordered_json topology_witness(const brep_assemble::TopologyError& error,
+    const std::array<BRep, 2>& operands, const std::string& operation, double tolerance) {
+    nlohmann::ordered_json witness = {{"operation", operation}, {"tolerance", tolerance},
+        {"partial", error.partial.jsondump()},
+        {"operands", {operands[0].jsondump(), operands[1].jsondump()}},
+        {"face_orientations", nlohmann::ordered_json::array()},
+        {"images", nlohmann::ordered_json::array()}};
+    for (BRepOrientation orientation : error.face_orientations)
+        witness["face_orientations"].push_back(static_cast<int>(orientation));
+    for (const brep_assemble::TopologyImage& image : error.images)
+        witness["images"].push_back({{"input", image.input}, {"local_edge", image.local_edge},
+            {"original_edge", image.original_edge}, {"section", image.section},
+            {"output_edge", image.output_edge}, {"first", image.first},
+            {"last", image.last}, {"reversed", image.reversed}});
+    witness["input_index_contract"] = "image.input is the first selected FaceUse for its BRep owner, not operand index";
+    witness["output_index_contract"] = "image.output_edge indexes partial.m_edges; original_edge indexes its input owner";
+    return witness;
+}
+
 nlohmann::ordered_json matrix_result(
     const std::string& name,
     const std::array<BRep, 2>& operands,
@@ -233,6 +252,15 @@ nlohmann::ordered_json matrix_result(
             (expected < 0 || std::abs(volume - expected) <= 1e-6 * std::max(1.0, expected)) &&
             (components < 0 || result.solid_count() == components) &&
             (shells < 0 || result.shell_count() == shells);
+    } catch (const brep_assemble::TopologyError& error) {
+        record["failure"] = error.what();
+        if (operation == 0 && name == "native_platonic_dodecahedron") {
+            try {
+                record["topology_witness"] = topology_witness(error, operands, matrix_names[operation], 1e-7);
+            } catch (const std::exception& capture_error) {
+                record["topology_witness_failure"] = capture_error.what();
+            }
+        }
     } catch (const brep_boolean::ClassificationError& error) {
         save_classification_failure(name + "_" + matrix_names[operation], error);
         record["failure"] = error.what();

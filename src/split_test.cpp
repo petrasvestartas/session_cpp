@@ -256,7 +256,8 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
     for (const auto& cut : fixture["cuts"])
         cuts.push_back({NurbsCurve::jsonload(cut["world"]), NurbsCurve::jsonload(cut["pcurve"]),
             static_cast<int>(cuts.size())});
-    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"]);
+    split::ArrangementDiagnostic arrangement;
+    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"], &arrangement);
     if (result.faces.size() <= 1) {
         nlohmann::ordered_json witness = {{"source", "Preserved Rhino Chair Dense Face Cuts"},
             {"fixture", "tests/fixtures/native_chair_face_zero_cuts.json"},
@@ -266,6 +267,22 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
             {"result_edge_count", result.brep.edge_count()},
             {"pieces", nlohmann::ordered_json::array()},
             {"cut_domains", nlohmann::ordered_json::array()}};
+        witness["arrangement"] = {{"sources", arrangement.sources}, {"spans", arrangement.spans},
+            {"nodes", arrangement.nodes}, {"half_edges", arrangement.half_edges},
+            {"retained_cycles", arrangement.retained_cycles}, {"regions", arrangement.regions},
+            {"uv_tolerance", arrangement.uv_tolerance}, {"cycles", nlohmann::ordered_json::array()},
+            {"first_discarded_reason", arrangement.first_discarded_reason},
+            {"first_discarded_uv", nlohmann::ordered_json::array()}};
+        for (const split::ArrangementCycleDiagnostic& cycle : arrangement.cycles) {
+            nlohmann::ordered_json row = {{"area", cycle.area}, {"runs", cycle.runs},
+                {"first_source", cycle.first_source}, {"first_parameter", cycle.first_parameter},
+                {"last_parameter", cycle.last_parameter}, {"disposition", cycle.disposition}};
+            if (cycle.probe_evaluated)
+                row["left_probe"] = {cycle.probe[0], cycle.probe[1]};
+            witness["arrangement"]["cycles"].push_back(std::move(row));
+        }
+        for (const Point& point : arrangement.first_discarded_uv)
+            witness["arrangement"]["first_discarded_uv"].push_back({point[0], point[1]});
         for (const split::EdgePiece& piece : result.edges)
             witness["pieces"].push_back({{"source_edge", piece.source_edge},
                 {"section", piece.section}, {"edge", piece.edge},
