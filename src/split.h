@@ -72,10 +72,18 @@ struct ArrangementCycleDiagnostic {
     std::string disposition;
 };
 
+struct ArrangementPairDiagnostic {
+    size_t first_source = 0, second_source = 0;
+    NurbsCurve first, second;
+    std::vector<double> first_hits, second_hits;
+    size_t overlaps = 0;
+};
+
 struct ArrangementDiagnostic {
     size_t sources = 0, spans = 0, nodes = 0, half_edges = 0, retained_cycles = 0, regions = 0;
     double uv_tolerance = 0;
     std::vector<ArrangementCycleDiagnostic> cycles;
+    std::vector<ArrangementPairDiagnostic> boundary_cut_pairs;
     std::string first_discarded_reason;
     std::vector<Point> first_discarded_uv;
 };

@@ -687,7 +687,7 @@ void self_events(std::vector<Span>& spans, const std::vector<Source>& sources, d
 }
 
 /// Knot spans of every source, cut at their mutual intersections.
-std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance) {
+std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance, ArrangementDiagnostic* diagnostic) {
 
     std::vector<Span> spans;
 
@@ -713,6 +713,19 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
             continue;
         const curve_intersection::Result events = curve_intersection::intersect(spans[i].curve, spans[j].curve, tolerance);
         require(events.complete, events.failure);
+        if (diagnostic && (sources[spans[i].source].edge < 0) != (sources[spans[j].source].edge < 0)) {
+            ArrangementPairDiagnostic row;
+            row.first_source = spans[i].source;
+            row.second_source = spans[j].source;
+            row.first = spans[i].curve;
+            row.second = spans[j].curve;
+            row.overlaps = events.overlaps.size();
+            for (const auto& hit : events.points) {
+                row.first_hits.push_back(hit.a);
+                row.second_hits.push_back(hit.b);
+            }
+            diagnostic->boundary_cut_pairs.push_back(std::move(row));
+        }
         for (const curve_intersection::Hit& hit : events.points) {
             spans[i].cuts.push_back(hit.a);
             spans[j].cuts.push_back(hit.b);
@@ -1367,7 +1380,7 @@ std::vector<std::vector<std::vector<Run>>> arrange(
     ArrangementDiagnostic* diagnostic
 ) {
 
-    const std::vector<Span> spans = compute_spans(sources, tolerance);
+    const std::vector<Span> spans = compute_spans(sources, tolerance, diagnostic);
     const Graph graph = compute_graph(spans, sources, original_loops, tolerance);
     const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance, diagnostic);
     const std::vector<std::vector<std::vector<Run>>> regions = nest_cycles(cycles, tolerance);

@@ -1,6 +1,7 @@
 #include "curve_intersection.h"
 #include "mini_test.h"
 #include "primitives.h"
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -374,6 +375,40 @@ MINI_TEST("CurveIntersection", "Invalid Inputs Are Explicit") {
     const curve_intersection::Result resolution = curve_intersection::intersect(far, far, 1e-7);
     MINI_CHECK(!resolution.complete);
     MINI_CHECK(!resolution.failure.empty());
+}
+
+MINI_TEST("CurveIntersection", "Preserved Dense Chair Boundary Endpoints") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_face_zero_cuts.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const double tolerance = 6.954173602564384e-8;
+    const std::array<std::array<double, 2>, 2> bounds = {{
+        {37.523025442843874, 37.93079963218852},
+        {42.00854152563501, 42.41631571497966}}};
+    for (size_t i = 0; i < bounds.size(); ++i) {
+        NurbsCurve boundary = NurbsCurve::create(false, 1,
+            {{bounds[i][0], 0, 0}, {bounds[i][1], 0, 0}}, 2);
+        MINI_CHECK(boundary.set_domain(i == 0 ? 31.0 : 42.0, i == 0 ? 32.0 : 43.0));
+        NurbsCurve cut = NurbsCurve::jsonload(fixture["cuts"][i]["pcurve"]);
+        const auto spans = cut.get_span_vector();
+        MINI_CHECK(cut.trim(i == 0 ? spans[spans.size() - 2] : spans[0],
+            i == 0 ? spans.back() : spans[1]));
+        for (bool reversed : {false, true}) {
+            const auto& a = reversed ? cut : boundary;
+            const auto& b = reversed ? boundary : cut;
+            const auto result = curve_intersection::intersect(a, b, tolerance);
+            check_events(a, b, result, tolerance);
+            MINI_CHECK(result.points.size() == 1);
+            MINI_CHECK(result.overlaps.empty());
+            if (result.points.size() == 1) {
+                const auto& hit = result.points[0];
+                const double endpoint = i == 0 ? cut.domain_end() : cut.domain_start();
+                MINI_CHECK(std::abs((reversed ? hit.a : hit.b) - endpoint) < 1e-12);
+                MINI_CHECK(boundary.point_at(reversed ? hit.b : hit.a).distance(cut.point_at(endpoint)) <= tolerance);
+            }
+        }
+    }
 }
 
 }
