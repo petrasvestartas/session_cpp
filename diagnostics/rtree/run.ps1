@@ -25,7 +25,7 @@ try {
       $exe = Join-Path $out ($program + '.exe')
       $obj = Join-Path $out ($program + '.obj')
       $asm = Join-Path $out ($program + '.asm')
-      $arguments = $common + $config.Flags + @($source, "/Fe:$exe", "/Fo:$obj", '/FAs', "/Fa:$asm")
+      $arguments = $common + $config.Flags + @($source, "/Fe:$exe", "/Fo:$obj", '/FAs', "/Fa$asm")
       $arguments | ConvertTo-Json | Set-Content (Join-Path $out ($program + '-compile-arguments.json'))
       & cl @arguments 2>&1 | Tee-Object -FilePath (Join-Path $out ($program + '-compile.log'))
       if ($LASTEXITCODE -ne 0) { throw "Compile failed: $program $($config.Name)" }
