@@ -257,6 +257,37 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
         cuts.push_back({NurbsCurve::jsonload(cut["world"]), NurbsCurve::jsonload(cut["pcurve"]),
             static_cast<int>(cuts.size())});
     const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"]);
+    if (result.faces.size() <= 1) {
+        nlohmann::ordered_json witness = {{"source", "Preserved Rhino Chair Dense Face Cuts"},
+            {"fixture", "tests/fixtures/native_chair_face_zero_cuts.json"},
+            {"operand", fixture["operand"]}, {"face", fixture["face"]},
+            {"tolerance", fixture["tolerance"]}, {"input_cut_count", cuts.size()},
+            {"result_faces", result.faces}, {"result_face_count", result.brep.face_count()},
+            {"result_edge_count", result.brep.edge_count()},
+            {"pieces", nlohmann::ordered_json::array()},
+            {"cut_domains", nlohmann::ordered_json::array()}};
+        for (const split::EdgePiece& piece : result.edges)
+            witness["pieces"].push_back({{"source_edge", piece.source_edge},
+                {"section", piece.section}, {"edge", piece.edge},
+                {"first", piece.first}, {"last", piece.last}});
+        for (const split::FaceCut& cut : cuts)
+            witness["cut_domains"].push_back({{"world", {cut.world.domain_start(), cut.world.domain_end()}},
+                {"pcurve", {cut.pcurve.domain_start(), cut.pcurve.domain_end()}}});
+        try {
+            const std::filesystem::path folder = root / "build/native-geometry-tests";
+            std::filesystem::create_directories(folder);
+            std::ofstream output(folder / "native_chair_dense_face_failure.json");
+            output << witness.dump(2);
+            output.flush();
+            const bool written = output.good();
+            output.close();
+            if (!written || output.fail())
+                std::cerr << "dense_face_failure_report_write_failed" << std::endl;
+        } catch (const std::exception& error) {
+            std::cerr << "dense_face_failure_report_write_failed: " << error.what() << std::endl;
+        }
+        std::cerr << "dense_face_failure: " << witness.dump() << std::endl;
+    }
     MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
     MINI_CHECK(result.faces.size() > 1);
 }

@@ -1,3 +1,4 @@
+#include <iostream>
 #include "brep_boolean.h"
 #include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
@@ -661,6 +662,10 @@ MINI_TEST("BRep Native Boolean", "All Five Rotated Platonic Solids") {
     report["passed_cases"] = passed;
     report["passed"] = passed == 5;
     write_matrix("native_platonic", report);
+    if (passed != 5)
+        for (const nlohmann::ordered_json& record : report["cases"])
+            if (!record.value("passed", false))
+                std::cerr << "platonic_case_failure: " << record.dump() << std::endl;
     MINI_CHECK(passed == 5);
 }
 
