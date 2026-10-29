@@ -1,5 +1,6 @@
 #include "brep_section.h"
 #include "brep_classify.h"
+#include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
 #include "mini_test.h"
 #include "xform.h"
@@ -84,8 +85,27 @@ MINI_TEST("BRep Native Section", "Coincident Support Is Explicit") {
         for (int i = 0; i < pcurve.cv_count(); ++i)
             pcurve.cv(i)[0] += 10.0 * pcurve.weight(i);
     MINI_CHECK(remapped.is_solid());
-    const brep_section::FaceResult unsupported = brep_section::faces(sphere, remapped, 1e-7);
-    MINI_CHECK(!unsupported.complete && !unsupported.failure.empty());
+    nurbs_coincidence::ParameterMap forward, inverse;
+    MINI_CHECK(nurbs_coincidence::parameter_mapping(sphere.m_surfaces[0], remapped.m_surfaces[0], 1e-7, forward));
+    MINI_CHECK(nurbs_coincidence::parameter_mapping(remapped.m_surfaces[0], sphere.m_surfaces[0], 1e-7, inverse));
+    MINI_CHECK(forward.axis[0] == 0 && forward.axis[1] == 1);
+    MINI_CHECK(forward.scale[0] == 1 && forward.scale[1] == 1);
+    MINI_CHECK(forward.offset[0] == 10 && forward.offset[1] == 0);
+    MINI_CHECK(inverse.axis[0] == 0 && inverse.axis[1] == 1);
+    MINI_CHECK(inverse.scale[0] == 1 && inverse.scale[1] == 1);
+    MINI_CHECK(inverse.offset[0] == -10 && inverse.offset[1] == 0);
+    for (const BRepEdge& edge : remapped.m_edges)
+        if (!edge.degenerated)
+            for (const BRepCurveOnSurface& relation : edge.pcurves)
+                for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
+                    if (index >= 0)
+                        MINI_CHECK(curve_surface_intersection::same_parameter(remapped.m_curves_3d[edge.curve_3d_index],
+                            remapped.m_curves_2d[index], remapped.m_surfaces[relation.surface_index], 1e-7)
+                            == curve_surface_intersection::ParameterMatch::Matched);
+    const brep_section::FaceResult mapped = brep_section::faces(sphere, remapped, 1e-7);
+    MINI_CHECK(mapped.complete && mapped.failure.empty());
+    MINI_CHECK(mapped.curves.empty() && mapped.overlaps.size() == 1);
+    MINI_CHECK(mapped.overlaps[0].first_face == 0 && mapped.overlaps[0].second_face == 0);
 }
 
 MINI_TEST("BRep Native Section", "Consecutive Retained Endpoint Intervals") {

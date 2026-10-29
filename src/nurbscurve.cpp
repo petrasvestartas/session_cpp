@@ -1451,7 +1451,10 @@ static bool linear_span_values(const NurbsCurve& curve, int span, double t,
     for (int d = 0; d < 3; ++d) {
         const double first_coordinate = d < curve.dimension() ? a[d] : 0.0;
         const double last_coordinate = d < curve.dimension() ? b[d] : 0.0;
-        derivative[d] = (last_coordinate - first_coordinate) / width;
+        const double difference = last_coordinate - first_coordinate;
+        derivative[d] = difference / width;
+        if (!std::isfinite(difference) && std::isfinite(first_coordinate) && std::isfinite(last_coordinate))
+            derivative[d] = last_coordinate / width - first_coordinate / width;
         if (!std::isfinite(derivative[d]))
             return false;
         point[d] = std::lerp(first_coordinate, last_coordinate, fraction);

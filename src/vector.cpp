@@ -212,6 +212,9 @@ void Vector::reverse() {
 }
 
 double Vector::compute_magnitude() const {
+    const double scale = std::max({std::abs(_x), std::abs(_y), std::abs(_z)});
+    if (scale > 0.0 && std::isfinite(scale))
+        return scale * std::hypot(_x / scale, _y / scale, _z / scale);
     return std::hypot(_x, _y, _z);
 }
 

@@ -51,10 +51,23 @@ inline Grid product(const Grid& a, const Grid& b, const std::function<void()>& c
     return result;
 }
 
-inline Grid difference(Grid a, const Grid& b) {
-    for (size_t i = 0; i < a.values.size(); ++i)
-        a.values[i] = a.values[i] - b.values[i];
-    return a;
+inline Grid cross_component(const Grid& a, const Grid& b, const Grid& c, const Grid& d,
+                            const std::function<void()>& charge) {
+    Grid result(a.u + b.u, a.v + b.v);
+    for (int i = 0; i <= result.u; ++i)
+        for (int j = 0; j <= result.v; ++j) {
+            charge();
+            for (int k = std::max(0, i - b.u); k <= std::min(a.u, i); ++k)
+                for (int l = std::max(0, j - b.v); l <= std::min(a.v, j); ++l) {
+                    const Interval weight = Interval(binomial(a.u, k)) * Interval(binomial(b.u, i - k))
+                        / Interval(binomial(result.u, i)) * Interval(binomial(a.v, l))
+                        * Interval(binomial(b.v, j - l)) / Interval(binomial(result.v, j));
+                    const Interval determinant = a.at(k, l) * b.at(i - k, j - l)
+                        - c.at(k, l) * d.at(i - k, j - l);
+                    result.at(i, j) = result.at(i, j) + weight * determinant;
+                }
+        }
+    return result;
 }
 
 inline Grid derivative(const Grid& source, int direction, Interval width,
@@ -86,7 +99,7 @@ inline Grid integrand(const NurbsSurface& surface, const std::array<double, 4>& 
     Grid result(3 * surface.degree(0) - 1, 3 * surface.degree(1) - 1);
     for (int d = 0; d < 3; ++d) {
         const int a = (d + 1) % 3, b = (d + 2) % 3;
-        const Grid cross = difference(product(du[a], dv[b], charge), product(du[b], dv[a], charge));
+        const Grid cross = cross_component(du[a], dv[b], du[b], dv[a], charge);
         const Grid term = product(point[d], cross, charge);
         for (size_t i = 0; i < result.values.size(); ++i)
             result.values[i] = result.values[i] + term.values[i] / Interval(3);
@@ -137,7 +150,7 @@ struct Primitive {
             return;
         if (u.size() < 2 || v.size() < 2)
             throw std::runtime_error("Native polynomial volume has no support knot cells");
-        const size_t per_cell = 66 * surface.degree(0) * surface.degree(1)
+        const size_t per_cell = 54 * surface.degree(0) * surface.degree(1)
             + 3 * surface.degree(0) + 3 * surface.degree(1);
         if (u.size() - 1 > (remaining / per_cell) / (v.size() - 1))
             throw std::runtime_error("Native BRep volume exceeded its quadrature budget");

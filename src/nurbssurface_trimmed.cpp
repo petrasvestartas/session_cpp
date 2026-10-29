@@ -7,6 +7,7 @@
 #include "tolerance.h"
 #include <array>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <map>
 #include <set>
@@ -3548,8 +3549,57 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     trim_outside(dt, loops.uv, bounds);
     const std::vector<std::array<int, 3>> tris = dt.get_triangles();
 
-    if (tris.empty() || crosses_crease(tris, dt, crease_knots))
+    const bool crease_crossing = !tris.empty() && crosses_crease(tris, dt, crease_knots);
+    if (tris.empty() || crease_crossing) {
+        nlohmann::ordered_json witness = {{"source", "NurbsSurfaceTrimmed::triangulate"},
+            {"triangle_count", tris.size()}, {"crosses_crease", crease_crossing},
+            {"surface", m_surface.jsondump()}, {"outer", m_outer_loop.jsondump()},
+            {"crease_knots", crease_knots}, {"loops", nlohmann::ordered_json::array()},
+            {"diagnostic_kind", "first_crossing_or_empty_triangulation"}};
+        for (const std::vector<Point>& loop : loops.uv) {
+            nlohmann::ordered_json points = nlohmann::ordered_json::array();
+            for (const Point& point : loop)
+                points.push_back({point[0], point[1]});
+            witness["loops"].push_back(std::move(points));
+        }
+        witness["vertex_count"] = dt.vertices.size();
+        witness["first_crossing"] = nullptr;
+        for (const std::array<int, 3>& triangle : tris) {
+            if (!witness["first_crossing"].is_null())
+                break;
+            for (int dir = 0; dir < 2; ++dir) {
+                double low = INFINITY, high = -INFINITY;
+                for (int vertex : triangle) {
+                    const double coordinate = dir == 0 ? dt.vertices[vertex].x : dt.vertices[vertex].y;
+                    low = std::min(low, coordinate);
+                    high = std::max(high, coordinate);
+                }
+                for (double knot : crease_knots[dir]) {
+                    if (!(low < knot && knot < high))
+                        continue;
+                    nlohmann::ordered_json crossing = {{"direction", dir}, {"knot", knot},
+                        {"low", low}, {"high", high}, {"vertices", nlohmann::ordered_json::array()},
+                        {"edges", nlohmann::ordered_json::array()}};
+                    for (int vertex : triangle)
+                        crossing["vertices"].push_back({{"index", vertex},
+                            {"uv", {dt.vertices[vertex].x, dt.vertices[vertex].y}}});
+                    for (size_t side = 0; side < triangle.size(); ++side) {
+                        const int a = triangle[side], b = triangle[(side + 1) % triangle.size()];
+                        const double x = dir == 0 ? dt.vertices[a].x : dt.vertices[a].y;
+                        const double y = dir == 0 ? dt.vertices[b].x : dt.vertices[b].y;
+                        if (std::min(x, y) < knot && knot < std::max(x, y))
+                            crossing["edges"].push_back({a, b});
+                    }
+                    witness["first_crossing"] = std::move(crossing);
+                    break;
+                }
+                if (!witness["first_crossing"].is_null())
+                    break;
+            }
+        }
+        std::cerr << "surface_mesh_failure: " << witness.dump() << std::endl;
         return Mesh();
+    }
 
     Mesh result;
     VertexWelder welder(result, loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0, bbox_diag * 1e-5);

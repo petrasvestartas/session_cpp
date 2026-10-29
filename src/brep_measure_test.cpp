@@ -278,3 +278,34 @@ MINI_TEST("BRep Native Measure", "Analytic Saddle Primitive Off Node And Reverse
             MINI_CHECK(backward.hi - backward.lo < 1e-10 * std::abs(expected_reversed));
         }
 }
+
+MINI_TEST("BRep Native Measure", "Repeated Bicubic Primitive Fits Shared Work Budget") {
+    NurbsSurface surface(3, false, 2, 2, 2, 2);
+    surface.m_nurbsknot[0] = {0, 1};
+    surface.m_nurbsknot[1] = {0, 1};
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            MINI_CHECK(surface.set_cv(i, j, {double(i), double(j), 1 + double(i * j)}));
+    for (int direction = 0; direction < 2; ++direction) {
+        MINI_CHECK(surface.increase_degree(direction, 3));
+        for (int k = 1; k < 8; ++k)
+            MINI_CHECK(surface.insert_nurbsknot(direction, k / 8.0));
+    }
+    size_t work = 0;
+    const auto charge = [&]() {
+        if (++work > 200000)
+            throw std::runtime_error("test cache budget");
+    };
+    for (int face = 0; face < 6; ++face) {
+        const brep_measure::polynomial::Primitive primitive(surface, 200000 - work, charge);
+        for (double u : {.17, .43, .91}) {
+            const double v = .37;
+            const double expected = (u - v * u * u / 2) / 3;
+            const nurbs_interval::Interval value = primitive.at(u, v);
+            MINI_CHECK(nurbs_interval::finite(value));
+            MINI_CHECK(value.lo <= expected && value.hi >= expected);
+            MINI_CHECK(value.hi - value.lo < 1e-9);
+        }
+    }
+    MINI_CHECK(work < 200000);
+}
