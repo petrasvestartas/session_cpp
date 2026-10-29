@@ -1,0 +1,30 @@
+{
+  "parent": "a9390ccb17292774037c696b02b098d5373c3a95",
+  "purpose": "Header-only remote MSVC causal diagnostic. No production algorithm edits, JSON parser, full kernel build, or local compile. Exact repro preserves insertion AND query bits; reducer separately preserves insertion bits and production nextafter query math.",
+  "sources": [
+    {
+      "path": "exact_boxes.h",
+      "sha256": "06daf20e7468e80e1141ef82956d2216c7887db6f714a334a0a9b6bcabf2998e"
+    },
+    {
+      "path": "exact_repro.cpp",
+      "sha256": "194b4fae0c2276c795264ab2c6994ddd023f1d1ec4a640bd9ecc392cb3e4f05a"
+    },
+    {
+      "path": "minimize.py",
+      "sha256": "d0fadcbeb350ee15ca4a7a111b2f4c6875c1c6a05999ccf51dd1b6a4f8f877e3"
+    },
+    {
+      "path": "reducer_repro.cpp",
+      "sha256": "03c3519a8dd7a76658a851be4135d0344d5284d32fe1508dd274b1893ef489ad"
+    },
+    {
+      "path": "run.ps1",
+      "sha256": "700596874d7822af4a25dcc1593a7105d6bb5a1f6831e0a8e01d524bf6229c1d"
+    },
+    {
+      "path": "spatial_rtree.h",
+      "sha256": "aa97849c1439247e62562fcf1f02f0b5bd0c76b961933e8bfb9a82c7ab9f61b3"
+    }
+  ]
+}

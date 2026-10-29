@@ -1,0 +1,25 @@
+name: Diagnose standalone native RTree MSVC
+on:
+  push:
+    branches: [diagnostic-native-rtree-20261030]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Compile and compare exact standalone boxes
+        shell: pwsh
+        run: ./diagnostics/rtree/run.ps1
+      - name: Preserve compiler and all diagnostic observations
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-rtree-msvc-${{ github.run_attempt }}
+          path: diagnostic-results/
+          if-no-files-found: error
+          retention-days: 7
