@@ -199,7 +199,10 @@ FaceResult faces(const BRep& first, const BRep& second, double tolerance) {
                 const NurbsSurface& sb = second.m_surfaces[second.m_faces[b].surface_index];
                 if (!box.overlaps(Bounds(sb), tolerance))
                     continue;
+                nurbs_coincidence::ParameterMap mapping;
                 if (nurbs_coincidence::same_parameters(sa, sb, tolerance)
+                    || nurbs_coincidence::parameter_mapping(sa, sb, tolerance, mapping)
+                    || nurbs_coincidence::common_basis_agreement(sa, sb, tolerance)
                     || nurbs_coincidence::coplanar(sa, sb, tolerance)) {
                     result.overlaps.push_back({a, b});
                     continue;
@@ -217,11 +220,22 @@ FaceResult faces(const BRep& first, const BRep& second, double tolerance) {
                     trim_parameters(first, a, ua, ta, parameters);
                     trim_parameters(second, b, ub, tb, parameters);
                     sort_parameters(parameters);
+                    size_t run_begin = 0;
+                    bool retaining = false;
                     for (size_t i = 1; i < parameters.size(); ++i) {
                         const double middle = std::midpoint(parameters[i - 1], parameters[i]);
-                        if (retained(first, a, ua, middle, ta) && retained(second, b, ub, middle, tb))
-                            result.curves.push_back({a, b, trimmed(world, parameters[i - 1], parameters[i]),
-                                trimmed(ua, parameters[i - 1], parameters[i]), trimmed(ub, parameters[i - 1], parameters[i])});
+                        const bool keep = retained(first, a, ua, middle, ta) && retained(second, b, ub, middle, tb);
+                        if (keep && !retaining) {
+                            run_begin = i - 1;
+                            retaining = true;
+                        }
+                        if (retaining && (!keep || i + 1 == parameters.size())) {
+                            const size_t run_end = keep ? i : i - 1;
+                            result.curves.push_back({a, b, trimmed(world, parameters[run_begin], parameters[run_end]),
+                                trimmed(ua, parameters[run_begin], parameters[run_end]),
+                                trimmed(ub, parameters[run_begin], parameters[run_end])});
+                            retaining = false;
+                        }
                     }
                 }
             }

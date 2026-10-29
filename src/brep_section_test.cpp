@@ -1,8 +1,11 @@
 #include "brep_section.h"
 #include "brep_classify.h"
+#include "curve_surface_intersection.h"
 #include "mini_test.h"
 #include "xform.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 
 using namespace session_cpp;
@@ -83,4 +86,72 @@ MINI_TEST("BRep Native Section", "Coincident Support Is Explicit") {
     MINI_CHECK(remapped.is_solid());
     const brep_section::FaceResult unsupported = brep_section::faces(sphere, remapped, 1e-7);
     MINI_CHECK(!unsupported.complete && !unsupported.failure.empty());
+}
+
+MINI_TEST("BRep Native Section", "Consecutive Retained Endpoint Intervals") {
+    const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_section_retained_endpoint_runs.json");
+    MINI_CHECK(input.good());
+    const nlohmann::json fixture = nlohmann::json::parse(input);
+    const BRep first = BRep::jsonload(fixture.at("first_support"));
+    const BRep second = BRep::jsonload(fixture.at("second_support"));
+    const double tolerance = fixture.at("tolerance").get<double>();
+    const auto endpoint = [&](int i) {
+        const nlohmann::json& p = fixture.at("expected_endpoints").at(i);
+        return Point(p.at(0).get<double>(), p.at(1).get<double>(), p.at(2).get<double>());
+    };
+    for (bool swap : {false, true}) {
+        const BRep& a = swap ? second : first;
+        const BRep& b = swap ? first : second;
+        const brep_section::FaceResult result = brep_section::faces(a, b, tolerance);
+        if (!result.complete)
+            throw std::runtime_error(result.failure);
+        MINI_CHECK(result.curves.size() == 1 && result.overlaps.empty());
+        const brep_section::FaceCurve& section = result.curves[0];
+        const Point start = section.world.point_at_start();
+        const Point end = section.world.point_at_end();
+        MINI_CHECK(std::min(start.distance(endpoint(0)) + end.distance(endpoint(1)),
+            start.distance(endpoint(1)) + end.distance(endpoint(0))) < tolerance * 2);
+        MINI_CHECK(section.world.domain() == section.first_pcurve.domain());
+        MINI_CHECK(section.world.domain() == section.second_pcurve.domain());
+        MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
+            a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+            == curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
+            b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+            == curve_surface_intersection::ParameterMatch::Matched);
+    }
+}
+
+MINI_TEST("BRep Native Section", "Rejected Hole Separates Retained Runs") {
+    const NurbsCurve outer = NurbsCurve::create(false, 1,
+        {{0, 0, 0}, {4, 0, 0}, {4, 4, 0}, {0, 4, 0}, {0, 0, 0}});
+    const NurbsCurve inner = NurbsCurve::create(false, 1,
+        {{1, 1, 0}, {3, 1, 0}, {3, 3, 0}, {1, 3, 0}, {1, 1, 0}});
+    const BRep first = BRep::from_nurbscurves({outer}, {{inner}});
+    const BRep second = BRep::from_nurbscurves({NurbsCurve::create(false, 1,
+        {{-1, 2, -1}, {5, 2, -1}, {5, 2, 1}, {-1, 2, 1}, {-1, 2, -1}})});
+    const double tolerance = 1e-7;
+    for (bool swap : {false, true}) {
+        const BRep& a = swap ? second : first;
+        const BRep& b = swap ? first : second;
+        const brep_section::FaceResult result = brep_section::faces(a, b, tolerance);
+        if (!result.complete)
+            throw std::runtime_error(result.failure);
+        MINI_CHECK(result.curves.size() == 2 && result.overlaps.empty());
+        double length = 0;
+        for (const brep_section::FaceCurve& section : result.curves) {
+            const Point start = section.world.point_at_start();
+            const Point end = section.world.point_at_end();
+            length += start.distance(end);
+            MINI_CHECK(std::max(start[0], end[0]) <= 1 + tolerance || std::min(start[0], end[0]) >= 3 - tolerance);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
+                a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+                == curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
+                b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+                == curve_surface_intersection::ParameterMatch::Matched);
+        }
+        MINI_CHECK(std::abs(length - 2) < tolerance);
+    }
 }

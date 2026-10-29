@@ -2838,6 +2838,11 @@ bool piece_curves(
         if (!field.polish(uv[0], uv[1]))
             throw std::runtime_error("Native plane section point did not converge");
     for (int iteration = 0; iteration < 20 && pts_uv.size() <= 32768; ++iteration) {
+        pts_uv.erase(std::unique(pts_uv.begin(), pts_uv.end(), [](const Point& a, const Point& b) {
+            return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+        }), pts_uv.end());
+        if (pts_uv.size() < (piece.is_loop ? 4u : 2u))
+            throw std::runtime_error("Native plane section has too few distinct parameter samples");
         std::vector<Point> pts3(pts_uv.size());
         for (size_t i = 0; i < pts_uv.size(); i++)
             pts3[i] = field.point({pts_uv[i][0], pts_uv[i][1]});
@@ -7377,6 +7382,9 @@ struct SurfaceSurfaceGraph {
     std::array<std::array<double, 3>, 3> inverse{};
     double contraction = 0.0;
     std::array<nurbs_interval::Interval, 4> image{}, anchor{};
+    bool boundary_anchor_certified = false;
+    double boundary_fixed_width = 0.0;
+    std::array<nurbs_interval::Interval, 3> boundary_derivative{};
 };
 
 /// Grid seed with retained unique parameter-graph certificates.
@@ -7764,9 +7772,12 @@ double parameter_difference(const SurfaceSurfaceField& field, int k, double a, d
 
 bool graph_contains(const SurfaceSurfaceGraph& graph,
     const std::array<nurbs_interval::Interval, 4>& root) {
-    for (int k = 0; k < 4; ++k)
-        if (!nurbs_interval::finite(root[k]) || root[k].lo < graph.lower[k] || root[k].hi > graph.upper[k])
+    for (int k = 0; k < 4; ++k) {
+        if (!nurbs_interval::finite(root[k]))
             return false;
+        if (root[k].lo < graph.lower[k] || root[k].hi > graph.upper[k])
+            return false;
+    }
     return true;
 }
 
@@ -7805,14 +7816,13 @@ bool in_seed_cell(const SurfaceSurfaceField& field, std::array<double, 4>& x,
     for (int k = 0; k < 4; ++k) {
         const std::array<double, 12>& box = k < 2 ? a : b;
         const int d = k % 2;
-        if (field.closed[k])
-            x[k] += std::round((box[6 + d] - x[k]) / field.range[k]) * field.range[k];
         const double speed = std::hypot(derivatives[k][0], derivatives[k][1], derivatives[k][2]);
         const double rounding = 64.0 * std::numeric_limits<double>::epsilon() *
             std::max(std::abs(box[8 + 2 * d]), std::abs(box[9 + 2 * d]));
         const double error = rounding + (speed > 0.0 ? field.conv_tol * 4.0 / speed : 0.0);
         if (x[k] < box[8 + 2 * d] - error || x[k] > box[9 + 2 * d] + error)
             return false;
+        x[k] = std::clamp(x[k], box[8 + 2 * d], box[9 + 2 * d]);
     }
     return true;
 }
@@ -7982,69 +7992,211 @@ bool ssi_continuous(const NurbsSurface& surface, const std::array<double, 4>& re
     return true;
 }
 
-bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::array<double, 4>& root,
-    const std::array<int, 3>& free, const std::array<double, 3>& scale,
-    const std::array<SsiInterval, 3>& image, const SsiInterval matrix[3][3],
-    const std::array<SsiInterval, 3>& forcing, double contraction, const double inverse[3][3],
-    std::string* failure = nullptr) {
-    if (failure)
-        *failure = "invalid_graph_enclosure";
-    std::array<bool, 3> clipped;
-    bool needs_clip = false;
+bool normalized_graph_derivative(const SsiInterval matrix[3][3], const std::array<SsiInterval, 3>& forcing,
+    double contraction, std::array<SsiInterval, 3>& derivative) {
+    if (!std::isfinite(contraction) || contraction < 0.0 || contraction >= 1.0)
+        return false;
     double magnitude = 0.0;
-    for (int c = 0; c < 3; ++c) {
-        const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
-        if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
+    for (const SsiInterval value : forcing) {
+        if (!nurbs_interval::finite(value))
             return false;
-        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
-        needs_clip = needs_clip || clipped[c];
-        magnitude = std::max(magnitude, nurbs_interval::magnitude(forcing[c]));
+        magnitude = std::max(magnitude, nurbs_interval::magnitude(value));
     }
-    if (!needs_clip)
-        return true;
-    if (failure)
-        *failure = "retained_seed_bounds_unproved";
-    const std::array<double, 3> origin = field.point(root);
-    SsiPatchBounds a, b;
-    if (!nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, a, false) ||
-        !nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, b, false))
-        return false;
-    double displacement = 0.0;
-    for (int r = 0; r < 3; ++r) {
-        SsiInterval residual;
-        for (int d = 0; d < 3; ++d)
-            residual = residual - SsiInterval(inverse[r][d]) * (a.point[d] - b.point[d]);
-        displacement = std::max(displacement, nurbs_interval::magnitude(residual));
-    }
-    const SsiInterval seed_radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(contraction));
-    if (!nurbs_interval::finite(seed_radius))
-        return false;
-    if (failure)
-        *failure = "retained_seed_outside_original_domain";
-    for (int c = 0; c < 3; ++c) {
-        const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
-            SsiInterval(-seed_radius.hi, seed_radius.hi);
-        if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
-            return false;
-    }
-    if (failure)
-        *failure = "implicit_derivative_unbounded";
     const SsiInterval radius = SsiInterval(magnitude) / (SsiInterval(1.0) - SsiInterval(contraction));
     if (!nurbs_interval::finite(radius))
         return false;
-    std::array<SsiInterval, 3> derivative;
     derivative.fill(SsiInterval(-radius.hi, radius.hi));
     for (int iteration = 0; iteration < 8; ++iteration) {
         std::array<SsiInterval, 3> next = forcing;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 3; ++c)
                 next[r] = next[r] + matrix[r][c] * derivative[c];
-            next[r] = {std::max(derivative[r].lo, next[r].lo), std::min(derivative[r].hi, next[r].hi)};
+            next[r] = SsiInterval(std::max(derivative[r].lo, next[r].lo), std::min(derivative[r].hi, next[r].hi));
             if (!nurbs_interval::finite(next[r]))
                 return false;
         }
         derivative = next;
     }
+    return true;
+}
+
+bool zero_plane_boundary(const NurbsSurface& surface, int parameter, int end, int coordinate) {
+    const std::vector<double>& knots = surface.m_nurbsknot[parameter];
+    const std::pair<double, double> domain = surface.domain(parameter);
+    const double endpoint = end ? domain.second : domain.first;
+    for (int i = 0; i < surface.degree(parameter); ++i)
+        if (knots[end ? knots.size() - 1 - i : i] != endpoint)
+            return false;
+    const int edge = end ? surface.cv_count(parameter) - 1 : 0;
+    for (int i = 0; i < surface.cv_count(1 - parameter); ++i) {
+        const double* control = parameter ? surface.cv(i, edge) : surface.cv(edge, i);
+        if (control[coordinate] != 0.0)
+            return false;
+    }
+    return true;
+}
+
+bool boundary_graph_anchor(const SurfaceSurfaceField& field, const std::array<double, 4>& proposal,
+    const std::array<double, 4>& lower, const std::array<double, 4>& upper, int fixed,
+    std::array<SsiInterval, 4>& anchor, bool match_fixed_proposal = true) {
+    for (int ka = 0; ka < 2; ++ka)
+        for (int kb = 2; kb < 4; ++kb) {
+            if (fixed != ka && fixed != kb)
+                continue;
+            for (int ea = 0; ea < 2; ++ea)
+                for (int eb = 0; eb < 2; ++eb) {
+                    const double seam_a = ea ? field.hi[ka] : field.lo[ka];
+                    const double seam_b = eb ? field.hi[kb] : field.lo[kb];
+                    if (seam_a < lower[ka] || seam_a > upper[ka] || seam_b < lower[kb] || seam_b > upper[kb] ||
+                        (match_fixed_proposal && ((fixed == ka && proposal[ka] != seam_a) ||
+                            (fixed == kb && proposal[kb] != seam_b))))
+                        continue;
+                    for (int omitted = 0; omitted < 3; ++omitted) {
+                        if (!zero_plane_boundary(field.a, ka, ea, omitted) ||
+                            !zero_plane_boundary(field.b, kb - 2, eb, omitted))
+                            continue;
+                        std::array<double, 4> center = proposal;
+                        center[ka] = seam_a;
+                        center[kb] = seam_b;
+                        const std::array<int, 2> variables = {1 - ka, 5 - kb};
+                        std::array<int, 2> rows;
+                        for (int d = 0, n = 0; d < 3; ++d)
+                            if (d != omitted)
+                                rows[n++] = d;
+                        const std::array<double, 3> origin = field.point(center);
+                        SsiPatchBounds a, b, a0, b0;
+                        if (!nurbs_interval::surface_bounds(field.a, {lower[0], upper[0], lower[1], upper[1]}, origin, a, true, true) ||
+                            !nurbs_interval::surface_bounds(field.b, {lower[2], upper[2], lower[3], upper[3]}, origin, b, true, true) ||
+                            !nurbs_interval::surface_bounds(field.a, {center[0], center[0], center[1], center[1]}, origin, a0, false) ||
+                            !nurbs_interval::surface_bounds(field.b, {center[2], center[2], center[3], center[3]}, origin, b0, false))
+                            continue;
+                        Vector point, au, av, bu, bv;
+                        field.eval_a(center[0], center[1], point, au, av);
+                        field.eval_b(center[2], center[3], point, bu, bv);
+                        const Vector columns[4] = {au, av, -bu, -bv};
+                        std::array<double, 2> scale;
+                        std::array<SsiInterval, 2> domain, interior;
+                        std::vector<std::vector<double>> jac(2, std::vector<double>(2));
+                        bool valid = true;
+                        for (int c = 0; c < 2; ++c) {
+                            const int k = variables[c];
+                            scale[c] = upper[k] - lower[k];
+                            valid = valid && scale[c] > 0.0 && std::isfinite(scale[c]) &&
+                                center[k] >= lower[k] && center[k] <= upper[k];
+                            const SsiInterval first = (SsiInterval(lower[k]) - SsiInterval(center[k])) / SsiInterval(scale[c]);
+                            const SsiInterval last = (SsiInterval(upper[k]) - SsiInterval(center[k])) / SsiInterval(scale[c]);
+                            domain[c] = SsiInterval(first.lo, last.hi);
+                            interior[c] = SsiInterval(first.hi, last.lo);
+                            for (int r = 0; r < 2; ++r)
+                                jac[r][c] = columns[k][rows[r]] * scale[c];
+                        }
+                        double inverse[2][2]{};
+                        for (int c = 0; c < 2 && valid; ++c) {
+                            std::vector<double> rhs(2), solution;
+                            rhs[c] = 1.0;
+                            if (!solve_gauss(jac, rhs, 2, solution)) {
+                                valid = false;
+                                break;
+                            }
+                            for (int r = 0; r < 2; ++r) {
+                                inverse[r][c] = solution[r];
+                                valid = valid && std::isfinite(solution[r]);
+                            }
+                        }
+                        std::array<SsiInterval, 2> image;
+                        for (int r = 0; r < 2 && valid; ++r) {
+                            for (int d = 0; d < 2; ++d)
+                                image[r] = image[r] - SsiInterval(inverse[r][d]) * (a0.point[rows[d]] - b0.point[rows[d]]);
+                            SsiInterval contraction;
+                            for (int c = 0; c < 2; ++c) {
+                                const int k = variables[c];
+                                SsiInterval matrix(r == c ? 1.0 : 0.0);
+                                for (int d = 0; d < 2; ++d) {
+                                    const SsiInterval derivative = k < 2 ? a.derivative[k][rows[d]] :
+                                        SsiInterval(-1.0) * b.derivative[k - 2][rows[d]];
+                                    matrix = matrix - SsiInterval(inverse[r][d]) * derivative * SsiInterval(scale[c]);
+                                }
+                                contraction = contraction + SsiInterval(nurbs_interval::magnitude(matrix));
+                                image[r] = image[r] + matrix * domain[c];
+                            }
+                            valid = valid && contraction.hi < 1.0 && nurbs_interval::finite(image[r]) &&
+                                image[r].lo > interior[r].lo && image[r].hi < interior[r].hi;
+                        }
+                        if (!valid)
+                            continue;
+                        for (int k = 0; k < 4; ++k)
+                            anchor[k] = SsiInterval(center[k]);
+                        for (int c = 0; c < 2; ++c) {
+                            const int k = variables[c];
+                            anchor[k] = SsiInterval(center[k]) + SsiInterval(scale[c]) * image[c];
+                        }
+                        for (int k = 0; k < 4; ++k)
+                            valid = valid && nurbs_interval::finite(anchor[k]) &&
+                                anchor[k].lo >= field.lo[k] && anchor[k].hi <= field.hi[k] &&
+                                anchor[k].lo >= lower[k] && anchor[k].hi <= upper[k];
+                        if (valid)
+                            return true;
+                    }
+                }
+        }
+    return false;
+}
+
+bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::array<double, 4>& root,
+    const std::array<int, 3>& free, const std::array<double, 3>& scale,
+    const std::array<SsiInterval, 3>& image, const SsiInterval matrix[3][3],
+    const std::array<SsiInterval, 3>& forcing, double contraction, const double inverse[3][3],
+    const std::array<SsiInterval, 4>* retained_anchor = nullptr, std::string* failure = nullptr) {
+    if (failure)
+        *failure = "invalid_graph_enclosure";
+    std::array<bool, 3> clipped;
+    bool needs_clip = false;
+    for (int c = 0; c < 3; ++c) {
+        const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
+        if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
+            return false;
+        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
+        needs_clip = needs_clip || clipped[c];
+    }
+    if (!needs_clip)
+        return true;
+    if (failure)
+        *failure = "retained_seed_bounds_unproved";
+    if (retained_anchor) {
+        for (int k = 0; k < 4; ++k)
+            if (!nurbs_interval::finite((*retained_anchor)[k]) ||
+                (*retained_anchor)[k].lo < field.lo[k] || (*retained_anchor)[k].hi > field.hi[k])
+                return false;
+    } else {
+        const std::array<double, 3> origin = field.point(root);
+        SsiPatchBounds a, b;
+        if (!nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, a, false, true) ||
+            !nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, b, false, true))
+            return false;
+        double displacement = 0.0;
+        for (int r = 0; r < 3; ++r) {
+            SsiInterval residual;
+            for (int d = 0; d < 3; ++d)
+                residual = residual - SsiInterval(inverse[r][d]) * (a.point[d] - b.point[d]);
+            displacement = std::max(displacement, nurbs_interval::magnitude(residual));
+        }
+        const SsiInterval seed_radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(contraction));
+        if (!nurbs_interval::finite(seed_radius))
+            return false;
+        if (failure)
+            *failure = "retained_seed_outside_original_domain";
+        for (int c = 0; c < 3; ++c) {
+            const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
+                SsiInterval(-seed_radius.hi, seed_radius.hi);
+            if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
+                return false;
+        }
+    }
+    if (failure)
+        *failure = "implicit_derivative_unbounded";
+    std::array<SsiInterval, 3> derivative;
+    if (!normalized_graph_derivative(matrix, forcing, contraction, derivative))
+        return false;
     if (failure)
         *failure = "clipped_coordinate_monotonicity_unproved";
     for (int c = 0; c < 3; ++c)
@@ -8056,8 +8208,15 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
 bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph,
     const std::array<double, 4>& point, std::array<SsiInterval, 4>& box) {
     for (int k = 0; k < 4; ++k)
-        if (!std::isfinite(point[k]) || point[k] < graph.lower[k] || point[k] > graph.upper[k])
+        if (!std::isfinite(point[k]) ||
+            (field.closed[k] && (point[k] < field.lo[k] || point[k] > field.hi[k])) ||
+            point[k] < graph.lower[k] || point[k] > graph.upper[k])
             return false;
+    if (boundary_graph_anchor(field, point, graph.lower, graph.upper, graph.fixed, box)) {
+        for (int k = 0; k < 4; ++k)
+            box[k] = SsiInterval(std::max(box[k].lo, graph.image[k].lo), std::min(box[k].hi, graph.image[k].hi));
+        return graph_contains(graph, box);
+    }
     const std::array<double, 3> origin = field.point(point);
     SsiPatchBounds a, b;
     if (!nurbs_interval::surface_bounds(field.a, {point[0], point[0], point[1], point[1]}, origin, a, false, true) ||
@@ -8083,27 +8242,60 @@ bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph&
         if (!nurbs_interval::finite(box[k]))
             return false;
     }
+    if (graph.boundary_anchor_certified) {
+        const SsiInterval fixed_displacement = (SsiInterval(point[graph.fixed]) - graph.anchor[graph.fixed]) /
+            SsiInterval(graph.boundary_fixed_width);
+        for (int c = 0; c < 3; ++c) {
+            const int k = graph.free[c];
+            const SsiInterval change = SsiInterval(graph.scale[c]) * graph.boundary_derivative[c] * fixed_displacement;
+            SsiInterval propagated = graph.anchor[k] + change;
+            if (graph.anchor[k].lo == graph.anchor[k].hi) {
+                if (change.lo >= 0.0)
+                    propagated.lo = std::max(propagated.lo, graph.anchor[k].lo);
+                if (change.hi <= 0.0)
+                    propagated.hi = std::min(propagated.hi, graph.anchor[k].hi);
+            }
+            box[k] = SsiInterval(std::max(box[k].lo, propagated.lo), std::min(box[k].hi, propagated.hi));
+            if (!nurbs_interval::finite(box[k]))
+                return false;
+        }
+    }
     return graph_contains(graph, box);
 }
 
 /// Every root in this candidate belongs to one continuous, regular parameter graph.
 bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pair,
     const std::array<double, 4>& root, SurfaceSurfaceGraph* provenance = nullptr,
-    nlohmann::ordered_json* diagnostics = nullptr) {
+    nlohmann::ordered_json* diagnostics = nullptr, int required_fixed = -1) {
     ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Coverage);
     if (ssi_diagnostics::active)
         ++ssi_diagnostics::active->coverage_checks;
     const std::array<double, 4> lo = {pair.a[8], pair.a[10], pair.b[8], pair.b[10]};
     const std::array<double, 4> hi = {pair.a[9], pair.a[11], pair.b[9], pair.b[11]};
-    for (int k = 0; k < 4; ++k)
-        if (!std::isfinite(root[k]) || root[k] < field.lo[k] || root[k] > field.hi[k])
+    for (int k = 0; k < 4; ++k) {
+        if (lo[k] < field.lo[k] || hi[k] > field.hi[k]) {
+            if (diagnostics)
+                diagnostics->push_back({{"status", "candidate_outside_original_domain"}, {"lower", lo}, {"upper", hi}});
             return false;
+        }
+        if (!std::isfinite(root[k]) || root[k] < field.lo[k] || root[k] > field.hi[k]) {
+            if (diagnostics)
+                diagnostics->push_back({{"status", "root_outside_original_domain"}, {"root", root}});
+            return false;
+        }
+    }
     const std::array<double, 3> origin = field.point(root);
     Vector point, au, av, bu, bv;
     field.eval_a(root[0], root[1], point, au, av);
     field.eval_b(root[2], root[3], point, bu, bv);
     const Vector columns[4] = {au, av, -bu, -bv};
+    SsiPatchBounds root_a, root_b;
+    const bool root_enclosed =
+        nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, root_a, false) &&
+        nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, root_b, false);
     for (int fixed : seed_isoparameters(field, root)) {
+        if (required_fixed >= 0 && fixed != required_fixed)
+            continue;
         nlohmann::ordered_json* chart = nullptr;
         if (diagnostics) {
             diagnostics->push_back({{"fixed", fixed}, {"status", "fixed_seed_outside_candidate"}});
@@ -8195,10 +8387,26 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         SsiInterval matrix[3][3];
         double contraction_bound = 0.0;
         for (int r = 0; r < 3; ++r) {
+            SsiInterval center_residual, fixed_derivative;
             for (int d = 0; d < 3; ++d) {
                 image[r] = image[r] - SsiInterval(inverse[r][d]) * (a0.point[d] - b0.point[d]);
                 const SsiInterval derivative = fixed < 2 ? a.derivative[fixed][d] : SsiInterval(-1.0) * b.derivative[fixed - 2][d];
                 forcing[r] = forcing[r] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(free_width);
+                if (root_enclosed) {
+                    center_residual = center_residual - SsiInterval(inverse[r][d]) * (root_a.point[d] - root_b.point[d]);
+                    fixed_derivative = fixed_derivative - SsiInterval(inverse[r][d]) * derivative;
+                }
+            }
+            if (root_enclosed) {
+                const SsiInterval displacement = SsiInterval(lo[fixed], hi[fixed]) - SsiInterval(root[fixed]);
+                const SsiInterval centered_image = center_residual + fixed_derivative * displacement;
+                const SsiInterval common(std::max(image[r].lo, centered_image.lo),
+                    std::min(image[r].hi, centered_image.hi));
+                if (!nurbs_interval::finite(common)) {
+                    covered = false;
+                } else {
+                    image[r] = common;
+                }
             }
             SsiInterval contraction;
             for (int c = 0; c < 3; ++c) {
@@ -8222,8 +8430,25 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         }
         if (covered) {
             std::string failure;
+            std::array<SsiInterval, 4> boundary_anchor;
+            bool boundary_certified = boundary_graph_anchor(field, root, lower, upper, fixed, boundary_anchor, false);
+            if (boundary_certified) {
+                for (int c = 0; c < 3; ++c) {
+                    const int k = free[c];
+                    const SsiInterval full_image = SsiInterval(root[k]) + SsiInterval(scale[c]) * image[c];
+                    boundary_anchor[k] = SsiInterval(std::max(boundary_anchor[k].lo, full_image.lo),
+                        std::min(boundary_anchor[k].hi, full_image.hi));
+                    boundary_certified = boundary_certified && nurbs_interval::finite(boundary_anchor[k]);
+                }
+            }
             const bool connected = ssi_graph_domain_connected(field, root, free, scale, image, matrix, forcing,
-                contraction_bound, inverse, chart ? &failure : nullptr);
+                contraction_bound, inverse, boundary_certified ? &boundary_anchor : nullptr, chart ? &failure : nullptr);
+            if (chart && boundary_certified) {
+                (*chart)["anchor_kind"] = "exact_zero_plane_boundary";
+                (*chart)["boundary_anchor"] = nlohmann::ordered_json::array();
+                for (const SsiInterval interval : boundary_anchor)
+                    (*chart)["boundary_anchor"].push_back({interval.lo, interval.hi});
+            }
             if (chart)
                 (*chart)["status"] = connected ? "covered" : failure;
             if (connected) {
@@ -8242,11 +8467,18 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
                     for (int d = 0; d < 3; ++d)
                         graph.inverse[r][d] = inverse[r][d];
                 }
-                if (!graph_root_box(field, graph, root, graph.anchor))
+                if (boundary_certified) {
+                    graph.anchor = boundary_anchor;
+                    graph.boundary_fixed_width = free_width;
+                    graph.boundary_anchor_certified = std::isfinite(free_width) && free_width > 0.0 &&
+                        normalized_graph_derivative(matrix, forcing, contraction_bound, graph.boundary_derivative);
+                } else if (!graph_root_box(field, graph, root, graph.anchor)) {
                     continue;
+                }
                 bool retained = true;
                 for (int k = 0; k < 4; ++k)
-                    retained = retained && graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
+                    retained = retained &&
+                        graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
                 if (!retained)
                     continue;
                 if (provenance)
@@ -8256,6 +8488,133 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         }
     }
     return false;
+}
+
+bool exact_seam_rows(const NurbsSurface& surface, int parameter) {
+    const std::vector<double>& knots = surface.m_nurbsknot[parameter];
+    const std::pair<double, double> domain = surface.domain(parameter);
+    for (int i = 0; i < surface.degree(parameter); ++i)
+        if (knots[i] != domain.first || knots[knots.size() - 1 - i] != domain.second)
+            return false;
+    const int components = surface.dimension() + (surface.is_rational() ? 1 : 0);
+    for (int j = 0; j < surface.cv_count(1 - parameter); ++j) {
+        const double* first = parameter ? surface.cv(j, 0) : surface.cv(0, j);
+        const double* last = parameter ? surface.cv(j, surface.cv_count(parameter) - 1) :
+            surface.cv(surface.cv_count(parameter) - 1, j);
+        for (int d = 0; d < components; ++d)
+            if (!std::isfinite(first[d]) || first[d] != last[d])
+                return false;
+    }
+    return true;
+}
+
+bool certify_joint_seam_side(const SurfaceSurfaceField& field,
+    const std::array<double, 4>& incident_proposal, const std::array<int, 2>& crossed,
+    const std::array<double, 2>& seams, const std::array<double, 4>& joint,
+    const std::array<double, 4>& first_event, const std::array<double, 4>& second_event,
+    SurfaceSurfaceGraph* graphs) {
+    std::array<double, 4> incident = incident_proposal;
+    std::array<double, 4> corner = joint;
+    std::array<double, 4> shifts{};
+    for (int c = 0; c < 2; ++c) {
+        const int k = crossed[c];
+        if (incident[k] < field.lo[k] && seams[c] == field.lo[k]) {
+            shifts[k] = field.range[k];
+            corner[k] = field.hi[k];
+        } else if (incident[k] > field.hi[k] && seams[c] == field.hi[k]) {
+            shifts[k] = -field.range[k];
+            corner[k] = field.lo[k];
+        }
+        incident[k] += shifts[k];
+    }
+    SeedCellPair pair{};
+    for (int k = 0; k < 4; ++k) {
+        if (!std::isfinite(incident[k]) || incident[k] < field.lo[k] || incident[k] > field.hi[k])
+            return false;
+        const double rounding = 128 * std::numeric_limits<double>::epsilon() *
+            std::max({std::abs(incident[k]), std::abs(corner[k]), std::numeric_limits<double>::min()});
+        const bool angular = k == crossed[0] || k == crossed[1];
+        const double padding = std::max(rounding, angular ? std::abs(incident[k] - corner[k]) / 8 :
+            field.parameter_width(k, corner[k]) / 64);
+        std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+        box[8 + 2 * (k % 2)] = std::max(field.lo[k], std::min(incident[k], corner[k]) - padding);
+        box[9 + 2 * (k % 2)] = std::min(field.hi[k], std::max(incident[k], corner[k]) + padding);
+    }
+    for (int c = 0; c < 2; ++c) {
+        SurfaceSurfaceGraph& graph = graphs[c];
+        if (!seed_cell_covered(field, pair, corner, &graph, nullptr, crossed[c]) || !graph.boundary_anchor_certified)
+            return false;
+        for (const int k : crossed)
+            if (graph.anchor[k].lo != corner[k] || graph.anchor[k].hi != corner[k])
+                return false;
+        std::array<SsiInterval, 4> incident_root, corner_root, event_box;
+        if (!graph_root_box(field, graph, incident, incident_root) || !graph_root_box(field, graph, corner, corner_root))
+            return false;
+        const std::array<double, 4>& event = c ? second_event : first_event;
+        for (int k = 0; k < 4; ++k) {
+            if (!nurbs_interval::finite(incident_root[k]) || incident_root[k].lo < field.lo[k] || incident_root[k].hi > field.hi[k] ||
+                !nurbs_interval::finite(corner_root[k]) || corner_root[k].lo < field.lo[k] || corner_root[k].hi > field.hi[k])
+                return false;
+            event_box[k] = SsiInterval(event[k] + shifts[k]);
+        }
+        event_box[crossed[c]] = SsiInterval(corner[crossed[c]]);
+        if (!graph_contains(graph, event_box))
+            return false;
+    }
+    return true;
+}
+
+bool joint_seam_event(const SurfaceSurfaceField& field,
+    const std::array<double, 4>& first, const std::array<double, 4>& last,
+    int first_fixed, double first_seam, int second_fixed, double second_seam,
+    const std::array<double, 4>& first_event, const std::array<double, 4>& second_event,
+    std::array<double, 4>& joint) {
+    if (first_fixed / 2 == second_fixed / 2 || first_event[first_fixed] != first_seam ||
+        second_event[second_fixed] != second_seam)
+        return false;
+    const std::array<int, 2> crossed = {first_fixed, second_fixed};
+    const std::array<double, 2> seams = {first_seam, second_seam};
+    for (int c = 0; c < 2; ++c) {
+        const int k = crossed[c];
+        const NurbsSurface& surface = k < 2 ? field.a : field.b;
+        if (!field.closed[k] || (seams[c] != field.lo[k] && seams[c] != field.hi[k]) ||
+            !exact_seam_rows(surface, k % 2))
+            return false;
+    }
+    joint = first_event;
+    joint[first_fixed] = first_seam;
+    joint[second_fixed] = second_seam;
+    bool corrected = false;
+    for (const int fixed : crossed) {
+        std::array<double, 4> proposal = joint;
+        if (field.correct_on_seam(proposal, fixed) && proposal[first_fixed] == first_seam &&
+            proposal[second_fixed] == second_seam) {
+            joint = proposal;
+            corrected = true;
+            break;
+        }
+    }
+    if (!corrected)
+        return false;
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(joint[k]) || joint[k] < field.lo[k] || joint[k] > field.hi[k])
+            return false;
+    const double gap = field.a.point_at(joint[0], joint[1]).distance(field.b.point_at(joint[2], joint[3]));
+    if (!std::isfinite(gap) || gap > field.conv_tol)
+        return false;
+    std::array<SurfaceSurfaceGraph, 4> graphs;
+    for (int side = 0; side < 2; ++side)
+        if (!certify_joint_seam_side(field, side ? last : first, crossed, seams, joint,
+            first_event, second_event, graphs.data() + side * 2))
+            return false;
+    for (size_t i = 1; i < graphs.size(); ++i) {
+        std::array<SsiInterval, 4> mapped = graphs[i].anchor;
+        for (const int k : crossed)
+            mapped[k] = graphs[0].anchor[k];
+        if (!graph_contains(graphs[0], mapped))
+            return false;
+    }
+    return true;
 }
 
 void seed_cell_pair(
@@ -8644,6 +9003,40 @@ void unwrap_quad(const SurfaceSurfaceField& field, std::vector<std::array<double
     }
 }
 
+bool boundary_trace_start(const SurfaceSurfaceField& field,
+    const std::vector<SurfaceSurfaceGraph>& graphs, std::array<double, 4>& start) {
+    for (const SurfaceSurfaceGraph& graph : graphs) {
+        if (!graph.boundary_anchor_certified || graph.anchor[graph.fixed].lo != graph.anchor[graph.fixed].hi)
+            continue;
+        std::array<double, 4> proposal;
+        std::array<bool, 4> locked{};
+        int surfaces = 0;
+        for (int k = 0; k < 4; ++k) {
+            proposal[k] = std::midpoint(graph.anchor[k].lo, graph.anchor[k].hi);
+            locked[k] = field.closed[k] && graph.anchor[k].lo == graph.anchor[k].hi &&
+                (proposal[k] == field.lo[k] || proposal[k] == field.hi[k]);
+            if (locked[k])
+                surfaces |= 1 << (k / 2);
+        }
+        if (surfaces != 3 || !field.correct_on_seam(proposal, graph.fixed, &graph))
+            continue;
+        bool preserved = true;
+        for (int k = 0; k < 4; ++k)
+            preserved = preserved && (!locked[k] || proposal[k] == graph.anchor[k].lo);
+        std::array<SsiInterval, 4> root;
+        if (!preserved || !graph_root_box(field, graph, proposal, root))
+            continue;
+        for (int k = 0; k < 4; ++k)
+            preserved = preserved && nurbs_interval::finite(root[k]) &&
+                root[k].lo >= field.lo[k] && root[k].hi <= field.hi[k];
+        if (preserved) {
+            start = proposal;
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Trace both directions from a seed into one unwrapped run; false when it is too short.
 bool trace_seed(
     const SurfaceSurfaceField& field,
@@ -8752,8 +9145,22 @@ std::array<double, 4> close_quad(const SurfaceSurfaceField& field, std::vector<s
         if (field.closed[k])
             jump = unwrap_period(jump, 0.0, field.range[k]);
 
-        virt[k] = quad.back()[k] + jump;
-        closure[k] = virt[k] - quad[0][k];
+        const double original_jump = quad[0][k] - quad.back()[k];
+        if (jump == original_jump)
+            continue;
+        const NurbsSurface& surface = k < 2 ? field.a : field.b;
+        if (exact_seam_rows(surface, k % 2) && quad[0][k] == field.hi[k] &&
+            original_jump > field.range[k] * 0.5 && original_jump <= field.range[k] * 1.5) {
+            virt[k] = field.lo[k];
+            closure[k] = -field.range[k];
+        } else if (exact_seam_rows(surface, k % 2) && quad[0][k] == field.lo[k] &&
+            original_jump < -field.range[k] * 0.5 && original_jump >= -field.range[k] * 1.5) {
+            virt[k] = field.hi[k];
+            closure[k] = field.range[k];
+        } else {
+            virt[k] = quad.back()[k] + jump;
+            closure[k] = virt[k] - quad[0][k];
+        }
     }
 
     quad.push_back(virt);
@@ -8817,33 +9224,49 @@ void split_quad_at_seams(
     const SurfaceSurfaceField& field,
     const std::vector<std::array<double, 4>>& quad,
     std::vector<std::array<double, 4>>& out_pts,
-    std::vector<int>& cross_idx
+    std::vector<int>& cross_idx,
+    nlohmann::ordered_json* joint_proofs = nullptr
 ) {
-
     out_pts.push_back(quad[0]);
-
-    for (size_t i = 1; i < quad.size(); i++) {
+    for (int k = 0; k < 4; ++k)
+        if (field.closed[k] && (quad[0][k] == field.lo[k] || quad[0][k] == field.hi[k])) {
+            cross_idx.push_back(0);
+            break;
+        }
+    for (size_t i = 1; i < quad.size(); ++i) {
         const std::array<double, 4>& pa = quad[i - 1];
         const std::array<double, 4>& pb = quad[i];
-
-        for (const std::tuple<double, int, double>& crossing : quad_seam_crossings(field, pa, pb)) {
+        const std::vector<std::tuple<double, int, double>> crossings = quad_seam_crossings(field, pa, pb);
+        std::vector<std::array<double, 4>> corrected;
+        for (const std::tuple<double, int, double>& crossing : crossings) {
             const double t = std::get<0>(crossing);
             std::array<double, 4> cp;
-
-            for (int k = 0; k < 4; k++)
+            for (int k = 0; k < 4; ++k)
                 cp[k] = pa[k] + (pb[k] - pa[k]) * t;
-
             cp[std::get<1>(crossing)] = std::get<2>(crossing);
             if (!field.correct_on_seam(cp, std::get<1>(crossing)))
                 throw std::runtime_error("Native SSI seam crossing could not be refined");
-            out_pts.push_back(cp);
-            cross_idx.push_back((int)out_pts.size() - 1);
+            corrected.push_back(cp);
         }
-
+        std::array<double, 4> joint;
+        const bool certified_joint = crossings.size() == 2 && joint_seam_event(field, pa, pb,
+            std::get<1>(crossings[0]), std::get<2>(crossings[0]),
+            std::get<1>(crossings[1]), std::get<2>(crossings[1]), corrected[0], corrected[1], joint);
+        if (certified_joint) {
+            out_pts.push_back(joint);
+            cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
+            if (joint_proofs)
+                joint_proofs->push_back({{"step", i}, {"fixed", {std::get<1>(crossings[0]), std::get<1>(crossings[1])}},
+                    {"joint", joint}, {"incident_graphs", 4}});
+        } else {
+            for (const std::array<double, 4>& cp : corrected) {
+                out_pts.push_back(cp);
+                cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
+            }
+        }
         out_pts.push_back(pb);
-
         if (i < quad.size() - 1 && snap_quad_to_seam(field, pa, out_pts.back()))
-            cross_idx.push_back((int)out_pts.size() - 1);
+            cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
     }
 }
 
@@ -8962,6 +9385,7 @@ void refine_quad_piece(const SurfaceSurfaceField& field, std::vector<std::array<
                 double dev = chord_deviation(field.point(piece_pts[i]), field.point(midq), field.point(piece_pts[i + 1]));
 
                 if (dev > refine_tol) {
+
                     new_pp.push_back(midq);
                     refined = true;
                 }
@@ -9013,8 +9437,10 @@ bool refine_surface_fit(
             const Point pa = evaluate_valid_curve(std::get<1>(triple), t);
             const Point pb = evaluate_valid_curve(std::get<2>(triple), t);
             std::array<double, 4> uv = {pa[0], pa[1], pb[0], pb[1]};
+
             if (!field.correct(uv, false, dummy, dummy))
                 throw std::runtime_error("Native SSI paired fit refinement did not converge");
+
             refined.push_back(uv);
         }
         refined.push_back(samples[i]);
@@ -9099,9 +9525,12 @@ bool piece_triple(
 
     SurfaceSurfaceField refined = field;
     const std::array<double, 3> dummy = {0.0, 0.0, 0.0};
-    for (std::array<double, 4>& parameters : piece_pts)
-        if (!refined.correct(parameters, false, dummy, dummy))
+    for (size_t i = 0; i < piece_pts.size(); ++i) {
+
+        if (!refined.correct(piece_pts[i], false, dummy, dummy))
             throw std::runtime_error("Native surface section point could not be refined");
+
+    }
     refine_quad_piece(refined, piece_pts);
     for (int iteration = 0; iteration < 20 && piece_pts.size() <= 32768; ++iteration) {
         piece_pts.erase(std::unique(piece_pts.begin(), piece_pts.end()), piece_pts.end());
@@ -9158,8 +9587,10 @@ bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double,
     arc.failure = "middle_corrector_failed";
     if (diagnostic)
         (*diagnostic)["status"] = arc.failure;
+
     if (!field.correct(middle, false, dummy, dummy))
         return false;
+
     arc.failure = "middle_invalid_or_outside_domain";
     if (diagnostic)
         (*diagnostic)["status"] = arc.failure;
@@ -9199,7 +9630,8 @@ bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double,
 
 bool retained_root(const SurfaceSurfaceField& field, const std::array<SsiInterval, 4>& root) {
     for (int k = 0; k < 4; ++k)
-        if (!nurbs_interval::finite(root[k]) || root[k].lo < field.lo[k] || root[k].hi > field.hi[k])
+        if (!nurbs_interval::finite(root[k]) ||
+            root[k].lo < field.lo[k] || root[k].hi > field.hi[k])
             return false;
     return true;
 }
@@ -9395,6 +9827,63 @@ bool span_contains(SsiInterval interval, double value, double allowance, double 
     return !nurbs_interval::finite(turns) || std::ceil(turns.lo) <= std::floor(turns.hi);
 }
 
+bool boundary_graph_is_point(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph) {
+    if (!graph.boundary_anchor_certified || !(graph.boundary_fixed_width > 0.0) ||
+        !std::isfinite(graph.boundary_fixed_width))
+        return false;
+    const SsiInterval fixed = graph.anchor[graph.fixed];
+    if (!nurbs_interval::finite(fixed) || fixed.lo != fixed.hi)
+        return false;
+    const double lower = std::max(field.lo[graph.fixed], graph.lower[graph.fixed]);
+    const double upper = std::min(field.hi[graph.fixed], graph.upper[graph.fixed]);
+    if (lower > fixed.lo || upper < fixed.hi)
+        return false;
+    if (lower == upper)
+        return true;
+    for (int c = 0; c < 3; ++c) {
+        const int k = graph.free[c];
+        const SsiInterval anchor = graph.anchor[k];
+        const SsiInterval derivative = graph.boundary_derivative[c];
+        if (!nurbs_interval::finite(anchor) || anchor.lo != anchor.hi ||
+            !nurbs_interval::finite(derivative) || !(graph.scale[c] > 0.0) || !std::isfinite(graph.scale[c]))
+            continue;
+        if (anchor.lo == field.lo[k] && ((upper == fixed.lo && derivative.lo > 0.0) ||
+            (lower == fixed.lo && derivative.hi < 0.0)))
+            return true;
+        if (anchor.lo == field.hi[k] && ((upper == fixed.lo && derivative.hi < 0.0) ||
+            (lower == fixed.lo && derivative.lo > 0.0)))
+            return true;
+    }
+    return false;
+}
+
+bool same_boundary_point(const SurfaceSurfaceField& field,
+    const SurfaceSurfaceGraph& source, const SurfaceSurfaceGraph& destination) {
+    if (!boundary_graph_is_point(field, source))
+        return false;
+    std::array<SsiInterval, 4> image = destination.anchor;
+    bool transported = false;
+    for (int k = 0; k < 4; ++k) {
+        if (image[k].lo != image[k].hi || source.anchor[k].lo != source.anchor[k].hi)
+            continue;
+        const double from = image[k].lo, to = source.anchor[k].lo;
+        if (!field.closed[k] || !((from == field.lo[k] && to == field.hi[k]) ||
+            (from == field.hi[k] && to == field.lo[k])))
+            continue;
+        if (!exact_seam_rows(k < 2 ? field.a : field.b, k % 2))
+            return false;
+        image[k] = SsiInterval(to);
+        transported = true;
+    }
+    if (!transported || image[source.fixed].lo != source.anchor[source.fixed].lo ||
+        image[source.fixed].hi != source.anchor[source.fixed].hi)
+        return false;
+    for (int k = 0; k < 4; ++k)
+        if (!nurbs_interval::finite(image[k]) || image[k].lo < field.lo[k] || image[k].hi > field.hi[k])
+            return false;
+    return graph_contains(source, image);
+}
+
 /// Identity is certified in four parameters; the old residual allowances only check fit coverage.
 void consume_section_seeds(const SurfaceSurfaceField& field,
     const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
@@ -9405,7 +9894,8 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
         if (seed.used)
             continue;
         const bool same_branch = std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& graph) {
-            return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph); });
+            return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph) ||
+                same_boundary_point(field, graph, arc.graph); });
         });
         if (!same_branch)
             continue;
@@ -9479,7 +9969,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
             ssi_diagnostics::active->trace_starts.push_back(x0);
         }
         ssi_diagnostics::Timer trace(ssi_diagnostics::Stage::Trace);
-        if (!field.correct(x0, false, dummy3, dummy3) || !trace_seed(field, x0, quad, is_loop))
+        if (!field.correct(x0, false, dummy3, dummy3))
+            throw std::runtime_error("Native SSI seed did not produce a resolved section");
+        boundary_trace_start(field, seeds[si].graphs, x0);
+        if (!trace_seed(field, x0, quad, is_loop))
             throw std::runtime_error("Native SSI seed did not produce a resolved section");
         trace.stop();
         ssi_diagnostics::Timer densify(ssi_diagnostics::Stage::DensifyAndSeams);
@@ -9510,6 +10003,94 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
 
 } // namespace
 
+std::string ssi_diagnostics::boundary_point_image_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::array<Parameters, 3>& source, const std::array<Parameters, 3>& destination,
+    const std::array<int, 2>& fixed, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    std::array<SurfaceSurfaceGraph, 2> graphs;
+    std::array<bool, 2> covered{};
+    for (int side = 0; side < 2; ++side) {
+        const std::array<Parameters, 3>& chart = side ? destination : source;
+        SeedCellPair pair{};
+        for (int k = 0; k < 4; ++k) {
+            std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+            box[8 + 2 * (k % 2)] = chart[0][k];
+            box[9 + 2 * (k % 2)] = chart[1][k];
+        }
+        covered[side] = seed_cell_covered(field, pair, chart[2], &graphs[side], nullptr, fixed[side]);
+    }
+    return nlohmann::ordered_json({{"covered", covered},
+        {"source_is_point", covered[0] && boundary_graph_is_point(field, graphs[0])},
+        {"same_boundary_point", covered[0] && covered[1] && same_boundary_point(field, graphs[0], graphs[1])}}).dump();
+}
+
+std::string ssi_diagnostics::loop_seam_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::vector<Parameters>& input, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    std::vector<Parameters> closed = input;
+    const Parameters closure = close_quad(field, closed, true);
+    std::vector<Parameters> output;
+    std::vector<int> cuts;
+    split_quad_at_seams(field, closed, output, cuts);
+    const std::vector<std::pair<std::vector<Parameters>, bool>> pieces =
+        quad_pieces(field, output, cuts, true, closure);
+    nlohmann::ordered_json result = {{"closed_quad", closed}, {"closure", closure},
+        {"output", output}, {"cuts", cuts}, {"pieces", nlohmann::ordered_json::array()}};
+    for (const std::pair<std::vector<Parameters>, bool>& piece : pieces)
+        result["pieces"].push_back(piece.first);
+    return result.dump();
+}
+
+std::string ssi_diagnostics::seam_step_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& first, const Parameters& last, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    const std::vector<std::tuple<double, int, double>> descriptors = quad_seam_crossings(field, first, last);
+    std::vector<Parameters> output;
+    std::vector<int> cuts;
+    nlohmann::ordered_json proofs = nlohmann::ordered_json::array();
+    split_quad_at_seams(field, {first, last}, output, cuts, &proofs);
+    return nlohmann::ordered_json({{"descriptors", descriptors}, {"output", output},
+        {"cuts", cuts}, {"joint_proofs", proofs}}).dump();
+}
+
+bool ssi_diagnostics::raw_graph_contains(const Parameters& lower, const Parameters& upper,
+    const Parameters& root_lower, const Parameters& root_upper) {
+    SurfaceSurfaceGraph graph;
+    graph.lower = lower;
+    graph.upper = upper;
+    std::array<SsiInterval, 4> root;
+    for (int k = 0; k < 4; ++k)
+        root[k] = SsiInterval(root_lower[k], root_upper[k]);
+    return graph_contains(graph, root);
+}
+
+std::string ssi_diagnostics::seed_chart_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& lower, const Parameters& upper, const Parameters& root, double tolerance) {
+    SurfaceSurfaceField field(a, b, tolerance);
+    SeedCellPair pair{};
+    for (int k = 0; k < 4; ++k) {
+        std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+        box[8 + 2 * (k % 2)] = lower[k];
+        box[9 + 2 * (k % 2)] = upper[k];
+    }
+    nlohmann::ordered_json charts = nlohmann::ordered_json::array();
+    SurfaceSurfaceGraph graph;
+    const bool covered = seed_cell_covered(field, pair, root, &graph, &charts);
+    nlohmann::ordered_json result = {{"covered", covered}, {"root", root},
+        {"candidate_lower", lower}, {"candidate_upper", upper}, {"charts", charts}};
+    if (covered) {
+        std::array<double, 4> start = root;
+        result["boundary_start_proved"] = boundary_trace_start(field, {graph}, start);
+        result["boundary_start"] = start;
+        std::array<SsiInterval, 4> box;
+        result["root_box_proved"] = graph_root_box(field, graph, root, box);
+        result["root_box"] = nlohmann::ordered_json::array();
+        for (const SsiInterval interval : box)
+            result["root_box"].push_back({interval.lo, interval.hi});
+    }
+    return result.dump();
+}
+
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
     const NurbsSurface& a,
     const NurbsSurface& b,
@@ -9521,6 +10102,63 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
+
+    for (int side = 0; side < 2; ++side) {
+        const NurbsSurface& planar = side == 0 ? a : b;
+        const NurbsSurface& other = side == 0 ? b : a;
+        if (other.is_planar(nullptr, 1e-9))
+            continue;
+        if (planar.degree(0) != 1 || planar.degree(1) != 1 ||
+            planar.cv_count(0) != 2 || planar.cv_count(1) != 2)
+            continue;
+        const double weight = planar.weight(0, 0);
+        if (!(weight > 0.0) || !std::isfinite(weight) ||
+            planar.weight(0, 1) != weight || planar.weight(1, 0) != weight || planar.weight(1, 1) != weight ||
+            !planar.is_planar(nullptr, 1e-9) || !is_parallelogram_face(planar, face_frame(planar)))
+            continue;
+        const std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> exact =
+            surface_section::extrusion_plane(other, surface_mid_plane(planar), tolerance);
+        if (!exact)
+            continue;
+        std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
+        for (const std::pair<NurbsCurve, NurbsCurve>& section : *exact) {
+            const NurbsCurve planar_parameters = plane_pcurve(planar, section.first);
+            if (!planar_parameters.is_valid())
+                throw std::runtime_error("Exact extrusion section has no valid affine plane parameters");
+            std::vector<double> cuts = {section.first.domain_start(), section.first.domain_end()};
+            for (int direction = 0; direction < 2; ++direction)
+                for (double bound : {planar.domain(direction).first, planar.domain(direction).second}) {
+                    Point origin(0, 0, 0);
+                    Vector normal(0, 0, 0);
+                    origin[direction] = bound;
+                    normal[direction] = 1.0;
+                    const double error = 128 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(bound));
+                    const std::vector<double> roots = Intersection::curve_plane(planar_parameters,
+                        Plane::from_point_normal(origin, normal), error);
+                    cuts.insert(cuts.end(), roots.begin(), roots.end());
+                }
+            std::sort(cuts.begin(), cuts.end());
+            cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+            for (size_t i = 1; i < cuts.size(); ++i) {
+                const Point uv = planar_parameters.point_at(std::midpoint(cuts[i - 1], cuts[i]));
+                if (uv[0] < planar.domain(0).first || uv[0] > planar.domain(0).second ||
+                    uv[1] < planar.domain(1).first || uv[1] > planar.domain(1).second)
+                    continue;
+                NurbsCurve world = section.first;
+                NurbsCurve plane_uv = planar_parameters;
+                NurbsCurve other_uv = section.second;
+                if (!world.trim(cuts[i - 1], cuts[i]) || !plane_uv.trim(cuts[i - 1], cuts[i]) ||
+                    !other_uv.trim(cuts[i - 1], cuts[i]))
+                    throw std::runtime_error("Exact extrusion section could not trim shared parameters");
+                if (side == 0)
+                    result.push_back({std::move(world), std::move(plane_uv), std::move(other_uv)});
+                else
+                    result.push_back({std::move(world), std::move(other_uv), std::move(plane_uv)});
+            }
+        }
+        drop_point_sections(result, tolerance);
+        return result;
+    }
 
     AnalyticResult analytic = analytic_ssi(a, b, tolerance);
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "brep_offset_join.h"
+#include "brep_section.h"
 #include "split.h"
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,15 @@ struct InwardError : std::runtime_error {
     std::vector<NurbsCurve> curves;
     std::vector<NurbsCurve> first_pcurves;
     std::vector<NurbsCurve> second_pcurves;
+    BRep first_support;
+    BRep second_support;
+    brep_section::FaceResult section_result;
+    int support_index = -1;
+    double arrangement_tolerance = 0;
+    BRep arrangement_support;
+    std::vector<split::FaceCut> arrangement_cuts;
+    std::vector<split::FaceSplit> assembly_parts;
+    std::vector<int> assembly_faces;
     BRep partition;
     std::vector<int> candidate_faces;
     std::vector<split::EdgePiece> pieces;
@@ -28,9 +38,9 @@ struct InwardError : std::runtime_error {
     }
 };
 
-/// Trim consistently convex sharp joins of a simple valence-three closed shell.
-/// Displaced supports must already correspond to distance. Mixed joins and global
-/// self-intersection cleanup are outside this restricted construction.
+/// Reconstruct a valence-three inward support graph with isolated concave edge tubes.
+/// Displaced supports must already correspond to distance. Connected tube neighborhoods
+/// and global self-intersection cleanup are outside this restricted construction.
 BRep inward(
     const BRep& source,
     std::vector<OffsetFace> faces,

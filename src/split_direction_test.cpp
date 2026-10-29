@@ -1,5 +1,6 @@
 #include "brep_classify.h"
 #include "mini_test.h"
+#include "nurbs_interval.h"
 #include "session.h"
 #include "split.h"
 
@@ -10,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <set>
 
 namespace session_cpp {
@@ -249,6 +251,40 @@ MINI_TEST("Split Direction", "Tangent Sector Reversed Affine Regions") {
     auto fixture = split_direction_tests::tangent();
     split_direction_tests::affine_reversed(fixture, 5);
     split_direction_tests::run(fixture, {1, 2, 0}, "native_split_tangent_sectors_reversed_affine");
+}
+
+MINI_TEST("Split Direction", "Interval Exact Negation And Cancellation") {
+    using nurbs_interval::Interval;
+    for (double x : {4.0, -4.0, std::numeric_limits<double>::denorm_min(),
+            std::numeric_limits<double>::max()}) {
+        const Interval zero = Interval(x) + Interval(-x);
+        MINI_CHECK(zero.lo == 0.0 && zero.hi == 0.0);
+        const Interval negative = Interval(x) * Interval(-1.0);
+        MINI_CHECK(negative.lo == -x && negative.hi == -x);
+    }
+    const Interval a = Interval(-1.0) * Interval(-4.0, 7.0);
+    const Interval b = Interval(-4.0, 7.0) * Interval(-1.0);
+    MINI_CHECK(a.lo == -7.0 && a.hi == 4.0);
+    MINI_CHECK(b.lo == a.lo && b.hi == a.hi);
+    const Interval noninverse = Interval(4.0) + Interval(-3.0);
+    MINI_CHECK(noninverse.lo < 1.0 && noninverse.hi > 1.0);
+    const Interval uncertain = Interval(4.0, 5.0) + Interval(-5.0, -4.0);
+    MINI_CHECK(uncertain.lo < -1.0 && uncertain.hi > 1.0);
+    for (double z : {0.0, -0.0}) {
+        const Interval zero = Interval(z) * Interval(-1.0);
+        MINI_CHECK(zero.lo == 0.0 && zero.hi == 0.0);
+        MINI_CHECK(!std::signbit(zero.lo) && !std::signbit(zero.hi));
+    }
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    for (Interval invalid : {Interval(inf), Interval(-inf), Interval(nan), Interval(2.0, 1.0)}) {
+        const Interval a = invalid * Interval(-1.0);
+        const Interval b = Interval(-1.0) * invalid;
+        MINI_CHECK(a.lo == -inf && a.hi == inf);
+        MINI_CHECK(b.lo == -inf && b.hi == inf);
+    }
+    const Interval infinite_sum = Interval(inf) + Interval(-inf);
+    MINI_CHECK(infinite_sum.lo == -inf && infinite_sum.hi == inf);
 }
 
 MINI_TEST("Split Direction", "Rotated Tangent Sector Regions") {

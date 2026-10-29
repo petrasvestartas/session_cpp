@@ -83,12 +83,13 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
     cuts.push_back(std::move(cut));
 }
 
-void same_parameter_cuts(
+void mapped_parameter_cuts(
     std::vector<split::FaceCut>& cuts,
     const BRep& target,
     int face,
     const BRep& other,
     int other_face,
+    const nurbs_coincidence::ParameterMap& mapping,
     double tolerance
 ) {
     for (const BRepRef& wire : other.m_faces[other_face].wires)
@@ -99,10 +100,16 @@ void same_parameter_cuts(
             const int index = other.pcurve_index(use.index, other_face, use.orientation);
             if (index < 0)
                 throw std::runtime_error("Native Boolean encountered a missing coincident pcurve");
-            const NurbsCurve& pcurve = other.m_curves_2d[index];
+            NurbsCurve pcurve = other.m_curves_2d[index];
+            if (!nurbs_coincidence::map_pcurve(mapping, pcurve))
+                throw std::runtime_error("Native Boolean could not map a coincident boundary pcurve");
             NurbsCurve world = other.m_curves_3d[edge.curve_3d_index];
             if (!world.set_domain(pcurve.domain_start(), pcurve.domain_end()))
                 throw std::runtime_error("Native Boolean could not synchronize a coincident boundary");
+            if (curve_surface_intersection::same_parameter(world, pcurve,
+                    target.m_surfaces[target.m_faces[face].surface_index], tolerance)
+                != curve_surface_intersection::ParameterMatch::Matched)
+                throw std::runtime_error("Native Boolean mapped boundary lacks a same-parameter certificate");
             append_cut(cuts, target, face, {world, pcurve, -1}, tolerance);
         }
 }
@@ -123,8 +130,11 @@ void coincident_cuts(
             continue;
         const int other_face = second ? overlap.first_face : overlap.second_face;
         const NurbsSurface& support = other.m_surfaces[other.m_faces[other_face].surface_index];
-        if (nurbs_coincidence::same_parameters(surface, support, tolerance)) {
-            same_parameter_cuts(cuts, target, face, other, other_face, tolerance);
+        nurbs_coincidence::ParameterMap mapping;
+        if (nurbs_coincidence::same_parameters(surface, support, tolerance)
+            || nurbs_coincidence::parameter_mapping(support, surface, tolerance, mapping)
+            || nurbs_coincidence::common_basis_agreement(support, surface, tolerance)) {
+            mapped_parameter_cuts(cuts, target, face, other, other_face, mapping, tolerance);
             continue;
         }
         if (!nurbs_coincidence::coplanar(surface, support, tolerance))
@@ -300,16 +310,21 @@ int coincident_region(
     int face,
     const BRep& other,
     const Point& uv,
+    Point& other_uv,
     double tolerance
 ) {
     const NurbsSurface& a = source.m_surfaces[source.m_faces[face].surface_index];
     const Point point = a.point_at(uv[0], uv[1]);
     for (int candidate : active_faces(other)) {
         const NurbsSurface& b = other.m_surfaces[other.m_faces[candidate].surface_index];
-        const bool same_parameters = nurbs_coincidence::same_parameters(a, b, tolerance);
-        if (!same_parameters && !nurbs_coincidence::coplanar(a, b, tolerance))
+        nurbs_coincidence::ParameterMap mapping;
+        const bool mapped = nurbs_coincidence::same_parameters(a, b, tolerance)
+            || nurbs_coincidence::parameter_mapping(a, b, tolerance, mapping)
+            || nurbs_coincidence::common_basis_agreement(a, b, tolerance);
+        if (!mapped && !nurbs_coincidence::coplanar(a, b, tolerance))
             continue;
-        const std::pair<double, double> parameters = same_parameters ? std::pair<double, double>{uv[0], uv[1]}
+        const Point mapped_uv = mapping.apply(uv);
+        const std::pair<double, double> parameters = mapped ? std::pair<double, double>{mapped_uv[0], mapped_uv[1]}
             : b.closest_parameters(point);
         if (b.point_at(parameters.first, parameters.second).distance(point) > tolerance
             || brep_classify::face_uv(other, candidate, {parameters.first, parameters.second, 0},
@@ -319,15 +334,15 @@ int coincident_region(
         const std::vector<const NurbsCurve*> second = boundary_curves(other, candidate);
         if (!boundary_covers(first, second, tolerance) || !boundary_covers(second, first, tolerance))
             throw std::runtime_error("Native Boolean same-domain regions have unmatched partition boundaries");
+        other_uv = {parameters.first, parameters.second, 0};
         return candidate;
     }
     return -1;
 }
 
-Vector oriented_normal(const BRep& brep, int face, const Point& point) {
+Vector oriented_normal(const BRep& brep, int face, const Point& uv) {
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    const std::pair<double, double> uv = surface.closest_parameters(point);
-    const std::vector<Vector> derivatives = surface.evaluate(uv.first, uv.second, 1);
+    const std::vector<Vector> derivatives = surface.evaluate(uv[0], uv[1], 1);
     Vector normal = derivatives[2].cross(derivatives[1]);
     if (!normal.normalize_self())
         throw std::runtime_error("Native Boolean coincident region has a singular normal");
@@ -353,7 +368,8 @@ void select(
         State state = brep_classify::point(other, p, tolerance);
         if (state == State::Unknown)
             throw ClassificationError(other, p, face, second, tolerance);
-        const int coincident = state == State::Boundary ? coincident_region(source, face, other, uv, tolerance) : -1;
+        Point other_uv;
+        const int coincident = state == State::Boundary ? coincident_region(source, face, other, uv, other_uv, tolerance) : -1;
         if (state == State::Boundary && coincident < 0) {
             uv = interior(source, face, tolerance, &other);
             p = surface.point_at(uv[0], uv[1]);
@@ -369,7 +385,7 @@ void select(
         } else {
             if (second)
                 continue;
-            const double sense = oriented_normal(source, face, p).dot(oriented_normal(other, coincident, p));
+            const double sense = oriented_normal(source, face, uv).dot(oriented_normal(other, coincident, other_uv));
             if (!std::isfinite(sense) || std::abs(sense) < 1.0 - 1e-8)
                 throw std::runtime_error("Native Boolean could not resolve coincident face orientation");
             minus = occupied(true, sense > 0.0, operation);

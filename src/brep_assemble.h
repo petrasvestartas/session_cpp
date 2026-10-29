@@ -37,6 +37,26 @@ struct ParameterError : std::runtime_error {
     );
 };
 
+struct TopologyImage {
+    int input = -1;
+    int local_edge = -1;
+    int original_edge = -1;
+    int section = -1;
+    int output_edge = -1;
+    double first = 0;
+    double last = 0;
+    bool reversed = false;
+};
+
+/// Preserve a failed shell's exact geometry and canonical edge ancestry for caller diagnostics.
+struct TopologyError : std::runtime_error {
+    BRep partial;
+    std::vector<BRepOrientation> face_orientations;
+    std::vector<TopologyImage> images;
+
+    explicit TopologyError(const std::string& reason) : std::runtime_error(reason) {}
+};
+
 /// Sew selected faces into nested closed solids, synchronizing coincident NURBS edge partitions.
 BRep assemble(const std::vector<FaceUse>& faces, double tolerance = 1e-7);
 

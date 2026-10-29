@@ -580,6 +580,14 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
     for (const BRepFace& face : preserved.m_faces)
         holes += static_cast<int>(face.wires.size()) - 1;
 
+    if (preserved.face_count() != 2 || holes != 1) {
+        const std::filesystem::path folder = "build/native-geometry-tests";
+        std::filesystem::create_directories(folder);
+        const nlohmann::ordered_json failure = {{"source", ring.jsondump()},
+            {"cutter", outside.jsondump()}, {"result", preserved.jsondump()},
+            {"faces", preserved.face_count()}, {"holes", holes}, {"tolerance", 1e-6}};
+        std::ofstream(folder / "split_preserved_hole_failure.json") << failure.dump(2);
+    }
     MINI_CHECK(preserved.face_count() == 2 && holes == 1);
 
     const BRep disk = BRep::from_nurbscurves({Primitives::circle(0.0, 0.0, 0.0, 5.0)});
@@ -597,6 +605,24 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
 
     MINI_CHECK(seamed.face_count() == 4 && seamed.is_solid());
     MINI_CHECK(cylinder.face_count() == 3);
+}
+
+MINI_TEST("Split", "Closed Hole Affine And Reversed Clip") {
+    for (bool reversed : {false, true}) {
+        NurbsCurve outer = NurbsCurve::create(false, 1, {{0, 0, 0}, {10, 0, 0}, {10, 10, 0}, {0, 10, 0}, {0, 0, 0}});
+        NurbsCurve inner = NurbsCurve::create(false, 1, {{3, 3, 0}, {7, 3, 0}, {7, 7, 0}, {3, 7, 0}, {3, 3, 0}});
+        MINI_CHECK(outer.set_domain(-11, 23) && inner.set_domain(3, 19));
+        if (reversed)
+            MINI_CHECK(inner.reverse());
+        const BRep ring = BRep::from_nurbscurves({outer}, {{inner}});
+        NurbsCurve cutter = NurbsCurve::create(false, 1, {{1, -1, 0}, {1, 11, 0}});
+        MINI_CHECK(cutter.set_domain(-7, 11));
+        const BRep result = split::split_brep_face_by_curves(ring, 0, {cutter}, 1e-6);
+        int holes = 0;
+        for (const BRepFace& face : result.m_faces)
+            holes += static_cast<int>(face.wires.size()) - 1;
+        MINI_CHECK(result.is_valid() && result.face_count() == 2 && holes == 1);
+    }
 }
 
 MINI_TEST("Split", "Split Surface By Curves") {

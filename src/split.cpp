@@ -1031,7 +1031,7 @@ void order_sector_fan(
         const double previous = sector_angle(directions[clusters[(i + clusters.size() - 1) % clusters.size()].front()]);
         const double next = sector_angle(directions[clusters[(i + 1) % clusters.size()].front()]);
         const double width = std::min({pi * 0.25, gap(previous, angle) * 0.25, gap(angle, next) * 0.25});
-        const double height = std::tan(width);
+        const double height = width == pi * 0.25 ? 1.0 : std::tan(width);
         require(std::isfinite(height) && height > 0, "Tangent fan has no representable candidate cone");
         const Vector offset(-height * tangent[1], height * tangent[0], 0);
         cones.push_back({tangent, tangent - offset, tangent + offset});
@@ -1229,17 +1229,30 @@ Cycle trace_cycle(
     return cycle;
 }
 
-/// Point eight tolerances left of the middle of a run.
+/// Point eight tolerances left of a regular knot-span interior of a run.
 Point left_of(const std::vector<Source>& sources, const Run& run, double tolerance) {
 
     const NurbsCurve& curve = sources[run.source].uv;
-    const double t = (run.a + run.b) * 0.5;
-    const Point p = curve.point_at(t);
-    const Vector d = curve.evaluate(t, 1)[1];
+    const double first = std::min(run.a, run.b);
+    const double last = std::max(run.a, run.b);
+    const std::vector<double> spans = curve.get_span_vector();
     const double sign = run.b > run.a ? 1.0 : -1.0;
-    const double length = std::hypot(d[0], d[1]);
-    require(length > EPSILON, "Cannot orient a degenerate trim fragment");
-    return Point(p[0] - sign * d[1] / length * tolerance * 8.0, p[1] + sign * d[0] / length * tolerance * 8.0, 0.0);
+    for (size_t i = 1; i < spans.size(); ++i) {
+        const double a = std::max(first, spans[i - 1]);
+        const double b = std::min(last, spans[i]);
+        if (a >= b)
+            continue;
+        const double t = std::midpoint(a, b);
+        require(t > a && t < b, "Trim span has no representable interior probe");
+        const Vector d = curve.evaluate(t, 1)[1];
+        const double length = std::hypot(d[0], d[1]);
+        require(std::isfinite(length), "Trim probe has a nonfinite tangent");
+        if (length <= EPSILON)
+            continue;
+        const Point p = curve.point_at(t);
+        return Point(p[0] - sign * d[1] / length * tolerance * 8.0, p[1] + sign * d[0] / length * tolerance * 8.0, 0.0);
+    }
+    throw std::invalid_argument("Cannot orient a degenerate trim fragment");
 }
 
 /// Non-degenerate graph cycles whose interior lies inside the original loops.
