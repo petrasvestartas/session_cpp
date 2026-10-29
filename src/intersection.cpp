@@ -1605,7 +1605,8 @@ bool surface_plane_march(
     const std::vector<Vector> derivatives = field.surface.evaluate(su, sv, 1);
     const Vector start_tangent = derivatives[2] * start_u + derivatives[1] * start_v;
 
-    for (int s = 0; s < field.max_steps; s++) {
+    int steps = 0;
+    for (; steps < field.max_steps; ++steps) {
         double tu;
         double tv;
         double local_step;
@@ -1645,6 +1646,8 @@ bool surface_plane_march(
         consume_seeds(field, p_cur, seeds);
     }
 
+    if (steps == field.max_steps)
+        throw std::runtime_error("Surface-plane march exhausted its step budget");
     return false;
 }
 
@@ -7120,7 +7123,10 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    NurbsSurface normalized = surface;
+    if (!normalized.set_domain(0, 0.0, 1.0) || !normalized.set_domain(1, 0.0, 1.0))
+        throw std::runtime_error("Surface-plane trace could not normalize the support domains");
+    const SurfacePlaneTraceResult traced = surface_plane_traces(normalized, plane, tolerance);
     const double step = traced.step;
     const double uv_to_3d = traced.uv_to_3d;
     const double uv_to_3d_min = traced.uv_to_3d_min;
@@ -7133,7 +7139,7 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
         std::vector<Point> all_pts(uv_trace.size());
 
         for (size_t i = 0; i < uv_trace.size(); i++)
-            all_pts[i] = surface.point_at(uv_trace[i].first, uv_trace[i].second);
+            all_pts[i] = normalized.point_at(uv_trace[i].first, uv_trace[i].second);
 
         NurbsCurve crv = surface_plane_fit_3d(all_pts, is_loop, plane, step, uv_to_3d, uv_to_3d_min);
 
@@ -7213,8 +7219,12 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     if (const auto exact = surface_section::extrusion_plane(surface, plane, tolerance))
         return *exact;
 
-    const SurfacePlaneField field(surface, plane, tolerance);
-    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    const auto u = surface.domain(0), v = surface.domain(1);
+    NurbsSurface normalized = surface;
+    if (!normalized.set_domain(0, 0.0, 1.0) || !normalized.set_domain(1, 0.0, 1.0))
+        throw std::runtime_error("Surface-plane trace could not normalize the support domains");
+    const SurfacePlaneField field(normalized, plane, tolerance);
+    const SurfacePlaneTraceResult traced = surface_plane_traces(normalized, plane, tolerance);
     const double dup_tol = traced.step * traced.uv_to_3d * 3.0;
 
     std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
@@ -7243,6 +7253,13 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
         }
     }
 
+    for (auto& section : result)
+        for (int i = 0; i < section.second.cv_count(); ++i) {
+            double* cv = section.second.cv(i);
+            const double weight = section.second.weight(i);
+            cv[0] = (u.second - u.first) * cv[0] + u.first * weight;
+            cv[1] = (v.second - v.first) * cv[1] + v.first * weight;
+        }
     return result;
 }
 

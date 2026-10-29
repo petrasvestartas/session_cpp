@@ -1,5 +1,6 @@
 #include "curve_intersection.h"
 #include "closest.h"
+#include "nurbs_interval.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -473,6 +474,62 @@ bool isolated(const Pair& pair, double tolerance, size_t& budget, Result& result
     return true;
 }
 
+nurbs_interval::Interval binomial_bound(int n, int k) {
+    nurbs_interval::Interval result(1.0);
+    for (int i = 1; i <= std::min(k, n - k); ++i)
+        result = result * nurbs_interval::Interval(n + 1 - i) / nurbs_interval::Interval(i);
+    return result;
+}
+
+/// Bound the whole normalized correspondence, retaining a common range rather than one point.
+bool certified_parameter_range(const Pair& pair, double tolerance, bool reverse) {
+    using nurbs_interval::Interval;
+    const Point point = pair.a.get_cv(0);
+    const std::array<double, 3> origin = {point[0], point[1], point[2]};
+    const auto a = nurbs_interval::curve_controls(pair.a,
+        {pair.a.domain_start(), pair.a.domain_end()}, origin);
+    auto b = nurbs_interval::curve_controls(pair.b,
+        {pair.b.domain_start(), pair.b.domain_end()}, origin);
+    if (a.empty() || b.empty())
+        return false;
+    if (reverse)
+        std::reverse(b.begin(), b.end());
+    double denominator = std::numeric_limits<double>::infinity();
+    for (const auto& first : a)
+        for (const auto& second : b) {
+            if (!(first[3].lo > 0.0 && second[3].lo > 0.0))
+                return false;
+            const Interval product = first[3] * second[3];
+            if (!nurbs_interval::finite(product) || !(product.lo > 0.0))
+                return false;
+            denominator = std::min(denominator, product.lo);
+        }
+    const int n = static_cast<int>(a.size()) - 1;
+    const int m = static_cast<int>(b.size()) - 1;
+    std::array<Interval, 3> bounds;
+    for (int k = 0; k <= n + m; ++k) {
+        std::array<Interval, 3> coefficient;
+        for (int i = std::max(0, k - m); i <= std::min(n, k); ++i) {
+            const int j = k - i;
+            const Interval factor = binomial_bound(n, i) * binomial_bound(m, j) / binomial_bound(n + m, k);
+            for (int d = 0; d < 3; ++d)
+                coefficient[d] = coefficient[d] + factor * (a[i][d] * b[j][3] - b[j][d] * a[i][3]);
+        }
+        for (int d = 0; d < 3; ++d) {
+            if (!nurbs_interval::finite(coefficient[d]))
+                return false;
+            bounds[d] = k == 0 ? coefficient[d] : nurbs_interval::interval_hull(bounds[d], coefficient[d]);
+        }
+    }
+    Interval squared;
+    for (const auto coordinate : bounds) {
+        const Interval distance(nurbs_interval::magnitude(coordinate));
+        squared = squared + distance * distance;
+    }
+    const Interval limit = Interval(tolerance) * Interval(tolerance) * Interval(denominator) * Interval(denominator);
+    return nurbs_interval::finite(squared) && nurbs_interval::finite(limit) && squared.hi <= limit.lo;
+}
+
 bool process(const Pair& pair, double tolerance, size_t& budget, Result& result) {
     const Bounds a(pair.a);
     const Bounds b(pair.b);
@@ -481,8 +538,17 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
 
     const double proof = std::max(tolerance * 1e-5, epsilon * 32.0 * std::max(a.magnitude(), b.magnitude()));
     Overlap shared{};
-    if (!overlap(pair, proof, shared))
+    if (!overlap(pair, proof, shared)) {
+        if (flatness(pair.a) <= tolerance * 0.05 && flatness(pair.b) <= tolerance * 0.05)
+            for (bool reverse : {false, true})
+                if (certified_parameter_range(pair, tolerance, reverse)) {
+                    result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
+                        reverse ? pair.b.domain_end() : pair.b.domain_start(),
+                        reverse ? pair.b.domain_start() : pair.b.domain_end()});
+                    return true;
+                }
         return isolated(pair, tolerance, budget, result);
+    }
 
     result.overlaps.push_back(shared);
     std::vector<Pair> work;

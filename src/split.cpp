@@ -664,6 +664,35 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
 
 /// True when the whole original interval lies inside one vertex tolerance ball.
 bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& point, double tolerance) {
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    const auto outside = [&](double parameter) {
+        const auto data = nurbs_interval::curve_controls(curve, {parameter, parameter},
+            {point[0], point[1], point[2]});
+        if (data.empty())
+            return false;
+        std::array<nurbs_interval::Interval, 3> endpoint;
+        bool first = true;
+        for (const auto& cv : data) {
+            if (!(cv[3].lo > 0.0))
+                return false;
+            for (int d = 0; d < 3; ++d) {
+                const auto coordinate = cv[d] / cv[3];
+                if (!nurbs_interval::finite(coordinate))
+                    return false;
+                endpoint[d] = first ? coordinate : nurbs_interval::interval_hull(endpoint[d], coordinate);
+            }
+            first = false;
+        }
+        nurbs_interval::Interval lower;
+        for (const auto coordinate : endpoint) {
+            const double nearest = coordinate.lo > 0.0 ? coordinate.lo : coordinate.hi < 0.0 ? -coordinate.hi : 0.0;
+            const nurbs_interval::Interval distance(nearest);
+            lower = lower + distance * distance;
+        }
+        return nurbs_interval::finite(lower) && lower.lo > allowed.hi;
+    };
+    if (outside(b) || outside(a))
+        return false;
     nurbs_interval::CurveBounds bounds;
     if (!nurbs_interval::curve_bounds(curve, {std::min(a, b), std::max(a, b)},
         {point[0], point[1], point[2]}, bounds))
@@ -673,7 +702,6 @@ bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& p
         const nurbs_interval::Interval distance(nurbs_interval::magnitude(coordinate));
         squared = squared + distance * distance;
     }
-    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
     return nurbs_interval::finite(squared) && squared.hi <= allowed.lo;
 }
 
@@ -1585,11 +1613,13 @@ BRepRef add_run_edge(
 
     for (const Piece& piece : pieces) {
         const bool same = source.edge >= 0 ? sources[piece.source].edge == source.edge : piece.source == run.source;
+        if (!same)
+            continue;
 
         const bool matching = (lo == piece.lo && hi == piece.hi) || (!degenerated &&
             vertex_interval(source.world, lo, piece.lo, source.world.point_at(lo), tolerance * 4.0) &&
             vertex_interval(source.world, hi, piece.hi, source.world.point_at(hi), tolerance * 4.0));
-        if (same && matching)
+        if (matching)
             return {piece.edge, orientation};
     }
 

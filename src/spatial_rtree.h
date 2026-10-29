@@ -290,11 +290,17 @@ private:
     /// Rect covering every branch of a node.
     Rect node_cover(const Node* node) const {
 
-        Rect rect = node->m_branch[0].m_rect;
-
-        for (int i = 1; i < node->m_count; i++)
-            rect = combine_rect(rect, node->m_branch[i].m_rect);
-
+        Rect rect;
+        for (int d = 0; d < NUMDIMS; ++d) {
+            ELEMTYPE lower = node->m_branch[0].m_rect.m_min[d];
+            ELEMTYPE upper = node->m_branch[0].m_rect.m_max[d];
+            for (int i = 1; i < node->m_count; ++i) {
+                lower = std::min(lower, node->m_branch[i].m_rect.m_min[d]);
+                upper = std::max(upper, node->m_branch[i].m_rect.m_max[d]);
+            }
+            rect.m_min[d] = lower;
+            rect.m_max[d] = upper;
+        }
         return rect;
     }
 

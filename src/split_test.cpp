@@ -11,6 +11,7 @@
 #include "polyline.h"
 #include "primitives.h"
 #include "tolerance.h"
+#include "xform.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -394,6 +395,44 @@ static split::FaceCut planar_cut(const NurbsSurface& surface, const NurbsCurve& 
             coordinates[d] = point[d] * weight;
     }
     return {world, pcurve, section};
+}
+
+MINI_TEST("Split", "Many Stretches Of One Source Curve") {
+    for (bool rational : {false, true}) {
+        BRep box = BRep::create_box(10, 10, 10);
+        box.transform(Xform::translation(1048576, -524288, 262144));
+        const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+        NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
+        if (rational) {
+            MINI_CHECK(horizontal.to_rational());
+            for (int i = 0; i < horizontal.cv_count(); ++i) {
+                const Point point = horizontal.get_cv(i);
+                const double weight = 2 + i;
+                MINI_CHECK(horizontal.set_cv_4d(i, point[0] * weight, point[1] * weight, 0, weight));
+            }
+        }
+        std::vector<split::FaceCut> cuts = {planar_cut(surface, horizontal, 11)};
+        for (double x : {0.25, 0.5, 0.75})
+            cuts.push_back(planar_cut(surface, NurbsCurve::create(false, 1, {{x, 0, 0}, {x, 1, 0}}),
+                11 + static_cast<int>(cuts.size())));
+        const auto result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+        MINI_CHECK(result.faces.size() == 8);
+        MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+        int horizontal_parts = 0;
+        for (const auto& piece : result.edges) {
+            if (piece.section != 11)
+                continue;
+            ++horizontal_parts;
+            MINI_CHECK(piece.last > piece.first);
+            int uses = 0;
+            for (int face : result.faces)
+                for (const auto& wire : result.brep.m_faces[face].wires)
+                    for (const auto& edge : result.brep.wire_edges(wire))
+                        uses += edge.index == piece.edge ? 1 : 0;
+            MINI_CHECK(uses == 2);
+        }
+        MINI_CHECK(horizontal_parts == 4);
+    }
 }
 
 MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {

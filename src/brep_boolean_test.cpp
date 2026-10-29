@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cstdio>
+#include <cstdlib>
 #include "brep_boolean.h"
 #include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
@@ -1329,6 +1331,98 @@ MINI_TEST("BRep Native Boolean", "Refined Rational Boundary Curve Basis") {
             const bool inside = material && point[0] * point[0] + point[1] * point[1] < 1;
             MINI_CHECK(brep_classify::point(result, point, 1e-7)
                 == (inside ? brep_classify::State::Inside : brep_classify::State::Outside));
+        }
+    }
+}
+
+namespace {
+void event_progress(bool affine, size_t operation, const char* phase) {
+    if (!std::getenv("SESSION_BOOLEAN_PROGRESS"))
+        return;
+    std::fprintf(stderr, "triple_progress affine=%d operation=%zu phase=%s\n", affine, operation, phase);
+    std::fflush(stderr);
+}
+
+void event_boundary(const BRep& shape) {
+    MINI_CHECK(manifold_components(shape));
+    for (const BRepShell& shell : shape.m_shells)
+        MINI_CHECK(brep_acceptance::shell_vertex_links(shape, shell) == brep_acceptance::VertexLinks::Matched);
+    for (const BRepEdge& edge : shape.m_edges)
+        for (const BRepCurveOnSurface& relation : edge.pcurves)
+            for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                if (pc >= 0)
+                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index],
+                        shape.m_curves_2d[pc], shape.m_surfaces[relation.surface_index], 1e-6)
+                        == curve_surface_intersection::ParameterMatch::Matched);
+}
+BRep event_warped_box(bool affine) {
+    BRep shape = BRep::create_box(2, 2, 2);
+    const auto warp = [](const Point& p) {
+        return Point(p[0] + p[1] * p[2] / 16, p[1] + p[0] * p[2] / 16,
+            p[2] + p[0] * p[1] / 16);
+    };
+    for (BRepVertex& vertex : shape.m_vertices)
+        vertex.point = warp(vertex.point);
+    for (NurbsCurve& curve : shape.m_curves_3d)
+        for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i))));
+    for (NurbsSurface& surface : shape.m_surfaces) {
+        for (int i = 0; i < surface.cv_count(0); ++i)
+            for (int j = 0; j < surface.cv_count(1); ++j)
+                MINI_CHECK(surface.set_cv(i, j, warp(surface.get_cv(i, j))));
+        MINI_CHECK(!surface.is_planar());
+        if (affine) {
+            const auto u = surface.domain(0), v = surface.domain(1);
+            MINI_CHECK(surface.set_domain(0, 8 * u.first + 32, 8 * u.second + 32));
+            MINI_CHECK(surface.set_domain(1, .25 * v.first - 4, .25 * v.second - 4));
+        }
+    }
+    if (affine)
+        for (NurbsCurve& pc : shape.m_curves_2d)
+            for (int i = 0; i < pc.cv_count(); ++i) {
+                pc.cv(i)[0] = 8 * pc.cv(i)[0] + 32 * pc.weight(i);
+                pc.cv(i)[1] = .25 * pc.cv(i)[1] - 4 * pc.weight(i);
+            }
+    event_boundary(shape);
+    return shape;
+}
+}
+MINI_TEST("BRep Native Boolean", "Persistent Triple Face Boundary Events") {
+    const std::array<brep_boolean::Operation, 5> event_operations = {
+        brep_boolean::Operation::Intersection, brep_boolean::Operation::Union,
+        brep_boolean::Operation::Difference, brep_boolean::Operation::Difference, brep_boolean::Operation::Xor};
+    const std::array<double, 5> volumes = {3.984375, 35.984375, 3.984375, 28.015625, 32};
+    const std::array<std::array<bool, 4>, 5> occupancy = {{{true, false, false, false},
+        {true, true, true, false}, {false, true, false, false}, {false, false, true, false},
+        {false, true, true, false}}};
+    const std::array<Point, 4> probes = {Point(0, 0, -.5), Point(0, 0, .5), Point(1.5, 0, -.5), Point(3, 0, 0)};
+    for (bool affine : {false, true}) {
+        const BRep a = event_warped_box(affine);
+        BRep b = BRep::create_box(4, 4, 2);
+        b.transform(Xform::translation(0, 0, -1));
+        event_boundary(b);
+        MINI_CHECK(std::abs(a.volume_exact() - 7.96875) < 1e-6);
+        for (size_t operation = 0; operation < event_operations.size(); ++operation) {
+            const bool swapped = operation == 3;
+            event_progress(affine, operation, "apply");
+            const BRep result = brep_boolean::apply(swapped ? b : a, swapped ? a : b, event_operations[operation], 1e-6);
+            event_progress(affine, operation, "boundary");
+            event_boundary(result);
+            event_progress(affine, operation, "volume");
+            MINI_CHECK(std::abs(result.volume_exact() - volumes[operation]) < 1e-5);
+            event_progress(affine, operation, "classify");
+            for (size_t i = 0; i < probes.size(); ++i)
+                MINI_CHECK(brep_classify::point(result, probes[i], 1e-6)
+                    == (occupancy[operation][i] ? brep_classify::State::Inside : brep_classify::State::Outside));
+            event_progress(affine, operation, "corner_vertices");
+            if (operation == 0)
+                for (double x : {-255.0 / 256, 255.0 / 256})
+                    for (double y : {-255.0 / 256, 255.0 / 256}) {
+                        int matches = 0;
+                        for (const BRepVertex& vertex : result.m_vertices)
+                            matches += vertex.point.distance({x, y, 0}) <= 1e-6;
+                        MINI_CHECK(matches == 1);
+                    }
         }
     }
 }

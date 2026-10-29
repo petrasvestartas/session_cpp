@@ -468,4 +468,80 @@ MINI_TEST("CurveIntersection", "Preserved Windows Dodecahedron Boundary Endpoint
 }
 
 
+MINI_TEST("CurveIntersection", "Flat Single Span Distinct Parameter Crossings") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double scale = std::ldexp(1.0, -24);
+    const NurbsCurve a = curve_from_points({{0, 3 * scale / 16, 0},
+        {0.5, -5 * scale / 16, 0}, {1, 3 * scale / 16, 0}}, 2);
+    const NurbsCurve b = curve_from_points({{0, 0, 0}, {1, 0, 0}});
+    MINI_CHECK(scale / 2 < tolerance * 0.05);
+    for (bool reversed : {false, true}) {
+        const auto result = curve_intersection::intersect(reversed ? b : a, reversed ? a : b, tolerance);
+        check_events(reversed ? b : a, reversed ? a : b, result, tolerance);
+        bool first = false, second = false, range = false;
+        for (const auto& hit : result.points) {
+            first = first || (std::abs(hit.a - 0.25) <= tolerance && std::abs(hit.b - 0.25) <= tolerance);
+            second = second || (std::abs(hit.a - 0.75) <= tolerance && std::abs(hit.b - 0.75) <= tolerance);
+        }
+        for (const auto& shared : result.overlaps) {
+            const bool covers = shared.a0 <= 0.25 && shared.a1 >= 0.75 &&
+                shared.b0 <= 0.25 && shared.b1 >= 0.75;
+            const bool bounded = shared.a0 >= 0 && shared.a1 <= 1 && shared.b0 >= 0 && shared.b1 <= 1;
+            const double shift = std::max(std::abs(shared.a0 - shared.b0), std::abs(shared.a1 - shared.b1));
+            const bool correspondence = std::hypot(shift, 3 * scale / 16) <= tolerance;
+            range = range || (covers && bounded && correspondence);
+        }
+        MINI_CHECK((first && second) || range);
+    }
+}
+
+MINI_TEST("CurveIntersection", "Certified Flat Range Raw Domains And Reversal") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double scale = std::ldexp(1.0, -24);
+    NurbsCurve a = curve_from_points({{0, 3 * scale / 16, 0},
+        {0.5, -5 * scale / 16, 0}, {1, 3 * scale / 16, 0}}, 2);
+    NurbsCurve b = curve_from_points({{0, 0, 0}, {1, 0, 0}});
+    MINI_CHECK(a.to_rational() && b.to_rational());
+    for (NurbsCurve* curve : {&a, &b})
+        for (int i = 0; i < curve->cv_count(); ++i) {
+            const Point point = curve->get_cv(i);
+            const double weight = curve == &a ? 2 : 3;
+            MINI_CHECK(curve->set_cv_4d(i, point[0] * weight, point[1] * weight, 0, weight));
+        }
+    MINI_CHECK(a.set_domain(-7, 13) && b.set_domain(32, 35));
+    MINI_CHECK(b.reverse());
+    for (bool swapped : {false, true}) {
+        const auto& first = swapped ? b : a;
+        const auto& second = swapped ? a : b;
+        const auto result = curve_intersection::intersect(first, second, tolerance);
+        check_events(first, second, result, tolerance);
+        MINI_CHECK(result.points.empty());
+        MINI_CHECK(result.overlaps.size() == 1);
+        if (result.overlaps.size() == 1) {
+            const auto& range = result.overlaps[0];
+            MINI_CHECK(range.a0 == first.domain_start() && range.a1 == first.domain_end());
+            MINI_CHECK(range.b0 == second.domain_end() && range.b1 == second.domain_start());
+        }
+    }
+}
+
+MINI_TEST("CurveIntersection", "Flat Range Beyond Tolerance Is Rejected") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const NurbsCurve a = curve_from_points({{0, 0, 0}, {1, 0, 0}});
+    for (bool crossing : {false, true}) {
+        const NurbsCurve b = curve_from_points({{0, crossing ? -2 * tolerance : 2 * tolerance, 0},
+            {1, 2 * tolerance, 0}});
+        for (bool swapped : {false, true}) {
+            const auto& first = swapped ? b : a;
+            const auto& second = swapped ? a : b;
+            const auto result = curve_intersection::intersect(first, second, tolerance);
+            check_events(first, second, result, tolerance);
+            MINI_CHECK(result.overlaps.empty());
+            MINI_CHECK(result.points.size() == (crossing ? 1 : 0));
+            if (crossing && result.points.size() == 1)
+                MINI_CHECK(result.points[0].point.distance({0.5, 0, 0}) <= tolerance);
+        }
+    }
+}
+
 }
