@@ -59,8 +59,44 @@ try {
       }
     }
   }
+  # Candidate variants preserve the controls above and use normal optimized flags.
+  foreach ($config in ($configs | Where-Object { $_.Name -in @('O2', 'O2-strict') })) {
+    $out = Join-Path $results ('candidate-' + $config.Name)
+    New-Item -ItemType Directory -Path $out | Out-Null
+    foreach ($program in @('exact_repro', 'reducer_repro', 'ancestor_probe')) {
+      $source = if ($program -eq 'ancestor_probe') { 'candidate/probe/exact_repro.cpp' } else { "candidate/${program}.cpp" }
+      $exe = Join-Path $out ($program + '.exe')
+      $obj = Join-Path $out ($program + '.obj')
+      $asm = Join-Path $out ($program + '.asm')
+      $arguments = $common + $config.Flags + @($source, "/Fe:$exe", "/Fo:$obj", '/FAs', "/Fa$asm")
+      $arguments | ConvertTo-Json | Set-Content (Join-Path $out ($program + '-compile-arguments.json'))
+      & cl @arguments 2>&1 | Tee-Object -FilePath (Join-Path $out ($program + '-compile.log'))
+      if ($LASTEXITCODE -ne 0) { throw "Candidate compile failed: $program $($config.Name)" }
+      Get-FileHash -Algorithm SHA256 $exe | ConvertTo-Json | Set-Content (Join-Path $out ($program + '-exe-sha256.json'))
+    }
+    foreach ($program in @('exact_repro', 'ancestor_probe')) {
+      $exe = Join-Path $out ($program + '.exe')
+      foreach ($mode in @('unchanged', '0', '1')) {
+        $log = Join-Path $out ($program + '-' + $mode + '.log')
+        if ($mode -eq 'unchanged') { & $exe > $log 2>&1 }
+        else { & $exe $mode > $log 2>&1 }
+        $code = $LASTEXITCODE
+        $receipts += @{ config = ('candidate-' + $config.Name); program = $program; mode = $mode; exit_code = $code }
+        if ($code -notin @(0, 1)) { throw "Unexpected candidate probe exit $code" }
+      }
+    }
+    $exe = Join-Path $out 'reducer_repro.exe'
+    & $exe > (Join-Path $out 'reducer-full.json') 2> (Join-Path $out 'reducer-full.stderr')
+    $code = $LASTEXITCODE
+    $receipts += @{ config = ('candidate-' + $config.Name); program = 'reducer-full'; exit_code = $code }
+    if ($code -notin @(0, 1)) { throw "Unexpected candidate reducer exit $code" }
+    & $exe --target 394 --indices candidate/ten-indices.txt > (Join-Path $out 'reducer-ten.json') 2> (Join-Path $out 'reducer-ten.stderr')
+    $code = $LASTEXITCODE
+    $receipts += @{ config = ('candidate-' + $config.Name); program = 'reducer-ten'; exit_code = $code }
+    if ($code -notin @(0, 1)) { throw "Unexpected candidate ten-box exit $code" }
+  }
   $receipts | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $results 'exit-receipts.json')
-  Get-ChildItem -File | Get-FileHash -Algorithm SHA256 | ConvertTo-Json | Set-Content (Join-Path $results 'source-sha256.json')
+  Get-ChildItem -Recurse -File | Get-FileHash -Algorithm SHA256 | ConvertTo-Json | Set-Content (Join-Path $results 'source-sha256.json')
 } finally { Pop-Location }
 
 # A complete diagnostic experiment can contain failing probes; receipts carry each result.
