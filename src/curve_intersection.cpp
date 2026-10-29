@@ -388,8 +388,6 @@ bool add_hit(const Pair& pair, const Pair& leaf, double tolerance, Result& resul
     std::tie(ta, tb, distance) = Closest::curve_curve(leaf.a, leaf.b);
     if (!std::isfinite(ta) || !std::isfinite(tb) || !std::isfinite(distance))
         return false;
-    if (distance > tolerance * 1.2)
-        return true;
 
     std::tie(ta, tb) = refine(pair, ta, tb);
     if (!std::isfinite(ta) || !std::isfinite(tb))

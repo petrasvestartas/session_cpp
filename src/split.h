@@ -3,8 +3,10 @@
 #include "brep.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include <array>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace session_cpp {
@@ -79,11 +81,20 @@ struct ArrangementPairDiagnostic {
     size_t overlaps = 0;
 };
 
+struct ArrangementSpanDiagnostic {
+    size_t source = 0;
+    int edge = -1, section = -1;
+    double a = 0, b = 0;
+    std::array<double, 2> lo, hi, query_lo, query_hi;
+};
+
 struct ArrangementDiagnostic {
     size_t sources = 0, spans = 0, nodes = 0, half_edges = 0, retained_cycles = 0, regions = 0;
     double uv_tolerance = 0;
     std::vector<ArrangementCycleDiagnostic> cycles;
     std::vector<ArrangementPairDiagnostic> boundary_cut_pairs;
+    std::vector<ArrangementSpanDiagnostic> span_boxes;
+    std::vector<std::pair<size_t, size_t>> candidate_pairs;
     std::string first_discarded_reason;
     std::vector<Point> first_discarded_uv;
 };

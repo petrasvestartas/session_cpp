@@ -1,0 +1,68 @@
+{
+  "tolerance": 7.75778264213827e-09,
+  "boundary": {
+    "control_points": [
+      [
+        0.9897019382165801,
+        0.19704216237750258,
+        0.0
+      ],
+      [
+        0.9897019382165801,
+        0.8029578376224976,
+        0.0
+      ]
+    ],
+    "cv_count": 2,
+    "cv_stride": 3,
+    "dimension": 3,
+    "guid": "b98fd13c-ae50-42a4-a1d4-50c99ed961c7",
+    "is_rational": false,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbscurve",
+    "nurbsknots": [
+      0.0,
+      1.9999999999999998
+    ],
+    "order": 2,
+    "pointcolors": [],
+    "type": "NurbsCurve",
+    "width": 1.0
+  },
+  "cut": {
+    "control_points": [
+      [
+        0.39837541250664615,
+        0.1064749548500796,
+        0.0
+      ],
+      [
+        0.98970193821658,
+        0.4008845053131338,
+        0.0
+      ]
+    ],
+    "cv_count": 2,
+    "cv_stride": 3,
+    "dimension": 3,
+    "guid": "53f001ed-a019-48b1-922f-f5961d0ae3d4",
+    "is_rational": false,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbscurve",
+    "nurbsknots": [
+      0.18731572452420467,
+      0.986089210691782
+    ],
+    "order": 2,
+    "pointcolors": [],
+    "type": "NurbsCurve",
+    "width": 1.0
+  },
+  "face": 5,
+  "section": 20,
+  "world_tolerance": 1e-07
+}

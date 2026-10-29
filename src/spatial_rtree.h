@@ -532,7 +532,7 @@ private:
 
             parent->m_branch[idx].m_rect = node_cover(parent->m_branch[idx].m_child);
 
-            Branch new_b;
+            Branch new_b{};
             new_b.m_rect = node_cover(other);
             new_b.m_child = other;
 
@@ -554,11 +554,11 @@ private:
         m_root = alloc_node();
         m_root->m_level = old_root->m_level + 1;
 
-        Branch b1;
+        Branch b1{};
         b1.m_rect = node_cover(old_root);
         b1.m_child = old_root;
 
-        Branch b2;
+        Branch b2{};
         b2.m_rect = node_cover(new_node);
         b2.m_child = new_node;
 

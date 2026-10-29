@@ -411,4 +411,61 @@ MINI_TEST("CurveIntersection", "Preserved Dense Chair Boundary Endpoints") {
     }
 }
 
+MINI_TEST("CurveIntersection", "Near Parallel Singleton Endpoint") {
+    const NurbsCurve a = curve_from_points({{0, 0, 0}, {1, 0, 0}});
+    const NurbsCurve b = curve_from_points({{7.0 / 64, 0, 0}, {71.0 / 64, std::ldexp(1.0, -26), 0}});
+    const double tolerance = 1e-10;
+    for (bool reversed : {false, true}) {
+        const auto result = curve_intersection::intersect(reversed ? b : a, reversed ? a : b, tolerance);
+        check_events(reversed ? b : a, reversed ? a : b, result, tolerance);
+        MINI_CHECK(result.overlaps.empty());
+        MINI_CHECK(result.points.size() == 1);
+        if (result.points.size() == 1)
+            MINI_CHECK(result.points[0].point.distance({7.0 / 64, 0, 0}) <= tolerance);
+    }
+}
+
+MINI_TEST("CurveIntersection", "Near Parallel Interior Crossing") {
+    const NurbsCurve a = curve_from_points({{0, 0, 0}, {1, 0, 0}});
+    const NurbsCurve b = curve_from_points({{0, -std::ldexp(7.0, -32), 0},
+        {1, std::ldexp(57.0, -32), 0}});
+    const double tolerance = 1e-10;
+    for (bool reversed : {false, true}) {
+        const auto result = curve_intersection::intersect(reversed ? b : a, reversed ? a : b, tolerance);
+        check_events(reversed ? b : a, reversed ? a : b, result, tolerance);
+        MINI_CHECK(result.overlaps.empty());
+        MINI_CHECK(result.points.size() == 1);
+        if (result.points.size() == 1)
+            MINI_CHECK(result.points[0].point.distance({7.0 / 64, 0, 0}) <= tolerance);
+    }
+}
+
+MINI_TEST("CurveIntersection", "Preserved Windows Dodecahedron Boundary Endpoint") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_windows_dodeca_endpoint20_pair.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const NurbsCurve boundary = NurbsCurve::jsonload(fixture["boundary"]);
+    const NurbsCurve cut = NurbsCurve::jsonload(fixture["cut"]);
+    const double tolerance = fixture["tolerance"];
+    const double endpoint = cut.domain_end();
+    for (bool reversed : {false, true}) {
+        const auto& a = reversed ? cut : boundary;
+        const auto& b = reversed ? boundary : cut;
+        const auto result = curve_intersection::intersect(a, b, tolerance);
+        check_events(a, b, result, tolerance);
+        MINI_CHECK(result.points.size() == 1);
+        MINI_CHECK(result.overlaps.empty());
+        if (result.points.size() == 1) {
+            const auto& hit = result.points[0];
+            const double on_cut = reversed ? hit.a : hit.b;
+            const double on_boundary = reversed ? hit.b : hit.a;
+            MINI_CHECK(std::abs(on_cut - endpoint) < 1e-12);
+            MINI_CHECK(on_boundary > boundary.domain_start() && on_boundary < boundary.domain_end());
+            MINI_CHECK(boundary.point_at(on_boundary).distance(cut.point_at(endpoint)) <= tolerance);
+        }
+    }
+}
+
+
 }

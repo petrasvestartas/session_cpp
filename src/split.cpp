@@ -631,7 +631,8 @@ std::pair<std::array<double, 2>, std::array<double, 2>> span_bounds(const NurbsC
 std::vector<std::pair<size_t, size_t>> span_candidates(
     const std::vector<Source>& sources,
     const std::vector<Span>& spans,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
     SpatialRTree<size_t, double, 2> tree;
     std::vector<std::pair<size_t, size_t>> pairs;
@@ -643,6 +644,11 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
             lo[d] = std::nextafter(bounds.first[d] - tolerance, -infinity);
             hi[d] = std::nextafter(bounds.second[d] + tolerance, infinity);
         }
+        if (diagnostic) {
+            const Source& source = sources[spans[i].source];
+            diagnostic->span_boxes.push_back({spans[i].source, source.edge, source.section,
+                spans[i].a, spans[i].b, bounds.first, bounds.second, lo, hi});
+        }
         tree.search(lo.data(), hi.data(), [&](size_t j) {
             require(pairs.size() < WORK_LIMIT, "Face split candidates exceed the bounded workload");
             pairs.emplace_back(j, i);
@@ -651,6 +657,8 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
         tree.insert(bounds.first.data(), bounds.second.data(), i);
     }
     std::sort(pairs.begin(), pairs.end());
+    if (diagnostic)
+        diagnostic->candidate_pairs = pairs;
     return pairs;
 }
 
@@ -708,7 +716,7 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
 
     require(!spans.empty(), "Face split requires nonempty spans");
     self_events(spans, sources, tolerance);
-    for (const auto& [i, j] : span_candidates(sources, spans, tolerance)) {
+    for (const auto& [i, j] : span_candidates(sources, spans, tolerance, diagnostic)) {
         if (spans[i].source == spans[j].source)
             continue;
         const curve_intersection::Result events = curve_intersection::intersect(spans[i].curve, spans[j].curve, tolerance);

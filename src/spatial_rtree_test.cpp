@@ -1,6 +1,10 @@
 #include "mini_test.h"
 #include "spatial_rtree.h"
 #include <array>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <vector>
 
 using namespace session_cpp::mini_test;
@@ -334,6 +338,56 @@ namespace session_cpp {
         for (int data : found) {
             MINI_CHECK(data >= 0);
             MINI_CHECK(data < 100);
+        }
+    }
+
+    MINI_TEST("SpatialRTree", "Preserved Dense Chair Span Boxes") {
+        const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+        std::ifstream input(root / "tests/fixtures/native_chair_dense_span_boxes.json");
+        MINI_CHECK(input.good());
+        const auto fixture = nlohmann::json::parse(input);
+        const double tolerance = fixture["tolerance"];
+        const double infinity = std::numeric_limits<double>::infinity();
+        const auto& boxes = fixture["boxes"];
+        MINI_CHECK(boxes.size() == 647);
+        SpatialRTree<size_t, double, 2> tree;
+        std::vector<std::pair<size_t, size_t>> boundary_cut_pairs;
+        size_t total_pairs = 0;
+        for (size_t i = 0; i < boxes.size(); ++i) {
+            const std::array<double, 2> lo = {boxes[i][1].get<double>(), boxes[i][2].get<double>()};
+            const std::array<double, 2> hi = {boxes[i][3].get<double>(), boxes[i][4].get<double>()};
+            std::array<double, 2> query_lo, query_hi;
+            for (int d = 0; d < 2; ++d) {
+                query_lo[d] = std::nextafter(lo[d] - tolerance, -infinity);
+                query_hi[d] = std::nextafter(hi[d] + tolerance, infinity);
+            }
+            std::vector<size_t> found, expected;
+            tree.search(query_lo.data(), query_hi.data(), [&](size_t j) {
+                found.push_back(j);
+                return true;
+            });
+            for (size_t j = 0; j < i; ++j) {
+                bool overlap = true;
+                for (int d = 0; d < 2; ++d)
+                    overlap = overlap && query_hi[d] >= boxes[j][1 + d].get<double>()
+                        && boxes[j][3 + d].get<double>() >= query_lo[d];
+                if (overlap)
+                    expected.push_back(j);
+            }
+            std::sort(found.begin(), found.end());
+            MINI_CHECK(found == expected);
+            total_pairs += found.size();
+            for (size_t j : found)
+                if ((boxes[j][0].get<int>() < 4) != (boxes[i][0].get<int>() < 4))
+                    boundary_cut_pairs.emplace_back(j, i);
+            tree.insert(lo.data(), hi.data(), i);
+            MINI_CHECK(tree.count() == static_cast<int>(i + 1));
+        }
+        MINI_CHECK(total_pairs == 1551);
+        MINI_CHECK(boundary_cut_pairs.size() == 2);
+        if (boundary_cut_pairs.size() == 2) {
+            MINI_CHECK(boundary_cut_pairs[0].first == 31 && boundary_cut_pairs[0].second == 394);
+            MINI_CHECK(boundary_cut_pairs[1].first == 42 && boundary_cut_pairs[1].second == 395);
         }
     }
 

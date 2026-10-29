@@ -273,6 +273,13 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
             {"uv_tolerance", arrangement.uv_tolerance}, {"cycles", nlohmann::ordered_json::array()},
             {"first_discarded_reason", arrangement.first_discarded_reason},
             {"first_discarded_uv", nlohmann::ordered_json::array()}};
+        witness["arrangement"]["span_boxes"] = nlohmann::ordered_json::array();
+        for (const auto& span : arrangement.span_boxes)
+            witness["arrangement"]["span_boxes"].push_back({
+                {"source", span.source}, {"edge", span.edge}, {"section", span.section},
+                {"a", span.a}, {"b", span.b}, {"lo", span.lo}, {"hi", span.hi},
+                {"query_lo", span.query_lo}, {"query_hi", span.query_hi}});
+        witness["arrangement"]["candidate_pairs"] = arrangement.candidate_pairs;
         witness["arrangement"]["boundary_cut_pairs"] = nlohmann::ordered_json::array();
         for (const auto& pair : arrangement.boundary_cut_pairs)
             witness["arrangement"]["boundary_cut_pairs"].push_back({
