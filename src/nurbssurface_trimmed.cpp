@@ -1,4 +1,5 @@
 #include "nurbssurface_trimmed.h"
+#include "exact_orientation.h"
 #include "closest.h"
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.pb.h"
@@ -1738,7 +1739,7 @@ double Delaunay2D::in_circumcircle(
 }
 
 double Delaunay2D::orient2d(double ax, double ay, double bx, double by, double cx, double cy) {
-    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    return exact_orientation::orient2d(ax, ay, bx, by, cx, cy);
 }
 
 void Delaunay2D::register_edges(int ti) {
