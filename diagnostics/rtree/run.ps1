@@ -21,7 +21,7 @@ try {
     foreach ($program in @('exact_repro', 'reducer_repro')) {
       $exe = Join-Path $out ($program + '.exe')
       $obj = Join-Path $out ($program + '.obj')
-      $arguments = $common + $config.Flags + @($program + '.cpp', '/Fe:' + $exe, '/Fo:' + $obj)
+      $arguments = $common + $config.Flags + @("${program}.cpp", "/Fe:$exe", "/Fo:$obj")
       $arguments | ConvertTo-Json | Set-Content (Join-Path $out ($program + '-compile-arguments.json'))
       & cl @arguments 2>&1 | Tee-Object -FilePath (Join-Path $out ($program + '-compile.log'))
       if ($LASTEXITCODE -ne 0) { throw "Compile failed: $program $($config.Name)" }
