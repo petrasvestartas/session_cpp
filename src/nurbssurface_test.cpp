@@ -1446,3 +1446,40 @@ MINI_TEST("NurbsSurface", "Is Locked Round Trip") {
 }
 
 } // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("NurbsSurface", "Preserved Split Surface Crease Incidence") {
+    const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    for (const std::string platform : {"macos", "linux"}) {
+        std::ifstream input(root / "tests" / "fixtures" /
+            ("native_split_surface_" + platform + "_crease_failure.json"));
+        MINI_CHECK(input.good());
+        nlohmann::json fixture;
+        input >> fixture;
+        const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+        const NurbsCurve outer = NurbsCurve::jsonload(fixture.at("outer"));
+        const NurbsSurfaceTrimmed trimmed = NurbsSurfaceTrimmed::create(surface, outer);
+        MINI_CHECK(trimmed.is_trimmed());
+        const Mesh mesh = trimmed.mesh_q(20, .005);
+        MINI_CHECK(mesh.number_of_faces() > 0);
+        MINI_CHECK(trimmed.m_outer_loop.m_cv == outer.m_cv);
+        MINI_CHECK(trimmed.m_outer_loop.m_nurbsknot == outer.m_nurbsknot);
+        TrimLoops loops;
+        for (const nlohmann::json& loop : fixture.at("loops")) {
+            std::vector<Point> points;
+            for (const nlohmann::json& point : loop)
+                points.push_back({point[0].get<double>(), point[1].get<double>(), 0});
+            loops.uv.push_back(std::move(points));
+        }
+        const Mesh preserved = trimmed.mesh_loops(loops, 20, .005);
+        MINI_CHECK(preserved.number_of_faces() > 0);
+        for (size_t li = 0; li < loops.uv.size(); ++li)
+            for (size_t i = 0; i < loops.uv[li].size(); ++i) {
+                MINI_CHECK(loops.uv[li][i][0] == fixture["loops"][li][i][0].get<double>());
+                MINI_CHECK(loops.uv[li][i][1] == fixture["loops"][li][i][1].get<double>());
+            }
+        MINI_CHECK(trimmed.m_outer_loop.m_cv == outer.m_cv);
+        MINI_CHECK(trimmed.m_outer_loop.m_nurbsknot == outer.m_nurbsknot);
+    }
+}
+} // namespace session_cpp

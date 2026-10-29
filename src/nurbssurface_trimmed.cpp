@@ -7,7 +7,6 @@
 #include "tolerance.h"
 #include <array>
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <map>
 #include <set>
@@ -1591,6 +1590,7 @@ private:
         bool constrained = false; // True when the edge is a constraint.
     };
 
+    std::array<std::vector<double>, 2> crease_knots_;
     int visit_epoch_ = 0; // Stamp of the current search.
     std::vector<int> visit_stamp_; // Last search stamp per triangle.
     mutable std::vector<int> bad_; // Triangles whose circumcircle holds the new point.
@@ -1609,13 +1609,14 @@ public:
     }
 
     /// Construct with a super triangle around the box.
-    Delaunay2D(double xmin, double ymin, double xmax, double ymax);
+    Delaunay2D(double xmin, double ymin, double xmax, double ymax,
+        const std::array<std::vector<double>, 2>& crease_knots);
 
     /// Insert a point and return its vertex index, the existing one when coincident.
     int insert(double x, double y);
 
     /// Force the edge v0-v1 into the triangulation by flipping the edges it crosses.
-    void insert_constraint(int v0, int v1);
+    bool insert_constraint(int v0, int v1);
 
     /// Drop the triangles touching the super triangle.
     void cleanup();
@@ -1654,7 +1655,7 @@ private:
     /// Vertex of triangle ti across its edge shared with triangle nb, -1 when they are not neighbours.
     int opposite_vertex(int ti, int nb) const;
 
-    /// Vertex of triangle start within 1e-6 of (x, y), -1 when none.
+    /// Nearby triangle vertex with identical side/on incidence at every crease.
     int find_coincident(int start, double x, double y) const;
 
     /// True when (x, y) lies inside the circumcircle of triangle ti.
@@ -1790,7 +1791,8 @@ void Delaunay2D::unregister_edges(int ti) {
     }
 }
 
-Delaunay2D::Delaunay2D(double xmin, double ymin, double xmax, double ymax) {
+Delaunay2D::Delaunay2D(double xmin, double ymin, double xmax, double ymax,
+    const std::array<std::vector<double>, 2>& crease_knots) : crease_knots_(crease_knots) {
 
     const double dx = xmax - xmin;
     const double dy = ymax - ymin;
@@ -1912,7 +1914,16 @@ int Delaunay2D::find_coincident(int start, double x, double y) const {
         const double ddx = vertices[vi].x - x;
         const double ddy = vertices[vi].y - y;
 
-        if (ddx * ddx + ddy * ddy < 1e-12)
+        if (!(ddx * ddx + ddy * ddy < 1e-12))
+            continue;
+        bool compatible = true;
+        const std::array<double, 2> first = {vertices[vi].x, vertices[vi].y};
+        const std::array<double, 2> second = {x, y};
+        for (int dir = 0; dir < 2; ++dir)
+            for (double knot : crease_knots_[dir])
+                compatible = compatible && ((first[dir] < knot) == (second[dir] < knot))
+                    && ((first[dir] > knot) == (second[dir] > knot));
+        if (compatible)
             return vi;
     }
 
@@ -2022,22 +2033,22 @@ void Delaunay2D::fill_cavity(int vi) {
     }
 }
 
-void Delaunay2D::insert_constraint(int v0, int v1) {
+bool Delaunay2D::insert_constraint(int v0, int v1) {
 
     if (v0 == v1 || constrain_existing(v0, v1))
-        return;
+        return true;
 
     const int start_ti = first_triangle_at(v0);
 
     if (start_ti < 0)
-        return;
+        return false;
 
     int ivl = -1;
     int ivr = -1;
     const int it = first_crossed(start_ti, v0, v1, ivl, ivr);
 
     if (it < 0)
-        return;
+        return false;
 
     std::vector<int> poly_l = {v0, ivl};
     std::vector<int> poly_r = {v0, ivr};
@@ -2046,6 +2057,7 @@ void Delaunay2D::insert_constraint(int v0, int v1) {
     poly_l.push_back(v1);
     poly_r.push_back(v1);
     retriangulate(v0, v1, poly_l, poly_r, intersected);
+    return constrain_existing(v0, v1);
 }
 
 bool Delaunay2D::constrain_existing(int v0, int v1) {
@@ -2458,8 +2470,9 @@ void insert_loop_edge(
             uv[dir] = knot;
             const int vi = dt.insert(uv[0], uv[1]);
 
-            if (vi >= 0)
-                boundary_intervals[vi] = {li, i, t};
+            if (vi < 0)
+                throw std::runtime_error("Trim triangulation could not insert a crease crossing");
+            boundary_intervals[vi] = {li, i, t};
 
             events.push_back({t, vi});
         }
@@ -2469,7 +2482,8 @@ void insert_loop_edge(
 
     for (size_t k = 1; k < events.size(); ++k)
         if (events[k - 1].second >= 0 && events[k].second >= 0 && events[k - 1].second != events[k].second)
-            dt.insert_constraint(events[k - 1].second, events[k].second);
+            if (!dt.insert_constraint(events[k - 1].second, events[k].second))
+                throw std::runtime_error("Trim triangulation could not preserve a boundary constraint");
 }
 
 /// Insert each loop's vertices, then constrain its edges; the vertex index of every loop sample.
@@ -2485,8 +2499,12 @@ std::vector<std::vector<int>> insert_loops(
     for (size_t li = 0; li < loops_uv.size(); ++li) {
         std::vector<int> vis;
 
-        for (const Point& p : loops_uv[li])
-            vis.push_back(dt.insert(p[0], p[1]));
+        for (const Point& p : loops_uv[li]) {
+            const int vertex = dt.insert(p[0], p[1]);
+            if (vertex < 0)
+                throw std::runtime_error("Trim triangulation could not insert a boundary vertex");
+            vis.push_back(vertex);
+        }
 
         for (size_t i = 0; i < vis.size(); ++i)
             insert_loop_edge(dt, loops_uv[li], vis, li, i, crease_knots, boundary_intervals);
@@ -2507,8 +2525,8 @@ void insert_crease_lines(
 
     for (double u : crease_knots[0])
         for (double v : crease_knots[1])
-            if (inside_loops(u, v, loops_uv, bounds))
-                dt.insert(u, v);
+            if (inside_loops(u, v, loops_uv, bounds) && dt.insert(u, v) < 0)
+                throw std::runtime_error("Trim triangulation could not insert a crease vertex");
 
     for (int dir = 0; dir < 2; ++dir) {
         for (double knot : crease_knots[dir]) {
@@ -2528,7 +2546,8 @@ void insert_crease_lines(
                 uv[1 - dir] = (nodes[k - 1].first + nodes[k].first) * 0.5;
 
                 if (inside_loops(uv[0], uv[1], loops_uv, bounds))
-                    dt.insert_constraint(nodes[k - 1].second, nodes[k].second);
+                    if (!dt.insert_constraint(nodes[k - 1].second, nodes[k].second))
+                        throw std::runtime_error("Trim triangulation could not preserve a crease constraint");
             }
         }
     }
@@ -3536,7 +3555,7 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     const std::array<std::vector<double>, 2> crease_knots = find_crease_knots(m_surface);
     const std::array<double, 4> bounds = loop_bounds(loops.uv[0]);
 
-    Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3]);
+    Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3], crease_knots);
     std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
     const std::vector<std::vector<int>> loop_vids = insert_loops(dt, loops.uv, crease_knots, boundary_intervals);
     insert_crease_lines(dt, loops.uv, bounds, crease_knots);
@@ -3549,57 +3568,8 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     trim_outside(dt, loops.uv, bounds);
     const std::vector<std::array<int, 3>> tris = dt.get_triangles();
 
-    const bool crease_crossing = !tris.empty() && crosses_crease(tris, dt, crease_knots);
-    if (tris.empty() || crease_crossing) {
-        nlohmann::ordered_json witness = {{"source", "NurbsSurfaceTrimmed::triangulate"},
-            {"triangle_count", tris.size()}, {"crosses_crease", crease_crossing},
-            {"surface", m_surface.jsondump()}, {"outer", m_outer_loop.jsondump()},
-            {"crease_knots", crease_knots}, {"loops", nlohmann::ordered_json::array()},
-            {"diagnostic_kind", "first_crossing_or_empty_triangulation"}};
-        for (const std::vector<Point>& loop : loops.uv) {
-            nlohmann::ordered_json points = nlohmann::ordered_json::array();
-            for (const Point& point : loop)
-                points.push_back({point[0], point[1]});
-            witness["loops"].push_back(std::move(points));
-        }
-        witness["vertex_count"] = dt.vertices.size();
-        witness["first_crossing"] = nullptr;
-        for (const std::array<int, 3>& triangle : tris) {
-            if (!witness["first_crossing"].is_null())
-                break;
-            for (int dir = 0; dir < 2; ++dir) {
-                double low = INFINITY, high = -INFINITY;
-                for (int vertex : triangle) {
-                    const double coordinate = dir == 0 ? dt.vertices[vertex].x : dt.vertices[vertex].y;
-                    low = std::min(low, coordinate);
-                    high = std::max(high, coordinate);
-                }
-                for (double knot : crease_knots[dir]) {
-                    if (!(low < knot && knot < high))
-                        continue;
-                    nlohmann::ordered_json crossing = {{"direction", dir}, {"knot", knot},
-                        {"low", low}, {"high", high}, {"vertices", nlohmann::ordered_json::array()},
-                        {"edges", nlohmann::ordered_json::array()}};
-                    for (int vertex : triangle)
-                        crossing["vertices"].push_back({{"index", vertex},
-                            {"uv", {dt.vertices[vertex].x, dt.vertices[vertex].y}}});
-                    for (size_t side = 0; side < triangle.size(); ++side) {
-                        const int a = triangle[side], b = triangle[(side + 1) % triangle.size()];
-                        const double x = dir == 0 ? dt.vertices[a].x : dt.vertices[a].y;
-                        const double y = dir == 0 ? dt.vertices[b].x : dt.vertices[b].y;
-                        if (std::min(x, y) < knot && knot < std::max(x, y))
-                            crossing["edges"].push_back({a, b});
-                    }
-                    witness["first_crossing"] = std::move(crossing);
-                    break;
-                }
-                if (!witness["first_crossing"].is_null())
-                    break;
-            }
-        }
-        std::cerr << "surface_mesh_failure: " << witness.dump() << std::endl;
+    if (tris.empty() || crosses_crease(tris, dt, crease_knots))
         return Mesh();
-    }
 
     Mesh result;
     VertexWelder welder(result, loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0, bbox_diag * 1e-5);
