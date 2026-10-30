@@ -2,6 +2,7 @@
 #include "brep.h"
 #include "mini_test.h"
 #include "primitives.h"
+#include "xform.h"
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -521,4 +522,38 @@ MINI_TEST("Curve Surface Native", "Degenerate And Invalid Inputs") {
     const NurbsCurve translated = curve.transformed(Xform::translation(1e9, 0, 0));
     const curve_surface_intersection::Result uncertain = curve_surface_intersection::intersect(translated, shifted, 1e-9);
     MINI_CHECK(!uncertain.complete && !uncertain.failure.empty());
+}
+
+MINI_TEST("Curve Surface Native", "Certified Focal Endpoint Negative Witness") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_thicken_trimmed_focal_parameter_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const NurbsCurve original = NurbsCurve::jsonload(fixture.at("curve"));
+    const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+    const double tolerance = fixture.at("tolerance");
+    // Independent geometry: this entire source boundary and its world curve have y=0.
+    // Every translated endpoint therefore has exact y separation 4*tolerance.
+    MINI_CHECK(!surface.is_rational());
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        MINI_CHECK(surface.cv(i, 0)[1] == 0);
+    for (int i = 0; i < original.cv_count(); ++i)
+        MINI_CHECK(original.cv(i)[1] == 0);
+    for (int variant = 0; variant < 4; ++variant) {
+        NurbsCurve pcurve = NurbsCurve::jsonload(fixture.at("pcurve"));
+        MINI_CHECK(pcurve.set_domain(32, 35)); // Corresponding endpoints; unequal raw domains.
+        NurbsCurve displaced = original.transformed(Xform::translation(0,
+            (variant & 1 ? -4 : 4)*tolerance, 0));
+        if (variant & 2) {
+            MINI_CHECK(displaced.reverse());
+            MINI_CHECK(pcurve.reverse());
+            MINI_CHECK(pcurve.to_rational());
+            for (int i = 0; i < pcurve.cv_count(); ++i) {
+                const Point point = pcurve.get_cv(i);
+                MINI_CHECK(pcurve.set_cv_4d(i, 2*point[0], 2*point[1], 2*point[2], 2));
+            }
+        }
+        MINI_CHECK(curve_surface_intersection::same_parameter(displaced, pcurve, surface, tolerance)
+            == curve_surface_intersection::ParameterMatch::Mismatched);
+    }
 }

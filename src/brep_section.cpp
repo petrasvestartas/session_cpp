@@ -61,6 +61,25 @@ std::vector<int> active_faces(const BRep& brep) {
     return faces;
 }
 
+// A shared exact UV translation changes neither metric nor raw curve parameters.
+bool translate_parameters_exact(NurbsCurve& curve, const Point& origin) {
+    if (curve.dimension() < 1 || curve.dimension() > 3)
+        return false;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        double* cv = curve.cv(i);
+        const double weight = curve.is_rational() ? cv[curve.dimension()] : 1.0;
+        for (int d = 0; d < curve.dimension(); ++d) {
+            const double product = origin[d] * weight;
+            double local;
+            if (!nurbs_coincidence::exact_products_equal(origin[d], weight, product, 1.0)
+                || !nurbs_coincidence::exact_difference(cv[d], product, local))
+                return false;
+            cv[d] = local;
+        }
+    }
+    return true;
+}
+
 void trim_parameters(
     const BRep& brep,
     int face,
@@ -73,7 +92,15 @@ void trim_parameters(
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native section encountered a missing face pcurve");
-            const curve_intersection::Result events = curve_intersection::intersect(pcurve, brep.m_curves_2d[index], tolerance);
+            const NurbsCurve& boundary = brep.m_curves_2d[index];
+            NurbsCurve local_section = pcurve, local_boundary = boundary;
+            const Point origin = boundary.get_cv(0);
+            const bool exact = translate_parameters_exact(local_section, origin)
+                && translate_parameters_exact(local_boundary, origin);
+            // Only a/b parameters escape this call; all original UV curves stay unchanged.
+            const curve_intersection::Result events = exact
+                ? curve_intersection::intersect(local_section, local_boundary, tolerance)
+                : curve_intersection::intersect(pcurve, boundary, tolerance);
             if (!events.complete)
                 throw std::runtime_error(events.failure);
             for (const curve_intersection::Hit& point : events.points)

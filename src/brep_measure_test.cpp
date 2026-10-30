@@ -309,3 +309,53 @@ MINI_TEST("BRep Native Measure", "Repeated Bicubic Primitive Fits Shared Work Bu
     }
     MINI_CHECK(work < 200000);
 }
+
+MINI_TEST("BRep Native Measure", "Unaffordable Dense Cache Keeps Trimmed Adaptive Volume") {
+    BRep shape = BRep::create_box(2, 3, 4);
+    const NurbsSurface original = shape.m_surfaces[0];
+    const auto u = original.domain(0), v = original.domain(1);
+    // Same plane extended to twice its old chart footprint; the box trims
+    // occupy only the central half, so rectangle direct integration cannot apply.
+    NurbsSurface extended = original;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            MINI_CHECK(extended.set_cv(i, j, original.point_at(
+                u.first + (2 * i - .5) * (u.second - u.first),
+                v.first + (2 * j - .5) * (v.second - v.first))));
+    NurbsSurface dense(3, false, 4, 4, 7, 104);
+    for (int dir = 0; dir < 2; ++dir) {
+        const auto domain = extended.domain(dir);
+        const int spans = dir ? 101 : 4;
+        auto& knots = dense.m_nurbsknot[dir];
+        knots.assign(3, domain.first);
+        for (int i = 1; i < spans; ++i)
+            knots.push_back(domain.first + (domain.second - domain.first) * i / spans);
+        knots.insert(knots.end(), 3, domain.second);
+    }
+    for (int i = 0; i < dense.cv_count(0); ++i)
+        for (int j = 0; j < dense.cv_count(1); ++j) {
+            const auto& a = dense.m_nurbsknot[0];
+            const auto& b = dense.m_nurbsknot[1];
+            MINI_CHECK(dense.set_cv(i, j, extended.point_at(
+                (a[i] + a[i + 1] + a[i + 2]) / 3,
+                (b[j] + b[j + 1] + b[j + 2]) / 3)));
+        }
+    MINI_CHECK(dense.is_valid());
+    const size_t estimate = 404 * (54 * 3 * 3 + 3 * 3 + 3 * 3);
+    MINI_CHECK(estimate > 200000); // Optional cache cannot fit unchanged budget.
+    shape.m_surfaces[0] = dense;
+    for (const BRepEdge& edge : shape.m_edges)
+        for (const auto& relation : edge.pcurves)
+            if (relation.surface_index == 0) {
+                auto& pc = shape.m_curves_2d[relation.curve_2d_index];
+                for (int i = 0; i < pc.cv_count(); ++i) {
+                    const Point point = pc.get_cv(i);
+                    MINI_CHECK(pc.set_cv(i, {u.first + .25 * (u.second - u.first) + .5 * (point[0] - u.first),
+                        v.first + .25 * (v.second - v.first) + .5 * (point[1] - v.first), 0}));
+                }
+            }
+    MINI_CHECK(shape.is_valid() && shape.is_solid());
+    MINI_CHECK(std::abs(shape.volume_exact(1e-8) - 24) <= 24e-8);
+    shape.m_solids[0].shells[0].orientation = BRepOrientation::Reversed;
+    MINI_CHECK(std::abs(shape.volume_exact(1e-8) + 24) <= 24e-8);
+}

@@ -175,3 +175,61 @@ MINI_TEST("BRep Native Section", "Rejected Hole Separates Retained Runs") {
         MINI_CHECK(std::abs(length - 2) < tolerance);
     }
 }
+
+MINI_TEST("BRep Native Section", "Exact Local Trim Chart Preserves Physical Crossing") {
+    const NurbsCurve horizontal = NurbsCurve::create(false, 1,
+        {{-1,-1,0},{1,-1,0},{1,1,0},{-1,1,0},{-1,-1,0}});
+    const NurbsCurve vertical = NurbsCurve::create(false, 1,
+        {{-2,0,-1},{2,0,-1},{2,0,1},{-2,0,1},{-2,0,-1}});
+    BRep first = BRep::from_nurbscurves({horizontal});
+    BRep second = BRep::from_nurbscurves({vertical});
+    const double shift[2] = {0x1p20, -0x1p19};
+    for (BRep* shape : {&first, &second}) {
+        for (NurbsSurface& surface : shape->m_surfaces)
+            for (int d = 0; d < 2; ++d) {
+                const auto domain = surface.domain(d);
+                MINI_CHECK(surface.set_domain(d, domain.first+shift[d], domain.second+shift[d]));
+            }
+        for (NurbsCurve& pc : shape->m_curves_2d) {
+            MINI_CHECK(pc.to_rational());
+            for (int i = 0; i < pc.cv_count(); ++i) {
+                const Point point = pc.get_cv(i);
+                MINI_CHECK(pc.set_cv_4d(i, 2*(point[0]+shift[0]), 2*(point[1]+shift[1]), 0, 2));
+            }
+        }
+        MINI_CHECK(shape->is_valid());
+    }
+    const auto first_before = first.jsondump(), second_before = second.jsondump();
+    const double tolerance = 1e-7;
+    for (bool swapped : {false, true}) {
+        const BRep& a = swapped ? second : first;
+        const BRep& b = swapped ? first : second;
+        const auto result = brep_section::faces(a, b, tolerance);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(result.curves.size() == 1 && result.overlaps.empty());
+        for (const auto& section : result.curves) {
+            const Point start = section.world.point_at_start(), end = section.world.point_at_end();
+            const Point low(-1,0,0), high(1,0,0);
+            MINI_CHECK(std::min(start.distance(low)+end.distance(high),
+                start.distance(high)+end.distance(low)) <= 2*tolerance);
+            MINI_CHECK(section.world.domain() == section.first_pcurve.domain());
+            MINI_CHECK(section.world.domain() == section.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
+                a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+                == curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
+                b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+                == curve_surface_intersection::ParameterMatch::Matched);
+            for (int i = 0; i <= 8; ++i) {
+                const double t = section.world.domain_start() +
+                    (section.world.domain_end()-section.world.domain_start())*i/8;
+                const Point world = section.world.point_at(t);
+                const Point ua = section.first_pcurve.point_at(t), ub = section.second_pcurve.point_at(t);
+                MINI_CHECK(ua[0] > shift[0]-16 && ub[0] > shift[0]-16); // Raw chart survives output.
+                MINI_CHECK(world.distance(a.m_surfaces[a.m_faces[section.first_face].surface_index].point_at(ua[0],ua[1])) <= tolerance);
+                MINI_CHECK(world.distance(b.m_surfaces[b.m_faces[section.second_face].surface_index].point_at(ub[0],ub[1])) <= tolerance);
+            }
+        }
+    }
+    MINI_CHECK(first.jsondump() == first_before && second.jsondump() == second_before);
+}

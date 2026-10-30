@@ -66,6 +66,35 @@ struct Bounds {
     }
 };
 
+// A negative whole-input proof needs no parameter resolution or root refinement.
+bool certified_disjoint(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+    const auto hull = [](const NurbsCurve& curve, std::array<nurbs_interval::Interval, 3>& box) {
+        for (int i = 0; i < curve.cv_count(); ++i) {
+            const double* cv = curve.cv(i);
+            const double weight = curve.is_rational() ? cv[curve.dimension()] : 1.0;
+            if (!(weight > 0) || !std::isfinite(weight))
+                return false;
+            for (int d = 0; d < 3; ++d) {
+                const auto coordinate = nurbs_interval::Interval(d < curve.dimension() ? cv[d] : 0.0)
+                    / nurbs_interval::Interval(weight);
+                if (!nurbs_interval::finite(coordinate))
+                    return false;
+                box[d] = i == 0 ? coordinate : nurbs_interval::interval_hull(box[d], coordinate);
+            }
+        }
+        return true;
+    };
+    std::array<nurbs_interval::Interval, 3> first, second;
+    if (!hull(a, first) || !hull(b, second))
+        return false;
+    for (int d = 0; d < 3; ++d) {
+        const auto gap = first[d] - second[d];
+        if (nurbs_interval::finite(gap) && (gap.lo > tolerance || gap.hi < -tolerance))
+            return true;
+    }
+    return false;
+}
+
 struct Pair {
     NurbsCurve a;
     NurbsCurve b;
@@ -584,6 +613,32 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
     return true;
 }
 
+struct SpanBounds {
+    nurbs_interval::CurveBounds box;
+    bool valid;
+};
+
+std::vector<SpanBounds> span_bounds(const NurbsCurve& curve, const std::vector<double>& knots) {
+    std::vector<SpanBounds> result;
+    for (size_t i = 1; i < knots.size(); ++i) {
+        SpanBounds span{};
+        span.valid = nurbs_interval::curve_bounds(curve, {knots[i - 1], knots[i]}, {0, 0, 0}, span.box);
+        result.push_back(span);
+    }
+    return result;
+}
+
+bool separated(const SpanBounds& a, const SpanBounds& b, double tolerance) {
+    if (!a.valid || !b.valid)
+        return false;
+    for (int d = 0; d < 3; ++d) {
+        const auto gap = a.box.point[d] - b.box.point[d];
+        if (gap.lo > tolerance || gap.hi < -tolerance)
+            return true;
+    }
+    return false;
+}
+
 bool hit_less(const Hit& a, const Hit& b) {
     return a.a < b.a || (a.a == b.a && a.b < b.b);
 }
@@ -659,6 +714,8 @@ Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
     const Bounds bounds_b(b);
     if (bounds_a.size() == 0.0 || bounds_b.size() == 0.0 ||
         epsilon * 32.0 * std::max(bounds_a.magnitude(), bounds_b.magnitude()) > tolerance) {
+        if (bounds_a.size() > 0.0 && bounds_b.size() > 0.0 && certified_disjoint(a, b, tolerance))
+            return result;
         result.complete = false;
         result.failure = "Curve intersection has a constant input or tolerance below coordinate resolution";
         return result;
@@ -670,9 +727,12 @@ Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
 
     const std::vector<double> av = first.get_span_vector();
     const std::vector<double> bv = second.get_span_vector();
+    const auto ab = span_bounds(first, av), bb = span_bounds(second, bv);
     size_t budget = 0;
     for (size_t i = 1; i < av.size() && result.complete; ++i)
         for (size_t j = 1; j < bv.size() && result.complete; ++j) {
+            if (separated(ab[i - 1], bb[j - 1], tolerance))
+                continue;
             const Pair pair{interval(first, av[i - 1], av[i]), interval(second, bv[j - 1], bv[j])};
             result.complete = budget++ < work_limit && process(pair, tolerance, budget, result);
         }

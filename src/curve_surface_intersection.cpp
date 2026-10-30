@@ -709,6 +709,29 @@ bool parameter_image_bound(
     return nurbs_interval::finite(squared) && squared.hi <= limit.lo;
 }
 
+bool parameter_point_mismatch(const NurbsCurve& curve, double t,
+    const NurbsCurve& pcurve, double uv_t, const NurbsSurface& surface, double tolerance) {
+    const Point anchor = curve.get_cv(0);
+    const std::array<double, 3> origin = {anchor[0], anchor[1], anchor[2]};
+    nurbs_interval::CurveBounds world, uv;
+    nurbs_interval::SurfaceBounds lifted;
+    if (!nurbs_interval::curve_bounds(curve, {t, t}, origin, world) ||
+        !nurbs_interval::curve_bounds(pcurve, {uv_t, uv_t}, {0, 0, 0}, uv) ||
+        !nurbs_interval::surface_bounds(surface,
+            {uv.point[0].lo, uv.point[0].hi, uv.point[1].lo, uv.point[1].hi}, origin, lifted, false, true))
+        return false;
+    nurbs_interval::Interval squared;
+    for (int d = 0; d < 3; ++d) {
+        const auto residual = world.point[d] - lifted.point[d];
+        if (!nurbs_interval::finite(residual))
+            return false;
+        const double lower = residual.lo > 0 ? residual.lo : residual.hi < 0 ? -residual.hi : 0;
+        squared = squared + nurbs_interval::Interval(lower) * nurbs_interval::Interval(lower);
+    }
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    return nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.lo > allowed.hi;
+}
+
 bool parameter_parts(
     NurbsCurve curve,
     NurbsCurve pcurve,
@@ -798,11 +821,7 @@ ParameterMatch parameter_match(
     std::string* diagnostic
 ) {
     for (const double t : {part.curve.domain_start(), part.curve.domain_middle(), part.curve.domain_end()}) {
-        const Point uv = part.pcurve.point_at(t);
-        const double gap = part.curve.point_at(t).distance(surface.point_at(uv[0], uv[1]));
-        if (!std::isfinite(gap))
-            return ParameterMatch::Unresolved;
-        if (gap > tolerance)
+        if (parameter_point_mismatch(part.curve, t, part.pcurve, t, surface, tolerance))
             return ParameterMatch::Mismatched;
     }
     const std::vector<std::array<double, 4>> rectangles = parameter_rectangles(part.pcurve, surface);
@@ -1214,6 +1233,15 @@ ParameterMatch same_parameter(
     Bounds uv;
     if (!bounds(curve, a) || !bounds(surface, b) || !bounds(pcurve, uv) || a.roundoff + b.roundoff > tolerance * 0.125)
         return ParameterMatch::Unresolved;
+
+    // A single certified negative witness is decisive even if common partitioning is unresolved.
+    for (int end = 0; end < 2; ++end)
+        if (parameter_point_mismatch(curve, end ? curve.domain_end() : curve.domain_start(),
+                pcurve, end ? pcurve.domain_end() : pcurve.domain_start(), surface, tolerance)) {
+            if (diagnostic)
+                *diagnostic = "Certified endpoint residual exceeds tolerance";
+            return ParameterMatch::Mismatched;
+        }
 
     std::vector<ParameterPart> work;
     if (diagnostic)

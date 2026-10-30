@@ -6,6 +6,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -329,11 +330,22 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
     const int rectangle = rectangle_orientation(brep, face, surface);
     if (!surface.is_rational() && rectangle && surface.degree(0) <= 21 && surface.degree(1) <= 21)
         return polynomial_volume(evaluator, rectangle, work);
-    const polynomial::Primitive cache(surface, 200000 - work.total, [&]() {
-        ++work.polynomial_coefficients;
-        if (++work.total > 200000)
-            throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
-    });
+    // Dense polynomial antiderivatives are an optional acceleration. If their
+    // allocation/work estimate cannot fit, use the existing adaptive path.
+    std::optional<polynomial::Primitive> cache;
+    if (!surface.is_rational() && surface.degree(0) >= 1 && surface.degree(1) >= 1
+        && surface.degree(0) <= 3 && surface.degree(1) <= 3) {
+        const size_t per_cell = 54 * surface.degree(0) * surface.degree(1)
+            + 3 * surface.degree(0) + 3 * surface.degree(1);
+        const size_t nu = evaluator.knots[0].size() - 1;
+        const size_t nv = evaluator.knots[1].size() - 1;
+        if (nu && nv && nu <= ((200000 - work.total) / per_cell) / nv)
+            cache.emplace(surface, 200000 - work.total, [&]() {
+                ++work.polynomial_coefficients;
+                if (++work.total > 200000)
+                    throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
+            });
+    }
     double value = 0.0;
     for (const BRepRef& wire : boundary.wires)
         for (const BRepRef& edge : brep.wire_edges(wire)) {
@@ -345,12 +357,12 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
             const double sign = edge.orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
             for (size_t i = 1; i < knots.size(); ++i) {
                 const double allowed = tolerance / (knots.size() * boundary.wires.size());
-                if (!cache.cells.empty())
+                if (cache && !cache->cells.empty())
                     value += sign * integrate_polynomial([&](double parameter) {
                         const auto d = curve.evaluate(parameter, 1);
                         if (d[1][1] == 0.0)
                             return nurbs_interval::Interval();
-                        const nurbs_interval::Interval primitive = cache.at(d[0][0], d[0][1]);
+                        const nurbs_interval::Interval primitive = cache->at(d[0][0], d[0][1]);
                         const nurbs_interval::Interval integrand = primitive * nurbs_interval::Interval(d[1][1]);
                         if (!nurbs_interval::finite(integrand))
                             throw std::runtime_error("Native polynomial volume has a nonfinite boundary integrand");

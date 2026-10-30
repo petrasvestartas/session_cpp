@@ -624,4 +624,70 @@ MINI_TEST("CurveIntersection", "Close Endpoints Cannot Certify Distant Interior"
 }
 
 
+
+MINI_TEST("CurveIntersection", "Dense Knot Spans Preserve Sparse Events") {
+    for (int variant = 0; variant < 3; ++variant) {
+        std::vector<Point> horizontal, vertical;
+        for (int i = 0; i <= 512; ++i) {
+            const double t = -1 + i / 256.0;
+            horizontal.push_back({t, 0, 0});
+            vertical.push_back(variant == 1 ? Point(t, 0, 1) : Point(.125, t, 0));
+        }
+        NurbsCurve a = curve_from_points(horizontal, 3), b = curve_from_points(vertical, 3);
+        MINI_CHECK(a.get_span_vector().size() > 500 && b.get_span_vector().size() > 500);
+        MINI_CHECK(a.set_domain(-7, 13) && b.set_domain(32, 35));
+        if (variant == 2) {
+            MINI_CHECK(b.reverse() && a.to_rational() && b.to_rational());
+            for (NurbsCurve* curve : {&a, &b})
+                for (int i = 0; i < curve->cv_count(); ++i) {
+                    const Point point = curve->get_cv(i);
+                    MINI_CHECK(curve->set_cv_4d(i, 2*point[0], 2*point[1], 2*point[2], 2));
+                }
+        }
+        const auto result = curve_intersection::intersect(a, b, 1e-7);
+        check_events(a, b, result, 1e-7);
+        MINI_CHECK(result.overlaps.empty());
+        MINI_CHECK(result.points.size() == (variant == 1 ? 0 : 1));
+        if (variant != 1 && result.points.size() == 1) {
+            MINI_CHECK(result.points[0].point.distance({.125, 0, 0}) <= 1e-7);
+            MINI_CHECK(!result.points[0].tangent);
+        }
+    }
+}
+
+
+MINI_TEST("CurveIntersection", "Certified Disjoint Before Coordinate Resolution") {
+    using namespace session_cpp;
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_hollow_affine_disjoint_curve_pair.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const NurbsCurve a = NurbsCurve::jsonload(fixture.at("section_pcurve"));
+    const NurbsCurve b = NurbsCurve::jsonload(fixture.at("boundary_pcurve"));
+    const double tolerance = fixture.at("uv_tolerance");
+    MINI_CHECK(a.cv_count() == 2053 && b.cv_count() == 2);
+    // Independent actual geometry: all section poles are more than 0.1 UV above the line.
+    for (int i = 0; i < a.cv_count(); ++i)
+        MINI_CHECK(a.get_cv(i)[1] - b.get_cv(0)[1] > 0.1);
+    for (bool swapped : {false, true}) {
+        const auto events = curve_intersection::intersect(swapped ? b : a, swapped ? a : b, tolerance);
+        MINI_CHECK(events.complete && events.failure.empty());
+        MINI_CHECK(events.points.empty() && events.overlaps.empty());
+    }
+    // A separated positive rational hull can prove absence even at a huge coordinate origin.
+    NurbsCurve first = NurbsCurve::create(false, 1, {{0x1p40, 0, 0}, {0x1p40+1, 0, 0}});
+    NurbsCurve second = NurbsCurve::create(false, 1, {{0x1p40, 1, 0}, {0x1p40+1, 1, 0}});
+    MINI_CHECK(second.to_rational());
+    for (int i = 0; i < second.cv_count(); ++i) {
+        const Point point = second.get_cv(i);
+        const double weight = i ? 3 : 2;
+        MINI_CHECK(second.set_cv_4d(i, point[0]*weight, point[1]*weight, 0, weight));
+    }
+    const auto absent = curve_intersection::intersect(first, second, 1e-7);
+    MINI_CHECK(absent.complete && absent.points.empty() && absent.overlaps.empty());
+    // Overlapping hulls MUST retain the unresolved coordinate-resolution contract.
+    const auto unresolved = curve_intersection::intersect(first, first, 1e-7);
+    MINI_CHECK(!unresolved.complete && !unresolved.failure.empty());
+}
+
 }
