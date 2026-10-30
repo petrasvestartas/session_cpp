@@ -2,6 +2,7 @@
 #include "closest.h"
 #include "intersection.h"
 #include "nurbs_interval.h"
+#include "nurbs_coincidence.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1216,13 +1217,16 @@ void intersect_general(Result& result, const NurbsCurve& curve, const NurbsSurfa
 
 }
 
-ParameterMatch same_parameter(
+static ParameterMatch same_parameter_impl(
     const NurbsCurve& curve,
     const NurbsCurve& pcurve,
     const NurbsSurface& surface,
     double tolerance,
-    std::string* diagnostic
+    std::string* diagnostic,
+    bool* coordinate_retry = nullptr
 ) {
+    if (coordinate_retry)
+        *coordinate_retry = false;
     if (diagnostic)
         *diagnostic = "Input or coordinate-resolution validation failed";
     if (!std::isfinite(tolerance) || tolerance <= 0.0 || !curve.is_valid() || !pcurve.is_valid() || !surface.is_valid())
@@ -1231,8 +1235,13 @@ ParameterMatch same_parameter(
     Bounds a;
     Bounds b;
     Bounds uv;
-    if (!bounds(curve, a) || !bounds(surface, b) || !bounds(pcurve, uv) || a.roundoff + b.roundoff > tolerance * 0.125)
+    if (!bounds(curve, a) || !bounds(surface, b) || !bounds(pcurve, uv))
         return ParameterMatch::Unresolved;
+    if (a.roundoff + b.roundoff > tolerance * 0.125) {
+        if (coordinate_retry)
+            *coordinate_retry = true;
+        return ParameterMatch::Unresolved;
+    }
 
     // A single certified negative witness is decisive even if common partitioning is unresolved.
     for (int end = 0; end < 2; ++end)
@@ -1263,6 +1272,55 @@ ParameterMatch same_parameter(
     if (work.empty() && diagnostic)
         diagnostic->clear();
     return work.empty() ? ParameterMatch::Matched : ParameterMatch::Unresolved;
+}
+
+// Translate both physical geometries only when EVERY homogeneous operation is exact.
+// The pcurve and raw parameter metadata are untouched. Failed candidates never escape.
+static bool exact_world_chart(NurbsCurve& world, NurbsSurface& surface) {
+    if (world.dimension() != 3 || surface.dimension() != 3)
+        return false;
+    const Point origin = world.get_cv(0);
+    for (int d = 0; d < 3; ++d)
+        if (!std::isfinite(origin[d]))
+            return false;
+    const auto shift = [&](double* cv, bool rational) {
+        const double weight = rational ? cv[3] : 1.0;
+        if (!(weight > 0) || !std::isfinite(weight))
+            return false;
+        for (int d = 0; d < 3; ++d) {
+            const double product = origin[d] * weight;
+            double local;
+            if (!nurbs_coincidence::exact_products_equal(origin[d], weight, product, 1.0)
+                || !nurbs_coincidence::exact_difference(cv[d], product, local))
+                return false;
+            cv[d] = local;
+        }
+        return true;
+    };
+    for (int i = 0; i < world.cv_count(); ++i)
+        if (!shift(world.cv(i), world.is_rational()))
+            return false;
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j)
+            if (!shift(surface.cv(i, j), surface.is_rational()))
+                return false;
+    return true;
+}
+
+ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
+    const NurbsSurface& surface, double tolerance, std::string* diagnostic) {
+    // The ordinary worker runs exactly once. Only its explicit roundoff-only
+    // failure enables an exact common chart; invalid input never enables retry.
+    bool coordinate_retry = false;
+    const ParameterMatch original = same_parameter_impl(curve, pcurve, surface,
+        tolerance, diagnostic, &coordinate_retry);
+    if (!coordinate_retry)
+        return original;
+    NurbsCurve local_world = curve;
+    NurbsSurface local_surface = surface;
+    if (!exact_world_chart(local_world, local_surface))
+        return original; // Preserve the original coordinate-guard diagnostic.
+    return same_parameter_impl(local_world, pcurve, local_surface, tolerance, diagnostic);
 }
 
 Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {
