@@ -1426,3 +1426,74 @@ MINI_TEST("BRep Native Boolean", "Persistent Triple Face Boundary Events") {
         }
     }
 }
+
+
+namespace {
+BRep public_boolean_operation(const BRep& a, const BRep& b, int operation) {
+    switch (operation) {
+        case 0: return a.boolean_union(b, 1e-7);
+        case 1: return a.boolean_intersection(b, 1e-7);
+        case 2: return a.boolean_difference(b, 1e-7);
+        case 3: return b.boolean_difference(a, 1e-7);
+        case 4: return a.boolean_xor(b, 1e-7);
+    }
+    throw std::invalid_argument("Unknown public Boolean test operation");
+}
+
+void public_boolean_analytic_matrix(double curvature) {
+    // Existing exact tensor fixture: Phi(x,y,z)=(x,y,z+c*x*y), det(DPhi)=1.
+    // A=[-1,1]^3, B=[-.5,1.5]^3 before Phi. No internal Boolean is an oracle.
+    const BRep a = saddle_box(curvature, {0,0,0});
+    const BRep b = saddle_box(curvature, {.5,.5,.5});
+    MINI_CHECK(a.is_valid() && b.is_valid() && a.is_solid() && b.is_solid());
+    if (curvature != 0) {
+        int curved = 0;
+        for (const auto& surface : a.m_surfaces)
+            curved += !surface.is_planar(nullptr, 1e-7);
+        MINI_CHECK(curved >= 2); // Both retained top/bottom are doubly curved saddles.
+    }
+    const auto original_a = a.jsondump(), original_b = b.jsondump();
+    const std::array<double,5> volumes = {12.625, 3.375, 4.625, 4.625, 9.25};
+    const std::array<Point,12> probes = {
+        Point(.25,.25,.25), Point(-.75,0,0), Point(1.25,.5,.5),
+        Point(.25,.25,-.75), Point(.25,.25,1.25), Point(.25,-.75,.25),
+        Point(.25,1.25,.25), Point(1.75,.5,.5), Point(-1.25,0,0),
+        Point(0,-1.25,0), Point(0,0,-1.25), Point(.25,.25,1.75)};
+    for (int operation = 0; operation < 5; ++operation) {
+        const BRep result = public_boolean_operation(a,b,operation);
+        MINI_CHECK(result.face_count() > 0 && result.is_valid() && result.is_solid());
+        MINI_CHECK(manifold_components(result)); // Balanced edge incidence + connected shells + vertex links.
+        MINI_CHECK(result.solid_count() == (operation == 4 ? 2 : 1));
+        MINI_CHECK(result.shell_count() == (operation == 4 ? 2 : 1));
+        const double volume = brep_measure::volume(result,1e-8);
+        MINI_CHECK(volume > 0);
+        MINI_CHECK(std::abs(volume-volumes[operation]) <= 1e-6*volumes[operation]);
+        for (const auto& edge : result.m_edges)
+            if (!edge.degenerated)
+                for (const auto& relation : edge.pcurves)
+                    for (int pc : {relation.curve_2d_index,relation.curve_2d_index_2})
+                        if (pc >= 0)
+                            MINI_CHECK(curve_surface_intersection::same_parameter(
+                                result.m_curves_3d[edge.curve_3d_index],result.m_curves_2d[pc],
+                                result.m_surfaces[relation.surface_index],1e-7)
+                                == curve_surface_intersection::ParameterMatch::Matched);
+        for (const Point& p : probes) {
+            const bool in_a = p[0]>-1 && p[0]<1 && p[1]>-1 && p[1]<1 && p[2]>-1 && p[2]<1;
+            const bool in_b = p[0]>-.5 && p[0]<1.5 && p[1]>-.5 && p[1]<1.5 && p[2]>-.5 && p[2]<1.5;
+            const bool expected = operation == 0 ? in_a||in_b : operation == 1 ? in_a&&in_b
+                : operation == 2 ? in_a&&!in_b : operation == 3 ? in_b&&!in_a : in_a!=in_b;
+            MINI_CHECK(brep_classify::point(result,warped(p,curvature),1e-7)
+                == (expected ? brep_classify::State::Inside : brep_classify::State::Outside));
+        }
+        MINI_CHECK(a.jsondump() == original_a && b.jsondump() == original_b);
+    }
+}
+}
+
+MINI_TEST("BRep Public Boolean", "Overlapping Boxes Analytic Five Operations") {
+    public_boolean_analytic_matrix(0);
+}
+
+MINI_TEST("BRep Public Boolean", "Doubly Curved Volume Preserving Five Operations") {
+    public_boolean_analytic_matrix(.25);
+}
