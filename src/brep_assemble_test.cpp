@@ -1,4 +1,5 @@
 #include "brep_assemble.h"
+#include "nurbs_interval.h"
 #include "brep_acceptance.h"
 #include "xform.h"
 #include "tolerance.h"
@@ -657,4 +658,163 @@ MINI_TEST("BRepAssemble", "Reversed Periodic Trim Occurrence Prerequisite") {
     MINI_CHECK(seam);
     MINI_CHECK(!closed_periodic_fixture_loops(mapped));
 }
+MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_ba_vertex_cap_faces.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const double tolerance = fixture["tolerance"];
+    for (int variant = 0; variant < 9; ++variant) {
+        std::vector<BRep> shapes;
+        std::vector<std::vector<split::EdgePiece>> lineage;
+        for (const auto& owner : fixture["assembly_shapes"]) {
+            shapes.push_back(BRep::jsonload(owner["brep"]));
+            lineage.push_back({});
+            for (const auto& piece : owner["pieces"])
+                lineage.back().push_back({piece["source_edge"], piece["section"], piece["edge"], piece["first"], piece["last"]});
+        }
+        const bool outside_cap = variant == 8;
+        if (outside_cap)
+            for (auto& piece : lineage[0])
+                if (piece.section == 15) {
+                    BRepEdge& edge = shapes[0].m_edges[piece.edge];
+                    NurbsCurve& world = shapes[0].m_curves_3d[edge.curve_3d_index];
+                    const double first = 2e-7, last = world.domain_end();
+                    MINI_CHECK(world.trim(first, last));
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(shapes[0].m_curves_2d[pc].trim(first, last));
+                    piece.first = first;
+                }
+        if (variant & 1)
+            for (size_t owner = 0; owner < shapes.size(); ++owner) {
+                for (auto* curves : {&shapes[owner].m_curves_3d, &shapes[owner].m_curves_2d})
+                    for (NurbsCurve& curve : *curves) {
+                        const auto domain = curve.domain();
+                        MINI_CHECK(curve.set_domain(20 * domain.first - 7, 20 * domain.second - 7));
+                    }
+                for (auto& piece : lineage[owner]) {
+                    piece.first = 20 * piece.first - 7;
+                    piece.last = 20 * piece.last - 7;
+                }
+            }
+        if (variant & 2)
+            for (const auto& piece : lineage[1])
+                if (piece.section == 15) {
+                    BRepEdge& edge = shapes[1].m_edges[piece.edge];
+                    MINI_CHECK(shapes[1].m_curves_3d[edge.curve_3d_index].reverse());
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(shapes[1].m_curves_2d[pc].reverse());
+                    std::swap(edge.start_vertex, edge.end_vertex);
+                    for (auto& wire : shapes[1].m_wires)
+                        for (auto& use : wire.edges)
+                            if (use.index == piece.edge)
+                                use.orientation = brep_reverse(use.orientation);
+                }
+        std::vector<brep_assemble::FaceUse> faces;
+        for (const auto& face : fixture["assembly_faces"]) {
+            const size_t owner = face["shape"];
+            MINI_CHECK(shapes[owner].is_valid());
+            faces.push_back({&shapes[owner], face["face"], face["reversed"], &lineage[owner], face["operand"]});
+        }
+        if (variant & 4)
+            std::reverse(faces.begin(), faces.end());
+        bool open_exterior = false;
+        try {
+            brep_assemble::assemble(faces, tolerance);
+        } catch (const brep_assemble::TopologyError& error) {
+            open_exterior = true;
+            MINI_CHECK(error.partial.is_valid());
+            std::set<int> section_edges;
+            size_t section_images = 0;
+            for (const auto& image : error.images)
+                if (image.section == 15) {
+                    section_edges.insert(image.output_edge);
+                    ++section_images;
+                }
+            if (outside_cap) {
+                MINI_CHECK(section_edges.size() >= 2);
+                MINI_CHECK(section_images >= 3);
+            } else {
+                MINI_CHECK(section_images == 2 && section_edges.size() == 1);
+                if (section_edges.size() == 1) {
+                    int uses = 0, balance = 0;
+                    for (size_t f = 0; f < error.partial.m_faces.size(); ++f)
+                        for (const auto& wire : error.partial.m_faces[f].wires)
+                            for (const auto& edge : error.partial.wire_edges(wire))
+                                if (edge.index == *section_edges.begin()) {
+                                    ++uses;
+                                    balance += brep_compose(error.face_orientations[f], edge.orientation)
+                                        == BRepOrientation::Forward ? 1 : -1;
+                                }
+                    MINI_CHECK(uses == 2 && balance == 0);
+                    for (const auto& piece : lineage[1])
+                        if (piece.section == 15) {
+                            const BRepEdge& source_edge = shapes[1].m_edges[piece.edge];
+                            const NurbsCurve& full = shapes[1].m_curves_3d[source_edge.curve_3d_index];
+                            const auto domain = full.domain();
+                            const double fraction = fixture["prefix_fraction"];
+                            const double width = (domain.second - domain.first) * fraction;
+                            const double first = variant & 2 ? domain.second - width : domain.first;
+                            const double last = variant & 2 ? domain.second : domain.first + width;
+                            const BRepEdge& canonical = error.partial.m_edges[*section_edges.begin()];
+                            const BRepVertex& start = error.partial.m_vertices[canonical.start_vertex];
+                            const BRepVertex& end = error.partial.m_vertices[canonical.end_vertex];
+                            const Point endpoint = full.point_at(first);
+                            const BRepVertex& vertex = endpoint.distance(start.point) <= endpoint.distance(end.point) ? start : end;
+                            MINI_CHECK(nurbs_interval::curve_within_ball(full, {first, last},
+                                {vertex.point[0], vertex.point[1], vertex.point[2]},
+                                std::min(vertex.tolerance, tolerance * 0.25)));
+                        }
+                }
+            }
+            for (const BRepEdge& edge : error.partial.m_edges)
+                if (!edge.degenerated)
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(curve_surface_intersection::same_parameter(
+                                    error.partial.m_curves_3d[edge.curve_3d_index], error.partial.m_curves_2d[pc],
+                                    error.partial.m_surfaces[relation.surface_index], tolerance)
+                                    == curve_surface_intersection::ParameterMatch::Matched);
+        }
+        MINI_CHECK(open_exterior);
+    }
+}
+
+
+MINI_TEST("BRepAssemble", "Certified Vertex Ball Rejects Interior Excursion") {
+    for (const Point center : {Point(0, 0, 0), Point(8, -4, 2)})
+        for (bool rational : {false, true}) {
+            NurbsCurve outside = NurbsCurve::create(false, 2,
+                {center, center + Vector(0, 4, 0), center});
+            NurbsCurve inside = NurbsCurve::create(false, 2,
+                {center, center + Vector(0.25, 0.25, 0), center + Vector(0.5, 0, 0)});
+            for (NurbsCurve* curve : {&outside, &inside}) {
+                if (rational) {
+                    MINI_CHECK(curve->to_rational());
+                    for (int i = 0; i < curve->cv_count(); ++i) {
+                        const Point point = curve->get_cv(i);
+                        const double weight = i == 1 ? 2 : 1;
+                        MINI_CHECK(curve->set_cv_4d(i, point[0] * weight, point[1] * weight, point[2] * weight, weight));
+                    }
+                }
+                MINI_CHECK(curve->set_domain(-7, 13));
+            }
+            const std::array<double, 3> origin = {center[0], center[1], center[2]};
+            MINI_CHECK(outside.point_at_start().distance(center) < 1.0);
+            MINI_CHECK(outside.point_at_end().distance(center) < 1.0);
+            MINI_CHECK(outside.point_at(3).distance(center) > 1.0);
+            MINI_CHECK(!nurbs_interval::curve_within_ball(outside, {-7, 13}, origin, 1.0));
+            MINI_CHECK(nurbs_interval::curve_within_ball(inside, {-7, 13}, origin, 1.0));
+            if (center[0] != 0)
+                MINI_CHECK(!nurbs_interval::curve_within_ball(inside, {-7, 13}, {0, 0, 0}, 1.0));
+        }
+}
+
+
+
 }

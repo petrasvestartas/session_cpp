@@ -258,7 +258,29 @@ bool covers(double a, double b, const NurbsCurve& curve) {
         std::abs(b - curve.domain_end()) <= span * 1e-10;
 }
 
-bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool& reverse) {
+struct VertexCaps {
+    const BRepVertex* first;
+    const BRepVertex* last;
+};
+
+bool within_vertex_cap(const NurbsCurve& curve, double a, double b, const BRepVertex& vertex, double tolerance) {
+    if (a == b)
+        return true;
+    const double radius = std::min(vertex.tolerance, tolerance * 0.25);
+    return radius > 0.0 && nurbs_interval::curve_within_ball(curve, {a, b},
+        {vertex.point[0], vertex.point[1], vertex.point[2]}, radius);
+}
+
+bool covers_with_vertex_caps(double first, double last, const NurbsCurve& curve,
+    const BRepVertex& start, const BRepVertex& end, double tolerance) {
+    if (first < curve.domain_start() || last > curve.domain_end() || first > last)
+        return false;
+    return within_vertex_cap(curve, curve.domain_start(), first, start, tolerance)
+        && within_vertex_cap(curve, last, curve.domain_end(), end, tolerance);
+}
+
+bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool& reverse,
+    const VertexCaps* caps = nullptr) {
     const bool along = a.point_at_start().distance(b.point_at_start()) <= tolerance &&
         a.point_at_end().distance(b.point_at_end()) <= tolerance;
     const bool against = a.point_at_start().distance(b.point_at_end()) <= tolerance &&
@@ -272,11 +294,17 @@ bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool
         + std::to_string(b.domain_start()) + "," + std::to_string(b.domain_end())
         + "; hull diameters " + std::to_string(Bounds(a).lo.distance(Bounds(a).hi))
         + "," + std::to_string(Bounds(b).lo.distance(Bounds(b).hi)));
-    for (const curve_intersection::Overlap& shared : result.overlaps)
-        if (covers(shared.a0, shared.a1, a) && covers(std::min(shared.b0, shared.b1), std::max(shared.b0, shared.b1), b)) {
-            reverse = shared.b1 < shared.b0;
+    for (const curve_intersection::Overlap& shared : result.overlaps) {
+        const bool opposite = shared.b1 < shared.b0;
+        const double first_b = std::min(shared.b0, shared.b1), last_b = std::max(shared.b0, shared.b1);
+        const bool strict = covers(shared.a0, shared.a1, a) && covers(first_b, last_b, b);
+        if (strict || (caps && covers_with_vertex_caps(shared.a0, shared.a1, a,
+                opposite ? *caps->last : *caps->first, opposite ? *caps->first : *caps->last, tolerance)
+            && covers_with_vertex_caps(first_b, last_b, b, *caps->first, *caps->last, tolerance))) {
+            reverse = opposite;
             return true;
         }
+    }
 
     return false;
 }
@@ -293,7 +321,9 @@ Piece add_piece(Assembly& assembly, size_t index, double a, double b) {
             const BRepEdge& edge = assembly.result.m_edges[candidate.edge];
             const NurbsCurve& stored = assembly.result.m_curves_3d[edge.curve_3d_index];
             bool reverse = false;
-            if (equivalent(curve, stored, assembly.tolerance, reverse))
+            const VertexCaps caps{&assembly.result.m_vertices[edge.start_vertex],
+                &assembly.result.m_vertices[edge.end_vertex]};
+            if (equivalent(curve, stored, assembly.tolerance, reverse, &caps))
                 return {candidate.edge, a, b, reverse};
         }
 

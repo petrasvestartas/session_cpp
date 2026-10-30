@@ -544,4 +544,84 @@ MINI_TEST("CurveIntersection", "Flat Range Beyond Tolerance Is Rejected") {
     }
 }
 
+MINI_TEST("CurveIntersection", "Extended Line Retains Both Flat Parameter Branches") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double scale = std::ldexp(1.0, -24);
+    const NurbsCurve a = curve_from_points({{0, 3 * scale / 16, 0},
+        {0.5, -5 * scale / 16, 0}, {1, 3 * scale / 16, 0}}, 2);
+    const NurbsCurve b = curve_from_points({{-1, 0, 0}, {2, 0, 0}});
+    MINI_CHECK(scale / 2 < tolerance * 0.05);
+    for (bool swapped : {false, true}) {
+        const auto& first = swapped ? b : a;
+        const auto& second = swapped ? a : b;
+        const auto result = curve_intersection::intersect(first, second, tolerance);
+        check_events(first, second, result, tolerance);
+        bool first_root = false, second_root = false, clipped_range = false;
+        for (const auto& hit : result.points) {
+            const double ta = swapped ? hit.b : hit.a;
+            const double tb = swapped ? hit.a : hit.b;
+            first_root = first_root || (std::abs(ta - 0.25) <= tolerance && std::abs(tb - 5.0 / 12) <= tolerance);
+            second_root = second_root || (std::abs(ta - 0.75) <= tolerance && std::abs(tb - 7.0 / 12) <= tolerance);
+        }
+        for (const auto& shared : result.overlaps) {
+            const double a0 = swapped ? shared.b0 : shared.a0;
+            const double a1 = swapped ? shared.b1 : shared.a1;
+            const double b0 = swapped ? shared.a0 : shared.b0;
+            const double b1 = swapped ? shared.a1 : shared.b1;
+            const bool bounded = a0 >= 0 && a1 <= 1 && b0 >= 0 && b1 <= 1;
+            const bool covers = a0 <= 0.25 && a1 >= 0.75 && b0 <= 5.0 / 12 && b1 >= 7.0 / 12;
+            const double shift = std::max(std::abs(a0 - (-1 + 3 * b0)), std::abs(a1 - (-1 + 3 * b1)));
+            clipped_range = clipped_range || (bounded && covers && std::hypot(shift, 3 * scale / 16) <= tolerance);
+        }
+        MINI_CHECK((first_root && second_root) || clipped_range);
+    }
+}
+
+MINI_TEST("CurveIntersection", "Clipped Range Keeps Raw Domains And Reversal") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double scale = std::ldexp(1.0, -24);
+    NurbsCurve a = curve_from_points({{0, 3 * scale / 16, 0},
+        {0.5, -5 * scale / 16, 0}, {1, 3 * scale / 16, 0}}, 2);
+    NurbsCurve b = curve_from_points({{-1, 0, 0}, {2, 0, 0}});
+    MINI_CHECK(a.to_rational() && b.to_rational());
+    for (NurbsCurve* curve : {&a, &b})
+        for (int i = 0; i < curve->cv_count(); ++i) {
+            const Point point = curve->get_cv(i);
+            const double weight = curve == &a ? 2 : 3;
+            MINI_CHECK(curve->set_cv_4d(i, point[0] * weight, point[1] * weight, 0, weight));
+        }
+    MINI_CHECK(a.set_domain(-7, 13) && b.set_domain(32, 35) && b.reverse());
+    for (bool swapped : {false, true}) {
+        const auto& first = swapped ? b : a;
+        const auto& second = swapped ? a : b;
+        const auto result = curve_intersection::intersect(first, second, tolerance);
+        check_events(first, second, result, tolerance);
+        MINI_CHECK(result.overlaps.size() == 1);
+        if (result.overlaps.size() == 1) {
+            const auto& shared = result.overlaps[0];
+            MINI_CHECK(std::abs(shared.a0 - (swapped ? 33 : -7)) <= tolerance);
+            MINI_CHECK(std::abs(shared.a1 - (swapped ? 34 : 13)) <= tolerance);
+            MINI_CHECK(std::abs(shared.b0 - (swapped ? 13 : 34)) <= tolerance);
+            MINI_CHECK(std::abs(shared.b1 - (swapped ? -7 : 33)) <= tolerance);
+        }
+    }
+}
+
+MINI_TEST("CurveIntersection", "Close Endpoints Cannot Certify Distant Interior") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double end = 127 * tolerance / 128, middle = 133 * tolerance / 128;
+    const NurbsCurve a = curve_from_points({{0, end, 0}, {0.5, middle, 0}, {1, end, 0}}, 2);
+    const NurbsCurve b = curve_from_points({{-1, 0, 0}, {2, 0, 0}});
+    MINI_CHECK(end < tolerance && middle - end < tolerance * 0.05);
+    MINI_CHECK(a.point_at(0.5).distance({0.5, 0, 0}) > tolerance);
+    for (bool swapped : {false, true}) {
+        const auto& first = swapped ? b : a;
+        const auto& second = swapped ? a : b;
+        const auto result = curve_intersection::intersect(first, second, tolerance);
+        check_events(first, second, result, tolerance);
+        MINI_CHECK(result.overlaps.empty());
+    }
+}
+
+
 }

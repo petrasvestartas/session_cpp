@@ -1357,4 +1357,49 @@ namespace session_cpp {
         }
     }
 
+
+    namespace {
+    NurbsCurve unclamped_trim_source(bool rational) {
+        NurbsCurve curve(3, rational, 4, 6);
+        for (int i = 0; i < curve.nurbsknot_count(); ++i)
+            MINI_CHECK(curve.set_nurbsknot(i, i));
+        for (int i = 0; i < curve.cv_count(); ++i) {
+            const double weight = rational ? 1 + .25 * (i % 3) : 1;
+            MINI_CHECK(curve.set_cv_4d(i, i * weight, i * i * weight, 0, weight));
+        }
+        return curve;
+    }
+    }
+
+    MINI_TEST("NurbsCurve", "Domain Mapping Preserves Unclamped Geometry") {
+        for (bool rational : {false, true})
+            for (bool clamped : {false, true})
+                for (double scale : {std::ldexp(1.0, -44), 1.0, std::ldexp(1.0, 30)}) {
+                    NurbsCurve source = unclamped_trim_source(rational);
+                    if (clamped)
+                        MINI_CHECK(source.clamp_end(2));
+                    for (double& knot : source.m_nurbsknot)
+                        knot *= scale;
+                    MINI_CHECK(source.is_valid());
+                    const double first = source.domain_start(), last = source.domain_end();
+                    if (!rational && !clamped)
+                        MINI_CHECK(source.point_at_start().distance({1, 4.0 / 3, 0}) < 1e-12);
+                    const bool left_clamped = source.m_nurbsknot.front() == first;
+                    const bool right_clamped = source.m_nurbsknot.back() == last;
+                    NurbsCurve mapped = source;
+                    MINI_CHECK(mapped.set_domain(-3, 5));
+                    MINI_CHECK(mapped.is_valid() && mapped.domain_start() == -3 && mapped.domain_end() == 5);
+                    MINI_CHECK(mapped.m_cv == source.m_cv && mapped.cv_count() == source.cv_count());
+                    MINI_CHECK((mapped.m_nurbsknot.front() == -3) == left_clamped);
+                    MINI_CHECK((mapped.m_nurbsknot.back() == 5) == right_clamped);
+                    for (int i = 0; i <= 128; ++i) {
+                        const double fraction = i / 128.0;
+                        const double old_t = i == 128 ? last : first + fraction * (last - first);
+                        const double new_t = -3 + 8 * fraction;
+                        MINI_CHECK(mapped.point_at(new_t).distance(source.point_at(old_t)) < 1e-10);
+                    }
+                }
+    }
+
+
 } // namespace session_cpp

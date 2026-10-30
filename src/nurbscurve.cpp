@@ -1143,8 +1143,8 @@ bool NurbsCurve::set_domain(double t0, double t1) {
     if (d0 >= d1)
         return false;
 
-    const bool clamped_start = (m_order >= 2 && std::abs(m_nurbsknot[0] - m_nurbsknot[m_order - 2]) < Tolerance::ZERO_TOLERANCE);
-    const bool clamped_end = (m_cv_count <= static_cast<int>(m_nurbsknot.size()) && std::abs(m_nurbsknot.back() - m_nurbsknot[m_cv_count - 1]) < Tolerance::ZERO_TOLERANCE);
+    const bool clamped_start = (m_order >= 2 && m_nurbsknot[0] == m_nurbsknot[m_order - 2]);
+    const bool clamped_end = (m_cv_count <= static_cast<int>(m_nurbsknot.size()) && m_nurbsknot.back() == m_nurbsknot[m_cv_count - 1]);
     const double scale = (t1 - t0) / (d1 - d0);
 
     for (double& k : m_nurbsknot)

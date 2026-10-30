@@ -189,6 +189,21 @@ inline bool curve_bounds(
     return !first;
 }
 
+/// Prove that every point of an original-curve interval lies inside one world-space ball.
+inline bool curve_within_ball(const NurbsCurve& curve, const std::array<double, 2>& interval,
+    const std::array<double, 3>& center, double radius) {
+    CurveBounds bounds;
+    if (!(radius >= 0.0) || !std::isfinite(radius) || !curve_bounds(curve, interval, center, bounds))
+        return false;
+    Interval squared;
+    for (const auto coordinate : bounds.point) {
+        const Interval distance(magnitude(coordinate));
+        squared = squared + distance * distance;
+    }
+    const Interval allowed = Interval(radius) * Interval(radius);
+    return finite(squared) && finite(allowed) && squared.hi <= allowed.lo;
+}
+
 struct SurfaceBounds {
     std::array<Interval, 3> point;
     std::array<std::array<Interval, 3>, 2> derivative;

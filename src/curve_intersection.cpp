@@ -530,6 +530,28 @@ bool certified_parameter_range(const Pair& pair, double tolerance, bool reverse)
     return nurbs_interval::finite(squared) && nurbs_interval::finite(limit) && squared.hi <= limit.lo;
 }
 
+bool certified_clipped_range(const Pair& pair, double tolerance, Overlap& shared) {
+    const auto matches = endpoint_matches(pair, tolerance);
+    for (size_t i = 0; i < matches.size(); ++i)
+        for (size_t j = matches.size(); j-- > i + 1;) {
+            const double a0 = matches[i].first, a1 = matches[j].first;
+            const double b0 = matches[i].second, b1 = matches[j].second;
+            if (!std::isfinite(a0) || !std::isfinite(a1) || !std::isfinite(b0) || !std::isfinite(b1)
+                || a0 < pair.a.domain_start() || a1 > pair.a.domain_end()
+                || std::min(b0, b1) < pair.b.domain_start() || std::max(b0, b1) > pair.b.domain_end()
+                || a1 - a0 <= epsilon * 32.0 || std::abs(b1 - b0) <= epsilon * 32.0)
+                continue;
+            const Pair clipped{interval(pair.a, a0, a1), interval(pair.b, std::min(b0, b1), std::max(b0, b1))};
+            if (certified_parameter_range(clipped, tolerance, b1 < b0)) {
+                shared = {clipped.a.domain_start(), clipped.a.domain_end(),
+                    b1 < b0 ? clipped.b.domain_end() : clipped.b.domain_start(),
+                    b1 < b0 ? clipped.b.domain_start() : clipped.b.domain_end()};
+                return true;
+            }
+        }
+    return false;
+}
+
 bool process(const Pair& pair, double tolerance, size_t& budget, Result& result) {
     const Bounds a(pair.a);
     const Bounds b(pair.b);
@@ -539,7 +561,8 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
     const double proof = std::max(tolerance * 1e-5, epsilon * 32.0 * std::max(a.magnitude(), b.magnitude()));
     Overlap shared{};
     if (!overlap(pair, proof, shared)) {
-        if (flatness(pair.a) <= tolerance * 0.05 && flatness(pair.b) <= tolerance * 0.05)
+        const bool flat = flatness(pair.a) <= tolerance * 0.05 && flatness(pair.b) <= tolerance * 0.05;
+        if (flat)
             for (bool reverse : {false, true})
                 if (certified_parameter_range(pair, tolerance, reverse)) {
                     result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
@@ -547,7 +570,8 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
                         reverse ? pair.b.domain_start() : pair.b.domain_end()});
                     return true;
                 }
-        return isolated(pair, tolerance, budget, result);
+        if (!flat || !certified_clipped_range(pair, tolerance, shared))
+            return isolated(pair, tolerance, budget, result);
     }
 
     result.overlaps.push_back(shared);
