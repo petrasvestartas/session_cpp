@@ -631,7 +631,8 @@ std::pair<std::array<double, 2>, std::array<double, 2>> span_bounds(const NurbsC
 std::vector<std::pair<size_t, size_t>> span_candidates(
     const std::vector<Source>& sources,
     const std::vector<Span>& spans,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
     SpatialRTree<size_t, double, 2> tree;
     std::vector<std::pair<size_t, size_t>> pairs;
@@ -643,6 +644,11 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
             lo[d] = std::nextafter(bounds.first[d] - tolerance, -infinity);
             hi[d] = std::nextafter(bounds.second[d] + tolerance, infinity);
         }
+        if (diagnostic) {
+            const Source& source = sources[spans[i].source];
+            diagnostic->span_boxes.push_back({spans[i].source, source.edge, source.section,
+                spans[i].a, spans[i].b, bounds.first, bounds.second, lo, hi});
+        }
         tree.search(lo.data(), hi.data(), [&](size_t j) {
             require(pairs.size() < WORK_LIMIT, "Face split candidates exceed the bounded workload");
             pairs.emplace_back(j, i);
@@ -651,11 +657,42 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
         tree.insert(bounds.first.data(), bounds.second.data(), i);
     }
     std::sort(pairs.begin(), pairs.end());
+    if (diagnostic)
+        diagnostic->candidate_pairs = pairs;
     return pairs;
 }
 
 /// True when the whole original interval lies inside one vertex tolerance ball.
 bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& point, double tolerance) {
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    const auto outside = [&](double parameter) {
+        const auto data = nurbs_interval::curve_controls(curve, {parameter, parameter},
+            {point[0], point[1], point[2]});
+        if (data.empty())
+            return false;
+        std::array<nurbs_interval::Interval, 3> endpoint;
+        bool first = true;
+        for (const auto& cv : data) {
+            if (!(cv[3].lo > 0.0))
+                return false;
+            for (int d = 0; d < 3; ++d) {
+                const auto coordinate = cv[d] / cv[3];
+                if (!nurbs_interval::finite(coordinate))
+                    return false;
+                endpoint[d] = first ? coordinate : nurbs_interval::interval_hull(endpoint[d], coordinate);
+            }
+            first = false;
+        }
+        nurbs_interval::Interval lower;
+        for (const auto coordinate : endpoint) {
+            const double nearest = coordinate.lo > 0.0 ? coordinate.lo : coordinate.hi < 0.0 ? -coordinate.hi : 0.0;
+            const nurbs_interval::Interval distance(nearest);
+            lower = lower + distance * distance;
+        }
+        return nurbs_interval::finite(lower) && lower.lo > allowed.hi;
+    };
+    if (outside(b) || outside(a))
+        return false;
     nurbs_interval::CurveBounds bounds;
     if (!nurbs_interval::curve_bounds(curve, {std::min(a, b), std::max(a, b)},
         {point[0], point[1], point[2]}, bounds))
@@ -665,7 +702,6 @@ bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& p
         const nurbs_interval::Interval distance(nurbs_interval::magnitude(coordinate));
         squared = squared + distance * distance;
     }
-    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
     return nurbs_interval::finite(squared) && squared.hi <= allowed.lo;
 }
 
@@ -687,7 +723,7 @@ void self_events(std::vector<Span>& spans, const std::vector<Source>& sources, d
 }
 
 /// Knot spans of every source, cut at their mutual intersections.
-std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance) {
+std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance, ArrangementDiagnostic* diagnostic) {
 
     std::vector<Span> spans;
 
@@ -708,11 +744,24 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
 
     require(!spans.empty(), "Face split requires nonempty spans");
     self_events(spans, sources, tolerance);
-    for (const auto& [i, j] : span_candidates(sources, spans, tolerance)) {
+    for (const auto& [i, j] : span_candidates(sources, spans, tolerance, diagnostic)) {
         if (spans[i].source == spans[j].source)
             continue;
         const curve_intersection::Result events = curve_intersection::intersect(spans[i].curve, spans[j].curve, tolerance);
         require(events.complete, events.failure);
+        if (diagnostic && (sources[spans[i].source].edge < 0) != (sources[spans[j].source].edge < 0)) {
+            ArrangementPairDiagnostic row;
+            row.first_source = spans[i].source;
+            row.second_source = spans[j].source;
+            row.first = spans[i].curve;
+            row.second = spans[j].curve;
+            row.overlaps = events.overlaps.size();
+            for (const auto& hit : events.points) {
+                row.first_hits.push_back(hit.a);
+                row.second_hits.push_back(hit.b);
+            }
+            diagnostic->boundary_cut_pairs.push_back(std::move(row));
+        }
         for (const curve_intersection::Hit& hit : events.points) {
             spans[i].cuts.push_back(hit.a);
             spans[j].cuts.push_back(hit.b);
@@ -1031,7 +1080,7 @@ void order_sector_fan(
         const double previous = sector_angle(directions[clusters[(i + clusters.size() - 1) % clusters.size()].front()]);
         const double next = sector_angle(directions[clusters[(i + 1) % clusters.size()].front()]);
         const double width = std::min({pi * 0.25, gap(previous, angle) * 0.25, gap(angle, next) * 0.25});
-        const double height = std::tan(width);
+        const double height = width == pi * 0.25 ? 1.0 : std::tan(width);
         require(std::isfinite(height) && height > 0, "Tangent fan has no representable candidate cone");
         const Vector offset(-height * tangent[1], height * tangent[0], 0);
         cones.push_back({tangent, tangent - offset, tangent + offset});
@@ -1229,17 +1278,30 @@ Cycle trace_cycle(
     return cycle;
 }
 
-/// Point eight tolerances left of the middle of a run.
+/// Point eight tolerances left of a regular knot-span interior of a run.
 Point left_of(const std::vector<Source>& sources, const Run& run, double tolerance) {
 
     const NurbsCurve& curve = sources[run.source].uv;
-    const double t = (run.a + run.b) * 0.5;
-    const Point p = curve.point_at(t);
-    const Vector d = curve.evaluate(t, 1)[1];
+    const double first = std::min(run.a, run.b);
+    const double last = std::max(run.a, run.b);
+    const std::vector<double> spans = curve.get_span_vector();
     const double sign = run.b > run.a ? 1.0 : -1.0;
-    const double length = std::hypot(d[0], d[1]);
-    require(length > EPSILON, "Cannot orient a degenerate trim fragment");
-    return Point(p[0] - sign * d[1] / length * tolerance * 8.0, p[1] + sign * d[0] / length * tolerance * 8.0, 0.0);
+    for (size_t i = 1; i < spans.size(); ++i) {
+        const double a = std::max(first, spans[i - 1]);
+        const double b = std::min(last, spans[i]);
+        if (a >= b)
+            continue;
+        const double t = std::midpoint(a, b);
+        require(t > a && t < b, "Trim span has no representable interior probe");
+        const Vector d = curve.evaluate(t, 1)[1];
+        const double length = std::hypot(d[0], d[1]);
+        require(std::isfinite(length), "Trim probe has a nonfinite tangent");
+        if (length <= EPSILON)
+            continue;
+        const Point p = curve.point_at(t);
+        return Point(p[0] - sign * d[1] / length * tolerance * 8.0, p[1] + sign * d[0] / length * tolerance * 8.0, 0.0);
+    }
+    throw std::invalid_argument("Cannot orient a degenerate trim fragment");
 }
 
 /// Non-degenerate graph cycles whose interior lies inside the original loops.
@@ -1247,7 +1309,8 @@ std::vector<Cycle> compute_cycles(
     const Graph& graph,
     const std::vector<Source>& sources,
     const std::vector<std::vector<Point>>& original_loops,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
 
     std::vector<Cycle> cycles;
@@ -1259,11 +1322,34 @@ std::vector<Cycle> compute_cycles(
 
         const Cycle cycle = trace_cycle(graph, sources, initial, used, tolerance);
 
-        if (std::abs(cycle.area) <= tolerance * tolerance)
-            continue;
-
-        if (inside_loops(left_of(sources, cycle.loop[0], tolerance), original_loops))
+        ArrangementCycleDiagnostic observed;
+        if (diagnostic) {
+            observed.area = cycle.area;
+            observed.runs = cycle.loop.size();
+            observed.first_source = cycle.loop[0].source;
+            observed.first_parameter = cycle.loop[0].a;
+            observed.last_parameter = cycle.loop[0].b;
+        }
+        const bool small = std::abs(cycle.area) <= tolerance * tolerance;
+        bool accepted = false;
+        if (!small) {
+            const Point probe = left_of(sources, cycle.loop[0], tolerance);
+            accepted = inside_loops(probe, original_loops);
+            if (diagnostic) {
+                observed.probe_evaluated = true;
+                observed.probe = probe;
+            }
+        }
+        if (accepted)
             cycles.push_back(cycle);
+        if (diagnostic) {
+            observed.disposition = accepted ? "retained" : small ? "area_tolerance" : "outside_original_loops";
+            diagnostic->cycles.push_back(observed);
+            if (!accepted && diagnostic->first_discarded_reason.empty()) {
+                diagnostic->first_discarded_reason = observed.disposition;
+                diagnostic->first_discarded_uv = cycle.points;
+            }
+        }
     }
 
     return cycles;
@@ -1326,13 +1412,24 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>&
 std::vector<std::vector<std::vector<Run>>> arrange(
     const std::vector<Source>& sources,
     const std::vector<std::vector<Point>>& original_loops,
-    double tolerance
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
 ) {
 
-    const std::vector<Span> spans = compute_spans(sources, tolerance);
+    const std::vector<Span> spans = compute_spans(sources, tolerance, diagnostic);
     const Graph graph = compute_graph(spans, sources, original_loops, tolerance);
-    const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance);
-    return nest_cycles(cycles, tolerance);
+    const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance, diagnostic);
+    const std::vector<std::vector<std::vector<Run>>> regions = nest_cycles(cycles, tolerance);
+    if (diagnostic) {
+        diagnostic->sources = sources.size();
+        diagnostic->spans = spans.size();
+        diagnostic->nodes = graph.outgoing.size();
+        diagnostic->half_edges = graph.edges.size();
+        diagnostic->retained_cycles = cycles.size();
+        diagnostic->regions = regions.size();
+        diagnostic->uv_tolerance = tolerance;
+    }
+    return regions;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1516,11 +1613,13 @@ BRepRef add_run_edge(
 
     for (const Piece& piece : pieces) {
         const bool same = source.edge >= 0 ? sources[piece.source].edge == source.edge : piece.source == run.source;
+        if (!same)
+            continue;
 
         const bool matching = (lo == piece.lo && hi == piece.hi) || (!degenerated &&
             vertex_interval(source.world, lo, piece.lo, source.world.point_at(lo), tolerance * 4.0) &&
             vertex_interval(source.world, hi, piece.hi, source.world.point_at(hi), tolerance * 4.0));
-        if (same && matching)
+        if (matching)
             return {piece.edge, orientation};
     }
 
@@ -1844,6 +1943,15 @@ FaceSplit split_brep_face_by_pcurves(
     const std::vector<FaceCut>& cutters,
     double tolerance
 ) {
+    return split_brep_face_by_pcurves(brep, face_index, cutters, tolerance, nullptr);
+}
+
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic
+) {
+    if (diagnostic)
+        *diagnostic = ArrangementDiagnostic{};
 
     check_tolerance(tolerance);
     require(brep.is_valid(), "Split requires a valid BRep");
@@ -1864,7 +1972,7 @@ FaceSplit split_brep_face_by_pcurves(
         sources.push_back({-1, cutter.world, cutter.pcurve, cutter.section});
     }
 
-    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, uv_tolerance);
+    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, uv_tolerance, diagnostic);
 
     if (regions.size() < 2)
         return {brep, {face_index}, {}};

@@ -513,6 +513,19 @@ void share_smooth(std::vector<OffsetFace>& faces, const Use& first, const Use& s
 
 }
 
+OffsetFace inward_tube(const BRep& source, const std::vector<OffsetFace>& faces,
+    int edge, int first, int second, double tolerance) {
+    Parts parts;
+    std::vector<End> ends;
+    tube(parts, ends, source, faces, edge,
+        {first, faces[first].edges.at(edge), Forward},
+        {second, faces[second].edges.at(edge), Forward}, tolerance);
+    BRep result = std::move(parts.shapes[0]);
+    result.m_shells[0].faces[0].orientation = brep_reverse(result.m_shells[0].faces[0].orientation);
+    require(result.is_valid(), "Inward tube has invalid boundary geometry");
+    return {std::move(result), -1, {}};
+}
+
 BRep join(
     const BRep& source,
     std::vector<OffsetFace> faces,

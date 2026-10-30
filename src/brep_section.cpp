@@ -61,6 +61,25 @@ std::vector<int> active_faces(const BRep& brep) {
     return faces;
 }
 
+// A shared exact UV translation changes neither metric nor raw curve parameters.
+bool translate_parameters_exact(NurbsCurve& curve, const Point& origin) {
+    if (curve.dimension() < 1 || curve.dimension() > 3)
+        return false;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        double* cv = curve.cv(i);
+        const double weight = curve.is_rational() ? cv[curve.dimension()] : 1.0;
+        for (int d = 0; d < curve.dimension(); ++d) {
+            const double product = origin[d] * weight;
+            double local;
+            if (!nurbs_coincidence::exact_products_equal(origin[d], weight, product, 1.0)
+                || !nurbs_coincidence::exact_difference(cv[d], product, local))
+                return false;
+            cv[d] = local;
+        }
+    }
+    return true;
+}
+
 void trim_parameters(
     const BRep& brep,
     int face,
@@ -73,7 +92,15 @@ void trim_parameters(
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native section encountered a missing face pcurve");
-            const curve_intersection::Result events = curve_intersection::intersect(pcurve, brep.m_curves_2d[index], tolerance);
+            const NurbsCurve& boundary = brep.m_curves_2d[index];
+            NurbsCurve local_section = pcurve, local_boundary = boundary;
+            const Point origin = boundary.get_cv(0);
+            const bool exact = translate_parameters_exact(local_section, origin)
+                && translate_parameters_exact(local_boundary, origin);
+            // Only a/b parameters escape this call; all original UV curves stay unchanged.
+            const curve_intersection::Result events = exact
+                ? curve_intersection::intersect(local_section, local_boundary, tolerance)
+                : curve_intersection::intersect(pcurve, boundary, tolerance);
             if (!events.complete)
                 throw std::runtime_error(events.failure);
             for (const curve_intersection::Hit& point : events.points)
@@ -199,7 +226,10 @@ FaceResult faces(const BRep& first, const BRep& second, double tolerance) {
                 const NurbsSurface& sb = second.m_surfaces[second.m_faces[b].surface_index];
                 if (!box.overlaps(Bounds(sb), tolerance))
                     continue;
+                nurbs_coincidence::ParameterMap mapping;
                 if (nurbs_coincidence::same_parameters(sa, sb, tolerance)
+                    || nurbs_coincidence::parameter_mapping(sa, sb, tolerance, mapping)
+                    || nurbs_coincidence::common_basis_agreement(sa, sb, tolerance)
                     || nurbs_coincidence::coplanar(sa, sb, tolerance)) {
                     result.overlaps.push_back({a, b});
                     continue;
@@ -217,11 +247,22 @@ FaceResult faces(const BRep& first, const BRep& second, double tolerance) {
                     trim_parameters(first, a, ua, ta, parameters);
                     trim_parameters(second, b, ub, tb, parameters);
                     sort_parameters(parameters);
+                    size_t run_begin = 0;
+                    bool retaining = false;
                     for (size_t i = 1; i < parameters.size(); ++i) {
                         const double middle = std::midpoint(parameters[i - 1], parameters[i]);
-                        if (retained(first, a, ua, middle, ta) && retained(second, b, ub, middle, tb))
-                            result.curves.push_back({a, b, trimmed(world, parameters[i - 1], parameters[i]),
-                                trimmed(ua, parameters[i - 1], parameters[i]), trimmed(ub, parameters[i - 1], parameters[i])});
+                        const bool keep = retained(first, a, ua, middle, ta) && retained(second, b, ub, middle, tb);
+                        if (keep && !retaining) {
+                            run_begin = i - 1;
+                            retaining = true;
+                        }
+                        if (retaining && (!keep || i + 1 == parameters.size())) {
+                            const size_t run_end = keep ? i : i - 1;
+                            result.curves.push_back({a, b, trimmed(world, parameters[run_begin], parameters[run_end]),
+                                trimmed(ua, parameters[run_begin], parameters[run_end]),
+                                trimmed(ub, parameters[run_begin], parameters[run_end])});
+                            retaining = false;
+                        }
                     }
                 }
             }

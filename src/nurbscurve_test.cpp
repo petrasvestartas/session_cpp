@@ -38,6 +38,42 @@ namespace session_cpp {
         }
     }
 
+    MINI_TEST("NurbsCurve", "Knot Insertion Preserves Constant Components") {
+        const double alpha = 0.043163167015943436;
+        NurbsCurve line = NurbsCurve::create(false, 1, {{7, -4, 0}, {7, 5, 0}});
+        MINI_CHECK(line.set_domain(0, 1));
+        const NurbsCurve original = line;
+        MINI_CHECK(line.trim(alpha, 0.94));
+        for (int i = 0; i < line.cv_count(); ++i)
+            MINI_CHECK(line.cv(i)[0] == 7 && line.cv(i)[2] == 0);
+        for (int i = 0; i <= 16; ++i) {
+            const double t = alpha + (0.94 - alpha) * i / 16.0;
+            MINI_CHECK(line.point_at(t).distance(original.point_at(t)) < 1e-12);
+        }
+        NurbsCurve rational(3, true, 2, 2);
+        rational.m_nurbsknot = {0, 1};
+        MINI_CHECK(rational.set_cv_4d(0, 7, -4, 0, 1));
+        MINI_CHECK(rational.set_cv_4d(1, 7, 10, 0, 2));
+        const NurbsCurve rational_original = rational;
+        MINI_CHECK(rational.insert_nurbsknot(alpha, 1));
+        for (int i = 0; i < rational.cv_count(); ++i)
+            MINI_CHECK(rational.cv(i)[0] == 7 && rational.cv(i)[2] == 0);
+        MINI_CHECK(rational.point_at_start()[0] == 7 && rational.point_at_end()[0] == 3.5);
+        for (int i = 0; i <= 16; ++i)
+            MINI_CHECK(rational.point_at(i / 16.0).distance(rational_original.point_at(i / 16.0)) < 1e-12);
+        NurbsCurve periodic = NurbsCurve::create(true, 2, {{7, 0, 0}, {7, 2, 0}, {7, 2, 2}, {7, 0, 2}});
+        const NurbsCurve periodic_original = periodic;
+        const double first = periodic.domain_start();
+        const double last = periodic.domain_end();
+        MINI_CHECK(periodic.insert_nurbsknot(first + alpha * (last - first), 1));
+        for (int i = 0; i < periodic.cv_count(); ++i)
+            MINI_CHECK(periodic.cv(i)[0] == 7);
+        for (int i = 0; i <= 16; ++i) {
+            const double t = first + (last - first) * i / 16.0;
+            MINI_CHECK(periodic.point_at(t).distance(periodic_original.point_at(t)) < 1e-12);
+        }
+    }
+
     MINI_TEST("NurbsCurve", "Chair Pcurve Arc Length Reparameterization") {
         const auto path = std::filesystem::path(__FILE__).parent_path().parent_path()
             / "tests/fixtures/chair_arc_length_pcurve.json";
@@ -589,19 +625,19 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_point_close(adaptive_pts[26], Point(4.0, 0.0, 0.0)));
         MINI_CHECK(div_pts.size() == 10);
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[0], Point(0.000000000000000, 0.000000000000000, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[1], Point(0.328571016773017, 0.598213507757063, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[2], Point(0.740744944144815, 1.140321237310326, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[3], Point(1.338524001477341, 1.232716038191446, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[4], Point(1.712929668000343, 0.664818751028787, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[5], Point(2.287070333148604, 0.664818752348101, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[6], Point(2.661475999779531, 1.232716039392177, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[7], Point(3.259255057037078, 1.140321236176910, 0.000000000000000)));
-        MINI_CHECK(TOLERANCE.is_point_close(div_pts[8], Point(3.671428983538974, 0.598213507250245, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[1], Point(0.328571042584482, 0.598213549686919, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[2], Point(0.740745014933581, 1.140321305195565, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[3], Point(1.338524108277686, 1.232715936161493, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[4], Point(1.712929651058201, 0.664818770483133, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[5], Point(2.287070348941800, 0.664818770483133, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[6], Point(2.661475891722314, 1.232715936161493, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[7], Point(3.259254985066419, 1.140321305195565, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(div_pts[8], Point(3.671428957415518, 0.598213549686919, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_point_close(div_pts[9], Point(4.000000000000000, 0.000000000000000, 0.000000000000000)));
         MINI_CHECK(len_pts.size() == 13);
         MINI_CHECK(TOLERANCE.is_point_close(len_pts[0], Point(0.0, 0.0, 0.0)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691288503169, 0.510169864670676, 0.0)));
-        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494396222682, 0.128829843907475, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[6], Point(1.928691289557961, 0.510169864369813, 0.000000000000000)));
+        MINI_CHECK(TOLERANCE.is_point_close(len_pts[12], Point(3.934494398161146, 0.128829840160734, 0.000000000000000)));
     }
 
     MINI_TEST("NurbsCurve", "Evaluation") {
@@ -689,10 +725,10 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_vector_close(frames[0].x_axis(), Vector(0.532767753269467, 0.809398954921174, -0.247046256496055)));
         MINI_CHECK(TOLERANCE.is_vector_close(frames[0].y_axis(), Vector(-0.261213903019039, -0.120386647366337, -0.957744408496052)));
         MINI_CHECK(TOLERANCE.is_vector_close(frames[0].z_axis(), Vector(-0.804938393882267, 0.574787253606414, 0.147288136473484)));
-        MINI_CHECK(TOLERANCE.is_point_close(frames[2].origin(), Point(3.676077075808618, 0.909845354074582, 0.350126131660904)));
-        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].x_axis(), Vector(-0.188216728828592, 0.616420980974357, -0.764591156896073)));
-        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].y_axis(), Vector(0.183061410483993, -0.742842969436200, -0.643950963001702)));
-        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].z_axis(), Vector(-0.964916049706230, -0.261169479407185, 0.026972579511507)));
+        MINI_CHECK(TOLERANCE.is_point_close(frames[2].origin(), Point(3.676075526826347, 0.909844934818883, 0.350126174959864)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].x_axis(), Vector(-0.188216290968568, 0.616421099680873, -0.764591168980037)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].y_axis(), Vector(0.183061244251456, -0.742843014267013, -0.643950958542502)));
+        MINI_CHECK(TOLERANCE.is_vector_close(frames[2].z_axis(), Vector(-0.964916166652391, -0.261169071719684, 0.026972343426817)));
         MINI_CHECK(TOLERANCE.is_point_close(frames[4].origin(), Point(2.150320000000000, 1.868606000000000, 0.000000000000000)));
         MINI_CHECK(TOLERANCE.is_vector_close(frames[4].x_axis(), Vector(0.183261707646767, 0.080808692310795, 0.979737261594868)));
         MINI_CHECK(TOLERANCE.is_vector_close(frames[4].y_axis(), Vector(0.896455027441244, 0.395289116385372, -0.200287039627106)));
@@ -1215,5 +1251,155 @@ namespace session_cpp {
         MINI_CHECK(curve.point_at_end().distance({0.9, 0.8, 0}) < 1e-15);
         MINI_CHECK(curve.point_at_middle().distance({0.5, 0.5, 0}) < 1e-15);
     }
+
+    MINI_TEST("NurbsCurve", "Exact Constant Coordinate Evaluation") {
+        NurbsCurve quadratic = NurbsCurve::create(false, 2,
+            {{1, 1, 0}, {1, 0.5, 0}, {1, 0, 0}});
+        MINI_CHECK(quadratic.set_domain(0, 2));
+        const double parameter = 0.9049874901623626;
+        const std::vector<Vector> derivatives = quadratic.evaluate(parameter, 3);
+        MINI_CHECK(quadratic.point_at(parameter)[0] == 1.0);
+        MINI_CHECK(derivatives[0][0] == 1.0);
+        for (int i = 1; i <= 3; ++i)
+            MINI_CHECK(derivatives[i][0] == 0.0);
+        MINI_CHECK(std::abs(derivatives[0][1] - (1 - parameter / 2)) < 1e-15);
+        MINI_CHECK(std::abs(derivatives[1][1] + 0.5) < 1e-15);
+
+        NurbsCurve affine = quadratic;
+        MINI_CHECK(affine.set_domain(-3, 5));
+        for (double t : {-3.0, -0.75, 5.0}) {
+            const std::vector<Vector> values = affine.evaluate(t, 4);
+            MINI_CHECK(affine.point_at(t)[0] == 1.0);
+            MINI_CHECK(values[0][0] == 1.0);
+            for (int k = 1; k <= 4; ++k)
+                MINI_CHECK(values[k][0] == 0.0);
+        }
+        NurbsCurve local = NurbsCurve::create(false, 1,
+            {{1, 0, 0}, {1, 1, 0}, {2, 2, 0}});
+        MINI_CHECK(local.set_domain(0, 2));
+        MINI_CHECK(local.evaluate(0.5, 1)[0][0] == 1.0);
+        MINI_CHECK(local.evaluate(0.5, 1)[1][0] == 0.0);
+        MINI_CHECK(std::abs(local.evaluate(1.5, 1)[0][0] - 1.5) < 1e-15);
+        MINI_CHECK(std::abs(local.evaluate(1.5, 1)[1][0] - 1.0) < 1e-15);
+
+        const double rhino_u = 44.0474124723583;
+        NurbsCurve rhino_span = NurbsCurve::create(false, 1,
+            {{rhino_u, 0, 0}, {rhino_u, 0.36656699268305354, 0}});
+        const double rhino_parameter = 0.1222977958224985;
+        MINI_CHECK(rhino_span.evaluate(rhino_parameter, 1)[0][0] == rhino_u);
+        MINI_CHECK(rhino_span.point_at(rhino_parameter)[0] == rhino_u);
+
+        const NurbsCurve negative = NurbsCurve::create(false, 1,
+            {{-rhino_u, 0, 0}, {-rhino_u, 1, 0}});
+        MINI_CHECK(negative.evaluate(rhino_parameter, 1)[0][0] == -rhino_u);
+        MINI_CHECK(negative.evaluate(rhino_parameter, 1)[1][0] == 0.0);
+        const NurbsCurve rational = NurbsCurve::create_from_parameters(
+            {{7, 0, 0}, {3.5, 1, 0}}, {1, 2}, {0, 1}, {2, 2}, 1);
+        MINI_CHECK(std::abs(rational.point_at(0.5)[0] - 14.0 / 3) < 1e-14);
+        MINI_CHECK(std::abs(rational.evaluate(0.5, 1)[0][0] - 14.0 / 3) < 1e-14);
+
+        NurbsCurve varying = NurbsCurve::create(false, 1, {{1, 0, 0}, {2, 1, 0}});
+        MINI_CHECK(varying.set_domain(0, 1));
+        MINI_CHECK(std::abs(varying.point_at(0.25)[0] - 1.25) < 1e-15);
+        MINI_CHECK(std::abs(varying.evaluate(0.25, 1)[1][0] - 1.0) < 1e-15);
+    }
+
+    MINI_TEST("NurbsCurve", "Linear Span Preserves Convex Coordinate Bounds") {
+        const double a = 11.4332773479222, b = 11.433277347922198;
+        NurbsCurve curve = NurbsCurve::create(false, 1, {{a, 0, 0}, {b, .37224401342001423, 0}}, 2);
+        MINI_CHECK(curve.set_domain(0, 1));
+        const double witness = .06718439880608412;
+        MINI_CHECK(curve.point_at(witness)[0] == a);
+        MINI_CHECK(curve.evaluate(witness, 1)[0][0] == a);
+        for (double t : {0.0, witness, .25, .5, .75, 1.0}) {
+            const std::vector<Vector> values = curve.evaluate(t, 3);
+            MINI_CHECK(values.size() == 4);
+            MINI_CHECK(curve.point_at(t)[0] >= b && curve.point_at(t)[0] <= a);
+            MINI_CHECK(values[0][0] >= b && values[0][0] <= a);
+            MINI_CHECK(values[1][0] == b - a);
+            MINI_CHECK(values[1][1] == .37224401342001423);
+            MINI_CHECK(values[2].magnitude() == 0 && values[3].magnitude() == 0);
+        }
+        MINI_CHECK(curve.reverse());
+        MINI_CHECK(curve.set_domain(-3, 5));
+        for (double t : {-3.0, -.75, 1.0, 5.0}) {
+            const std::vector<Vector> values = curve.evaluate(t, 1);
+            MINI_CHECK(values[0][0] >= b && values[0][0] <= a);
+            MINI_CHECK(values[1][0] == (a - b) / 8);
+        }
+        const NurbsCurve wide = NurbsCurve::create_from_parameters(
+            {{-1e308, 0, 0}, {1e308, 0, 0}}, {1, 1}, {0, 1e308}, {2, 2}, 1);
+        MINI_CHECK(wide.is_valid() && !wide.is_rational());
+        MINI_CHECK(wide.point_at(5e307)[0] == 0);
+        MINI_CHECK(std::abs(wide.evaluate(5e307, 1)[1][0] - 2) < 1e-15);
+        NurbsCurve scalar = NurbsCurve::create(false, 1, {{3, 0, 0}, {5, 0, 0}}, 1);
+        MINI_CHECK(scalar.set_domain(0, 1));
+        MINI_CHECK(scalar.point_at(.5)[0] == 4 && scalar.point_at(.5)[1] == 0);
+        const std::vector<Vector> scalar_values = scalar.evaluate(.5, 1);
+        MINI_CHECK(scalar_values[1][0] == 2 && scalar_values[1][1] == 0 && scalar_values[1][2] == 0);
+    }
+
+    MINI_TEST("NurbsCurve", "One Dimensional Control Coordinates") {
+        for (bool rational : {false, true}) {
+            NurbsCurve curve(1, rational, 2, 2);
+            MINI_CHECK(curve.set_nurbsknot(0, 0) && curve.set_nurbsknot(1, 1));
+            MINI_CHECK(curve.set_cv_4d(0, rational ? 6 : 3, 17, 19, rational ? 2 : 1));
+            MINI_CHECK(curve.set_cv_4d(1, rational ? 20 : 5, 23, 29, rational ? 4 : 1));
+            MINI_CHECK(curve.is_valid() && curve.dimension() == 1);
+            for (int i = 0; i < 2; ++i) {
+                const Point point = curve.get_cv(i);
+                MINI_CHECK(point[0] == (i == 0 ? 3 : 5));
+                MINI_CHECK(point[1] == 0 && point[2] == 0);
+                double x, y, z, w;
+                MINI_CHECK(curve.get_cv_4d(i, x, y, z, w));
+                MINI_CHECK(x / w == point[0] && y == point[1] && z == point[2]);
+            }
+        }
+    }
+
+
+    namespace {
+    NurbsCurve unclamped_trim_source(bool rational) {
+        NurbsCurve curve(3, rational, 4, 6);
+        for (int i = 0; i < curve.nurbsknot_count(); ++i)
+            MINI_CHECK(curve.set_nurbsknot(i, i));
+        for (int i = 0; i < curve.cv_count(); ++i) {
+            const double weight = rational ? 1 + .25 * (i % 3) : 1;
+            MINI_CHECK(curve.set_cv_4d(i, i * weight, i * i * weight, 0, weight));
+        }
+        return curve;
+    }
+    }
+
+    MINI_TEST("NurbsCurve", "Domain Mapping Preserves Unclamped Geometry") {
+        for (bool rational : {false, true})
+            for (bool clamped : {false, true})
+                for (double scale : {std::ldexp(1.0, -44), 1.0, std::ldexp(1.0, 30)}) {
+                    NurbsCurve source = unclamped_trim_source(rational);
+                    if (clamped)
+                        MINI_CHECK(source.clamp_end(2));
+                    for (double& knot : source.m_nurbsknot)
+                        knot *= scale;
+                    MINI_CHECK(source.is_valid());
+                    const double first = source.domain_start(), last = source.domain_end();
+                    if (!rational && !clamped)
+                        MINI_CHECK(source.point_at_start().distance({1, 4.0 / 3, 0}) < 1e-12);
+                    const bool left_clamped = source.m_nurbsknot.front() == first;
+                    const bool right_clamped = source.m_nurbsknot.back() == last;
+                    NurbsCurve mapped = source;
+                    MINI_CHECK(mapped.set_domain(-3, 5));
+                    MINI_CHECK(mapped.is_valid() && mapped.domain_start() == -3 && mapped.domain_end() == 5);
+                    MINI_CHECK(mapped.m_cv == source.m_cv && mapped.cv_count() == source.cv_count());
+                    MINI_CHECK((mapped.m_nurbsknot.front() == -3) == left_clamped);
+                    MINI_CHECK((mapped.m_nurbsknot.back() == 5) == right_clamped);
+                    for (int i = 0; i <= 128; ++i) {
+                        const double fraction = i / 128.0;
+                        const double old_t = i == 128 ? last : first + fraction * (last - first);
+                        const double new_t = -3 + 8 * fraction;
+                        MINI_CHECK(mapped.point_at(new_t).distance(source.point_at(old_t)) < 1e-10);
+                    }
+                }
+    }
+
 
 } // namespace session_cpp

@@ -1,5 +1,6 @@
 #include "curve_intersection.h"
 #include "closest.h"
+#include "nurbs_interval.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -64,6 +65,35 @@ struct Bounds {
         return true;
     }
 };
+
+// A negative whole-input proof needs no parameter resolution or root refinement.
+bool certified_disjoint(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+    const auto hull = [](const NurbsCurve& curve, std::array<nurbs_interval::Interval, 3>& box) {
+        for (int i = 0; i < curve.cv_count(); ++i) {
+            const double* cv = curve.cv(i);
+            const double weight = curve.is_rational() ? cv[curve.dimension()] : 1.0;
+            if (!(weight > 0) || !std::isfinite(weight))
+                return false;
+            for (int d = 0; d < 3; ++d) {
+                const auto coordinate = nurbs_interval::Interval(d < curve.dimension() ? cv[d] : 0.0)
+                    / nurbs_interval::Interval(weight);
+                if (!nurbs_interval::finite(coordinate))
+                    return false;
+                box[d] = i == 0 ? coordinate : nurbs_interval::interval_hull(box[d], coordinate);
+            }
+        }
+        return true;
+    };
+    std::array<nurbs_interval::Interval, 3> first, second;
+    if (!hull(a, first) || !hull(b, second))
+        return false;
+    for (int d = 0; d < 3; ++d) {
+        const auto gap = first[d] - second[d];
+        if (nurbs_interval::finite(gap) && (gap.lo > tolerance || gap.hi < -tolerance))
+            return true;
+    }
+    return false;
+}
 
 struct Pair {
     NurbsCurve a;
@@ -388,8 +418,6 @@ bool add_hit(const Pair& pair, const Pair& leaf, double tolerance, Result& resul
     std::tie(ta, tb, distance) = Closest::curve_curve(leaf.a, leaf.b);
     if (!std::isfinite(ta) || !std::isfinite(tb) || !std::isfinite(distance))
         return false;
-    if (distance > tolerance * 1.2)
-        return true;
 
     std::tie(ta, tb) = refine(pair, ta, tb);
     if (!std::isfinite(ta) || !std::isfinite(tb))
@@ -475,6 +503,84 @@ bool isolated(const Pair& pair, double tolerance, size_t& budget, Result& result
     return true;
 }
 
+nurbs_interval::Interval binomial_bound(int n, int k) {
+    nurbs_interval::Interval result(1.0);
+    for (int i = 1; i <= std::min(k, n - k); ++i)
+        result = result * nurbs_interval::Interval(n + 1 - i) / nurbs_interval::Interval(i);
+    return result;
+}
+
+/// Bound the whole normalized correspondence, retaining a common range rather than one point.
+bool certified_parameter_range(const Pair& pair, double tolerance, bool reverse) {
+    using nurbs_interval::Interval;
+    const Point point = pair.a.get_cv(0);
+    const std::array<double, 3> origin = {point[0], point[1], point[2]};
+    const auto a = nurbs_interval::curve_controls(pair.a,
+        {pair.a.domain_start(), pair.a.domain_end()}, origin);
+    auto b = nurbs_interval::curve_controls(pair.b,
+        {pair.b.domain_start(), pair.b.domain_end()}, origin);
+    if (a.empty() || b.empty())
+        return false;
+    if (reverse)
+        std::reverse(b.begin(), b.end());
+    double denominator = std::numeric_limits<double>::infinity();
+    for (const auto& first : a)
+        for (const auto& second : b) {
+            if (!(first[3].lo > 0.0 && second[3].lo > 0.0))
+                return false;
+            const Interval product = first[3] * second[3];
+            if (!nurbs_interval::finite(product) || !(product.lo > 0.0))
+                return false;
+            denominator = std::min(denominator, product.lo);
+        }
+    const int n = static_cast<int>(a.size()) - 1;
+    const int m = static_cast<int>(b.size()) - 1;
+    std::array<Interval, 3> bounds;
+    for (int k = 0; k <= n + m; ++k) {
+        std::array<Interval, 3> coefficient;
+        for (int i = std::max(0, k - m); i <= std::min(n, k); ++i) {
+            const int j = k - i;
+            const Interval factor = binomial_bound(n, i) * binomial_bound(m, j) / binomial_bound(n + m, k);
+            for (int d = 0; d < 3; ++d)
+                coefficient[d] = coefficient[d] + factor * (a[i][d] * b[j][3] - b[j][d] * a[i][3]);
+        }
+        for (int d = 0; d < 3; ++d) {
+            if (!nurbs_interval::finite(coefficient[d]))
+                return false;
+            bounds[d] = k == 0 ? coefficient[d] : nurbs_interval::interval_hull(bounds[d], coefficient[d]);
+        }
+    }
+    Interval squared;
+    for (const auto coordinate : bounds) {
+        const Interval distance(nurbs_interval::magnitude(coordinate));
+        squared = squared + distance * distance;
+    }
+    const Interval limit = Interval(tolerance) * Interval(tolerance) * Interval(denominator) * Interval(denominator);
+    return nurbs_interval::finite(squared) && nurbs_interval::finite(limit) && squared.hi <= limit.lo;
+}
+
+bool certified_clipped_range(const Pair& pair, double tolerance, Overlap& shared) {
+    const auto matches = endpoint_matches(pair, tolerance);
+    for (size_t i = 0; i < matches.size(); ++i)
+        for (size_t j = matches.size(); j-- > i + 1;) {
+            const double a0 = matches[i].first, a1 = matches[j].first;
+            const double b0 = matches[i].second, b1 = matches[j].second;
+            if (!std::isfinite(a0) || !std::isfinite(a1) || !std::isfinite(b0) || !std::isfinite(b1)
+                || a0 < pair.a.domain_start() || a1 > pair.a.domain_end()
+                || std::min(b0, b1) < pair.b.domain_start() || std::max(b0, b1) > pair.b.domain_end()
+                || a1 - a0 <= epsilon * 32.0 || std::abs(b1 - b0) <= epsilon * 32.0)
+                continue;
+            const Pair clipped{interval(pair.a, a0, a1), interval(pair.b, std::min(b0, b1), std::max(b0, b1))};
+            if (certified_parameter_range(clipped, tolerance, b1 < b0)) {
+                shared = {clipped.a.domain_start(), clipped.a.domain_end(),
+                    b1 < b0 ? clipped.b.domain_end() : clipped.b.domain_start(),
+                    b1 < b0 ? clipped.b.domain_start() : clipped.b.domain_end()};
+                return true;
+            }
+        }
+    return false;
+}
+
 bool process(const Pair& pair, double tolerance, size_t& budget, Result& result) {
     const Bounds a(pair.a);
     const Bounds b(pair.b);
@@ -483,8 +589,19 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
 
     const double proof = std::max(tolerance * 1e-5, epsilon * 32.0 * std::max(a.magnitude(), b.magnitude()));
     Overlap shared{};
-    if (!overlap(pair, proof, shared))
-        return isolated(pair, tolerance, budget, result);
+    if (!overlap(pair, proof, shared)) {
+        const bool flat = flatness(pair.a) <= tolerance * 0.05 && flatness(pair.b) <= tolerance * 0.05;
+        if (flat)
+            for (bool reverse : {false, true})
+                if (certified_parameter_range(pair, tolerance, reverse)) {
+                    result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
+                        reverse ? pair.b.domain_end() : pair.b.domain_start(),
+                        reverse ? pair.b.domain_start() : pair.b.domain_end()});
+                    return true;
+                }
+        if (!flat || !certified_clipped_range(pair, tolerance, shared))
+            return isolated(pair, tolerance, budget, result);
+    }
 
     result.overlaps.push_back(shared);
     std::vector<Pair> work;
@@ -494,6 +611,32 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
             return false;
 
     return true;
+}
+
+struct SpanBounds {
+    nurbs_interval::CurveBounds box;
+    bool valid;
+};
+
+std::vector<SpanBounds> span_bounds(const NurbsCurve& curve, const std::vector<double>& knots) {
+    std::vector<SpanBounds> result;
+    for (size_t i = 1; i < knots.size(); ++i) {
+        SpanBounds span{};
+        span.valid = nurbs_interval::curve_bounds(curve, {knots[i - 1], knots[i]}, {0, 0, 0}, span.box);
+        result.push_back(span);
+    }
+    return result;
+}
+
+bool separated(const SpanBounds& a, const SpanBounds& b, double tolerance) {
+    if (!a.valid || !b.valid)
+        return false;
+    for (int d = 0; d < 3; ++d) {
+        const auto gap = a.box.point[d] - b.box.point[d];
+        if (gap.lo > tolerance || gap.hi < -tolerance)
+            return true;
+    }
+    return false;
 }
 
 bool hit_less(const Hit& a, const Hit& b) {
@@ -571,6 +714,8 @@ Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
     const Bounds bounds_b(b);
     if (bounds_a.size() == 0.0 || bounds_b.size() == 0.0 ||
         epsilon * 32.0 * std::max(bounds_a.magnitude(), bounds_b.magnitude()) > tolerance) {
+        if (bounds_a.size() > 0.0 && bounds_b.size() > 0.0 && certified_disjoint(a, b, tolerance))
+            return result;
         result.complete = false;
         result.failure = "Curve intersection has a constant input or tolerance below coordinate resolution";
         return result;
@@ -582,9 +727,12 @@ Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
 
     const std::vector<double> av = first.get_span_vector();
     const std::vector<double> bv = second.get_span_vector();
+    const auto ab = span_bounds(first, av), bb = span_bounds(second, bv);
     size_t budget = 0;
     for (size_t i = 1; i < av.size() && result.complete; ++i)
         for (size_t j = 1; j < bv.size() && result.complete; ++j) {
+            if (separated(ab[i - 1], bb[j - 1], tolerance))
+                continue;
             const Pair pair{interval(first, av[i - 1], av[i]), interval(second, bv[j - 1], bv[j])};
             result.complete = budget++ < work_limit && process(pair, tolerance, budget, result);
         }

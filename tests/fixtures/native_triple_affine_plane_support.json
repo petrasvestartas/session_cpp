@@ -1,0 +1,54 @@
+{
+  "surface": {
+    "control_points": [
+      -0.9375,
+      -0.9375,
+      -0.9375,
+      -1.0625,
+      -1.0625,
+      1.0625,
+      1.0625,
+      -1.0625,
+      -1.0625,
+      0.9375,
+      -0.9375,
+      0.9375
+    ],
+    "cv_count_u": 2,
+    "cv_count_v": 2,
+    "dimension": 3,
+    "facecolors": [],
+    "guid": "9ec356ae-fd9c-4c91-bab2-14815521754d",
+    "is_rational": false,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbssurface",
+    "nurbsknots_u": [
+      32.0,
+      40.0
+    ],
+    "nurbsknots_v": [
+      -4.0,
+      -3.75
+    ],
+    "order_u": 2,
+    "order_v": 2,
+    "pointcolors": [],
+    "type": "NurbsSurface",
+    "width": 1.0
+  },
+  "tolerance": 1e-06,
+  "expected_endpoints": [
+    [
+      -0.99609375,
+      -0.99609375,
+      0
+    ],
+    [
+      0.99609375,
+      -0.99609375,
+      0
+    ]
+  ]
+}

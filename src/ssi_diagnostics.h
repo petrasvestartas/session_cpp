@@ -5,10 +5,28 @@
 #include <string>
 #include <vector>
 
+namespace session_cpp { class NurbsSurface; }
+
 namespace session_cpp::ssi_diagnostics {
 
 using Parameters = std::array<double, 4>;
 using SeedPair = std::array<Parameters, 2>;
+
+std::string boundary_point_image_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::array<Parameters, 3>& source, const std::array<Parameters, 3>& destination,
+    const std::array<int, 2>& fixed, double tolerance);
+
+std::string loop_seam_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::vector<Parameters>& input, double tolerance);
+
+std::string seam_step_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& first, const Parameters& last, double tolerance);
+
+bool raw_graph_contains(const Parameters& lower, const Parameters& upper,
+    const Parameters& root_lower, const Parameters& root_upper);
+
+std::string seed_chart_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& lower, const Parameters& upper, const Parameters& root, double tolerance);
 
 enum class Stage {
     Total, Initialize, Discovery, Bounds, Separation, Root, Coverage, Subdivision,

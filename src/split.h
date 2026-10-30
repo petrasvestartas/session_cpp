@@ -3,8 +3,10 @@
 #include "brep.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
+#include <array>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace session_cpp {
@@ -61,12 +63,54 @@ struct FaceSplit {
     std::vector<EdgePiece> edges;
 };
 
+struct ArrangementCycleDiagnostic {
+    double area = 0;
+    size_t runs = 0;
+    size_t first_source = 0;
+    double first_parameter = 0;
+    double last_parameter = 0;
+    bool probe_evaluated = false;
+    Point probe;
+    std::string disposition;
+};
+
+struct ArrangementPairDiagnostic {
+    size_t first_source = 0, second_source = 0;
+    NurbsCurve first, second;
+    std::vector<double> first_hits, second_hits;
+    size_t overlaps = 0;
+};
+
+struct ArrangementSpanDiagnostic {
+    size_t source = 0;
+    int edge = -1, section = -1;
+    double a = 0, b = 0;
+    std::array<double, 2> lo, hi, query_lo, query_hi;
+};
+
+struct ArrangementDiagnostic {
+    size_t sources = 0, spans = 0, nodes = 0, half_edges = 0, retained_cycles = 0, regions = 0;
+    double uv_tolerance = 0;
+    std::vector<ArrangementCycleDiagnostic> cycles;
+    std::vector<ArrangementPairDiagnostic> boundary_cut_pairs;
+    std::vector<ArrangementSpanDiagnostic> span_boxes;
+    std::vector<std::pair<size_t, size_t>> candidate_pairs;
+    std::string first_discarded_reason;
+    std::vector<Point> first_discarded_uv;
+};
+
 /// Partition a face using existing pcurves, retaining source-edge and section identity.
 FaceSplit split_brep_face_by_pcurves(
     const BRep& brep,
     int face_index,
     const std::vector<FaceCut>& cutters,
     double tolerance
+);
+
+/// Observe existing arrangement decisions without additional geometry evaluations.
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic
 );
 
 // ═══════════════════════════════════════════════════════════════════════════

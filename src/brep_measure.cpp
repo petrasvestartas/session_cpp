@@ -1,12 +1,14 @@
 #include "brep_measure.h"
+#include "brep_measure_polynomial.h"
 #include "nurbsknot.h"
-#include "tolerance.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <stdexcept>
+#include <string>
 
 namespace session_cpp::brep_measure {
 namespace {
@@ -32,11 +34,25 @@ double gauss(const std::function<double(double)>& function, double first, double
     return half * sum;
 }
 
+struct Work {
+    size_t total = 0;
+    size_t inner = 0;
+    size_t outer = 0;
+    size_t polynomial_coefficients = 0;
+    size_t inner_subdivisions = 0;
+    size_t outer_subdivisions = 0;
+    int inner_depth = 0;
+    int outer_depth = 0;
+};
+
 double integrate(const std::function<double(double)>& function, double first, double last,
-                 double tolerance, size_t& work, int depth = 0) {
+                 double tolerance, Work& work, int depth = 0, bool inner = false) {
     if (first == last)
         return 0.0;
-    if (++work > 200000)
+    ++(inner ? work.inner : work.outer);
+    int& maximum_depth = inner ? work.inner_depth : work.outer_depth;
+    maximum_depth = std::max(maximum_depth, depth);
+    if (++work.total > 200000)
         throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
     const double fine = gauss(function, first, last, nodes, weights);
     const double coarse = gauss(function, first, last, coarse_nodes, coarse_weights);
@@ -44,11 +60,48 @@ double integrate(const std::function<double(double)>& function, double first, do
         throw std::runtime_error("Native BRep volume encountered a nonfinite integrand");
     if (std::abs(fine - coarse) <= tolerance)
         return fine;
+    ++(inner ? work.inner_subdivisions : work.outer_subdivisions);
     const double middle = (first + last) * 0.5;
     if (depth >= 22 || middle == first || middle == last)
         throw std::runtime_error("Native BRep volume did not converge at the requested tolerance");
-    return integrate(function, first, middle, tolerance * 0.5, work, depth + 1) +
-        integrate(function, middle, last, tolerance * 0.5, work, depth + 1);
+    return integrate(function, first, middle, tolerance * 0.5, work, depth + 1, inner) +
+        integrate(function, middle, last, tolerance * 0.5, work, depth + 1, inner);
+}
+
+
+template<size_t N>
+nurbs_interval::Interval enclosed_gauss(
+    const std::function<nurbs_interval::Interval(double)>& function, double first, double last,
+    const std::array<double, N>& points, const std::array<double, N>& coefficients) {
+    const double middle = (first + last) * 0.5, half = (last - first) * 0.5;
+    nurbs_interval::Interval sum;
+    for (size_t i = 0; i < N; ++i)
+        sum = sum + nurbs_interval::Interval(coefficients[i]) *
+            (function(middle - half * points[i]) + function(middle + half * points[i]));
+    return nurbs_interval::Interval(half) * sum;
+}
+
+double integrate_polynomial(const std::function<nurbs_interval::Interval(double)>& function,
+    double first, double last, double tolerance, Work& work, int depth = 0) {
+    if (first == last)
+        return 0.0;
+    ++work.outer;
+    work.outer_depth = std::max(work.outer_depth, depth);
+    if (++work.total > 200000)
+        throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
+    const nurbs_interval::Interval fine_box = enclosed_gauss(function, first, last, nodes, weights);
+    const nurbs_interval::Interval coarse_box = enclosed_gauss(function, first, last, coarse_nodes, coarse_weights);
+    if (!nurbs_interval::finite(fine_box) || !nurbs_interval::finite(coarse_box))
+        throw std::runtime_error("Native BRep volume encountered a nonfinite integrand");
+    const double fine = std::midpoint(fine_box.lo, fine_box.hi);
+    if (polynomial::resolved(fine_box, coarse_box, tolerance))
+        return fine;
+    ++work.outer_subdivisions;
+    const double middle = (first + last) * 0.5;
+    if (depth >= 22 || middle == first || middle == last)
+        throw std::runtime_error("Native BRep volume did not converge at the requested tolerance");
+    return integrate_polynomial(function, first, middle, tolerance * 0.5, work, depth + 1) +
+        integrate_polynomial(function, middle, last, tolerance * 0.5, work, depth + 1);
 }
 
 struct Frame {
@@ -126,12 +179,12 @@ struct SurfaceEvaluator {
     }
 };
 
-double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance, size_t& work) {
+double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance, Work& work) {
     const std::vector<double>& knots = surface.knots[0];
     double value = 0.0;
     for (size_t i = 1; i < knots.size() && knots[i - 1] < u; ++i)
         value += integrate([&](double parameter) { return surface.integrand(parameter, v); },
-            knots[i - 1], std::min(u, knots[i]), tolerance / knots.size(), work);
+            knots[i - 1], std::min(u, knots[i]), tolerance / knots.size(), work, 0, true);
     return value;
 }
 
@@ -243,7 +296,7 @@ std::vector<std::pair<double, double>> polynomial_rule(int degree) {
     return result;
 }
 
-double polynomial_volume(SurfaceEvaluator& surface, int orientation, size_t& work) {
+double polynomial_volume(SurfaceEvaluator& surface, int orientation, Work& work) {
     const std::vector<std::pair<double, double>> u_rule = polynomial_rule(surface.surface.degree(0));
     const std::vector<std::pair<double, double>> v_rule = polynomial_rule(surface.surface.degree(1));
     const std::vector<double>& u = surface.knots[0];
@@ -252,7 +305,7 @@ double polynomial_volume(SurfaceEvaluator& surface, int orientation, size_t& wor
     double compensation = 0;
     for (size_t i = 1; i < u.size(); ++i)
         for (size_t j = 1; j < v.size(); ++j) {
-            if (++work > 200000)
+            if (++work.total > 200000)
                 throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
             const double du = (u[i] - u[i - 1]) * 0.5;
             const double dv = (v[j] - v[j - 1]) * 0.5;
@@ -270,13 +323,29 @@ double polynomial_volume(SurfaceEvaluator& surface, int orientation, size_t& wor
     return orientation * value;
 }
 
-double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, size_t& work) {
+double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work) {
     const BRepFace& boundary = brep.m_faces[face];
     const NurbsSurface surface = local_surface(brep.m_surfaces[boundary.surface_index], frame);
     SurfaceEvaluator evaluator(surface);
     const int rectangle = rectangle_orientation(brep, face, surface);
     if (!surface.is_rational() && rectangle && surface.degree(0) <= 21 && surface.degree(1) <= 21)
         return polynomial_volume(evaluator, rectangle, work);
+    // Dense polynomial antiderivatives are an optional acceleration. If their
+    // allocation/work estimate cannot fit, use the existing adaptive path.
+    std::optional<polynomial::Primitive> cache;
+    if (!surface.is_rational() && surface.degree(0) >= 1 && surface.degree(1) >= 1
+        && surface.degree(0) <= 3 && surface.degree(1) <= 3) {
+        const size_t per_cell = 54 * surface.degree(0) * surface.degree(1)
+            + 3 * surface.degree(0) + 3 * surface.degree(1);
+        const size_t nu = evaluator.knots[0].size() - 1;
+        const size_t nv = evaluator.knots[1].size() - 1;
+        if (nu && nv && nu <= ((200000 - work.total) / per_cell) / nv)
+            cache.emplace(surface, 200000 - work.total, [&]() {
+                ++work.polynomial_coefficients;
+                if (++work.total > 200000)
+                    throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
+            });
+    }
     double value = 0.0;
     for (const BRepRef& wire : boundary.wires)
         for (const BRepRef& edge : brep.wire_edges(wire)) {
@@ -286,19 +355,33 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
             const NurbsCurve& curve = brep.m_curves_2d[index];
             const std::vector<double> knots = boundary_parameters(curve, evaluator.knots[1]);
             const double sign = edge.orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
-            for (size_t i = 1; i < knots.size(); ++i)
-                value += sign * integrate([&](double parameter) {
-                    const auto d = curve.evaluate(parameter, 1);
-                    if (d[1][1] == 0.0)
-                        return 0.0;
-                    return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work) * d[1][1];
-                }, knots[i - 1], knots[i], tolerance / (knots.size() * boundary.wires.size()), work);
+            for (size_t i = 1; i < knots.size(); ++i) {
+                const double allowed = tolerance / (knots.size() * boundary.wires.size());
+                if (cache && !cache->cells.empty())
+                    value += sign * integrate_polynomial([&](double parameter) {
+                        const auto d = curve.evaluate(parameter, 1);
+                        if (d[1][1] == 0.0)
+                            return nurbs_interval::Interval();
+                        const nurbs_interval::Interval primitive = cache->at(d[0][0], d[0][1]);
+                        const nurbs_interval::Interval integrand = primitive * nurbs_interval::Interval(d[1][1]);
+                        if (!nurbs_interval::finite(integrand))
+                            throw std::runtime_error("Native polynomial volume has a nonfinite boundary integrand");
+                        return integrand;
+                    }, knots[i - 1], knots[i], allowed, work);
+                else
+                    value += sign * integrate([&](double parameter) {
+                        const auto d = curve.evaluate(parameter, 1);
+                        if (d[1][1] == 0.0)
+                            return 0.0;
+                        return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work) * d[1][1];
+                    }, knots[i - 1], knots[i], allowed, work);
+            }
         }
     return value;
 }
 
 double sum_volume(const BRep& brep, const Frame& frame, double tolerance) {
-    size_t work = 0;
+    Work work;
     double volume = 0.0;
     for (const BRepSolid& solid : brep.m_solids)
         for (const BRepRef& shell : solid.shells)
@@ -307,7 +390,20 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance) {
                 if (orientation == BRepOrientation::Internal || orientation == BRepOrientation::External)
                     continue;
                 const double sign = orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
-                volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work);
+                const Work before = work;
+                try {
+                    volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work);
+                } catch (const std::runtime_error& error) {
+                    throw std::runtime_error(std::string(error.what()) + "; face=" + std::to_string(face.index)
+                        + ", total_work=" + std::to_string(work.total)
+                        + ", polynomial_coefficients=" + std::to_string(work.polynomial_coefficients)
+                        + ", face_inner=" + std::to_string(work.inner - before.inner)
+                        + ", face_outer=" + std::to_string(work.outer - before.outer)
+                        + ", inner_subdivisions=" + std::to_string(work.inner_subdivisions)
+                        + ", outer_subdivisions=" + std::to_string(work.outer_subdivisions)
+                        + ", inner_max_depth=" + std::to_string(work.inner_depth)
+                        + ", outer_max_depth=" + std::to_string(work.outer_depth));
+                }
             }
     return volume;
 }

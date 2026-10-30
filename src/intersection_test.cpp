@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "intersection.h"
+#include "curve_surface_intersection.h"
 #include "nurbssurface.h"
 #include "primitives.h"
 #include "xform.h"
@@ -2766,5 +2767,53 @@ MINI_TEST("Intersection", "Plane Plane Plane Optional") {
     MINI_CHECK(TOLERANCE.is_close((*corner)[2], 3.0));
     MINI_CHECK(!parallel.has_value());
 }
+
+MINI_TEST("Intersection", "Preserved Affine Surface Plane Single Track") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_triple_affine_plane_support.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    for (bool normalized : {false, true}) {
+        NurbsSurface support = NurbsSurface::jsonload(fixture["surface"]);
+        if (normalized) {
+            MINI_CHECK(support.set_domain(0, 0.0, 1.0));
+            MINI_CHECK(support.set_domain(1, 0.0, 1.0));
+        }
+        const double tolerance = fixture["tolerance"];
+        const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+        const auto worlds = Intersection::surface_plane(support, plane, tolerance);
+        MINI_CHECK(worlds.size() == 1);
+        if (worlds.size() == 1) {
+            MINI_CHECK(!worlds[0].is_closed());
+            for (const auto& endpoint : fixture["expected_endpoints"]) {
+                const Point expected(endpoint[0], endpoint[1], endpoint[2]);
+                MINI_CHECK(std::min(expected.distance(worlds[0].point_at_start()),
+                    expected.distance(worlds[0].point_at_end())) <= tolerance);
+            }
+        }
+        const auto sections = Intersection::surface_plane_uv(support, plane, tolerance);
+        MINI_CHECK(sections.size() == 1);
+        if (sections.size() != 1)
+            continue;
+        const NurbsCurve& world = sections[0].first;
+        const NurbsCurve& pcurve = sections[0].second;
+        MINI_CHECK(world.domain() == pcurve.domain());
+        MINI_CHECK(!world.is_closed());
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, support, tolerance)
+            == curve_surface_intersection::ParameterMatch::Matched);
+        for (const auto& endpoint : fixture["expected_endpoints"]) {
+            const Point expected(endpoint[0], endpoint[1], endpoint[2]);
+            MINI_CHECK(std::min(expected.distance(world.point_at_start()),
+                expected.distance(world.point_at_end())) <= tolerance);
+        }
+        for (int i = 0; i <= 16; ++i) {
+            const auto domain = world.domain();
+            const Point point = world.point_at(domain.first + (domain.second - domain.first) * i / 16.0);
+            MINI_CHECK(std::abs(point[2]) <= tolerance);
+            MINI_CHECK(std::abs(point[1] + 1.0 - 256.0 * point[0] * point[0] / 65025.0) <= tolerance);
+        }
+    }
+}
+
 
 } // namespace session_cpp

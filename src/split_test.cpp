@@ -11,6 +11,7 @@
 #include "polyline.h"
 #include "primitives.h"
 #include "tolerance.h"
+#include "xform.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -256,7 +257,69 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
     for (const auto& cut : fixture["cuts"])
         cuts.push_back({NurbsCurve::jsonload(cut["world"]), NurbsCurve::jsonload(cut["pcurve"]),
             static_cast<int>(cuts.size())});
-    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"]);
+    split::ArrangementDiagnostic arrangement;
+    const auto result = split::split_brep_face_by_pcurves(source, fixture["face"], cuts, fixture["tolerance"], &arrangement);
+    if (result.faces.size() <= 1) {
+        nlohmann::ordered_json witness = {{"source", "Preserved Rhino Chair Dense Face Cuts"},
+            {"fixture", "tests/fixtures/native_chair_face_zero_cuts.json"},
+            {"operand", fixture["operand"]}, {"face", fixture["face"]},
+            {"tolerance", fixture["tolerance"]}, {"input_cut_count", cuts.size()},
+            {"result_faces", result.faces}, {"result_face_count", result.brep.face_count()},
+            {"result_edge_count", result.brep.edge_count()},
+            {"pieces", nlohmann::ordered_json::array()},
+            {"cut_domains", nlohmann::ordered_json::array()}};
+        witness["arrangement"] = {{"sources", arrangement.sources}, {"spans", arrangement.spans},
+            {"nodes", arrangement.nodes}, {"half_edges", arrangement.half_edges},
+            {"retained_cycles", arrangement.retained_cycles}, {"regions", arrangement.regions},
+            {"uv_tolerance", arrangement.uv_tolerance}, {"cycles", nlohmann::ordered_json::array()},
+            {"first_discarded_reason", arrangement.first_discarded_reason},
+            {"first_discarded_uv", nlohmann::ordered_json::array()}};
+        witness["arrangement"]["span_boxes"] = nlohmann::ordered_json::array();
+        for (const auto& span : arrangement.span_boxes)
+            witness["arrangement"]["span_boxes"].push_back({
+                {"source", span.source}, {"edge", span.edge}, {"section", span.section},
+                {"a", span.a}, {"b", span.b}, {"lo", span.lo}, {"hi", span.hi},
+                {"query_lo", span.query_lo}, {"query_hi", span.query_hi}});
+        witness["arrangement"]["candidate_pairs"] = arrangement.candidate_pairs;
+        witness["arrangement"]["boundary_cut_pairs"] = nlohmann::ordered_json::array();
+        for (const auto& pair : arrangement.boundary_cut_pairs)
+            witness["arrangement"]["boundary_cut_pairs"].push_back({
+                {"first_source", pair.first_source}, {"second_source", pair.second_source},
+                {"first", pair.first.jsondump()}, {"second", pair.second.jsondump()},
+                {"first_hits", pair.first_hits}, {"second_hits", pair.second_hits},
+                {"overlaps", pair.overlaps}});
+        for (const split::ArrangementCycleDiagnostic& cycle : arrangement.cycles) {
+            nlohmann::ordered_json row = {{"area", cycle.area}, {"runs", cycle.runs},
+                {"first_source", cycle.first_source}, {"first_parameter", cycle.first_parameter},
+                {"last_parameter", cycle.last_parameter}, {"disposition", cycle.disposition}};
+            if (cycle.probe_evaluated)
+                row["left_probe"] = {cycle.probe[0], cycle.probe[1]};
+            witness["arrangement"]["cycles"].push_back(std::move(row));
+        }
+        for (const Point& point : arrangement.first_discarded_uv)
+            witness["arrangement"]["first_discarded_uv"].push_back({point[0], point[1]});
+        for (const split::EdgePiece& piece : result.edges)
+            witness["pieces"].push_back({{"source_edge", piece.source_edge},
+                {"section", piece.section}, {"edge", piece.edge},
+                {"first", piece.first}, {"last", piece.last}});
+        for (const split::FaceCut& cut : cuts)
+            witness["cut_domains"].push_back({{"world", {cut.world.domain_start(), cut.world.domain_end()}},
+                {"pcurve", {cut.pcurve.domain_start(), cut.pcurve.domain_end()}}});
+        try {
+            const std::filesystem::path folder = root / "build/native-geometry-tests";
+            std::filesystem::create_directories(folder);
+            std::ofstream output(folder / "native_chair_dense_face_failure.json");
+            output << witness.dump(2);
+            output.flush();
+            const bool written = output.good();
+            output.close();
+            if (!written || output.fail())
+                std::cerr << "dense_face_failure_report_write_failed" << std::endl;
+        } catch (const std::exception& error) {
+            std::cerr << "dense_face_failure_report_write_failed: " << error.what() << std::endl;
+        }
+        std::cerr << "dense_face_failure: " << witness.dump() << std::endl;
+    }
     MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
     MINI_CHECK(result.faces.size() > 1);
 }
@@ -332,6 +395,44 @@ static split::FaceCut planar_cut(const NurbsSurface& surface, const NurbsCurve& 
             coordinates[d] = point[d] * weight;
     }
     return {world, pcurve, section};
+}
+
+MINI_TEST("Split", "Many Stretches Of One Source Curve") {
+    for (bool rational : {false, true}) {
+        BRep box = BRep::create_box(10, 10, 10);
+        box.transform(Xform::translation(1048576, -524288, 262144));
+        const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+        NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
+        if (rational) {
+            MINI_CHECK(horizontal.to_rational());
+            for (int i = 0; i < horizontal.cv_count(); ++i) {
+                const Point point = horizontal.get_cv(i);
+                const double weight = 2 + i;
+                MINI_CHECK(horizontal.set_cv_4d(i, point[0] * weight, point[1] * weight, 0, weight));
+            }
+        }
+        std::vector<split::FaceCut> cuts = {planar_cut(surface, horizontal, 11)};
+        for (double x : {0.25, 0.5, 0.75})
+            cuts.push_back(planar_cut(surface, NurbsCurve::create(false, 1, {{x, 0, 0}, {x, 1, 0}}),
+                11 + static_cast<int>(cuts.size())));
+        const auto result = split::split_brep_face_by_pcurves(box, 0, cuts, 1e-7);
+        MINI_CHECK(result.faces.size() == 8);
+        MINI_CHECK(result.brep.is_valid() && result.brep.is_solid());
+        int horizontal_parts = 0;
+        for (const auto& piece : result.edges) {
+            if (piece.section != 11)
+                continue;
+            ++horizontal_parts;
+            MINI_CHECK(piece.last > piece.first);
+            int uses = 0;
+            for (int face : result.faces)
+                for (const auto& wire : result.brep.m_faces[face].wires)
+                    for (const auto& edge : result.brep.wire_edges(wire))
+                        uses += edge.index == piece.edge ? 1 : 0;
+            MINI_CHECK(uses == 2);
+        }
+        MINI_CHECK(horizontal_parts == 4);
+    }
 }
 
 MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
@@ -580,6 +681,14 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
     for (const BRepFace& face : preserved.m_faces)
         holes += static_cast<int>(face.wires.size()) - 1;
 
+    if (preserved.face_count() != 2 || holes != 1) {
+        const std::filesystem::path folder = "build/native-geometry-tests";
+        std::filesystem::create_directories(folder);
+        const nlohmann::ordered_json failure = {{"source", ring.jsondump()},
+            {"cutter", outside.jsondump()}, {"result", preserved.jsondump()},
+            {"faces", preserved.face_count()}, {"holes", holes}, {"tolerance", 1e-6}};
+        std::ofstream(folder / "split_preserved_hole_failure.json") << failure.dump(2);
+    }
     MINI_CHECK(preserved.face_count() == 2 && holes == 1);
 
     const BRep disk = BRep::from_nurbscurves({Primitives::circle(0.0, 0.0, 0.0, 5.0)});
@@ -597,6 +706,24 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
 
     MINI_CHECK(seamed.face_count() == 4 && seamed.is_solid());
     MINI_CHECK(cylinder.face_count() == 3);
+}
+
+MINI_TEST("Split", "Closed Hole Affine And Reversed Clip") {
+    for (bool reversed : {false, true}) {
+        NurbsCurve outer = NurbsCurve::create(false, 1, {{0, 0, 0}, {10, 0, 0}, {10, 10, 0}, {0, 10, 0}, {0, 0, 0}});
+        NurbsCurve inner = NurbsCurve::create(false, 1, {{3, 3, 0}, {7, 3, 0}, {7, 7, 0}, {3, 7, 0}, {3, 3, 0}});
+        MINI_CHECK(outer.set_domain(-11, 23) && inner.set_domain(3, 19));
+        if (reversed)
+            MINI_CHECK(inner.reverse());
+        const BRep ring = BRep::from_nurbscurves({outer}, {{inner}});
+        NurbsCurve cutter = NurbsCurve::create(false, 1, {{1, -1, 0}, {1, 11, 0}});
+        MINI_CHECK(cutter.set_domain(-7, 11));
+        const BRep result = split::split_brep_face_by_curves(ring, 0, {cutter}, 1e-6);
+        int holes = 0;
+        for (const BRepFace& face : result.m_faces)
+            holes += static_cast<int>(face.wires.size()) - 1;
+        MINI_CHECK(result.is_valid() && result.face_count() == 2 && holes == 1);
+    }
 }
 
 MINI_TEST("Split", "Split Surface By Curves") {

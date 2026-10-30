@@ -1,6 +1,7 @@
 #include "brep.h"
 #include "brep.pb.h"
 #include "brep_measure.h"
+#include "brep_boolean.h"
 #include "closest.h"
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.h"
@@ -3670,22 +3671,22 @@ BRep BRep::offset_convex(double distance, double tolerance) const {
 
 BRep BRep::boolean_union(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Union, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Union, tolerance);
 }
 
 BRep BRep::boolean_intersection(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Intersection, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Intersection, tolerance);
 }
 
 BRep BRep::boolean_difference(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Difference, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Difference, tolerance);
 }
 
 BRep BRep::boolean_xor(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Xor, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Xor, tolerance);
 }
 
 BRep BRep::offset(double distance, double tolerance) const {

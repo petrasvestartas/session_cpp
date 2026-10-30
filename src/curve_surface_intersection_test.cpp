@@ -1,7 +1,9 @@
+#include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
 #include "brep.h"
 #include "mini_test.h"
 #include "primitives.h"
+#include "xform.h"
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -521,4 +523,124 @@ MINI_TEST("Curve Surface Native", "Degenerate And Invalid Inputs") {
     const NurbsCurve translated = curve.transformed(Xform::translation(1e9, 0, 0));
     const curve_surface_intersection::Result uncertain = curve_surface_intersection::intersect(translated, shifted, 1e-9);
     MINI_CHECK(!uncertain.complete && !uncertain.failure.empty());
+}
+
+MINI_TEST("Curve Surface Native", "Certified Focal Endpoint Negative Witness") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_thicken_trimmed_focal_parameter_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const NurbsCurve original = NurbsCurve::jsonload(fixture.at("curve"));
+    const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+    const double tolerance = fixture.at("tolerance");
+    // Independent geometry: this entire source boundary and its world curve have y=0.
+    // Every translated endpoint therefore has exact y separation 4*tolerance.
+    MINI_CHECK(!surface.is_rational());
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        MINI_CHECK(surface.cv(i, 0)[1] == 0);
+    for (int i = 0; i < original.cv_count(); ++i)
+        MINI_CHECK(original.cv(i)[1] == 0);
+    for (int variant = 0; variant < 4; ++variant) {
+        NurbsCurve pcurve = NurbsCurve::jsonload(fixture.at("pcurve"));
+        MINI_CHECK(pcurve.set_domain(32, 35)); // Corresponding endpoints; unequal raw domains.
+        NurbsCurve displaced = original.transformed(Xform::translation(0,
+            (variant & 1 ? -4 : 4)*tolerance, 0));
+        if (variant & 2) {
+            MINI_CHECK(displaced.reverse());
+            MINI_CHECK(pcurve.reverse());
+            MINI_CHECK(pcurve.to_rational());
+            for (int i = 0; i < pcurve.cv_count(); ++i) {
+                const Point point = pcurve.get_cv(i);
+                MINI_CHECK(pcurve.set_cv_4d(i, 2*point[0], 2*point[1], 2*point[2], 2));
+            }
+        }
+        MINI_CHECK(curve_surface_intersection::same_parameter(displaced, pcurve, surface, tolerance)
+            == curve_surface_intersection::ParameterMatch::Mismatched);
+    }
+}
+
+namespace {
+session_cpp::NurbsSurface exact_chart_test_plane() {
+    using namespace session_cpp;
+    const Point origin(1048576, -524288, 262144);
+    return NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {origin, origin + Vector(0,1,0), origin + Vector(1,0,0), origin + Vector(1,1,0)});
+}
+session_cpp::NurbsCurve exact_chart_test_pc() {
+    auto pc = session_cpp::NurbsCurve::create(false, 1, {{0,.5,0},{1,.5,0}});
+    MINI_CHECK(pc.set_domain(-7,13));
+    return pc;
+}
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Shifted Polynomial Certificate") {
+    using namespace session_cpp;
+    const auto surface = exact_chart_test_plane();
+    auto curve = NurbsCurve::create(false, 1, {{1048576,-524287.5,262144},{1048577,-524287.5,262144}});
+    MINI_CHECK(curve.set_domain(-7,13));
+    const auto pc = exact_chart_test_pc();
+    const auto c = curve.jsondump(), p = pc.jsondump(), s = surface.jsondump();
+    std::string diagnostic;
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7,&diagnostic)
+        == curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(diagnostic.empty());
+    MINI_CHECK(curve.jsondump()==c && pc.jsondump()==p && surface.jsondump()==s);
+    MINI_CHECK(curve.domain_start()==-7 && curve.domain_end()==13);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Rational Homogeneous Certificate") {
+    using namespace session_cpp;
+    auto surface = exact_chart_test_plane();
+    MINI_CHECK(surface.to_rational());
+    for (int i=0;i<2;++i)
+        for (int j=0;j<2;++j) {
+            const Point point = surface.get_cv(i,j);
+            const double w = i ? 2 : 1;
+            MINI_CHECK(surface.set_cv_4d(i,j,w*point[0],w*point[1],w*point[2],w));
+        }
+    NurbsCurve curve(3,true,2,2);
+    curve.m_nurbsknot={-7,13};
+    MINI_CHECK(curve.set_cv_4d(0,1048576,-524287.5,262144,1));
+    MINI_CHECK(curve.set_cv_4d(1,2*1048577.,2*-524287.5,2*262144.,2));
+    const auto pc = exact_chart_test_pc();
+    const auto c=curve.jsondump(), s=surface.jsondump(), p=pc.jsondump();
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7)
+        == curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(curve.jsondump()==c && surface.jsondump()==s && pc.jsondump()==p);
+    MINI_CHECK(surface.weight(0,0)==1 && surface.weight(1,1)==2);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Interior Negative Certificate") {
+    using namespace session_cpp;
+    const auto surface = exact_chart_test_plane();
+    auto curve = NurbsCurve::create(false, 2,
+        {{1048576,-524287.5,262144},{1048576.5,-524287.5,262144.0009765625},
+         {1048577,-524287.5,262144}});
+    MINI_CHECK(curve.set_domain(-7,13));
+    const auto pc=exact_chart_test_pc();
+    MINI_CHECK(curve.point_at_start().distance(surface.point_at(0,.5))==0);
+    MINI_CHECK(curve.point_at_end().distance(surface.point_at(1,.5))==0);
+    MINI_CHECK(curve.point_at(3)[2]-262144 > 1000e-7);
+    const auto original=curve.jsondump();
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7)
+        == curve_surface_intersection::ParameterMatch::Mismatched);
+    MINI_CHECK(curve.jsondump()==original);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Inexact Rational Original Fallback") {
+    using namespace session_cpp;
+    const double origin=1000000.1, w=1.1, product=origin*w;
+    MINI_CHECK(!nurbs_coincidence::exact_products_equal(origin,w,product,1));
+    NurbsCurve curve(3,true,2,2);
+    curve.m_nurbsknot={-7,13};
+    MINI_CHECK(curve.set_cv_4d(0,origin,0,0,1));
+    MINI_CHECK(curve.set_cv_4d(1,(origin+1)*w,0,0,w));
+    const auto surface=exact_chart_test_plane();
+    const auto pc=exact_chart_test_pc();
+    const auto c=curve.jsondump(),s=surface.jsondump(),p=pc.jsondump();
+    std::string diagnostic="untouched sentinel";
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7,&diagnostic)
+        == curve_surface_intersection::ParameterMatch::Unresolved);
+    MINI_CHECK(diagnostic=="Input or coordinate-resolution validation failed");
+    MINI_CHECK(curve.jsondump()==c && surface.jsondump()==s && pc.jsondump()==p);
 }

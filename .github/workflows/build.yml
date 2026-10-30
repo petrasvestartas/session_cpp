@@ -31,7 +31,7 @@ jobs:
       run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      run: cmake --build build --config Release --parallel 4
+      run: cmake --build build --config Release --target point_minitest --parallel 4
 
     - name: Run Tests
       shell: bash
@@ -44,3 +44,14 @@ jobs:
           echo "Tests executable not found!"
           exit 1
         fi
+
+    - name: Preserve compact native diagnostics
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: native-diagnostics-${{ matrix.os }}-${{ github.run_attempt }}
+        path: |
+          build/native-geometry-tests/viewer/native_platonic.assertions.json
+          build/native-geometry-tests/native_chair_dense_face_failure.json
+        if-no-files-found: warn
+        retention-days: 7

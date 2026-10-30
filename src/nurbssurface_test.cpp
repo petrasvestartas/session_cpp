@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "nurbssurface.h"
+#include "exact_orientation.h"
 #include "nurbssurface.pb.h"
 #include "nurbssurface_trimmed.h"
 #include "nurbscurve.h"
@@ -15,6 +16,8 @@
 #include "brep.h"
 #include "tolerance.h"
 
+#include <array>
+#include <limits>
 #include <cmath>
 #include <fstream>
 #include <filesystem>
@@ -1445,4 +1448,70 @@ MINI_TEST("NurbsSurface", "Is Locked Round Trip") {
     MINI_CHECK(proto.is_locked);
 }
 
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("NurbsSurface", "Preserved Split Surface Crease Incidence") {
+    const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    for (const std::string platform : {"macos", "linux"}) {
+        std::ifstream input(root / "tests" / "fixtures" /
+            ("native_split_surface_" + platform + "_crease_failure.json"));
+        MINI_CHECK(input.good());
+        nlohmann::json fixture;
+        input >> fixture;
+        const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+        const NurbsCurve outer = NurbsCurve::jsonload(fixture.at("outer"));
+        const NurbsSurfaceTrimmed trimmed = NurbsSurfaceTrimmed::create(surface, outer);
+        MINI_CHECK(trimmed.is_trimmed());
+        const Mesh mesh = trimmed.mesh_q(20, .005);
+        MINI_CHECK(mesh.number_of_faces() > 0);
+        MINI_CHECK(trimmed.m_outer_loop.m_cv == outer.m_cv);
+        MINI_CHECK(trimmed.m_outer_loop.m_nurbsknot == outer.m_nurbsknot);
+        TrimLoops loops;
+        for (const nlohmann::json& loop : fixture.at("loops")) {
+            std::vector<Point> points;
+            for (const nlohmann::json& point : loop)
+                points.push_back({point[0].get<double>(), point[1].get<double>(), 0});
+            loops.uv.push_back(std::move(points));
+        }
+        const Mesh preserved = trimmed.mesh_loops(loops, 20, .005);
+        MINI_CHECK(preserved.number_of_faces() > 0);
+        for (size_t li = 0; li < loops.uv.size(); ++li)
+            for (size_t i = 0; i < loops.uv[li].size(); ++i) {
+                MINI_CHECK(loops.uv[li][i][0] == fixture["loops"][li][i][0].get<double>());
+                MINI_CHECK(loops.uv[li][i][1] == fixture["loops"][li][i][1].get<double>());
+            }
+        MINI_CHECK(trimmed.m_outer_loop.m_cv == outer.m_cv);
+        MINI_CHECK(trimmed.m_outer_loop.m_nurbsknot == outer.m_nurbsknot);
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("NurbsSurface", "Exact Crease Orientation Across Coordinate Ranges") {
+    const double below = 2.999999999999995;
+    const std::array<std::array<double, 2>, 3> points = {{{82, -79.25}, {below, .5}, {3, .5}}};
+    const double expected = (below - 3) * 79.75;
+    MINI_CHECK(expected < 0);
+    for (size_t first = 0; first < points.size(); ++first) {
+        const std::array<double, 2>& a = points[first];
+        const std::array<double, 2>& b = points[(first + 1) % points.size()];
+        const std::array<double, 2>& c = points[(first + 2) % points.size()];
+        MINI_CHECK(exact_orientation::orient2d(a[0], a[1], b[0], b[1], c[0], c[1]) == expected);
+        MINI_CHECK(exact_orientation::orient2d(b[0], b[1], a[0], a[1], c[0], c[1]) == -expected);
+        for (int exponent : {-1000, -450, 0, 450}) {
+            const std::array<double, 2> x = {std::ldexp(a[0] + 1, exponent), std::ldexp(a[1] + 2, exponent)};
+            const std::array<double, 2> y = {std::ldexp(b[0] + 1, exponent), std::ldexp(b[1] + 2, exponent)};
+            const std::array<double, 2> z = {std::ldexp(c[0] + 1, exponent), std::ldexp(c[1] + 2, exponent)};
+            MINI_CHECK(exact_orientation::orient2d(x[0], x[1], y[0], y[1], z[0], z[1]) < 0);
+        }
+    }
+    const double largest = std::numeric_limits<double>::max();
+    const double smallest = std::numeric_limits<double>::denorm_min();
+    MINI_CHECK(exact_orientation::orient2d(-largest, -largest, 0, 0, largest, largest) == 0);
+    MINI_CHECK(exact_orientation::orient2d(-largest, 0, largest, 0, 0, largest) > 0);
+    MINI_CHECK(std::isinf(exact_orientation::orient2d(-largest, 0, largest, 0, 0, largest)));
+    MINI_CHECK(exact_orientation::orient2d(0, 0, smallest, 0, 0, smallest) == smallest);
+    MINI_CHECK(exact_orientation::orient2d(0, 0, 2, 0, 0, 3) == 6);
+}
 } // namespace session_cpp

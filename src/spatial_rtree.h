@@ -290,11 +290,17 @@ private:
     /// Rect covering every branch of a node.
     Rect node_cover(const Node* node) const {
 
-        Rect rect = node->m_branch[0].m_rect;
-
-        for (int i = 1; i < node->m_count; i++)
-            rect = combine_rect(rect, node->m_branch[i].m_rect);
-
+        Rect rect;
+        for (int d = 0; d < NUMDIMS; ++d) {
+            ELEMTYPE lower = node->m_branch[0].m_rect.m_min[d];
+            ELEMTYPE upper = node->m_branch[0].m_rect.m_max[d];
+            for (int i = 1; i < node->m_count; ++i) {
+                lower = std::min(lower, node->m_branch[i].m_rect.m_min[d]);
+                upper = std::max(upper, node->m_branch[i].m_rect.m_max[d]);
+            }
+            rect.m_min[d] = lower;
+            rect.m_max[d] = upper;
+        }
         return rect;
     }
 
@@ -532,7 +538,7 @@ private:
 
             parent->m_branch[idx].m_rect = node_cover(parent->m_branch[idx].m_child);
 
-            Branch new_b;
+            Branch new_b{};
             new_b.m_rect = node_cover(other);
             new_b.m_child = other;
 
@@ -554,11 +560,11 @@ private:
         m_root = alloc_node();
         m_root->m_level = old_root->m_level + 1;
 
-        Branch b1;
+        Branch b1{};
         b1.m_rect = node_cover(old_root);
         b1.m_child = old_root;
 
-        Branch b2;
+        Branch b2{};
         b2.m_rect = node_cover(new_node);
         b2.m_child = new_node;
 

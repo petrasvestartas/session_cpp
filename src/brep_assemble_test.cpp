@@ -1,4 +1,10 @@
 #include "brep_assemble.h"
+#include "nurbs_interval.h"
+#include "brep_acceptance.h"
+#include "xform.h"
+#include "tolerance.h"
+#include <map>
+#include <set>
 #include "brep_classify.h"
 #include "file_step.h"
 #include "mini_test.h"
@@ -421,5 +427,394 @@ MINI_TEST("BRepAssemble", "Freeform Chair Reconstruction") {
         }
     }
 }
+
+namespace {
+
+bool closed_periodic_fixture_loops(const BRep& shape) {
+    for (int face = 0; face < shape.face_count(); ++face)
+        for (const BRepRef& wire : shape.m_faces[face].wires) {
+            const std::vector<BRepRef> uses = shape.wire_edges(wire);
+            if (uses.empty())
+                return false;
+            std::vector<std::pair<Point, Point>> ends;
+            for (const BRepRef& use : uses) {
+                const int pc = shape.pcurve_index(use.index, face, use.orientation);
+                if (pc < 0)
+                    return false;
+                const NurbsCurve& curve = shape.m_curves_2d[pc];
+                const bool reverse = use.orientation == BRepOrientation::Reversed;
+                ends.push_back({reverse ? curve.point_at_end() : curve.point_at_start(),
+                    reverse ? curve.point_at_start() : curve.point_at_end()});
+            }
+            for (size_t i = 0; i < ends.size(); ++i)
+                for (int d = 0; d < 2; ++d)
+                    if (ends[i].second[d] != ends[(i + 1) % ends.size()].first[d])
+                        return false;
+        }
+    return true;
+}
+
+BRep reverse_support_v(BRep shape) {
+    const std::vector<NurbsSurface> original = shape.m_surfaces;
+    for (NurbsSurface& surface : shape.m_surfaces)
+        MINI_CHECK(surface.reverse(1));
+    for (BRepEdge& edge : shape.m_edges)
+        for (BRepCurveOnSurface& relation : edge.pcurves) {
+            const std::pair<double, double> domain = original[relation.surface_index].domain(1);
+            for (int* index : {&relation.curve_2d_index, &relation.curve_2d_index_2})
+                if (*index >= 0) {
+                    NurbsCurve mapped = shape.m_curves_2d[*index];
+                    for (int i = 0; i < mapped.cv_count(); ++i) {
+                        double x, y, z, w;
+                        MINI_CHECK(mapped.get_cv_4d(i, x, y, z, w));
+                        MINI_CHECK(mapped.set_cv_4d(i, x, (domain.first + domain.second) * w - y, z, w));
+                    }
+                    *index = shape.add_curve_2d(mapped);
+                }
+            if (relation.curve_2d_index_2 >= 0)
+                std::swap(relation.curve_2d_index, relation.curve_2d_index_2);
+        }
+    for (BRepFace& face : shape.m_faces)
+        for (BRepRef& wire : face.wires)
+            wire.orientation = brep_reverse(wire.orientation);
+    for (BRepShell& shell : shape.m_shells)
+        for (BRepRef& face : shell.faces)
+            face.orientation = brep_reverse(face.orientation);
+    return shape;
+}
+
+}
+
+MINI_TEST("BRepAssemble", "Tangent Cylinders Preserve Distinct Seam Sectors") {
+    for (int variant : {0, 1, 2, 3}) {
+        const BRep source = BRep::create_cylinder(1, 2);
+        Xform turn = Xform::scale_xyz(-1, -1, 1);
+        turn(0, 3) = 2;
+        Xform affine = Xform::identity();
+        if (variant & 1) {
+            affine(0, 1) = 1;
+            affine(1, 1) = 2;
+            affine(2, 2) = 2;
+        }
+        BRep a = source.transformed(affine);
+        BRep b = source.transformed(turn).transformed(affine);
+        if (variant & 2) {
+            a = reverse_support_v(a);
+            b = reverse_support_v(b);
+        }
+        MINI_CHECK(a.is_valid() && b.is_valid() && a.is_solid() && b.is_solid());
+        MINI_CHECK(closed_periodic_fixture_loops(a) && closed_periodic_fixture_loops(b));
+        std::vector<brep_assemble::FaceUse> faces;
+        for (int i = 0; i < a.face_count(); ++i)
+            faces.push_back({&a, i, false, nullptr, 0});
+        for (int i = 0; i < b.face_count(); ++i)
+            faces.push_back({&b, i, false, nullptr, 1});
+        BRep result;
+        try {
+            result = brep_assemble::assemble(faces, 1e-7);
+        } catch (const brep_assemble::TopologyError& error) {
+            try {
+                nlohmann::ordered_json evidence = {{"failure", error.what()}, {"tolerance", 1e-7},
+                    {"stage", "build_shells"}, {"variant", variant}, {"partial", error.partial.jsondump()},
+                    {"face_orientations", nlohmann::ordered_json::array()},
+                    {"canonical_images", nlohmann::ordered_json::array()},
+                    {"assembly_owners", nlohmann::ordered_json::array()},
+                    {"assembly_inputs", nlohmann::ordered_json::array()}};
+                for (const BRep* owner : {&a, &b})
+                    evidence["assembly_owners"].push_back({{"brep", owner->jsondump()},
+                        {"pieces", nlohmann::ordered_json::array()}});
+                for (const brep_assemble::FaceUse& use : faces)
+                    evidence["assembly_inputs"].push_back({{"owner", use.brep == &a ? 0 : 1}, {"face", use.face},
+                        {"reversed", use.reversed}, {"operand", use.operand}});
+                for (BRepOrientation orientation : error.face_orientations)
+                    evidence["face_orientations"].push_back(static_cast<int>(orientation));
+                for (const brep_assemble::TopologyImage& image : error.images)
+                    evidence["canonical_images"].push_back({{"input", image.input}, {"local_edge", image.local_edge},
+                        {"original_edge", image.original_edge}, {"section", image.section}, {"output_edge", image.output_edge},
+                        {"first", image.first}, {"last", image.last}, {"reversed", image.reversed}});
+                const std::filesystem::path folder = std::filesystem::path(__FILE__).parent_path().parent_path()
+                    / "build/native-geometry-tests/viewer";
+                std::filesystem::create_directories(folder);
+                std::ofstream(folder / ("native_tangent_sectors_variant_" + std::to_string(variant) + ".failure.json"))
+                    << evidence.dump(2);
+            } catch (...) {
+            }
+            throw;
+        }
+        MINI_CHECK(result.is_valid() && result.is_solid());
+        std::set<int> owned_faces;
+        for (const BRepShell& shell : result.m_shells) {
+            MINI_CHECK(brep_acceptance::shell_vertex_links(result, shell) == brep_acceptance::VertexLinks::Matched);
+            std::map<int, std::pair<int, int>> incidence;
+            for (const BRepRef& face : shell.faces) {
+                MINI_CHECK(owned_faces.insert(face.index).second);
+                for (const BRepRef& wire : result.m_faces[face.index].wires)
+                    for (const BRepRef& use : result.wire_edges(wire))
+                        if (!result.m_edges[use.index].degenerated) {
+                            ++incidence[use.index].first;
+                            incidence[use.index].second += brep_compose(face.orientation, use.orientation)
+                                == BRepOrientation::Forward ? 1 : -1;
+                        }
+            }
+            for (const auto& item : incidence)
+                MINI_CHECK(item.second.first == 2 && item.second.second == 0);
+        }
+        MINI_CHECK(owned_faces.size() == result.m_faces.size());
+        MINI_CHECK(result.solid_count() == 2 && result.shell_count() == 2);
+        const double expected = ((variant & 1) ? 16 : 4) * Tolerance::PI;
+        MINI_CHECK(std::abs(result.volume_exact(1e-8) - expected) < expected * 1e-7);
+        for (const Point& center : {Point(0, 0, 1), Point(2, 0, 1)})
+            MINI_CHECK(brep_classify::point(result, (variant & 1) ? Point(center[0] + center[1], 2 * center[1], 2 * center[2]) : center, 1e-7) == brep_classify::State::Inside);
+        for (const Point& outside : {Point(1, .25, 1), Point(1, -.25, 1), Point(4, 0, 1)})
+            MINI_CHECK(brep_classify::point(result, (variant & 1) ? Point(outside[0] + outside[1], 2 * outside[1], 2 * outside[2]) : outside, 1e-7) == brep_classify::State::Outside);
+        for (const BRepEdge& edge : result.m_edges)
+            if (!edge.degenerated)
+                for (const BRepCurveOnSurface& relation : edge.pcurves)
+                    for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
+                        if (index >= 0)
+                            MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index],
+                                result.m_curves_2d[index], result.m_surfaces[relation.surface_index], 1e-7)
+                                == curve_surface_intersection::ParameterMatch::Matched);
+    }
+}
+
+MINI_TEST("BRepAssemble", "Coincident And Nested Tangent Seam Fans Are Rejected") {
+    const BRep a = BRep::create_cylinder(1, 2);
+    for (double radius : {1.0, 2.0}) {
+        const BRep b = BRep::create_cylinder(radius, 2).transformed(Xform::translation(1 - radius, 0, 0));
+        MINI_CHECK(a.is_valid() && b.is_valid() && a.is_solid() && b.is_solid());
+        std::vector<brep_assemble::FaceUse> faces;
+        for (int i = 0; i < a.face_count(); ++i)
+            faces.push_back({&a, i, false, nullptr, 0});
+        for (int i = 0; i < b.face_count(); ++i)
+            faces.push_back({&b, i, false, nullptr, 1});
+        bool rejected = false;
+        try {
+            brep_assemble::assemble(faces, 1e-7);
+        } catch (const brep_assemble::TopologyError& error) {
+            rejected = std::string(error.what()).find("ambiguous tangent faces") != std::string::npos;
+        }
+        MINI_CHECK(rejected);
+    }
+}
+
+
+
+MINI_TEST("BRepAssemble", "Resolved Small Solid Orientation Probe") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double extent = 32 * tolerance;
+    const BRep source = BRep::create_box(extent, extent, extent);
+    for (bool reverse : {false, true}) {
+        std::vector<brep_assemble::FaceUse> faces;
+        append_faces(faces, source, reverse);
+        const BRep result = brep_assemble::assemble(faces, tolerance);
+        MINI_CHECK(result.is_valid() && result.is_solid());
+        MINI_CHECK(result.solid_count() == 1 && result.shell_count() == 1 && result.face_count() == 6);
+        MINI_CHECK(brep_acceptance::shell_vertex_links(result, result.m_shells[0])
+            == brep_acceptance::VertexLinks::Matched);
+        MINI_CHECK(brep_classify::point(result, {0, 0, 0}, tolerance) == brep_classify::State::Inside);
+        MINI_CHECK(brep_classify::point(result, {2 * extent, 0, 0}, tolerance) == brep_classify::State::Outside);
+        const double expected = extent * extent * extent;
+        MINI_CHECK(std::abs(result.volume_exact(1e-8) - expected) < expected * 1e-7);
+    }
+}
+
+MINI_TEST("BRepAssemble", "Small Void Shell Orientation") {
+    const double tolerance = std::ldexp(1.0, -20);
+    const double extent = 32 * tolerance;
+    const BRep outer = BRep::create_box(4 * extent, 4 * extent, 4 * extent);
+    const BRep inner = BRep::create_box(extent, extent, extent);
+    for (bool reverse : {false, true}) {
+        std::vector<brep_assemble::FaceUse> faces;
+        append_faces(faces, outer, reverse);
+        append_faces(faces, inner, !reverse);
+        const BRep result = brep_assemble::assemble(faces, tolerance);
+        MINI_CHECK(result.is_valid() && result.is_solid());
+        MINI_CHECK(result.solid_count() == 1 && result.shell_count() == 2 && result.face_count() == 12);
+        MINI_CHECK(brep_classify::point(result, {0, 0, 0}, tolerance) == brep_classify::State::Outside);
+        MINI_CHECK(brep_classify::point(result, {extent, 0, 0}, tolerance) == brep_classify::State::Inside);
+        const double expected = 63 * extent * extent * extent;
+        MINI_CHECK(std::abs(result.volume_exact(1e-8) - expected) < expected * 1e-7);
+        for (const BRepShell& shell : result.m_shells)
+            MINI_CHECK(brep_acceptance::shell_vertex_links(result, shell) == brep_acceptance::VertexLinks::Matched);
+    }
+}
+
+}
+
+namespace session_cpp {
+MINI_TEST("BRepAssemble", "Reversed Periodic Trim Occurrence Prerequisite") {
+    const BRep original = BRep::create_cylinder(1, 2);
+    BRep mapped = reverse_support_v(original);
+    MINI_CHECK(closed_periodic_fixture_loops(original));
+    MINI_CHECK(closed_periodic_fixture_loops(mapped));
+    bool seam = false;
+    for (BRepEdge& edge : mapped.m_edges)
+        for (BRepCurveOnSurface& relation : edge.pcurves)
+            if (relation.curve_2d_index_2 >= 0) {
+                std::swap(relation.curve_2d_index, relation.curve_2d_index_2);
+                seam = true;
+            }
+    MINI_CHECK(seam);
+    MINI_CHECK(!closed_periodic_fixture_loops(mapped));
+}
+MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_chair_ba_vertex_cap_faces.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    const double tolerance = fixture["tolerance"];
+    for (int variant = 0; variant < 9; ++variant) {
+        std::vector<BRep> shapes;
+        std::vector<std::vector<split::EdgePiece>> lineage;
+        for (const auto& owner : fixture["assembly_shapes"]) {
+            shapes.push_back(BRep::jsonload(owner["brep"]));
+            lineage.push_back({});
+            for (const auto& piece : owner["pieces"])
+                lineage.back().push_back({piece["source_edge"], piece["section"], piece["edge"], piece["first"], piece["last"]});
+        }
+        const bool outside_cap = variant == 8;
+        if (outside_cap)
+            for (auto& piece : lineage[0])
+                if (piece.section == 15) {
+                    BRepEdge& edge = shapes[0].m_edges[piece.edge];
+                    NurbsCurve& world = shapes[0].m_curves_3d[edge.curve_3d_index];
+                    const double first = 2e-7, last = world.domain_end();
+                    MINI_CHECK(world.trim(first, last));
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(shapes[0].m_curves_2d[pc].trim(first, last));
+                    piece.first = first;
+                }
+        if (variant & 1)
+            for (size_t owner = 0; owner < shapes.size(); ++owner) {
+                for (auto* curves : {&shapes[owner].m_curves_3d, &shapes[owner].m_curves_2d})
+                    for (NurbsCurve& curve : *curves) {
+                        const auto domain = curve.domain();
+                        MINI_CHECK(curve.set_domain(20 * domain.first - 7, 20 * domain.second - 7));
+                    }
+                for (auto& piece : lineage[owner]) {
+                    piece.first = 20 * piece.first - 7;
+                    piece.last = 20 * piece.last - 7;
+                }
+            }
+        if (variant & 2)
+            for (const auto& piece : lineage[1])
+                if (piece.section == 15) {
+                    BRepEdge& edge = shapes[1].m_edges[piece.edge];
+                    MINI_CHECK(shapes[1].m_curves_3d[edge.curve_3d_index].reverse());
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(shapes[1].m_curves_2d[pc].reverse());
+                    std::swap(edge.start_vertex, edge.end_vertex);
+                    for (auto& wire : shapes[1].m_wires)
+                        for (auto& use : wire.edges)
+                            if (use.index == piece.edge)
+                                use.orientation = brep_reverse(use.orientation);
+                }
+        std::vector<brep_assemble::FaceUse> faces;
+        for (const auto& face : fixture["assembly_faces"]) {
+            const size_t owner = face["shape"];
+            MINI_CHECK(shapes[owner].is_valid());
+            faces.push_back({&shapes[owner], face["face"], face["reversed"], &lineage[owner], face["operand"]});
+        }
+        if (variant & 4)
+            std::reverse(faces.begin(), faces.end());
+        bool open_exterior = false;
+        try {
+            brep_assemble::assemble(faces, tolerance);
+        } catch (const brep_assemble::TopologyError& error) {
+            open_exterior = true;
+            MINI_CHECK(error.partial.is_valid());
+            std::set<int> section_edges;
+            size_t section_images = 0;
+            for (const auto& image : error.images)
+                if (image.section == 15) {
+                    section_edges.insert(image.output_edge);
+                    ++section_images;
+                }
+            if (outside_cap) {
+                MINI_CHECK(section_edges.size() >= 2);
+                MINI_CHECK(section_images >= 3);
+            } else {
+                MINI_CHECK(section_images == 2 && section_edges.size() == 1);
+                if (section_edges.size() == 1) {
+                    int uses = 0, balance = 0;
+                    for (size_t f = 0; f < error.partial.m_faces.size(); ++f)
+                        for (const auto& wire : error.partial.m_faces[f].wires)
+                            for (const auto& edge : error.partial.wire_edges(wire))
+                                if (edge.index == *section_edges.begin()) {
+                                    ++uses;
+                                    balance += brep_compose(error.face_orientations[f], edge.orientation)
+                                        == BRepOrientation::Forward ? 1 : -1;
+                                }
+                    MINI_CHECK(uses == 2 && balance == 0);
+                    for (const auto& piece : lineage[1])
+                        if (piece.section == 15) {
+                            const BRepEdge& source_edge = shapes[1].m_edges[piece.edge];
+                            const NurbsCurve& full = shapes[1].m_curves_3d[source_edge.curve_3d_index];
+                            const auto domain = full.domain();
+                            const double fraction = fixture["prefix_fraction"];
+                            const double width = (domain.second - domain.first) * fraction;
+                            const double first = variant & 2 ? domain.second - width : domain.first;
+                            const double last = variant & 2 ? domain.second : domain.first + width;
+                            const BRepEdge& canonical = error.partial.m_edges[*section_edges.begin()];
+                            const BRepVertex& start = error.partial.m_vertices[canonical.start_vertex];
+                            const BRepVertex& end = error.partial.m_vertices[canonical.end_vertex];
+                            const Point endpoint = full.point_at(first);
+                            const BRepVertex& vertex = endpoint.distance(start.point) <= endpoint.distance(end.point) ? start : end;
+                            MINI_CHECK(nurbs_interval::curve_within_ball(full, {first, last},
+                                {vertex.point[0], vertex.point[1], vertex.point[2]},
+                                std::min(vertex.tolerance, tolerance * 0.25)));
+                        }
+                }
+            }
+            for (const BRepEdge& edge : error.partial.m_edges)
+                if (!edge.degenerated)
+                    for (const auto& relation : edge.pcurves)
+                        for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
+                            if (pc >= 0)
+                                MINI_CHECK(curve_surface_intersection::same_parameter(
+                                    error.partial.m_curves_3d[edge.curve_3d_index], error.partial.m_curves_2d[pc],
+                                    error.partial.m_surfaces[relation.surface_index], tolerance)
+                                    == curve_surface_intersection::ParameterMatch::Matched);
+        }
+        MINI_CHECK(open_exterior);
+    }
+}
+
+
+MINI_TEST("BRepAssemble", "Certified Vertex Ball Rejects Interior Excursion") {
+    for (const Point center : {Point(0, 0, 0), Point(8, -4, 2)})
+        for (bool rational : {false, true}) {
+            NurbsCurve outside = NurbsCurve::create(false, 2,
+                {center, center + Vector(0, 4, 0), center});
+            NurbsCurve inside = NurbsCurve::create(false, 2,
+                {center, center + Vector(0.25, 0.25, 0), center + Vector(0.5, 0, 0)});
+            for (NurbsCurve* curve : {&outside, &inside}) {
+                if (rational) {
+                    MINI_CHECK(curve->to_rational());
+                    for (int i = 0; i < curve->cv_count(); ++i) {
+                        const Point point = curve->get_cv(i);
+                        const double weight = i == 1 ? 2 : 1;
+                        MINI_CHECK(curve->set_cv_4d(i, point[0] * weight, point[1] * weight, point[2] * weight, weight));
+                    }
+                }
+                MINI_CHECK(curve->set_domain(-7, 13));
+            }
+            const std::array<double, 3> origin = {center[0], center[1], center[2]};
+            MINI_CHECK(outside.point_at_start().distance(center) < 1.0);
+            MINI_CHECK(outside.point_at_end().distance(center) < 1.0);
+            MINI_CHECK(outside.point_at(3).distance(center) > 1.0);
+            MINI_CHECK(!nurbs_interval::curve_within_ball(outside, {-7, 13}, origin, 1.0));
+            MINI_CHECK(nurbs_interval::curve_within_ball(inside, {-7, 13}, origin, 1.0));
+            if (center[0] != 0)
+                MINI_CHECK(!nurbs_interval::curve_within_ball(inside, {-7, 13}, {0, 0, 0}, 1.0));
+        }
+}
+
+
 
 }
