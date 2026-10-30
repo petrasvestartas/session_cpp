@@ -1,4 +1,5 @@
 #include "brep_section.h"
+#include "intersection.h"
 #include "brep_classify.h"
 #include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
@@ -232,4 +233,64 @@ MINI_TEST("BRep Native Section", "Exact Local Trim Chart Preserves Physical Cros
         }
     }
     MINI_CHECK(first.jsondump() == first_before && second.jsondump() == second_before);
+}
+
+MINI_TEST("BRep Native Section", "Preserved Analytic Pullback Raw Parameters And Wrap") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_analytic_sphere_pullback_raw_parameters.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const auto& records = fixture.at("records");
+    MINI_CHECK(records.size() == 2);
+    const NurbsSurface first = NurbsSurface::jsonload(records[0].at("first_support"));
+    const NurbsSurface second = NurbsSurface::jsonload(records[0].at("second_support"));
+    const auto before_a = first.jsondump(), before_b = second.jsondump();
+    // This is the original public Boolean default tolerance, not a relaxed fit target.
+    const double tolerance = 1e-7;
+    for (const auto& record : records) {
+        const auto world = NurbsCurve::jsonload(record.at("world"));
+        auto incorrect = NurbsCurve::jsonload(record.at("first_pcurve"));
+        MINI_CHECK(incorrect.set_domain(world.domain_start(), world.domain_end()));
+        // Merely fixing the endpoints retains the WRONG chord-length parameter law.
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, incorrect, first, tolerance) !=
+                   curve_surface_intersection::ParameterMatch::Matched);
+    }
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? second : first;
+        const auto& b = swap ? first : second;
+        const auto triples = Intersection::surface_surface(a, b, tolerance);
+        MINI_CHECK(triples.size() == 2);
+        bool ordinary = false, wrapped = false;
+        int positive_half = 0, negative_half = 0;
+        const double radius = std::sqrt(.75);
+        const Point upper(.5, 0, radius), lower(.5, 0, -radius);
+        for (const auto& triple : triples) {
+            const auto& world = std::get<0>(triple);
+            const auto& pa = std::get<1>(triple);
+            const auto& pb = std::get<2>(triple);
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            // Swapping operands may reverse/rotate world parameters, but must
+            // still cover BOTH physical seam-free halves of the same circle.
+            const Point start = world.point_at_start(), end = world.point_at_end();
+            MINI_CHECK(std::min(std::max(start.distance(upper), end.distance(lower)),
+                                std::max(start.distance(lower), end.distance(upper))) <= tolerance);
+            const Point middle = world.point_at(world.domain_middle());
+            MINI_CHECK(std::abs(middle[0] - .5) <= tolerance && std::abs(middle[2]) <= tolerance);
+            MINI_CHECK(std::abs(std::abs(middle[1]) - radius) <= tolerance);
+            if (middle[1] > 0)
+                ++positive_half;
+            else
+                ++negative_half;
+            ordinary = ordinary || world.domain() == std::pair<double, double>(.25, .75);
+            wrapped = wrapped || world.domain() == std::pair<double, double>(.75, 1.25);
+        }
+        MINI_CHECK(positive_half == 1 && negative_half == 1);
+        if (!swap)
+            MINI_CHECK(ordinary && wrapped);
+    }
+    MINI_CHECK(first.jsondump() == before_a && second.jsondump() == before_b);
 }

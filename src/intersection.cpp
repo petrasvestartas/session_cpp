@@ -6068,46 +6068,131 @@ static Point run_point(const PullbackRun& run, double t) {
     return run.uv.back();
 }
 
-/// Samples of the run covering the 3D curve span [lo, hi], empty when none does.
-static std::vector<Point> run_span_points(const std::vector<PullbackRun>& runs, double lo, double hi) {
-
-    const double mid = 0.5 * (lo + hi);
-
+/// Initial samples retain the original world parameter, including wrapped pieces.
+static PullbackRun run_span_samples(const std::vector<PullbackRun>& runs, double lo, double hi) {
     for (const PullbackRun& run : runs) {
-        if (mid < run.ts.front() || mid > run.ts.back())
+        if (run.ts.empty() || run.ts.size() != run.uv.size() || lo < run.ts.front() || hi > run.ts.back())
             continue;
-
-        std::vector<Point> pts{run_point(run, lo)};
-
+        PullbackRun result;
+        result.ts.push_back(lo);
+        result.uv.push_back(run_point(run, lo));
         for (size_t i = 0; i < run.ts.size(); ++i)
-            if (run.ts[i] > lo && run.ts[i] < hi)
-                pts.push_back(run.uv[i]);
-
-        pts.push_back(run_point(run, hi));
-
-        return pts;
+            if (run.ts[i] > lo && run.ts[i] < hi) {
+                result.ts.push_back(run.ts[i]);
+                result.uv.push_back(run.uv[i]);
+            }
+        result.ts.push_back(hi);
+        result.uv.push_back(run_point(run, hi));
+        return result;
     }
-
     return {};
 }
 
-/// Degree-1 pcurve of the runs over [lo, hi]; a span past the domain end wraps onto the start of the closed curve.
-static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain, double lo, double hi) {
-
-    const double period = domain.second - domain.first;
-    std::vector<Point> pts = run_span_points(runs, lo, std::min(hi, domain.second));
-
-    if (hi > domain.second) {
-        std::vector<Point> head = run_span_points(runs, domain.first, hi - period);
-
-        if (!head.empty())
-            pts.insert(pts.end(), head.begin() + 1, head.end());
+// Closest supplies proposals only. The complete same_parameter certificate is
+// the sole acceptance condition, for the entire original world interval.
+static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& world, double parameter,
+                               const Point& seed, const Point& before, const Point& after) {
+    std::array<double, 4> window;
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        const double pad = std::max(std::abs(after[d] - before[d]) * 2, (domain.second - domain.first) * .01);
+        window[2 * d] = std::max(domain.first, seed[d] - pad);
+        window[2 * d + 1] = std::min(domain.second, seed[d] + pad);
     }
+    // Closest's nonpositive window values mean "whole domain". Condition only
+    // this proposal copy so shifted/negative raw charts retain the local window.
+    NurbsSurface proposal = surface;
+    if (!proposal.set_domain(0, 1, 2) || !proposal.set_domain(1, 1, 2))
+        throw std::runtime_error("Analytic pullback could not condition a projection proposal");
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        for (int end = 0; end < 2; ++end)
+            window[2 * d + end] =
+                std::clamp(1 + (window[2 * d + end] - domain.first) / (domain.second - domain.first), 1., 2.);
+    }
+    const auto [u, v, gap] = Closest::surface_point(proposal, world.point_at(parameter), window[0], window[1],
+                                                    window[2], window[3]);
+    if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(gap))
+        throw std::runtime_error("Analytic pullback projection proposal is nonfinite");
+    Point result;
+    const std::array<double, 2> normalized = {u, v};
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        result[d] = normalized[d] == 1 ? domain.first
+                    : normalized[d] == 2
+                        ? domain.second
+                        : domain.first + (normalized[d] - 1) * (domain.second - domain.first);
+    }
+    return result;
+}
 
-    if (pts.size() < 2)
-        return NurbsCurve();
+static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCurve& world,
+                                      PullbackRun samples, double tolerance) {
+    if (samples.ts.size() > 32768)
+        throw std::runtime_error("Analytic pullback initial sample budget exceeded");
+    if (samples.ts.size() < 2 || samples.ts.size() != samples.uv.size() ||
+        samples.ts.front() != world.domain_start() || samples.ts.back() != world.domain_end())
+        throw std::runtime_error("Analytic pullback samples lost their original world parameter range");
+    for (size_t i = 0; i < samples.ts.size(); ++i) {
+        if (!std::isfinite(samples.ts[i]) || (i && samples.ts[i] <= samples.ts[i - 1]))
+            throw std::runtime_error("Analytic pullback raw parameters are not strictly ordered");
+        const auto before = samples.uv[i ? i - 1 : i],
+                   after = samples.uv[std::min(i + 1, samples.uv.size() - 1)];
+        samples.uv[i] = pullback_proposal(surface, world, samples.ts[i], samples.uv[i], before, after);
+    }
+    std::string diagnostic;
+    for (int iteration = 0; iteration < 20 && samples.ts.size() <= 32768; ++iteration) {
+        const Point origin = samples.uv.front();
+        std::vector<Point> local = samples.uv;
+        for (auto& point : local)
+            for (int d = 0; d < 3; ++d)
+                point[d] -= origin[d];
+        NurbsCurve result = NurbsCurve::create_interpolated(local, samples.ts, false);
+        if (!result.is_valid() || result.domain() != world.domain())
+            throw std::runtime_error(
+                "Analytic pullback interpolation changed the original raw parameter range");
+        for (int i = 0; i < result.cv_count(); ++i)
+            for (int d = 0; d < 3; ++d)
+                result.cv(i)[d] += origin[d];
+        if (curve_surface_intersection::same_parameter(world, result, surface, tolerance, &diagnostic) ==
+            curve_surface_intersection::ParameterMatch::Matched)
+            return result;
+        if (samples.ts.size() * 2 - 1 > 32768)
+            break;
+        PullbackRun refined;
+        refined.ts.push_back(samples.ts.front());
+        refined.uv.push_back(samples.uv.front());
+        for (size_t i = 1; i < samples.ts.size(); ++i) {
+            const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+            if (middle == samples.ts[i - 1] || middle == samples.ts[i])
+                throw std::runtime_error("Analytic pullback refinement is below raw parameter resolution");
+            const Point seed = samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * .5;
+            refined.ts.push_back(middle);
+            refined.uv.push_back(
+                pullback_proposal(surface, world, middle, seed, samples.uv[i - 1], samples.uv[i]));
+            refined.ts.push_back(samples.ts[i]);
+            refined.uv.push_back(samples.uv[i]);
+        }
+        samples = std::move(refined);
+    }
+    throw std::runtime_error("Analytic pullback did not obtain a complete paired-parameter certificate: " +
+                             diagnostic);
+}
 
-    return NurbsCurve::create(false, 1, pts);
+static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain,
+                           const NurbsSurface& surface, const NurbsCurve& world, double tolerance) {
+    const double lo = world.domain_start(), hi = world.domain_end(), period = domain.second - domain.first;
+    PullbackRun samples = run_span_samples(runs, lo, std::min(hi, domain.second));
+    if (hi > domain.second) {
+        const PullbackRun head = run_span_samples(runs, domain.first, hi - period);
+        if (samples.ts.empty() || head.ts.empty())
+            throw std::runtime_error("Analytic pullback could not preserve a wrapped raw parameter range");
+        for (size_t i = 1; i < head.ts.size(); ++i) {
+            samples.ts.push_back(head.ts[i] + period);
+            samples.uv.push_back(head.uv[i]);
+        }
+    }
+    return certified_run_curve(surface, world, std::move(samples), tolerance);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6965,16 +7050,12 @@ struct SectionSide {
 };
 
 /// Pcurve of the piece over [lo, hi] of a section curve with this domain: its pull-back runs, else analytic, then projected.
-static NurbsCurve analytic_side_pcurve(
-    const SectionSide& side,
-    const NurbsCurve& piece,
-    const std::pair<double, double>& domain,
-    double lo,
-    double hi
-) {
+static NurbsCurve analytic_side_pcurve(const SectionSide& side, const NurbsCurve& piece,
+                                       const std::pair<double, double>& domain, double lo, double hi,
+                                       double tolerance) {
 
     if (!side.runs.empty())
-        return run_span(side.runs, domain, lo, hi);
+        return run_span(side.runs, domain, side.srf, piece, tolerance);
 
     NurbsCurve pc = analytic_pcurve(side.srf, side.recog, piece);
 
@@ -7017,14 +7098,9 @@ static bool runs_close(const std::vector<PullbackRun>& runs) {
 }
 
 /// Push the piece of c3 over [lo, hi] with both pcurves; hi past the domain end wraps the closed curve onto its start.
-static void push_section_piece(
-    const SectionSide& sa,
-    const SectionSide& sb,
-    const NurbsCurve& c3,
-    double lo,
-    double hi,
-    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples
-) {
+static void push_section_piece(const SectionSide& sa, const SectionSide& sb, const NurbsCurve& c3, double lo,
+                               double hi, double tolerance,
+                               std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples) {
 
     const std::pair<double, double> domain = c3.domain();
     NurbsCurve piece = c3;
@@ -7035,8 +7111,8 @@ static void push_section_piece(
     if (!piece.trim(lo, hi))
         return;
 
-    NurbsCurve pa = analytic_side_pcurve(sa, piece, domain, lo, hi);
-    NurbsCurve pb = analytic_side_pcurve(sb, piece, domain, lo, hi);
+    NurbsCurve pa = analytic_side_pcurve(sa, piece, domain, lo, hi, tolerance);
+    NurbsCurve pb = analytic_side_pcurve(sb, piece, domain, lo, hi, tolerance);
 
     if (pa.is_valid() && pb.is_valid())
         triples.push_back(std::make_tuple(piece, pa, pb));
@@ -7067,10 +7143,11 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         const size_t last = cuts.size() - (wrap ? 2 : 1);
 
         for (size_t k = first; k < last; ++k)
-            push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], res.triples);
+            push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], tolerance, res.triples);
 
         if (wrap)
-            push_section_piece(sa, sb, cc3, cuts[last], cuts[first] + cuts.back() - cuts.front(), res.triples);
+            push_section_piece(sa, sb, cc3, cuts[last], cuts[first] + cuts.back() - cuts.front(), tolerance,
+                               res.triples);
     }
 
     res.status = AnalyticResult::HIT;
