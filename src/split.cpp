@@ -623,13 +623,16 @@ bool inside(const Point& p, const std::vector<NurbsCurve>& loop, double toleranc
 
     bool result = false;
     std::vector<Part> work;
+    std::vector<const NurbsCurve*> ends;
 
     for (const NurbsCurve& curve : loop) {
+        ends.push_back(&curve);
         const std::vector<double> spans = curve.get_span_vector();
         for (size_t i = 1; i < spans.size(); ++i)
             work.push_back({interval(curve, spans[i - 1], spans[i]), 0});
     }
 
+    const double height = brep_classify::clear_ray_height(ends, p[1], tolerance);
     size_t visited = 0;
 
     while (!work.empty()) {
@@ -638,12 +641,12 @@ bool inside(const Point& p, const std::vector<NurbsCurve>& loop, double toleranc
         work.pop_back();
 
         const Bounds box(part.curve);
-        if (box.lo[1] > p[1] || box.hi[1] <= p[1] || box.hi[0] < p[0])
+        if (box.lo[1] > height || box.hi[1] <= height || box.hi[0] < p[0])
             continue;
 
         const Point a = part.curve.point_at_start();
         const Point b = part.curve.point_at_end();
-        const bool across = (a[1] > p[1]) != (b[1] > p[1]);
+        const bool across = (a[1] > height) != (b[1] > height);
 
         if (box.lo[0] > p[0]) {
             result = result != across;
@@ -651,7 +654,7 @@ bool inside(const Point& p, const std::vector<NurbsCurve>& loop, double toleranc
         }
 
         if (flat(part.curve, tolerance * 0.25)) {
-            if (across && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0])
+            if (across && p[0] < (b[0] - a[0]) * (height - a[1]) / (b[1] - a[1]) + a[0])
                 result = !result;
             continue;
         }

@@ -1116,8 +1116,35 @@ std::tuple<double, double, double> Closest::surface_point(
     double u = 0.0;
     double v = 0.0;
     std::tie(u, v) = surface_newton(surface, test_point, u0, u1, v0, v1, seed);
+    double gap = surface.point_at(u, v).distance(test_point);
 
-    return {u, v, surface.point_at(u, v).distance(test_point)};
+    // On a closed surface a seed on the seam stands for both ends of the domain, and Newton from the wrong end stays clamped there.
+    const auto on_seam = [&](int dir, double at, double low, double high) {
+        const std::pair<double, double> domain = surface.domain(dir);
+        return low == domain.first && high == domain.second
+            && std::min(at - low, high - at) <= (high - low) * 1e-9 && surface.is_closed(dir);
+    };
+    const bool seam_u = on_seam(0, seed.first, u0, u1);
+    const bool seam_v = on_seam(1, seed.second, v0, v1);
+
+    for (int ends = 1; ends < 4; ++ends) {
+        if (((ends & 1) && !seam_u) || ((ends & 2) && !seam_v))
+            continue;
+
+        double other_u = 0.0;
+        double other_v = 0.0;
+        std::tie(other_u, other_v) = surface_newton(surface, test_point, u0, u1, v0, v1,
+            {(ends & 1) ? u0 + u1 - seed.first : seed.first, (ends & 2) ? v0 + v1 - seed.second : seed.second});
+        const double other_gap = surface.point_at(other_u, other_v).distance(test_point);
+
+        if (other_gap < gap) {
+            u = other_u;
+            v = other_v;
+            gap = other_gap;
+        }
+    }
+
+    return {u, v, gap};
 }
 
 std::vector<NurbsCurve> Closest::surface_curve(

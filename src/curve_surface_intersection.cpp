@@ -1,5 +1,6 @@
 #include "curve_surface_intersection.h"
 #include "closest.h"
+#include "curve_intersection.h"
 #include "intersection.h"
 #include "nurbs_interval.h"
 #include "nurbs_coincidence.h"
@@ -412,11 +413,47 @@ bool append_iso_overlap(
     return true;
 }
 
+// A line along a straight iso curve that runs past the surface: only the shared part is on it.
+bool partial_ruling_overlap(
+    Result& result,
+    const NurbsCurve& curve,
+    const NurbsSurface& surface,
+    const std::array<double, 2>& parameters,
+    double tolerance
+) {
+    if (curve.degree() != 1 || curve.cv_count() != 2)
+        return false;
+    for (int direction = 0; direction < 2; ++direction) {
+        if (surface.degree(direction) != 1 || surface.cv_count(direction) != 2)
+            continue;
+        const NurbsCurve iso = surface.iso_curve(direction, parameters[1 - direction]);
+        const curve_intersection::Result events = curve_intersection::intersect(curve, iso, tolerance);
+        if (!events.complete || events.overlaps.empty())
+            continue;
+        for (const curve_intersection::Overlap& shared : events.overlaps) {
+            Point first(0.0, 0.0, 0.0);
+            first[1 - direction] = parameters[1 - direction];
+            Point last = first;
+            first[direction] = shared.b0;
+            last[direction] = shared.b1;
+            NurbsCurve pcurve = NurbsCurve::create(false, 1, {first, last});
+            if (!pcurve.set_domain(shared.a0, shared.a1)) {
+                fail(result, "Isoparametric overlap domain mapping failed");
+                return true;
+            }
+            append_overlap(result, pcurve);
+        }
+        return true;
+    }
+    return false;
+}
+
 bool iso_overlap(
     Result& result,
     const NurbsCurve& curve,
     const NurbsSurface& surface,
-    double error
+    double error,
+    double tolerance
 ) {
     const Point middle = curve.point_at(std::midpoint(curve.domain_start(), curve.domain_end()));
     const Point nearest = project(surface, middle);
@@ -451,7 +488,7 @@ bool iso_overlap(
     for (int direction = 0; direction < 2; ++direction)
         if (append_iso_overlap(result, curve, surface, first, last, direction, error))
             return true;
-    return false;
+    return partial_ruling_overlap(result, curve, surface, parameters, tolerance);
 }
 
 bool unresolved_overlap(const NurbsCurve& curve, const NurbsSurface& surface, double error) {
@@ -1598,7 +1635,7 @@ Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double to
     AffinePatch patch;
     if (affine_patch(surface, error, patch))
         intersect_planar(result, curve, surface, patch, error, tolerance);
-    else if (!iso_overlap(result, curve, surface, error) && !graph_overlap(result, curve, surface, error, tolerance)) {
+    else if (!iso_overlap(result, curve, surface, error, tolerance) && !graph_overlap(result, curve, surface, error, tolerance)) {
         if (unresolved_overlap(curve, surface, error))
             fail(result, "On-surface overlap needs a certified parameter mapping");
         else

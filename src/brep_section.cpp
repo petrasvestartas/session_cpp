@@ -1,5 +1,6 @@
 #include "brep_section.h"
 #include "brep_classify.h"
+#include "closest.h"
 #include "brep_face_boundary.h"
 #include "brep_interference_internal.h"
 #include "curve_intersection.h"
@@ -494,6 +495,13 @@ void validate_boundary_policy(const BRep& owner,int face,int operand) {
         }
 }
 
+// One event seen from two curves can leave two cuts apart in raw parameter and one point in the world.
+bool point_sized(const NurbsCurve& world,double first,double last,double tolerance) {
+    const Point start=world.point_at(first);
+    return start.distance(world.point_at(std::midpoint(first,last)))<=tolerance &&
+        start.distance(world.point_at(last))<=tolerance;
+}
+
 void paired(const FaceCurve& curve,const BRep& a,const BRep& b,double tolerance) {
     for (int side=0;side<2;++side) {
         const auto& owner=side?b:a;
@@ -524,6 +532,8 @@ void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep&
             const double mid=std::midpoint(cuts[i-1],cuts[i]);
             if (!(cuts[i-1]<mid && mid<cuts[i]))
                 throw std::runtime_error("Interference trim interval has no interior representative");
+            if (point_sized(world,cuts[i-1],cuts[i],tolerance))
+                continue;
             if (!retained(first,a,ua,mid,ta) || !retained(second,b,ub,mid,tb))
                 continue;
             FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
@@ -665,11 +675,13 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
             if (!std::isfinite(t) || t<world.domain_start() || t>world.domain_end() ||
                 !std::isfinite(uv[0]) || !std::isfinite(uv[1]))
                 throw std::runtime_error("Boundary event has invalid original raw coordinates");
-            // One point of the edge met from several faces is one raw event.
-            const double resolution=trim_resolution(world);
-            t=snapped_to_knot(t,world,resolution);
+            // One point of the edge met from several faces is one raw event, and at a knot it is that knot.
+            for (double knot:world.m_nurbsknot)
+                if (point_sized(world,std::min(t,knot),std::max(t,knot),tolerance))
+                    t=knot;
             for (const auto& previous:result.boundary_events)
-                if (previous.operand==operand && previous.edge==edge_index && std::abs(previous.hit.t-t)<=resolution)
+                if (previous.operand==operand && previous.edge==edge_index &&
+                    point_sized(world,std::min(t,previous.hit.t),std::max(t,previous.hit.t),tolerance))
                     t=previous.hit.t;
             const auto state=brep_classify::face_uv(other,other_face,uv,uv_tol);
             if (state==brep_classify::State::Unknown)
@@ -694,7 +706,8 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
                 const double mid=std::midpoint(cuts[i-1],cuts[i]);
                 if (!(cuts[i-1]<mid && mid<cuts[i]))
                     throw std::runtime_error("Boundary overlap has no interior raw representative");
-                kept[i-1]=retained(other,other_face,overlap.pcurve,mid,uv_tol);
+                kept[i-1]=!point_sized(world,cuts[i-1],cuts[i],tolerance) &&
+                    retained(other,other_face,overlap.pcurve,mid,uv_tol);
                 if (!kept[i-1])
                     continue;
                 for (const auto& use:uses) {
@@ -836,6 +849,15 @@ void point_boundary_events(FaceResult& result,const BRep& a,const BRep& b,double
                             {point.event.point,other_face,t,other_uv[0],other_uv[1],true},uses,{},true});
                         found=true;
                     }
+                // A point along the edge, as the other operand's corner on the rim of a flush face.
+                if (!found) {
+                    const auto [t,gap]=Closest::curve_point(curve,point.event.point);
+                    if (gap<=tolerance*.25) {
+                        result.boundary_events.push_back({side,index,-1,
+                            {point.event.point,other_face,t,other_uv[0],other_uv[1],true},uses,{},true});
+                        found=true;
+                    }
+                }
             }
             const auto state=brep_classify::face_uv(owner,face,own_uv,
                 uv_tolerance(owner.m_surfaces[owner.m_faces[face].surface_index],tolerance));

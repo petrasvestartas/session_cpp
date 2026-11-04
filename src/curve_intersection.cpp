@@ -263,6 +263,13 @@ std::vector<std::pair<double, double>> endpoint_matches(const Pair& pair, double
 }
 
 bool overlap(const Pair& pair, double tolerance, Overlap& result) {
+    // The pieces end to end first: a closest point search can miss an exact end by more than this proof.
+    if (pair.a.point_at_start().distance(pair.b.point_at_start()) <= tolerance &&
+        pair.a.point_at_end().distance(pair.b.point_at_end()) <= tolerance && same_geometry(pair.a, pair.b, tolerance)) {
+        result = {pair.a.domain_start(), pair.a.domain_end(), pair.b.domain_start(), pair.b.domain_end()};
+        return true;
+    }
+
     const std::vector<std::pair<double, double>> matches = endpoint_matches(pair, tolerance);
     for (size_t i = 0; i < matches.size(); ++i)
         for (size_t j = matches.size(); j-- > i + 1;) {

@@ -2552,18 +2552,102 @@ std::vector<std::vector<int>> insert_loops(
     return loop_vids;
 }
 
-/// Insert the crease knot crossings inside the loops and constrain each knot line between consecutive vertices on it.
+/// Parameters inside (low, high) along a crease knot line where the line leaves its chord or the normals on either side of it turn past the angle bound, halved up to six times.
+void crease_stations(
+    const NurbsSurface& surface,
+    const std::array<std::vector<double>, 2>& crease_knots,
+    int dir,
+    double knot,
+    double low,
+    double high,
+    double deflection,
+    double cos_max_angle,
+    int depth,
+    std::vector<double>& stations
+) {
+
+    if (depth >= 6)
+        return;
+
+    const double middle = (low + high) * 0.5;
+    const auto on_line = [&](double along) {
+        std::array<double, 2> uv = {knot, knot};
+        uv[1 - dir] = along;
+        return uv;
+    };
+    const std::array<double, 2> a = on_line(low);
+    const std::array<double, 2> b = on_line(high);
+    const std::array<double, 2> m = on_line(middle);
+    const Point pa = surface.point_at(a[0], a[1]);
+    const Point pb = surface.point_at(b[0], b[1]);
+    const Point center((pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5, (pa[2] + pb[2]) * 0.5);
+    bool split = surface.point_at(m[0], m[1]).distance(center) > deflection;
+    const std::pair<double, double> domain = surface.domain(dir);
+
+    for (double side : {-1.0, 1.0}) {
+        std::array<double, 2> beside = m;
+        beside[dir] += side * (domain.second - domain.first) * 1e-6;
+        const Vector na = crease_side_normal(surface, crease_knots, beside, a);
+        const Vector nb = crease_side_normal(surface, crease_knots, beside, b);
+        split = split || na.dot(nb) < cos_max_angle;
+    }
+
+    if (!split)
+        return;
+
+    crease_stations(surface, crease_knots, dir, knot, low, middle, deflection, cos_max_angle, depth + 1, stations);
+    stations.push_back(middle);
+    crease_stations(surface, crease_knots, dir, knot, middle, high, deflection, cos_max_angle, depth + 1, stations);
+}
+
+/// Insert the crease knot crossings inside the loops, and stations along each knot line since refinement by centroids never splits a constrained edge, then constrain each knot line between consecutive vertices on it.
 void insert_crease_lines(
     Delaunay2D& dt,
+    const NurbsSurface& surface,
     const std::vector<std::vector<Point>>& loops_uv,
     const std::array<double, 4>& bounds,
-    const std::array<std::vector<double>, 2>& crease_knots
+    const std::array<std::vector<double>, 2>& crease_knots,
+    double deflection,
+    double cos_max_angle
 ) {
 
     for (double u : crease_knots[0])
         for (double v : crease_knots[1])
             if (inside_loops(u, v, loops_uv, bounds) && dt.insert(u, v) < 0)
                 throw std::runtime_error("Trim triangulation could not insert a crease vertex");
+
+    for (int dir = 0; dir < 2; ++dir) {
+        for (double knot : crease_knots[dir]) {
+            std::vector<double> along;
+
+            for (size_t vi = 0; vi < dt.vertices.size(); ++vi) {
+                const double uv[2] = {dt.vertices[vi].x, dt.vertices[vi].y};
+
+                if (uv[dir] == knot)
+                    along.push_back(uv[1 - dir]);
+            }
+
+            std::sort(along.begin(), along.end());
+
+            for (size_t k = 1; k < along.size(); ++k) {
+                double uv[2] = {knot, knot};
+                uv[1 - dir] = (along[k - 1] + along[k]) * 0.5;
+
+                if (!inside_loops(uv[0], uv[1], loops_uv, bounds))
+                    continue;
+
+                std::vector<double> stations;
+                crease_stations(surface, crease_knots, dir, knot, along[k - 1], along[k], deflection, cos_max_angle, 0, stations);
+
+                for (double station : stations) {
+                    uv[1 - dir] = station;
+
+                    if (dt.insert(uv[0], uv[1]) < 0)
+                        throw std::runtime_error("Trim triangulation could not insert a crease station");
+                }
+            }
+        }
+    }
 
     for (int dir = 0; dir < 2; ++dir) {
         for (double knot : crease_knots[dir]) {
@@ -2646,7 +2730,29 @@ std::vector<std::array<double, 2>> refinement_points(
         if (nl < 1e-30)
             continue;
 
-        const double dev = std::abs((pm - pa).dot(n) / nl);
+        double dev = std::abs((pm - pa).dot(n) / nl);
+
+        // A certified mesh answers for its whole triangle: the same distances the certification measures, and no point beside a constrained edge, which a centroid only ever brings closer.
+        if (mesh_parametric_metadata::capture_depth) {
+            const std::array<const Vertex2D*, 3> corners = {&A, &B, &C};
+            const std::array<Point, 3> points = {pa, pb, pc};
+            bool thin = false;
+
+            for (int k = 0; k < 3; ++k) {
+                const int first = (k + 1) % 3;
+                const int second = (k + 2) % 3;
+                const Point chord((points[first][0] + points[second][0]) * 0.5, (points[first][1] + points[second][1]) * 0.5,
+                    (points[first][2] + points[second][2]) * 0.5);
+                const double mu = (corners[first]->x + corners[second]->x) * 0.5;
+                const double mv = (corners[first]->y + corners[second]->y) * 0.5;
+                dev = std::max(dev, surface.point_at(mu, mv).distance(chord));
+                const double length = points[first].distance(points[second]);
+                thin = thin || (tri.constrained[k] && nl / length < 0.1 * length);
+            }
+
+            if (thin)
+                continue;
+        }
 
         if (dev > deflection || min_normal_dot(surface, crease_knots, {cu, cv}, A, B, C) < cos_max_angle)
             to_insert.push_back({cu, cv});
@@ -3603,7 +3709,7 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_d
     Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3], crease_knots);
     std::map<int, std::tuple<size_t, size_t, double>> boundary_intervals;
     const std::vector<std::vector<int>> loop_vids = insert_loops(dt, loops.uv, crease_knots, boundary_intervals);
-    insert_crease_lines(dt, loops.uv, bounds, crease_knots);
+    insert_crease_lines(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
 
     for (const Point& p : loops.interior_uv)
         if (inside_loops(p[0], p[1], loops.uv, bounds))

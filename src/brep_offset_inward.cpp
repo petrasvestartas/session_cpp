@@ -18,6 +18,7 @@ namespace {
 constexpr BRepOrientation Forward = BRepOrientation::Forward;
 constexpr BRepOrientation Reversed = BRepOrientation::Reversed;
 constexpr double Epsilon = std::numeric_limits<double>::epsilon();
+constexpr double SectionGap = 1e-6; // Of a section's [0,1] range: a cut this near an end leaves no material piece.
 
 void require(bool condition, const std::string& message) {
     if (!condition)
@@ -776,11 +777,11 @@ bool complete_sections(
         std::sort(pieces.begin(), pieces.end());
         double end = 0.0;
         for (const auto& piece : pieces) {
-            if (std::abs(piece.first - end) > 128.0 * Epsilon)
+            if (std::abs(piece.first - end) > SectionGap)
                 return false;
             end = piece.second;
         }
-        if (std::abs(end - 1.0) > 128.0 * Epsilon)
+        if (std::abs(end - 1.0) > SectionGap)
             return false;
     }
     return true;

@@ -391,3 +391,12 @@ MINI_TEST("BRep Native Classification", "Prepared Annulus Keeps Holes Raw Domain
     const auto boundary = brep_face_boundary::extract(narrow, 0);
     MINI_CHECK(brep_classify::face_uv(boundary, Point(1-3e-5,0,0), 1e-5) == brep_classify::State::Inside);
 }
+
+MINI_TEST("BRep Native Classification", "Parity Ray Stays Clear Of Corner Gaps") {
+    const double corner = 0.75, last_bits = std::nextafter(corner, 1.0);
+    const NurbsCurve first = NurbsCurve::create(false, 1, {Point(1, 0, 0), Point(1, corner, 0)});
+    const NurbsCurve second = NurbsCurve::create(false, 1, {Point(1, last_bits, 0), Point(1, 2, 0)});
+    const double height = brep_classify::clear_ray_height({&first, &second}, corner, 1e-10);
+    MINI_CHECK(height != corner && std::abs(height - corner) < 1e-10);
+    MINI_CHECK(brep_classify::clear_ray_height({&first, &second}, 0.5, 1e-10) == 0.5);
+}

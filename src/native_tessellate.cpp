@@ -42,7 +42,7 @@ bool measured(const NurbsSurface& surface, const TessellationTriangle& triangle,
             const double center_u = (triangle.uv[0][0] + triangle.uv[1][0] + triangle.uv[2][0]) / 3;
             const double center_v = (triangle.uv[0][1] + triangle.uv[1][1] + triangle.uv[2][1]) / 3;
             const std::vector<Vector> derivatives = surface.evaluate(
-                std::nextafter(u, center_u), std::nextafter(v, center_v), 1);
+                u + (center_u - u) * 1e-6, v + (center_v - v) * 1e-6, 1);
             Vector normal = derivatives[1].cross(derivatives[2]);
             if (!normal.normalize_self()) {
                 if (i && j && i + j < 4)

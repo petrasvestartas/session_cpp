@@ -710,4 +710,18 @@ MINI_TEST("CurveIntersection", "Mapped Parameters Stay In Their Domains") {
     MINI_CHECK(events.points[0].a <= first.domain_end() && events.points[0].b >= second.domain_start());
 }
 
+MINI_TEST("CurveIntersection", "Copies Of A Section Overlap On Every Span") {
+    NurbsCurve section(3, true, 3, 5);
+    const std::vector<double> knots = {0.6620535187772069, 0.6620535187772069, 0.75, 0.75, 0.8325880516319826, 0.8325880516319826};
+    for (size_t i = 0; i < knots.size(); ++i)
+        MINI_CHECK(section.set_nurbsknot(static_cast<int>(i), knots[i]));
+    MINI_CHECK(section.set_cv_4d(0, -44.62401154788048, -74.26682656964599, -160.2879964898795, 0.8664216026479974));
+    MINI_CHECK(section.set_cv_4d(1, -24.87502130165296, -89.69642881253571, -165.93839330319105, 0.896964288125357));
+    MINI_CHECK(section.set_cv_4d(2, 0.0, -100.0, -185.0, 1.0));
+    MINI_CHECK(section.set_cv_4d(3, 23.35942854158384, -90.32420788879081, -167.09978459426299, 0.9032420788879081));
+    MINI_CHECK(section.set_cv_4d(4, 42.19843759506744, -76.12799628948137, -161.02632050174694, 0.8704125432526861));
+    const auto events = curve_intersection::intersect(section, section, 1e-7);
+    MINI_CHECK(events.complete && events.points.empty() && events.overlaps.size() == 1);
+    MINI_CHECK(events.overlaps[0].a0 == section.domain_start() && events.overlaps[0].a1 == section.domain_end());
+}
 }

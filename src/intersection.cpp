@@ -9588,7 +9588,8 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
         const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
         if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
             return false;
-        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
+        const double slack = (field.hi[free[c]] - field.lo[free[c]]) * 1e-12;
+        clipped[c] = world.lo < field.lo[free[c]] - slack || world.hi > field.hi[free[c]] + slack;
         needs_clip = needs_clip || clipped[c];
     }
     if (!needs_clip)
@@ -9621,7 +9622,8 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
         for (int c = 0; c < 3; ++c) {
             const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
                 SsiInterval(-seed_radius.hi, seed_radius.hi);
-            if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
+            const double slack = (field.hi[free[c]] - field.lo[free[c]]) * 1e-12;
+            if (seed.lo < field.lo[free[c]] - slack || seed.hi > field.hi[free[c]] + slack)
                 return false;
         }
     }
@@ -9909,9 +9911,13 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
                     continue;
                 }
                 bool retained = true;
-                for (int k = 0; k < 4; ++k)
+                for (int k = 0; k < 4; ++k) {
+                    const double slack = (field.hi[k] - field.lo[k]) * 1e-12;
                     retained = retained &&
-                        graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
+                        graph.anchor[k].lo >= field.lo[k] - slack && graph.anchor[k].hi <= field.hi[k] + slack;
+                    graph.anchor[k] = SsiInterval(std::max(graph.anchor[k].lo, field.lo[k]),
+                        std::min(graph.anchor[k].hi, field.hi[k]));
+                }
                 if (!retained)
                     continue;
                 if (provenance)
@@ -13336,6 +13342,44 @@ bool pinned_coordinate(const SupportSide& a, const SupportSide& b, const ExactCo
     };
     return (all(a.zero, 1) && all(b.zero, -1)) || (all(a.zero, -1) && all(b.zero, 1));
 }
+/// True when the surfaces cross transversally at a root on the domain boundary and the crossing leaves the domain both ways along its tangent: a contact point of two patches, as a corner on the edge of a flush neighbour, and no curve.
+bool isolated_boundary_seed(const SurfaceSurfaceField& field, const SurfaceSurfaceSeed& seed) {
+    Vector point, au, av, bu, bv;
+    field.eval_a(seed.u, seed.v, point, au, av);
+    field.eval_b(seed.s, seed.t, point, bu, bv);
+    Vector tangent = au.cross(av).cross(bu.cross(bv));
+    if (!tangent.normalize_self())
+        return false;
+    const auto speeds = [&tangent](const Vector& first, const Vector& second, double& along_first, double& along_second) {
+        const double ff = first.dot(first), fs = first.dot(second), ss = second.dot(second);
+        const double ft = first.dot(tangent), st = second.dot(tangent);
+        const double determinant = ff * ss - fs * fs;
+        if (!(determinant > 0.0))
+            return false;
+        along_first = (ft * ss - st * fs) / determinant;
+        along_second = (st * ff - ft * fs) / determinant;
+        return true;
+    };
+    std::array<double, 4> speed{};
+    if (!speeds(au, av, speed[0], speed[1]) || !speeds(bu, bv, speed[2], speed[3]))
+        return false;
+    const std::array<double, 4> root = {seed.u, seed.v, seed.s, seed.t};
+    for (double side : {-1.0, 1.0}) {
+        bool leaves = false;
+        for (int k = 0; k < 4; ++k) {
+            if (field.closed[k])
+                continue;
+            const double margin = field.range[k] * 1e-9;
+            const double along = side * speed[k] * field.range[k];
+            leaves = leaves || (root[k] <= field.lo[k] + margin && along < -1e-9) ||
+                (root[k] >= field.hi[k] - margin && along > 1e-9);
+        }
+        if (!leaves)
+            return false;
+    }
+    return true;
+}
+
 std::optional<surface_section::PointEvent> isolated_support_corner(const NurbsSurface& a,
                                                                    const NurbsSurface& b) {
     const BezierChart ca(a), cb(b);
@@ -13415,7 +13459,8 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                 result.coincident=true;
                 result.coverage=Coverage::CoincidentUnverified;
             } else {
-                result.curves=Intersection::surface_surface(a,b,tolerance);
+                // Section curves are fitted well inside the model tolerance, so what they sum to across a boundary stays within it.
+                result.curves=Intersection::surface_surface(a,b,std::max(tolerance*.125,std::min(tolerance,1e-7)));
                 for (const auto& section:result.curves)
                     if (curve_surface_intersection::same_parameter(std::get<0>(section),std::get<1>(section),a,tolerance)
                             !=curve_surface_intersection::ParameterMatch::Matched ||
@@ -13427,8 +13472,10 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                     result.coverage=Coverage::LegacyLocusOnly;
                 } else {
                     const SurfaceSurfaceField original(a,b,tolerance);
-                    if (!surface_surface_seeds(original).empty())
-                        throw std::runtime_error("Empty support inventory has unowned original root graphs");
+                    // A root that leaves both patches at once is a boundary contact and adds nothing to what the edges meeting there already own.
+                    for (const SurfaceSurfaceSeed& seed:surface_surface_seeds(original))
+                        if (!isolated_boundary_seed(original,seed))
+                            throw std::runtime_error("Empty support inventory has unowned original root graphs");
                     result.coverage=Coverage::OriginalDomainExcluded;
                 }
             }

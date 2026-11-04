@@ -28,10 +28,10 @@ jobs:
         submodules: recursive
 
     - name: Configure
-      run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release
+      run: cmake -B build -DENABLE_PROTOBUF=ON -DCMAKE_BUILD_TYPE=Release -DSESSION_BUILD_EXAMPLES=ON -DSESSION_BUILD_NATIVE_EVIDENCE=ON
 
     - name: Build
-      run: cmake --build build --config Release --target point_minitest --parallel 4
+      run: cmake --build build --config Release --parallel 4
 
     - name: Run Tests
       shell: bash

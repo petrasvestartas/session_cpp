@@ -2087,4 +2087,25 @@ namespace session_cpp {
         }
     }
 
+    MINI_TEST("BRep", "From Polylines Welds Near Corners Into One") {
+        // Two outline corners a millionth apart, as a polygon union rounded to six decimals leaves them.
+        const std::vector<std::array<double, 2>> outline = {{0, 0}, {10, 0}, {10, 10}, {5.0000005, 10.0000004}, {5, 10}, {0, 10}};
+        std::vector<Point> bottom, top;
+        std::vector<Polyline> faces;
+        for (const std::array<double, 2>& point : outline) {
+            bottom.push_back(Point(point[0], point[1], 0));
+            top.push_back(Point(point[0], point[1], 5));
+        }
+        bottom.push_back(bottom.front());
+        top.push_back(top.front());
+        faces.emplace_back(bottom);
+        faces.emplace_back(top);
+        for (size_t i = 0; i + 1 < bottom.size(); ++i)
+            faces.emplace_back(std::vector<Point>{bottom[i], bottom[i + 1], top[i + 1], top[i], bottom[i]});
+        const BRep brep = BRep::from_polylines(faces);
+        MINI_CHECK(brep.is_solid());
+        MINI_CHECK(brep.face_count() == 7);
+        MINI_CHECK(std::abs(brep.volume_exact() - 500.0) < 1e-3);
+    }
+
 } // namespace session_cpp

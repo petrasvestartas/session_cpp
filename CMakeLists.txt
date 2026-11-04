@@ -444,7 +444,11 @@ set(MINITEST_SOURCES
     src/instance_ref_test.cpp
     src/interaction_test.cpp
 )
-add_executable(point_minitest EXCLUDE_FROM_ALL src/mini_test.cpp ${MINITEST_SOURCES})
+add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
+# A plain build of this project makes the tests; a consumer that adds it as a subdirectory does not.
+if(NOT PROJECT_IS_TOP_LEVEL)
+    set_target_properties(point_minitest PROPERTIES EXCLUDE_FROM_ALL ON)
+endif()
 if(MSVC)
     target_compile_definitions(point_minitest PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
@@ -461,7 +465,7 @@ endif()
 
 option(SESSION_BUILD_NATIVE_EVIDENCE "Build the native geometry evidence driver" OFF)
 if(SESSION_BUILD_NATIVE_EVIDENCE)
-    add_executable(native_geometry_evidence EXCLUDE_FROM_ALL
+    add_executable(native_geometry_evidence
         examples/native_geometry_evidence.cpp
         examples/native_chair_booleans.cpp
         examples/native_chair_sections.cpp

@@ -886,4 +886,18 @@ MINI_TEST("Curve Surface Native", "Whole Constant Image Uses Exact Homogeneous P
     feature.m_cv[0]=std::numeric_limits<double>::infinity();
     MINI_CHECK(!nurbs_coincidence::curve_constant_image(feature));
 }
+
+MINI_TEST("Curve Surface Native", "Line Running Past A Surface Along Its Ruling") {
+    const Xform turn = Xform::rotation_z(Tolerance::PI / 4.0);
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 100, 425).transformed(turn);
+    const Point corner = cylinder.point_at(1.3, 0.5);
+    const NurbsCurve line = NurbsCurve::create(false, 1, {Point(corner[0], corner[1], 275), Point(corner[0], corner[1], 437)});
+    const auto events = curve_surface_intersection::intersect(line, cylinder, 1e-7);
+    MINI_CHECK(events.complete && events.overlaps.size() == 1);
+    MINI_CHECK(std::abs(line.point_at(events.overlaps[0].t0)[2] - 275) < 1e-9);
+    MINI_CHECK(std::abs(line.point_at(events.overlaps[0].t1)[2] - 425) < 1e-9);
+    const Point uv = events.overlaps[0].pcurve.point_at_end();
+    MINI_CHECK(cylinder.point_at(uv[0], uv[1]).distance(Point(corner[0], corner[1], 425)) < 1e-9);
+}
+
 } // namespace session_cpp

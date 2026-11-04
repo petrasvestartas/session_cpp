@@ -1785,11 +1785,11 @@ BRep plan_prism(const CutPlan& plan, double low, double high) {
     const size_t count = plan.size();
     std::vector<Polyline> faces;
     std::vector<Point> bottom, top;
-    for (size_t i = count; i-- > 0;)
+    for (size_t i = 0; i < count; ++i) {
         bottom.push_back(Point(plan[i][0], plan[i][1], low));
-    bottom.push_back(bottom.front());
-    for (size_t i = 0; i < count; ++i)
         top.push_back(Point(plan[i][0], plan[i][1], high));
+    }
+    bottom.push_back(bottom.front());
     top.push_back(top.front());
     faces.emplace_back(bottom);
     faces.emplace_back(top);
@@ -1894,4 +1894,30 @@ MINI_TEST("BRep Native Boolean", "Blind Round Hole In A Plate") {
     const BRep result = BRep::create_box(100, 100, 50).boolean_difference(drill);
     const double exact = 500000 - Tolerance::PI * 100 * 35;
     MINI_CHECK(result.is_solid() && std::abs(result.volume_exact() - exact) < 1e-6 && result.mesh().is_closed());
+}
+
+MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
+    // The real joint's outlines, sizes, turns and asymmetric nodes, cut with the seam where the column has it and turned into the slot.
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/column_head_slots.json");
+    MINI_CHECK(input.good());
+    nlohmann::json cases;
+    input >> cases;
+    MINI_CHECK(cases.size() == 32);
+    std::string failures;
+    for (const nlohmann::json& node : cases) {
+        CutPlan plan;
+        for (const nlohmann::json& point : node["outline"])
+            plan.push_back({point[0].get<double>(), point[1].get<double>()});
+        plan.pop_back();
+        const double radius = node["radius"], length = node["length"], depth = -node["floor"].get<double>();
+        const double exact = Tolerance::PI * radius * radius * length - plan_area_in_circle(plan, radius) * depth;
+        for (const double turn : {0.0, node["seam"].get<double>()})
+            try {
+                check_cylinder_cut(radius, length, depth, turn, plan, exact);
+            } catch (const std::exception& error) {
+                failures += "\n" + node["name"].get<std::string>() + ", seam turned " + std::to_string(turn) + ": " + error.what();
+            }
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
 }

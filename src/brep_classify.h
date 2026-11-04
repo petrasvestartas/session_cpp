@@ -33,6 +33,9 @@ struct RayResult {
     std::array<double, 4> unresolved_domain{};
 };
 
+/// A height for a +x parity ray from a point, within a quarter of tolerance of it and clear of every curve end: two curves meeting at a corner can differ in their last bits, and a ray through that gap counts the corner wrong.
+double clear_ray_height(const std::vector<const NurbsCurve*>& loop, double height, double tolerance);
+
 /// Classify a parameter-space point against the face's NURBS trimming wires.
 State face_uv(const BRep& brep, int face, const Point& uv, double tolerance);
 

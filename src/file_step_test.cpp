@@ -930,6 +930,7 @@ MINI_TEST("FileStep", "Noncollapsed Cylinder Boundary Is Not A Pole Bridge") {
     }), wire.edges.end());
     MINI_CHECK(wire.edges.size() == 2);
     source.m_shells.front().faces = {{0, BRepOrientation::Forward}};
+    source.m_faces.erase(source.m_faces.begin() + 1, source.m_faces.end());
     const auto path = serialization_path("noncollapsed_cylinder_gap.step");
     MINI_CHECK(file_step::write_file_step_brep(source, path));
     const auto imported = file_step::read_file_step_breps(path, .001);

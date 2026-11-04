@@ -839,6 +839,13 @@ std::optional<Vector> boundary_normal(const NurbsSurface& surface, const NurbsCu
         if (derivatives.size() < 3)
             continue;
 
+        // At a pole one derivative is rounding noise, which still crosses to a nonzero vector at any size but one.
+        const double first = derivatives[1].magnitude();
+        const double second = derivatives[2].magnitude();
+
+        if (std::min(first, second) <= 1e-10 * std::max(first, second))
+            continue;
+
         Vector n = derivatives[1].cross(derivatives[2]);
         const double scale = std::max({std::abs(n[0]), std::abs(n[1]), std::abs(n[2])});
 
@@ -1538,7 +1545,7 @@ bool edge_use_samples(
         const std::tuple<double, Point, Point> first = samples.front();
 
         if (!same_boundary_point(std::get<2>(first), std::get<2>(samples.back())))
-            samples.push_back({crv.domain().second, std::get<1>(first), std::get<2>(first)});
+            samples.push_back({crv.domain().second, crv.point_at(crv.domain().second), std::get<2>(first)});
     }
 
     if (er.orientation == BRepOrientation::Reversed)
@@ -1659,11 +1666,49 @@ bool split_parametric_edge(const BRep& brep, std::vector<ParametricBoundaryUse>&
     return changed;
 }
 
-std::set<int> synchronize_parametric_boundaries(const BRep& brep, EdgeBoundary& boundary,
-                                              double scale, double angle, double chord) {
+/// Refine the canonical samples of each edge against every surface using it: the first face to sample an edge cannot see how its neighbour's normals turn along it, and a span the neighbour cannot follow leaves a needle beside the boundary at any density. Strip and ruled faces pace their own loops, so their edges stay.
+std::set<int> refine_parametric_boundaries(const BRep& brep, const std::vector<bool>& paced, EdgeBoundary& boundary,
+                                           double scale, double angle, double chord) {
+    std::map<int, std::vector<std::pair<int, BRepRef>>> uses;
+    for (int face = 0; face < brep.face_count(); ++face)
+        for (const BRepRef& wire : brep.m_faces[face].wires)
+            for (const BRepRef& edge : brep.wire_edges(wire))
+                if (!brep.m_edges[edge.index].degenerated)
+                    uses[edge.index].push_back({face, edge});
     std::set<int> rebuild;
+    for (const auto& group : uses) {
+        if (std::any_of(group.second.begin(), group.second.end(), [&](const std::pair<int, BRepRef>& use) { return paced[use.first]; }))
+            continue;
+        for (const std::pair<int, BRepRef>& use : group.second) {
+            std::vector<std::tuple<double, Point, Point>> samples;
+            if (!edge_use_samples(brep, use.first, use.second, boundary, scale, angle, chord, samples))
+                continue;
+            const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.first].surface_index];
+            const int pcurve = brep.pcurve_index(group.first, use.first, use.second.orientation);
+            const std::vector<std::tuple<double, Point, Point>> refined = refine_surface_boundary(
+                surface, brep.m_curves_2d[pcurve], samples, scale, angle, chord);
+            if (refined.size() <= samples.size())
+                continue;
+            std::vector<Point> points;
+            for (const std::tuple<double, Point, Point>& sample : refined)
+                points.push_back(std::get<2>(sample));
+            if (use.second.orientation == BRepOrientation::Reversed)
+                std::reverse(points.begin(), points.end());
+            boundary.points[group.first] = points;
+            boundary.samples.erase(group.first);
+            boundary.basis.erase(group.first);
+            for (const std::pair<int, BRepRef>& other : group.second)
+                rebuild.insert(other.first);
+        }
+    }
+    return rebuild;
+}
+
+std::set<int> synchronize_parametric_boundaries(const BRep& brep, const std::vector<bool>& paced, EdgeBoundary& boundary,
+                                              double scale, double angle, double chord) {
     if (!mesh_parametric_metadata::capture_depth)
-        return rebuild;
+        return {};
+    std::set<int> rebuild = refine_parametric_boundaries(brep, paced, boundary, scale, angle, chord);
     std::map<int, std::vector<ParametricBoundaryUse>> groups;
     for (int face = 0; face < brep.face_count(); ++face)
         for (const BRepRef& wire : brep.m_faces[face].wires)
@@ -2002,15 +2047,48 @@ bool strip_face(const BRep& b, int fi, const EdgeBoundary& boundary) {
     return true;
 }
 
-/// Phase 0: a loop sampled at count equal parameter steps as (t, uv, point), closed on its first point
+/// Phase 0: a loop sampled at count equal parameter steps as (t, uv, point), closed on its first point, the nearest step of each crease of the surface across u moved onto it, so the strip's rows hold its C0 lines and no shared boundary has a crease to split
 std::vector<std::tuple<double, Point, Point>> strip_samples(const NurbsSurface& srf, const NurbsCurve& crv, int count) {
 
     const std::pair<double, double> domain = crv.domain();
+    const double span = domain.second - domain.first;
+    std::vector<double> fractions;
+    std::map<int, double> pins;
+
+    for (int k = 0; k <= count; ++k)
+        fractions.push_back((double)k / count);
+
+    for (double knot : parametric_crease_knots(srf)[0]) {
+        const bool rising = strip_uv(crv, 0.0)[0] < strip_uv(crv, 1.0)[0];
+        double low = 0.0;
+        double high = 1.0;
+
+        for (int step = 0; step < 64; ++step) {
+            const double middle = 0.5 * (low + high);
+
+            if ((strip_uv(crv, middle)[0] < knot) == rising)
+                low = middle;
+            else
+                high = middle;
+        }
+
+        const int nearest = std::clamp((int)std::lround(low * count), 1, count - 1);
+
+        if (!pins.count(nearest)) {
+            fractions[nearest] = low;
+            pins[nearest] = knot;
+        }
+    }
+
     std::vector<std::tuple<double, Point, Point>> samples;
 
     for (int k = 0; k <= count; ++k) {
-        const double t = domain.first + (domain.second - domain.first) * k / count;
-        const Point uv = crv.point_at(t);
+        const double t = domain.first + span * fractions[k];
+        Point uv = crv.point_at(t);
+
+        if (pins.count(k))
+            uv[0] = pins[k];
+
         samples.push_back({t, uv, k < count ? srf.point_at(uv[0], uv[1]) : std::get<2>(samples[0])});
     }
 
@@ -2153,6 +2231,25 @@ int ruled_side(const NurbsSurface& srf, const NurbsCurve& crv) {
         return std::abs(c0[0] - du.first) <= tolerance_u ? 2 : 3;
 
     return -1;
+}
+
+/// Phase 1: true when the normals along a ruling turn past the angle: a ruled mesh has no vertex between the ends of a ruling, so such a twisted surface is no ruled face however fine its stations
+bool ruled_twists(const NurbsSurface& srf, double angle) {
+
+    const std::pair<double, double> du = srf.domain(0);
+    const std::pair<double, double> dv = srf.domain(1);
+    const double cosine = std::cos(std::clamp(angle, 0.1, 179.0) * Tolerance::PI / 180.0);
+
+    for (int k = 0; k <= 16; ++k) {
+        const double u = du.first + (du.second - du.first) * (.0625 + k * .875 / 16);
+        const Vector first = srf.normal_at(u, dv.first);
+        const Vector last = srf.normal_at(u, dv.second);
+
+        if (first.magnitude_squared() > 0.0 && last.magnitude_squared() > 0.0 && first.dot(last) < cosine)
+            return true;
+    }
+
+    return false;
 }
 
 /// Phase 1: a face on the whole domain of a curved surface straight across its rulings, its wire four distinct open edges each a straight pcurve along one domain side: the place in the wire of the edge along v0, so the wire turned there reads as the loop at v0, a ruling, the loop at v1 and a ruling; -1 for any other face
@@ -2994,14 +3091,35 @@ BRep BRep::from_polylines(const std::vector<Polyline>& polylines, const std::vec
     PolyFaceBuilder pb{b, {}};
 
     for (size_t pi = 0; pi < polylines.size(); ++pi) {
-        const std::vector<Point> pts = open_points(polylines[pi]);
+        const std::vector<Point> given = open_points(polylines[pi]);
 
-        if (pts.size() < 3)
+        if (given.size() < 3)
             continue;
+
+        // corners the weld made one are one corner, and the face is drawn through the welded points: a loop left with less than three is no face
+        std::vector<int> vi;
+
+        for (const Point& pt : given) {
+            const int vertex = find_or_add_vertex(b, pt, tol);
+
+            if (vi.empty() || vi.back() != vertex)
+                vi.push_back(vertex);
+        }
+
+        if (vi.size() > 1 && vi.back() == vi.front())
+            vi.pop_back();
+
+        if (vi.size() < 3)
+            continue;
+
+        std::vector<Point> pts;
+
+        for (const int vertex : vi)
+            pts.push_back(b.m_vertices[vertex].point);
 
         Point org;
         Plane plane;
-        polylines[pi].get_fast_plane(org, plane);
+        Polyline(pts).closed().get_fast_plane(org, plane);
 
         if (!plane.is_valid())
             continue;
@@ -3014,11 +3132,6 @@ BRep BRep::from_polylines(const std::vector<Polyline>& polylines, const std::vec
             ya *= -1.0;
 
         const double outer_area = signed_area_in_plane(pts, org, xa, ya);
-        std::vector<int> vi;
-
-        for (const Point& pt : pts)
-            vi.push_back(find_or_add_vertex(b, pt, tol));
-
         std::vector<Point> all_pts = pts;
         std::vector<std::vector<int>> hole_cycles;
 
@@ -3643,8 +3756,13 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     }
 
     for (int fi = 0; fi < nf; ++fi)
-        if (!face_strip[fi])
+        if (!face_strip[fi]) {
             face_ruled[fi] = ruled_face(*this, fi);
+
+            if (mesh_parametric_metadata::capture_depth && face_ruled[fi] >= 0
+                && ruled_twists(m_surfaces[m_faces[fi].surface_index], angle))
+                face_ruled[fi] = -1;
+        }
 
     ruled_boundaries(*this, face_ruled, boundary, scale, angle, chord);
 
@@ -3673,7 +3791,11 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
 
     refine_shared_boundaries(*this, face_direct, rebuild_grid, boundary, scale, angle, chord);
 
-    const std::set<int> synchronized = synchronize_parametric_boundaries(*this, boundary, scale, angle, chord);
+    std::vector<bool> paced(nf);
+    for (int fi = 0; fi < nf; ++fi)
+        paced[fi] = face_strip[fi] || face_ruled[fi] >= 0;
+
+    const std::set<int> synchronized = synchronize_parametric_boundaries(*this, paced, boundary, scale, angle, chord);
     for (int face : synchronized) {
         face_strip[face] = false;
         face_ruled[face] = -1;

@@ -167,6 +167,16 @@ MINI_TEST("Closest", "Surface Point") {
     MINI_CHECK(dist2 < 0.01);
 }
 
+MINI_TEST("Closest", "Surface Point Beside A Closed Seam") {
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0.0, 0.0, -1.0, 0.5, 2.0);
+
+    for (int i = 0; i <= 256; ++i) {
+        const Point point = cylinder.point_at(4.0 * i / 256.0, 0.5);
+
+        MINI_CHECK(std::get<2>(Closest::surface_point(cylinder, point)) < 1e-9);
+    }
+}
+
 MINI_TEST("Closest", "Surface Curve") {
     // using session_cpp::Closest;
     // using session_cpp::NurbsCurve;
