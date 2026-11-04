@@ -2058,7 +2058,8 @@ std::vector<std::tuple<double, Point, Point>> strip_samples(const NurbsSurface& 
     for (int k = 0; k <= count; ++k)
         fractions.push_back((double)k / count);
 
-    for (double knot : parametric_crease_knots(srf)[0]) {
+    const std::array<std::vector<double>, 2> crease_knots = parametric_crease_knots(srf);
+    for (double knot : crease_knots[0]) {
         const bool rising = strip_uv(crv, 0.0)[0] < strip_uv(crv, 1.0)[0];
         double low = 0.0;
         double high = 1.0;
