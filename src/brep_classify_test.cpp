@@ -1,7 +1,10 @@
 #include "brep_classify.h"
+#include "brep_face_boundary.h"
+#include "primitives.h"
 #include "file_step.h"
 #include "mini_test.h"
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -240,4 +243,151 @@ MINI_TEST("BRep Native Classification", "Rhino Freeform Face Sides") {
         }
         MINI_CHECK(checked == chair.face_count());
     }
+}
+
+MINI_TEST("BRep Native Classification", "Face Boundary Keeps Independent Raw Domains") {
+    BRep box = BRep::create_box(2, 2, 2);
+    const auto edge = box.wire_edges(box.m_faces[0].wires[0]).front();
+    const int pc = box.pcurve_index(edge.index, 0, edge.orientation);
+    MINI_CHECK(box.m_curves_2d[pc].set_domain(-7, 13));
+    MINI_CHECK(box.m_curves_3d[box.m_edges[edge.index].curve_3d_index].set_domain(32, 35));
+    const auto frozen = box.jsondump();
+    const auto boundary = brep_face_boundary::extract(box, 0);
+    MINI_CHECK(boundary.complete);
+    const auto& use = boundary.wires.front().uses.front();
+    MINI_CHECK(use.edge.index == edge.index && use.pcurve == pc);
+    MINI_CHECK(use.pcurve_domain == std::make_pair(-7.0, 13.0));
+    MINI_CHECK(use.has_world_domain && use.world_domain == std::make_pair(32.0, 35.0));
+    MINI_CHECK(brep_classify::face_uv(box, 0, Point(.5, .5, 0), 1e-7) == brep_classify::State::Inside);
+    MINI_CHECK(box.jsondump() == frozen);
+}
+MINI_TEST("BRep Native Classification", "Face Boundary Preserves Pole And Seam Uses") {
+    BRep sphere = BRep::create_sphere(2);
+    for (bool reverse : {false, true}) {
+        sphere.m_faces[0].wires[0].orientation = reverse ? BRepOrientation::Reversed : BRepOrientation::Forward;
+        const auto boundary = brep_face_boundary::extract(sphere, 0);
+        MINI_CHECK(boundary.complete && boundary.wires.size() == 1);
+        size_t poles = 0, ordinary = 0;
+        int seam = -1, first_pc = -1;
+        for (const auto& use : boundary.wires[0].uses) {
+            if (use.degenerated) {
+                MINI_CHECK(!use.has_world_domain);
+                MINI_CHECK(use.first_vertex == use.last_vertex);
+                ++poles;
+            } else {
+                MINI_CHECK(use.has_world_domain);
+                if (seam < 0) {
+                    seam = use.edge.index;
+                    first_pc = use.pcurve;
+                }
+                else {
+                    MINI_CHECK(use.edge.index == seam && use.pcurve != first_pc);
+                    const Point a = sphere.m_curves_2d[first_pc].point_at_start();
+                    const Point b = sphere.m_curves_2d[use.pcurve].point_at_start();
+                    MINI_CHECK(a.distance(b) > 1);
+                }
+                ++ordinary;
+            }
+        }
+        MINI_CHECK(poles == 2 && ordinary == 2);
+        MINI_CHECK(brep_classify::face_uv(sphere, 0, Point(2, 1, 0), 1e-7) == brep_classify::State::Inside);
+    }
+}
+MINI_TEST("BRep Native Classification", "Face Boundary Reports Missing Associated PC") {
+    BRep box = BRep::create_box(2, 2, 2);
+    const int edge = box.wire_edges(box.m_faces[0].wires[0]).front().index;
+    auto& images = box.m_edges[edge].pcurves;
+    const int support = box.m_faces[0].surface_index;
+    images.erase(std::remove_if(images.begin(), images.end(), [&](const auto& image) {
+        return image.surface_index == support;
+    }), images.end());
+    MINI_CHECK(box.is_valid());
+    const auto boundary = brep_face_boundary::extract(box, 0);
+    MINI_CHECK(!boundary.complete && boundary.failure == "Boundary use has no pcurve on its support");
+    MINI_CHECK(brep_classify::face_uv(box, 0, Point(.5, .5, 0), 1e-7) == brep_classify::State::Unknown);
+}
+MINI_TEST("BRep Native Classification", "Face Boundary Retains Internal Uses And Checks Vertex Chain") {
+    BRep box = BRep::create_box(2, 2, 2);
+    auto& wire = box.m_wires[box.m_faces[0].wires[0].index];
+    wire.edges.push_back({wire.edges[0].index, BRepOrientation::Internal});
+    const auto boundary = brep_face_boundary::extract(box, 0);
+    MINI_CHECK(boundary.complete && boundary.wires[0].uses.size() == 5);
+    MINI_CHECK(boundary.wires[0].uses.back().edge.orientation == BRepOrientation::Internal);
+    MINI_CHECK(brep_classify::face_uv(box, 0, Point(.5, .5, 0), 1e-7) == brep_classify::State::Inside);
+    wire.edges.erase(wire.edges.begin());
+    MINI_CHECK(!brep_face_boundary::extract(box, 0).complete);
+    MINI_CHECK(!box.is_valid());
+}
+
+MINI_TEST("BRep Native Classification", "Face Boundary Detects Ambiguous Support Association") {
+    BRep box = BRep::create_box(2, 2, 2);
+    const auto use = box.wire_edges(box.m_faces[0].wires[0]).front();
+    auto& images = box.m_edges[use.index].pcurves;
+    const int support = box.m_faces[0].surface_index;
+    const int selected = box.pcurve_index(use.index, 0, use.orientation);
+    images.push_back({support, selected, -1});
+    MINI_CHECK(brep_face_boundary::extract(box, 0).complete);
+    const int other = (selected + 1) % static_cast<int>(box.m_curves_2d.size());
+    images.push_back({support, other, -1});
+    MINI_CHECK(box.is_valid());
+    const auto boundary = brep_face_boundary::extract(box, 0);
+    MINI_CHECK(!boundary.complete && boundary.failure == "Boundary has ambiguous pcurve associations on one support");
+    MINI_CHECK(brep_classify::face_uv(box, 0, Point(.5, .5, 0), 1e-7) == brep_classify::State::Unknown);
+}
+
+namespace {
+BRep prepared_domain_annulus(double inner) {
+    BRep shape;
+    auto surface = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {Point(-2,-2,0), Point(-2,2,0), Point(2,-2,0), Point(2,2,0)});
+    MINI_CHECK(surface.set_domain(0, -2, 2) && surface.set_domain(1, -2, 2));
+    const int support = shape.add_surface(surface);
+    std::vector<BRepRef> wires;
+    for (double radius : {1.0, inner}) {
+        if (radius <= 0) continue;
+        const auto circle = Primitives::circle(0, 0, 0, radius);
+        const int vertex = shape.add_vertex(circle.point_at_start());
+        const int edge = shape.add_edge(shape.add_curve_3d(circle), vertex, vertex);
+        shape.add_pcurve(edge, support, shape.add_curve_2d(circle));
+        wires.push_back({shape.add_wire({{edge, BRepOrientation::Forward}}), BRepOrientation::Forward});
+    }
+    shape.add_face(support, wires);
+    MINI_CHECK(shape.is_valid());
+    return shape;
+}
+}
+MINI_TEST("BRep Native Classification", "Prepared Actual Circle Distinguishes Chord Sagitta") {
+    const BRep disk = prepared_domain_annulus(0);
+    const auto boundary = brep_face_boundary::extract(disk, 0);
+    const auto& circle = disk.m_curves_2d.front();
+    const Point a = circle.point_at(0), b = circle.point_at(1.0 / 32);
+    const Point arc = circle.point_at(1.0 / 64);
+    const Point chord((a[0]+b[0])*.5, (a[1]+b[1])*.5, 0);
+    const Point query((arc[0]+chord[0])*.5, (arc[1]+chord[1])*.5, 0);
+    const double radius = std::hypot(query[0], query[1]);
+    MINI_CHECK(radius < 1 && 1-radius < .001);
+    const Vector normal(a[0]+b[0], a[1]+b[1], 0);
+    MINI_CHECK(query[0]*normal[0]+query[1]*normal[1] > chord[0]*normal[0]+chord[1]*normal[1]);
+    MINI_CHECK(brep_classify::face_uv(boundary, query, .001) == brep_classify::State::Boundary);
+    MINI_CHECK(brep_classify::face_uv(disk, 0, query, .001) == brep_classify::face_uv(boundary, query, .001));
+}
+MINI_TEST("BRep Native Classification", "Prepared Annulus Keeps Holes Raw Domains And Reversal") {
+    BRep annulus = prepared_domain_annulus(.5);
+    for (auto& pc : annulus.m_curves_2d)
+        MINI_CHECK(pc.set_domain(-7, 13));
+    for (bool reversed : {false, true}) {
+        for (auto& wire : annulus.m_faces[0].wires)
+            wire.orientation = reversed ? BRepOrientation::Reversed : BRepOrientation::Forward;
+        const auto boundary = brep_face_boundary::extract(annulus, 0);
+        const std::array<Point, 4> probes = {Point(0,0,0), Point(.75,0,0), Point(1.5,0,0), Point(1,0,0)};
+        const std::array<brep_classify::State, 4> expected = {brep_classify::State::Outside,
+            brep_classify::State::Inside, brep_classify::State::Outside, brep_classify::State::Boundary};
+        for (size_t i = 0; i < probes.size(); ++i) {
+            MINI_CHECK(brep_classify::face_uv(boundary, probes[i], 1e-5) == expected[i]);
+            MINI_CHECK(brep_classify::face_uv(annulus, 0, probes[i], 1e-5) == expected[i]);
+        }
+    }
+    const BRep narrow = prepared_domain_annulus(1 - 6e-5);
+    const auto boundary = brep_face_boundary::extract(narrow, 0);
+    MINI_CHECK(brep_classify::face_uv(boundary, Point(1-3e-5,0,0), 1e-5) == brep_classify::State::Inside);
 }

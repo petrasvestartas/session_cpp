@@ -1,6 +1,7 @@
 #pragma once
 
 #include "brep.h"
+#include "brep_classify.h"
 #include "curve_surface_intersection.h"
 #include <stdexcept>
 #include <vector>
@@ -35,6 +36,43 @@ struct ParameterError : std::runtime_error {
         double distance,
         curve_surface_intersection::ParameterMatch status
     );
+};
+
+struct TopologyImage {
+    int input = -1;
+    int local_edge = -1;
+    int original_edge = -1;
+    int section = -1;
+    int output_edge = -1;
+    double first = 0;
+    double last = 0;
+    bool reversed = false;
+};
+
+struct OrientationAttempt {
+    int shell = -1, face = -1, axis = -1, side = 0;
+    Point uv, origin, target;
+    brep_classify::RayResult ray;
+    int crossing = 0;
+    std::string reason;
+};
+
+struct ContainmentAttempt {
+    int shell = -1, reference_shell = -1, face = -1;
+    Point uv, point;
+    brep_classify::State state = brep_classify::State::Unknown;
+};
+
+/// Preserve a failed shell's exact geometry and canonical edge ancestry for caller diagnostics.
+struct TopologyError : std::runtime_error {
+    BRep partial;
+    std::vector<BRepOrientation> face_orientations;
+    std::vector<TopologyImage> images;
+    std::string stage;
+    std::vector<OrientationAttempt> orientation_attempts;
+    std::vector<ContainmentAttempt> containment_attempts;
+
+    explicit TopologyError(const std::string& reason) : std::runtime_error(reason) {}
 };
 
 /// Sew selected faces into nested closed solids, synchronizing coincident NURBS edge partitions.

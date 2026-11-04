@@ -1,11 +1,18 @@
+#include <iostream>
 #include "mini_test.h"
 #include "intersection.h"
+#include "file_step.h"
+#include "curve_surface_intersection.h"
+#include "closest.h"
+#include "nurbs_hermite.h"
 #include "nurbssurface.h"
 #include "primitives.h"
 #include "xform.h"
 #include "tolerance.h"
 #include <cmath>
 #include <filesystem>
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
 
 using namespace session_cpp::mini_test;
@@ -18,11 +25,7 @@ static void save_section_geometry(
     const NurbsSurface& b,
     const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections
 ) {
-#ifdef SESSION_WITH_OCCT
-    const std::filesystem::path folder = "build/geometry-tests";
-#else
     const std::filesystem::path folder = "build/native-geometry-tests";
-#endif
     std::filesystem::create_directories(folder);
     nlohmann::ordered_json report;
     report["surfaces"] = {a.jsondump(), b.jsondump()};
@@ -1590,6 +1593,7 @@ MINI_TEST("Intersection", "Surface Surface Accuracy") {
 
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
+    std::cerr << "[analytic-pullback-case] Surface Surface Accuracy :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(sphere, cyl);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr = Intersection::surface_surface(sphere, cyl);
 
     MINI_CHECK(tr.size() >= 2);
@@ -1598,6 +1602,7 @@ MINI_TEST("Intersection", "Surface Surface Accuracy") {
         MINI_CHECK(on_both(std::get<0>(t), distance_sphere, distance_cylinder) < 1e-5);
 
     NurbsSurface sphere2 = Primitives::sphere_surface(2.0, 0.0, 0.0, 2.0);
+    std::cerr << "[analytic-pullback-case] Surface Surface Accuracy :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr2 = Intersection::surface_surface(sphere, sphere2);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr2 = Intersection::surface_surface(sphere, sphere2);
 
     MINI_CHECK(tr2.size() >= 1);
@@ -1617,6 +1622,7 @@ MINI_TEST("Intersection", "Surface Surface Accuracy") {
         {Point(-9.0, -9.0, 0.0), Point(-9.0, 9.0, 0.0), Point(9.0, -9.0, 0.0), Point(9.0, 9.0, 0.0)}
     );
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Accuracy :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr3 = Intersection::surface_surface(torus, flat);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> tr3 = Intersection::surface_surface(torus, flat);
 
     MINI_CHECK(tr3.size() == 2);
@@ -1661,23 +1667,27 @@ MINI_TEST("Intersection", "Surface Surface Plane Cone") {
     NurbsSurface steep = bilinear(Point(1.1, -3.0, -3.0), Point(1.1, 3.0, -3.0), Point(-0.3, -3.0, 4.0), Point(-0.3, 3.0, 4.0));
     NurbsSurface slant = bilinear(Point(-3.0, -3.0, 8.5), Point(-3.0, 3.0, 8.5), Point(3.0, -3.0, -3.5), Point(3.0, 3.0, -3.5));
     NurbsSurface axial = bilinear(Point(0.0, -3.0, -3.0), Point(0.0, -3.0, 4.0), Point(0.0, 3.0, -3.0), Point(0.0, 3.0, 4.0));
+    std::cerr << "[analytic-pullback-case] Surface Surface Plane Cone :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(cone, flat);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(cone, flat);
 
     MINI_CHECK(circle.size() == 1);
     MINI_CHECK(on_both(std::get<0>(circle[0]), distance_cone, distance_flat_half) < 1e-9);
     MINI_CHECK(lies_on_curve(std::get<0>(circle[0]), std::get<1>(circle[0]), cone) < 1e-9);
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Plane Cone :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> hyperbola = Intersection::surface_surface(cone, steep);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> hyperbola = Intersection::surface_surface(cone, steep);
 
     MINI_CHECK(hyperbola.size() == 1);
     MINI_CHECK(std::get<0>(hyperbola[0]).degree() == 2);
     MINI_CHECK(on_both(std::get<0>(hyperbola[0]), distance_cone, distance_cone) < 1e-9);
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Plane Cone :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> parabola = Intersection::surface_surface(cone, slant);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> parabola = Intersection::surface_surface(cone, slant);
 
     MINI_CHECK(parabola.size() == 1);
     MINI_CHECK(on_both(std::get<0>(parabola[0]), distance_cone, distance_cone) < 1e-6);
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Plane Cone :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);
 
     MINI_CHECK(lines.size() == 2);
@@ -1723,6 +1733,7 @@ MINI_TEST("Intersection", "Surface Surface Cylinders") {
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
     NurbsSurface beside = Primitives::cylinder_surface(1.5, 0.0, -2.0, 1.0, 4.0);
     NurbsSurface across = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0).transformed(Xform::rotation(Vector(0.0, 1.0, 0.0), Tolerance::HALF_PI));
+    std::cerr << "[analytic-pullback-case] Surface Surface Cylinders :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cyl, beside);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cyl, beside);
 
     MINI_CHECK(lines.size() == 2);
@@ -1736,6 +1747,7 @@ MINI_TEST("Intersection", "Surface Surface Cylinders") {
         MINI_CHECK(lies_on_curve(std::get<0>(line), std::get<1>(line), cyl) < 1e-9);
     }
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Cylinders :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ellipses = Intersection::surface_surface(cyl, across);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> ellipses = Intersection::surface_surface(cyl, across);
 
     MINI_CHECK(ellipses.size() == 3);
@@ -1744,6 +1756,166 @@ MINI_TEST("Intersection", "Surface Surface Cylinders") {
         MINI_CHECK(on_both(std::get<0>(ellipse), distance_unit_cylinder, distance_x_cylinder) < 1e-9);
         MINI_CHECK(pcurve_end_gap(std::get<0>(ellipse), std::get<1>(ellipse), cyl) < 1e-4);
         MINI_CHECK(pcurve_end_gap(std::get<0>(ellipse), std::get<2>(ellipse), across) < 1e-4);
+    }
+}
+
+MINI_TEST("Intersection", "Plane Cone Cap Clipping Preserves Exact Conic") {
+    const double tolerance = 1e-12;
+    const auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    const auto plane = bilinear(Point(-3, -3, 0), Point(-3, 3, -.6), Point(3, -3, 1.2), Point(3, 3, .6));
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& first = swap ? plane : cone;
+        const auto& second = swap ? cone : plane;
+        const auto result = Intersection::surface_surface(first, second, tolerance);
+        MINI_CHECK(result.size() == 2);
+        int base_a = 0, base_b = 0, seam = 0;
+        for (const auto& section : result) {
+            const auto& world = std::get<0>(section);
+            const auto& ua = std::get<1>(section);
+            const auto& ub = std::get<2>(section);
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == ua.domain() && world.domain() == ub.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, ua, first, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, ub, second, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto domain = world.domain();
+            for (const auto& point : {world.point_at_start(), world.point_at_end()}) {
+                base_a += point.distance({-.9, 1.2, 0}) < 1e-10;
+                base_b += point.distance({-1.5, 0, 0}) < 1e-10;
+                seam += point.distance({27. / 22, 0, 6. / 11}) < 1e-10;
+            }
+            for (int sample = 0; sample <= 32; ++sample) {
+                const auto point = world.point_at(std::lerp(domain.first, domain.second, sample / 32.));
+                const double radius = 1.5 - point[2] * .5;
+                MINI_CHECK(std::abs(point[0] * point[0] + point[1] * point[1] - radius * radius) < 1e-11);
+                MINI_CHECK(std::abs(point[2] - .2 * point[0] + .1 * point[1] - .3) < 1e-11);
+                MINI_CHECK(point[2] >= -tolerance && point[2] <= 3 + tolerance);
+            }
+        }
+        if (!(base_a == 1 && base_b == 1 && seam == 2))
+            if (const char* sink = std::getenv("SESSION_EXACT_CONIC_FAILURE_DIR"); sink && *sink)
+                try {
+                    const std::filesystem::path root(sink);
+                    if (!root.is_absolute() || !std::filesystem::is_directory(root))
+                        throw std::runtime_error("Exact-conic observation requires an existing absolute external directory");
+                    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+                    const auto folder = root / ("exact-conic-failure-" + std::to_string(stamp));
+                    if (!std::filesystem::create_directory(folder))
+                        throw std::runtime_error("Cannot exclusively create exact-conic failure directory");
+                    auto sections = nlohmann::ordered_json::array();
+                    for (const auto& [world, pa, pb] : result) {
+                        auto ends = nlohmann::ordered_json::array();
+                        for (double t : {world.domain_start(), world.domain_end()}) {
+                            const auto p = world.point_at(t), ua = pa.point_at(t), ub = pb.point_at(t);
+                            const auto a = first.point_at(ua[0], ua[1]), b = second.point_at(ub[0], ub[1]);
+                            ends.push_back({{"raw_parameter",t},{"world",{p[0],p[1],p[2]}},
+                                {"pa",{ua[0],ua[1]}},{"pb",{ub[0],ub[1]}},
+                                {"lift_a",{a[0],a[1],a[2]}},{"lift_b",{b[0],b[1],b[2]}}});
+                        }
+                        sections.push_back({{"world",world.jsondump()},{"pa",pa.jsondump()},
+                            {"pb",pb.jsondump()},{"endpoints",ends}});
+                    }
+                    const nlohmann::ordered_json row = {
+                        {"schema","native_exact_conic_endpoint_counts_failure_v1"},
+                        {"swap",swap},{"tolerance",tolerance},{"base_a",base_a},{"base_b",base_b},
+                        {"seam",seam},{"section_count",result.size()},
+                        {"surface_a",first.jsondump()},{"surface_b",second.jsondump()},{"sections",sections}};
+                    const std::string bytes = row.dump(2);
+                    if (bytes.size() > 8*1024*1024)
+                        throw std::runtime_error("Exact-conic observation exceeds diagnostic size bound");
+                    const auto path = folder / "failure.json";
+                    std::ofstream output(path,std::ios::binary|std::ios::out);
+                    if (!output || !(output << bytes << '\n'))
+                        throw std::runtime_error("Cannot write exclusive exact-conic observation");
+                    output.flush();
+                    if (!output) throw std::runtime_error("Cannot flush exact-conic observation");
+                    output.close();
+                    if (!output) throw std::runtime_error("Cannot close exact-conic observation");
+                    std::cerr << "[exact-conic-failure] " << path.string() << std::endl;
+                } catch (const std::exception& error) {
+                    std::cerr << "Exact-conic observation failed: " << error.what() << std::endl;
+                }
+        MINI_CHECK(base_a == 1 && base_b == 1 && seam == 2);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+
+MINI_TEST("Intersection", "Near Cap Positive Conic Arc Is Not Discarded") {
+    const double tolerance = 1e-12, rise = std::ldexp(1., -46);
+    const auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    const auto plane = bilinear(Point(-3, -3, -4.5 + rise), Point(-3, 3, -4.5 + rise),
+                                Point(3, -3, 1.5 + rise), Point(3, 3, 1.5 + rise));
+    const auto result = Intersection::surface_surface(cone, plane, tolerance);
+    MINI_CHECK(!result.empty());
+    double low = 1, high = -1, peak = 0;
+    for (const auto& section : result) {
+        const auto& world = std::get<0>(section);
+        MINI_CHECK(world.is_rational() && world.degree() == 2);
+        MINI_CHECK(world.domain() == std::get<1>(section).domain() &&
+                   world.domain() == std::get<2>(section).domain());
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, std::get<1>(section), cone, tolerance) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(
+            curve_surface_intersection::same_parameter(world, std::get<2>(section), plane, tolerance) ==
+            curve_surface_intersection::ParameterMatch::Matched);
+        const auto domain = world.domain();
+        for (int i = 0; i <= 32; ++i) {
+            const auto point = world.point_at(std::lerp(domain.first, domain.second, i / 32.));
+            low = std::min(low, point[1]);
+            high = std::max(high, point[1]);
+            peak = std::max(peak, point[2]);
+            MINI_CHECK(point[2] >= -tolerance);
+        }
+    }
+    // The positive cap arc has O(sqrt(rise)) tangential length although its
+    // entire axial rise is smaller than the requested model tolerance.
+    MINI_CHECK(high - low > 1e-8 && peak > rise * .125);
+}
+
+MINI_TEST("Intersection", "World Rational Parameter Law Has Certified Pullback") {
+    const double tolerance = 1e-12;
+    for (int chart = 0; chart < 2; ++chart) {
+        auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+        if (chart) {
+            MINI_CHECK(cone.set_domain(0, -7, 13));
+            MINI_CHECK(cone.set_domain(1, 32, 35));
+        }
+        const auto plane =
+            bilinear(Point(1.1, -3, -3), Point(1.1, 3, -3), Point(-.3, -3, 4), Point(-.3, 3, 4));
+        const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+        for (bool swap : {false, true}) {
+            const auto& a = swap ? plane : cone;
+            const auto& b = swap ? cone : plane;
+            const auto result = Intersection::surface_surface(a, b, tolerance);
+            MINI_CHECK(result.size() == 1);
+            for (const auto& section : result) {
+                const auto& world = std::get<0>(section);
+                const auto& ua = std::get<1>(section);
+                const auto& ub = std::get<2>(section);
+                MINI_CHECK(world.is_rational() && world.degree() == 2 && world.cv_count() == 3);
+                MINI_CHECK(world.domain_start() == 0 && world.domain_end() == 1);
+                MINI_CHECK(ua.domain() == world.domain() && ub.domain() == world.domain());
+                MINI_CHECK(curve_surface_intersection::same_parameter(world, ua, a, tolerance) ==
+                           curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world, ub, b, tolerance) ==
+                           curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(world.weight(1) > 12.5 && world.weight(1) < 13.5);
+                // Rational conic of x+.2*z=.5 and x*x+y*y=(1.5-.5*z)^2.
+                // Its supplied raw parameter law has denominator1+24*t*(1-t).
+                for (int i = 0; i <= 32; ++i) {
+                    const double t = i / 32., d = 1 + 24 * t * (1 - t), z = 80 * t * (1 - t) / d;
+                    const double x = .5 - .2 * z, y = std::sqrt(2.) * (1 - 2 * t) / d;
+                    const auto point = world.point_at(t);
+                    MINI_CHECK(std::min(point.distance({x, y, z}), point.distance({x, -y, z})) < 1e-10);
+                }
+                for (const auto* pc : {&ua, &ub})
+                    for (int i = 0; i < pc->cv_count(); ++i)
+                        MINI_CHECK(pc->weight(i) > 0 && std::isfinite(pc->weight(i)));
+            }
+        }
+        MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
     }
 }
 
@@ -1756,6 +1928,7 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
     NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
     NurbsSurface cyl = Primitives::cylinder_surface(0.0, 0.0, -2.0, 1.0, 4.0);
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
+    std::cerr << "[analytic-pullback-case] Surface Surface Coaxial Quadrics :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sphere_cyl = Intersection::surface_surface(sphere, cyl);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sphere_cyl = Intersection::surface_surface(sphere, cyl);
 
     MINI_CHECK(sphere_cyl.size() == 2);
@@ -1767,6 +1940,7 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
         MINI_CHECK(lies_on_curve(std::get<0>(t), std::get<2>(t), cyl) < 1e-9);
     }
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Coaxial Quadrics :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cyl_cone = Intersection::surface_surface(cyl, cone);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cyl_cone = Intersection::surface_surface(cyl, cone);
 
     MINI_CHECK(cyl_cone.size() == 1);
@@ -1774,6 +1948,7 @@ MINI_TEST("Intersection", "Surface Surface Coaxial Quadrics") {
     MINI_CHECK(on_both(std::get<0>(cyl_cone[0]), distance_unit_cylinder, distance_cone) < 1e-9);
     MINI_CHECK(lies_on_curve(std::get<0>(cyl_cone[0]), std::get<2>(cyl_cone[0]), cone) < 1e-9);
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Coaxial Quadrics :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cone_sphere = Intersection::surface_surface(cone, sphere);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> cone_sphere = Intersection::surface_surface(cone, sphere);
 
     MINI_CHECK(cone_sphere.size() == 2);
@@ -1839,6 +2014,7 @@ MINI_TEST("Intersection", "Surface Surface Cone Apex") {
 
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface axial = bilinear(Point(0.0, -3.0, -3.0), Point(0.0, -3.0, 4.0), Point(0.0, 3.0, -3.0), Point(0.0, 3.0, 4.0));
+    std::cerr << "[analytic-pullback-case] Surface Surface Cone Apex :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> lines = Intersection::surface_surface(cone, axial);
 
     MINI_CHECK(lines.size() == 2);
@@ -1859,6 +2035,7 @@ MINI_TEST("Intersection", "Surface Surface Seam Pieces") {
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
     NurbsSurface slanted = bilinear(Point(-3.0, -3.0, 0.0), Point(-3.0, 3.0, -0.6), Point(3.0, -3.0, 1.2), Point(3.0, 3.0, 0.6));
+    std::cerr << "[analytic-pullback-case] Surface Surface Seam Pieces :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(sphere, wall);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> circle = Intersection::surface_surface(sphere, wall);
     double length = 0.0;
 
@@ -1873,6 +2050,7 @@ MINI_TEST("Intersection", "Surface Surface Seam Pieces") {
 
     MINI_CHECK(std::abs(length - 2.0 * Tolerance::PI * std::sqrt(3.96)) < 1e-4);
 
+    std::cerr << "[analytic-pullback-case] Surface Surface Seam Pieces :: std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> conic = Intersection::surface_surface(cone, slanted);" << std::endl;
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> conic = Intersection::surface_surface(cone, slanted);
 
     MINI_CHECK(conic.size() == 2);
@@ -1957,6 +2135,7 @@ MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface wall = bilinear(Point(0.2, -3.0, -3.0), Point(0.2, -3.0, 3.0), Point(0.2, 3.0, -3.0), Point(0.2, 3.0, 3.0));
     NurbsSurface square = bilinear(Point(-1.6, -1.6, 0.5), Point(-1.6, 1.6, 0.5), Point(1.6, -1.6, 0.5), Point(1.6, 1.6, 0.5));
+    std::cerr << "[analytic-pullback-case] Cut Curves On Surface Pullbacks :: std::vector<NurbsCurve> sphere_cuts = Intersection::cut_curves_on_surface(sphere, wall);" << std::endl;
     std::vector<NurbsCurve> sphere_cuts = Intersection::cut_curves_on_surface(sphere, wall);
 
     MINI_CHECK(sphere_cuts.size() == 2);
@@ -1964,6 +2143,7 @@ MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
     for (const NurbsCurve& pc : sphere_cuts)
         MINI_CHECK(lifted_distance(pc, sphere, distance_wall) < 5e-3);
 
+    std::cerr << "[analytic-pullback-case] Cut Curves On Surface Pullbacks :: std::vector<NurbsCurve> cone_cuts = Intersection::cut_curves_on_surface(cone, wall);" << std::endl;
     std::vector<NurbsCurve> cone_cuts = Intersection::cut_curves_on_surface(cone, wall);
 
     MINI_CHECK(cone_cuts.size() == 2);
@@ -1971,6 +2151,7 @@ MINI_TEST("Intersection", "Cut Curves On Surface Pullbacks") {
     for (const NurbsCurve& pc : cone_cuts)
         MINI_CHECK(lifted_distance(pc, cone, distance_wall) < 1e-3);
 
+    std::cerr << "[analytic-pullback-case] Cut Curves On Surface Pullbacks :: std::vector<NurbsCurve> square_cuts = Intersection::cut_curves_on_surface(sphere, square);" << std::endl;
     std::vector<NurbsCurve> square_cuts = Intersection::cut_curves_on_surface(sphere, square);
 
     MINI_CHECK(square_cuts.size() == 4);
@@ -2005,6 +2186,7 @@ MINI_TEST("Intersection", "Cut Curves Slanted Cutter") {
 
     NurbsSurface cone = Primitives::cone_surface(0.0, 0.0, 0.0, 1.5, 3.0);
     NurbsSurface slanted = bilinear(Point(-3.0, -3.0, 0.0), Point(-3.0, 3.0, -0.6), Point(3.0, -3.0, 1.2), Point(3.0, 3.0, 0.6));
+    std::cerr << "[analytic-pullback-case] Cut Curves Slanted Cutter :: std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(cone, slanted);" << std::endl;
     std::vector<NurbsCurve> cuts = Intersection::cut_curves_on_surface(cone, slanted);
 
     MINI_CHECK(cuts.size() == 2);
@@ -2767,4 +2949,798 @@ MINI_TEST("Intersection", "Plane Plane Plane Optional") {
     MINI_CHECK(!parallel.has_value());
 }
 
+MINI_TEST("Intersection", "Preserved Affine Surface Plane Single Track") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_triple_affine_plane_support.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    for (bool normalized : {false, true}) {
+        NurbsSurface support = NurbsSurface::jsonload(fixture["surface"]);
+        if (normalized) {
+            MINI_CHECK(support.set_domain(0, 0.0, 1.0));
+            MINI_CHECK(support.set_domain(1, 0.0, 1.0));
+        }
+        const double tolerance = fixture["tolerance"];
+        const Plane plane = Plane::from_point_normal({0, 0, 0}, {0, 0, 1});
+        const auto worlds = Intersection::surface_plane(support, plane, tolerance);
+        MINI_CHECK(worlds.size() == 1);
+        if (worlds.size() == 1) {
+            MINI_CHECK(!worlds[0].is_closed());
+            for (const auto& endpoint : fixture["expected_endpoints"]) {
+                const Point expected(endpoint[0], endpoint[1], endpoint[2]);
+                MINI_CHECK(std::min(expected.distance(worlds[0].point_at_start()),
+                    expected.distance(worlds[0].point_at_end())) <= tolerance);
+            }
+        }
+        const auto sections = Intersection::surface_plane_uv(support, plane, tolerance);
+        MINI_CHECK(sections.size() == 1);
+        if (sections.size() != 1)
+            continue;
+        const NurbsCurve& world = sections[0].first;
+        const NurbsCurve& pcurve = sections[0].second;
+        MINI_CHECK(world.domain() == pcurve.domain());
+        MINI_CHECK(!world.is_closed());
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, support, tolerance)
+            == curve_surface_intersection::ParameterMatch::Matched);
+        for (const auto& endpoint : fixture["expected_endpoints"]) {
+            const Point expected(endpoint[0], endpoint[1], endpoint[2]);
+            MINI_CHECK(std::min(expected.distance(world.point_at_start()),
+                expected.distance(world.point_at_end())) <= tolerance);
+        }
+        for (int i = 0; i <= 16; ++i) {
+            const auto domain = world.domain();
+            const Point point = world.point_at(domain.first + (domain.second - domain.first) * i / 16.0);
+            MINI_CHECK(std::abs(point[2]) <= tolerance);
+            MINI_CHECK(std::abs(point[1] + 1.0 - 256.0 * point[0] * point[0] / 65025.0) <= tolerance);
+        }
+    }
+}
+
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Strict Analytic Affine Pullback Keeps Cone Apex Alias") {
+    const auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    const auto plane = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {{0, -3, -3}, {0, -3, 4}, {0, 3, -3}, {0, 3, 4}});
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? plane : cone;
+        const auto& b = swap ? cone : plane;
+        const auto curves = Intersection::surface_surface(a, b, 1e-12);
+        MINI_CHECK(curves.size() == 2);
+        int positive_base = 0, negative_base = 0;
+        for (const auto& [world, pa, pb] : curves) {
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto p = world.point_at_start(), q = world.point_at_end();
+            MINI_CHECK(std::min(p.distance({0, 0, 3}), q.distance({0, 0, 3})) <= 1e-12);
+            const Point base = p.distance({0, 0, 3}) < q.distance({0, 0, 3}) ? q : p;
+            const bool positive = base.distance({0, 1.5, 0}) <= 1e-12;
+            const bool negative = base.distance({0, -1.5, 0}) <= 1e-12;
+            MINI_CHECK(positive || negative);
+            positive_base += positive;
+            negative_base += negative;
+        }
+        MINI_CHECK(positive_base == 1 && negative_base == 1);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+
+MINI_TEST("Intersection", "Strict Analytic Affine Pullback Keeps Original Cone Endspan") {
+    const auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    const auto sphere = Primitives::sphere_surface(0, 0, 0, 2);
+    const auto before_cone = cone.jsondump(), before_sphere = sphere.jsondump();
+    const double low = (1.5 - std::sqrt(11.)) / 2.5, high = (1.5 + std::sqrt(11.)) / 2.5;
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? sphere : cone;
+        const auto& b = swap ? cone : sphere;
+        const auto curves = Intersection::surface_surface(a, b, 1e-12);
+        MINI_CHECK(curves.size() == 2);
+        bool has_low = false, has_high = false;
+        for (const auto& [world, pa, pb] : curves) {
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto p = world.point_at_middle();
+            has_low = has_low || std::abs(p[2] - low) <= 1e-12;
+            has_high = has_high || std::abs(p[2] - high) <= 1e-12;
+            MINI_CHECK(std::abs(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] - 4) <= 1e-11);
+        }
+        // Existing analytic supporting-quadric contract includes the lower endspan branch.
+        MINI_CHECK(has_low && has_high && low < 0);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && sphere.jsondump() == before_sphere);
+}
+
+MINI_TEST("Intersection", "Strict Radius Two Sphere Raw Pullback Across Knot Charts") {
+    const auto first = Primitives::sphere_surface(0, 0, 0, 2);
+    const auto second = Primitives::sphere_surface(2, 0, 0, 2);
+    const auto before_a = first.jsondump(), before_b = second.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? second : first;
+        const auto& b = swap ? first : second;
+        const auto triples = Intersection::surface_surface(a, b, 1e-12);
+        MINI_CHECK(triples.size() == 2);
+        int positive = 0, negative = 0;
+        for (const auto& [world, pa, pb] : triples) {
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for (int i = 0; i <= 16; ++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 16.));
+                MINI_CHECK(std::abs(p[0] - 1) <= 1e-12);
+                MINI_CHECK(std::abs(p[1] * p[1] + p[2] * p[2] - 3) <= 1e-11);
+            }
+            const auto middle = world.point_at_middle();
+            if (middle[1] > 0) ++positive; else ++negative;
+        }
+        MINI_CHECK(positive == 1 && negative == 1);
+    }
+    MINI_CHECK(first.jsondump() == before_a && second.jsondump() == before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Plane Cone Finite Cap Arc Preserves Wrapped Raw Range") {
+    const double tolerance = 1e-12;
+    const auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    // z=x-1: exact cap points (1,+/-sqrt(5)/2,0), highest point (4/3,0,1/3).
+    const auto plane = bilinear(Point(-3, -3, -4), Point(-3, 3, -4),
+                                Point(3, -3, 2), Point(3, 3, 2));
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? plane : cone;
+        const auto& b = swap ? cone : plane;
+        const auto triples = Intersection::surface_surface(a, b, tolerance);
+        MINI_CHECK(triples.size() == 2);
+        int positive_cap = 0, negative_cap = 0, peak = 0;
+        bool past_original_end = false;
+        const Point positive(1, std::sqrt(5.) / 2, 0), negative(1, -std::sqrt(5.) / 2, 0);
+        const Point top(4. / 3, 0, 1. / 3);
+        for (const auto& [world, pa, pb] : triples) {
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            past_original_end = past_original_end || world.domain_end() > 1;
+            for (const auto& p : {world.point_at_start(), world.point_at_end()}) {
+                positive_cap += p.distance(positive) <= 1e-10;
+                negative_cap += p.distance(negative) <= 1e-10;
+                peak += p.distance(top) <= 1e-10;
+            }
+            for (int i = 0; i <= 16; ++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 16.));
+                const double radius = 1.5 - .5 * p[2];
+                MINI_CHECK(p[2] >= -tolerance && p[2] <= 1. / 3 + tolerance);
+                MINI_CHECK(std::abs(p[2] - p[0] + 1) <= 1e-11);
+                MINI_CHECK(std::abs(p[0] * p[0] + p[1] * p[1] - radius * radius) <= 1e-11);
+            }
+        }
+        MINI_CHECK(positive_cap == 1 && negative_cap == 1 && peak == 2);
+        MINI_CHECK(past_original_end);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Strict Hyperbola Pullback Near Coincident Chart Sample") {
+    const auto cone = Primitives::cone_surface(0,0,0,1.5,3);
+    const auto plane = bilinear(Point(1.1,-3,-3),Point(1.1,3,-3),
+                                Point(-.3,-3,4),Point(-.3,3,4));
+    const auto before_cone=cone.jsondump(), before_plane=plane.jsondump();
+    for (bool swap : {false,true}) {
+        const auto& a=swap?plane:cone; const auto& b=swap?cone:plane;
+        const auto result=Intersection::surface_surface(a,b,1e-12);
+        MINI_CHECK(result.size()==1);
+        for (const auto& [world,pa,pb] : result) {
+            MINI_CHECK(world.degree()==2);
+            MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-12)==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-12)==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for(int i=0;i<=32;++i) {
+                const auto p=world.point_at(std::lerp(world.domain_start(),world.domain_end(),i/32.));
+                MINI_CHECK(std::abs(p[0]+.2*p[2]-.5)<1e-11);
+                MINI_CHECK(std::abs(p[0]*p[0]+p[1]*p[1]-(1.5-.5*p[2])*(1.5-.5*p[2]))<1e-10);
+            }
+        }
+    }
+    MINI_CHECK(cone.jsondump()==before_cone && plane.jsondump()==before_plane);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Quintic Hermite Preserves Nonuniform Raw Polynomial Jets") {
+    // Independent degree-five monomials specify values and both raw derivatives.
+    const auto point = [](double s) {
+        return Point(std::pow(s, 5) - 2 * s * s, std::pow(s, 4) + s, s * s * s - s * s);
+    };
+    const auto first = [](double s) {
+        return Vector((5 * std::pow(s, 4) - 4 * s) / 20, (4 * s * s * s + 1) / 20, (3 * s * s - 2 * s) / 20);
+    };
+    const auto second = [](double s) {
+        return Vector((20 * s * s * s - 4) / 400, 12 * s * s / 400, (6 * s - 2) / 400);
+    };
+    const std::vector<double> stations{0, .125, .5, .625, 1};
+    std::vector<nurbs_hermite::QuinticSpan> spans;
+    for (size_t i = 1; i < stations.size(); ++i) {
+        const double a = stations[i - 1], b = stations[i];
+        spans.push_back(
+            {-7 + 20 * a, -7 + 20 * b, point(a), point(b), first(a), first(b), second(a), second(b)});
+    }
+    const auto curve = nurbs_hermite::quintic(spans);
+    MINI_CHECK(curve.is_valid() && curve.degree() == 5 && !curve.is_rational());
+    MINI_CHECK(curve.domain_start() == -7 && curve.domain_end() == 13);
+    for (int i = 0; i <= 64; ++i) {
+        const double s = i / 64.;
+        const auto value = curve.evaluate(-7 + 20 * s, 2);
+        MINI_CHECK(value.size() == 3);
+        MINI_CHECK(Point(value[0][0], value[0][1], value[0][2]).distance(point(s)) < 2e-12);
+        MINI_CHECK((value[1] - first(s)).magnitude() < 2e-12);
+        MINI_CHECK((value[2] - second(s)).magnitude() < 2e-12);
+    }
+    // A C1 join need not be C2: retain the independent one-sided quadratic jet.
+    const std::vector<nurbs_hermite::QuinticSpan> joined{
+        {-1, 0, Point(), Point(), Vector(), Vector(), Vector(), Vector()},
+        {0, 1, Point(), Point(1, 0, 0), Vector(), Vector(2, 0, 0), Vector(2, 0, 0), Vector(2, 0, 0)}};
+    const auto hinge = nurbs_hermite::quintic(joined);
+    MINI_CHECK(hinge.is_valid());
+    MINI_CHECK(hinge.point_at(-.5).distance(Point()) < 1e-14);
+    MINI_CHECK(hinge.point_at(.5).distance(Point(.25, 0, 0)) < 1e-14);
+    auto invalid = spans;
+    invalid[1].start[0] += 1e-5;
+    MINI_CHECK(!nurbs_hermite::quintic(invalid).is_valid());
+    invalid = spans;
+    invalid[1].first = std::nextafter(invalid[1].first, invalid[1].last);
+    MINI_CHECK(!nurbs_hermite::quintic(invalid).is_valid());
+}
+
+MINI_TEST("Intersection", "Strict Near Pole Sphere Raw Pullback Endpoint Jets") {
+    const auto first = Primitives::sphere_surface(0, 0, 0, 2);
+    const auto second = Primitives::sphere_surface(.4, 0, 0, 2);
+    const auto before_a = first.jsondump(), before_b = second.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? second : first;
+        const auto& b = swap ? first : second;
+        const auto triples = Intersection::surface_surface(a, b, 1e-12);
+        MINI_CHECK(triples.size() == 2);
+        int positive = 0, negative = 0;
+        for (const auto& [world, pa, pb] : triples) {
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for (int i = 0; i <= 16; ++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 16.));
+                MINI_CHECK(std::abs(p[0] - .2) <= 1e-12);
+                MINI_CHECK(std::abs(p[1] * p[1] + p[2] * p[2] - 3.96) <= 1e-11);
+            }
+            const auto middle = world.point_at_middle();
+            if (middle[1] > 0) {
+                ++positive;
+                // Exact stored-world witness at raw t=.49739583333333337. A
+                // previously inserted projection sample missed this by1.34e-12.
+                // Closest locates the point only; all full certificates above and
+                // these ORIGINAL-geometry distance checks remain mandatory.
+                const Point captured(.2, .02940320672283397, 1.989757636355346);
+                const auto [t, unused_gap] = Closest::curve_point(world, captured);
+                MINI_CHECK(world.point_at(t).distance(captured) <= 1e-12);
+                const auto ua = pa.point_at(t), ub = pb.point_at(t);
+                MINI_CHECK(a.point_at(ua[0], ua[1]).distance(captured) <= 1e-12);
+                MINI_CHECK(b.point_at(ub[0], ub[1]).distance(captured) <= 1e-12);
+            } else
+                ++negative;
+        }
+        MINI_CHECK(positive == 1 && negative == 1);
+    }
+    MINI_CHECK(first.jsondump() == before_a && second.jsondump() == before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Strict Near Pole Pullback Reversed Chart Coverage") {
+    auto first=Primitives::sphere_surface(0,0,0,2);
+    const auto second=Primitives::sphere_surface(.4,0,0,2);
+    MINI_CHECK(first.reverse(0));
+    const auto before_a=first.jsondump(),before_b=second.jsondump();
+    const double z=std::sqrt(3.96);
+    for(bool swap : {false,true}) {
+        const auto& a=swap?second:first; const auto& b=swap?first:second;
+        const auto result=Intersection::surface_surface(a,b,1e-12);
+        MINI_CHECK(result.size()==2);
+        int positive=0,negative=0,top=0,bottom=0;
+        for(const auto& [world,pa,pb] : result) {
+            MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            for(const auto p : {world.point_at_start(),world.point_at_end()}) {
+                if(p.distance(Point(.2,0,z))<=1e-12) ++top;
+                else if(p.distance(Point(.2,0,-z))<=1e-12) ++bottom;
+                else MINI_CHECK(false);
+            }
+            const auto middle=world.point_at_middle();
+            if(middle[1]>0) ++positive; else ++negative;
+            for(int i=0;i<=32;++i) {
+                const auto p=world.point_at(std::lerp(world.domain_start(),world.domain_end(),i/32.));
+                MINI_CHECK(std::abs(p[0]-.2)<=1e-12);
+                MINI_CHECK(std::abs(p[1]*p[1]+p[2]*p[2]-3.96)<=1e-11);
+            }
+        }
+        MINI_CHECK(positive==1 && negative==1 && top==2 && bottom==2);
+    }
+    MINI_CHECK(first.jsondump()==before_a && second.jsondump()==before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Near Cap Seam Proposal Preserves Reversed Chart Arc") {
+    const double tolerance = 1e-12, rise = std::ldexp(1., -46);
+    auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    MINI_CHECK(cone.reverse(0));
+    const auto plane = bilinear(Point(-3, -3, -4.5 + rise), Point(-3, 3, -4.5 + rise),
+                                Point(3, -3, 1.5 + rise), Point(3, 3, 1.5 + rise));
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? plane : cone;
+        const auto& b = swap ? cone : plane;
+        const auto result = Intersection::surface_surface(a, b, tolerance);
+        MINI_CHECK(!result.empty());
+        double low = 1, high = -1, peak = 0;
+        for (const auto& [world, pa, pb] : result) {
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for (int i = 0; i <= 32; ++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 32.));
+                low = std::min(low, p[1]); high = std::max(high, p[1]); peak = std::max(peak, p[2]);
+                MINI_CHECK(p[2] >= -tolerance);
+                MINI_CHECK(std::abs(p[2] - p[0] + 1.5 - rise) <= tolerance);
+                MINI_CHECK(std::abs(p[0]*p[0] + p[1]*p[1] - (1.5-.5*p[2])*(1.5-.5*p[2])) <= 1e-11);
+            }
+        }
+        MINI_CHECK(high-low > 1e-8 && peak > rise*.125);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Near Cap Closed Projection Preserves Shifted Raw Chart") {
+    const double tolerance = 1e-12, rise = std::ldexp(1., -46);
+    auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    MINI_CHECK(cone.reverse(0));
+    MINI_CHECK(cone.set_domain(0, -7, 13));
+    MINI_CHECK(cone.set_domain(1, 32, 35));
+    const auto plane = bilinear(Point(-3, -3, -4.5 + rise), Point(-3, 3, -4.5 + rise),
+                                Point(3, -3, 1.5 + rise), Point(3, 3, 1.5 + rise));
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? plane : cone;
+        const auto& b = swap ? cone : plane;
+        const auto result = Intersection::surface_surface(a, b, tolerance);
+        MINI_CHECK(!result.empty());
+        double low = 1, high = -1, peak = 0;
+        for (const auto& [world, pa, pb] : result) {
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for (int i = 0; i <= 32; ++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 32.));
+                low = std::min(low, p[1]); high = std::max(high, p[1]); peak = std::max(peak, p[2]);
+                MINI_CHECK(p[2] >= -tolerance);
+                MINI_CHECK(std::abs(p[2] - p[0] + 1.5 - rise) <= tolerance);
+                MINI_CHECK(std::abs(p[0]*p[0] + p[1]*p[1] - (1.5-.5*p[2])*(1.5-.5*p[2])) <= 1e-11);
+            }
+        }
+        MINI_CHECK(high-low > 1e-8 && peak > rise*.125);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Analytic Latitude Raw Range Preserves Actual Chart Phase") {
+    const auto cone=Primitives::cone_surface(0,0,0,1.5,3);
+    const auto sphere=Primitives::sphere_surface(0,0,0,2);
+    const auto before_a=cone.jsondump(),before_b=sphere.jsondump();
+    const double low=(1.5-std::sqrt(11.))/2.5, high=(1.5+std::sqrt(11.))/2.5;
+    const auto result=Intersection::surface_surface(cone,sphere,1e-12);
+    MINI_CHECK(result.size()==2);
+    bool found_low=false,found_high=false;
+    for(const auto& [world,pa,pb] : result) {
+        MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,cone,1e-12)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,sphere,1e-12)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        const bool lower=std::abs(world.point_at_middle()[2]-low)<1e-12;
+        if(lower) {
+            found_low=true;
+            MINI_CHECK(world.domain_start()==.5 && world.domain_end()==1.5);
+        } else {
+            found_high=true;
+            MINI_CHECK(std::abs(world.point_at_middle()[2]-high)<1e-12);
+            MINI_CHECK(world.domain_start()==0 && world.domain_end()==1);
+            const auto left=pb.point_at(.5-1e-7),right=pb.point_at(.5+1e-7);
+            MINI_CHECK(std::abs(left[0]-right[0])>3.9);
+        }
+        for(int i=0;i<=32;++i) {
+            const auto p=world.point_at(std::lerp(world.domain_start(),world.domain_end(),i/32.));
+            MINI_CHECK(std::abs(p[2]-(lower?low:high))<1e-12);
+            MINI_CHECK(std::abs(p[0]*p[0]+p[1]*p[1]+p[2]*p[2]-4)<1e-11);
+        }
+    }
+    MINI_CHECK(found_low && found_high);
+    MINI_CHECK(cone.jsondump()==before_a && sphere.jsondump()==before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Strict Plane Cone Parabola Uses Focal Parameter") {
+    const auto cone=Primitives::cone_surface(0,0,0,1.5,3);
+    const auto plane=bilinear(Point(-3,-3,8.5),Point(-3,3,8.5),
+                              Point(3,-3,-3.5),Point(3,3,-3.5));
+    const auto before_a=cone.jsondump(),before_b=plane.jsondump();
+    const double endpoint_y=std::sqrt(11.)/4;
+    for(bool swap : {false,true}) {
+        const auto& a=swap?plane:cone; const auto& b=swap?cone:plane;
+        const auto result=Intersection::surface_surface(a,b,1e-12);
+        MINI_CHECK(result.size()==1);
+        for(const auto& [world,pa,pb] : result) {
+            MINI_CHECK(world.degree()==2 && world.cv_count()==3);
+            MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=world.point_at_start(),q=world.point_at_end();
+            MINI_CHECK(std::min(std::max(p.distance(Point(1.25,-endpoint_y,0)),q.distance(Point(1.25,endpoint_y,0))),
+                                std::max(p.distance(Point(1.25,endpoint_y,0)),q.distance(Point(1.25,-endpoint_y,0))))<=1e-12);
+            MINI_CHECK(world.point_at_middle().distance(Point(-.125,0,2.75))<=1e-12);
+            for(int i=0;i<=32;++i) {
+                const auto p=world.point_at(std::lerp(world.domain_start(),world.domain_end(),i/32.));
+                MINI_CHECK(std::abs(p[0]-(2*p[1]*p[1]-.125))<=1e-11);
+                MINI_CHECK(std::abs(p[2]-(2.75-4*p[1]*p[1]))<=1e-11);
+            }
+        }
+    }
+    MINI_CHECK(cone.jsondump()==before_a && plane.jsondump()==before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Slanted Cone Original Endspan Pullback Is Certified") {
+    const double tolerance = 1e-12;
+    auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    MINI_CHECK(cone.set_domain(0, -7, 13));
+    MINI_CHECK(cone.set_domain(1, 32, 35));
+    const auto plane = bilinear(Point(-3,-3,0),Point(-3,3,-.6),Point(3,-3,1.2),Point(3,3,.6));
+    const auto before_a = cone.jsondump(), before_b = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? plane : cone; const auto& b = swap ? cone : plane;
+        const auto sections = Intersection::surface_surface(a,b,tolerance);
+        MINI_CHECK(sections.size() == 2);
+        for (const auto& [world,pa,pb] : sections) {
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            for (int i=0;i<=32;++i) {
+                const auto p = world.point_at(std::lerp(world.domain_start(),world.domain_end(),i/32.));
+                const double radius = 1.5-.5*p[2];
+                MINI_CHECK(std::abs(p[0]*p[0]+p[1]*p[1]-radius*radius) <= 1e-11);
+                MINI_CHECK(std::abs(p[2]-.2*p[0]+.1*p[1]-.3) <= 1e-11);
+                MINI_CHECK(p[2] >= -tolerance && p[2] <= 3+tolerance);
+            }
+        }
+    }
+    MINI_CHECK(cone.jsondump() == before_a && plane.jsondump() == before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Strict Trapezoid Pullback Preserves Nonlinear Raw Law") {
+    const auto trapezoid=bilinear(Point(-3,-3,0),Point(-1,3,0),Point(3,-3,0),Point(7,3,0));
+    const auto wall=bilinear(Point(6,-5,-1),Point(6,5,-1),Point(6,-5,1),Point(6,5,1));
+    const auto before_a=trapezoid.jsondump(),before_b=wall.jsondump();
+    for(bool swap : {false,true}) {
+        const auto& a=swap?wall:trapezoid; const auto& b=swap?trapezoid:wall;
+        const auto result=Intersection::surface_surface(a,b,1e-12);
+        MINI_CHECK(result.size()==1);
+        for(const auto& [world,pa,pb] : result) {
+            MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-12)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=world.point_at_start(),q=world.point_at_end();
+            MINI_CHECK(std::min(std::max(p.distance(Point(6,1.5,0)),q.distance(Point(6,3,0))),
+                                std::max(p.distance(Point(6,3,0)),q.distance(Point(6,1.5,0))))<=1e-12);
+            MINI_CHECK(world.point_at_middle().distance(Point(6,2.25,0))<=1e-12);
+            const auto& pc=swap?pb:pa;
+            for(int i=0;i<=32;++i) {
+                const double t=std::lerp(world.domain_start(),world.domain_end(),i/32.);
+                const auto uv=pc.point_at(t),point=world.point_at(t);
+                // Independent inverse of S=(-3+6u+2v+2uv,-3+6v,0).
+                MINI_CHECK(std::abs(uv[1]-(point[1]+3)/6)<=1e-12);
+                MINI_CHECK(std::abs(uv[0]-(9-2*uv[1])/(6+2*uv[1]))<=1e-12);
+            }
+        }
+    }
+    MINI_CHECK(trapezoid.jsondump()==before_a && wall.jsondump()==before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Certified Nonlinear Raw Seam Split Preserves Physical Junction") {
+    const double tolerance = 1e-12;
+    auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    MINI_CHECK(cone.set_domain(0,-7,13));
+    MINI_CHECK(cone.set_domain(1,32,35));
+    const auto plane = bilinear(Point(-3, -3, 0), Point(-3, 3, -.6), Point(3, -3, 1.2), Point(3, 3, .6));
+    const auto before_cone = cone.jsondump(), before_plane = plane.jsondump();
+    for (bool swap : {false, true}) {
+        const auto& first = swap ? plane : cone;
+        const auto& second = swap ? cone : plane;
+        const auto result = Intersection::surface_surface(first, second, tolerance);
+        MINI_CHECK(result.size() == 2);
+        int base_a = 0, base_b = 0, seam = 0;
+        for (const auto& section : result) {
+            const auto& world = std::get<0>(section);
+            const auto& ua = std::get<1>(section);
+            const auto& ub = std::get<2>(section);
+            MINI_CHECK(world.is_rational() && world.degree() == 2);
+            MINI_CHECK(world.domain() == ua.domain() && world.domain() == ub.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, ua, first, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, ub, second, tolerance) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto domain = world.domain();
+            for (const auto& point : {world.point_at_start(), world.point_at_end()}) {
+                base_a += point.distance({-.9, 1.2, 0}) < 1e-10;
+                base_b += point.distance({-1.5, 0, 0}) < 1e-10;
+                seam += point.distance({27. / 22, 0, 6. / 11}) < 1e-10;
+            }
+            for (int sample = 0; sample <= 32; ++sample) {
+                const auto point = world.point_at(std::lerp(domain.first, domain.second, sample / 32.));
+                const double radius = 1.5 - point[2] * .5;
+                MINI_CHECK(std::abs(point[0] * point[0] + point[1] * point[1] - radius * radius) < 1e-11);
+                MINI_CHECK(std::abs(point[2] - .2 * point[0] + .1 * point[1] - .3) < 1e-11);
+                MINI_CHECK(point[2] >= -tolerance && point[2] <= 3 + tolerance);
+            }
+        }
+        MINI_CHECK(base_a == 1 && base_b == 1 && seam == 2);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && plane.jsondump() == before_plane);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Certified Seam Query Preserves Shifted Supporting Cone Endspan") {
+    auto cone = Primitives::cone_surface(0, 0, 0, 1.5, 3);
+    MINI_CHECK(cone.set_domain(0,-7,13));
+    MINI_CHECK(cone.set_domain(1,32,35));
+    const auto sphere = Primitives::sphere_surface(0, 0, 0, 2);
+    const auto before_cone = cone.jsondump(), before_sphere = sphere.jsondump();
+    const double low = (1.5 - std::sqrt(11.)) / 2.5, high = (1.5 + std::sqrt(11.)) / 2.5;
+    for (bool swap : {false, true}) {
+        const auto& a = swap ? sphere : cone;
+        const auto& b = swap ? cone : sphere;
+        const auto curves = Intersection::surface_surface(a, b, 1e-12);
+        MINI_CHECK(curves.size() == 2);
+        bool has_low = false, has_high = false;
+        for (const auto& [world, pa, pb] : curves) {
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto p = world.point_at_middle();
+            has_low = has_low || std::abs(p[2] - low) <= 1e-12;
+            has_high = has_high || std::abs(p[2] - high) <= 1e-12;
+            MINI_CHECK(std::abs(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] - 4) <= 1e-11);
+        }
+        // Existing analytic supporting-quadric contract includes the lower endspan branch.
+        MINI_CHECK(has_low && has_high && low < 0);
+    }
+    MINI_CHECK(cone.jsondump() == before_cone && sphere.jsondump() == before_sphere);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Quintic Hermite Preserves Positive Tiny Raw Span") {
+    const double end = 3.543711097672514e-33;
+    const auto point = [](double s) { return Point(s*s,2*s*s*s-s,0); };
+    const auto first = [&](double s) { return Vector(2*s/end,(6*s*s-1)/end,0); };
+    const auto second = [&](double s) { return Vector(2/(end*end),12*s/(end*end),0); };
+    const std::vector<nurbs_hermite::QuinticSpan> spans{
+        {0,end,point(0),point(1),first(0),first(1),second(0),second(1)}};
+    const auto curve = nurbs_hermite::quintic(spans);
+    MINI_CHECK(curve.is_valid() && curve.degree()==5);
+    MINI_CHECK(curve.domain_start()==0 && curve.domain_end()==end);
+    MINI_CHECK(curve.m_nurbsknot==std::vector<double>({0,0,0,0,0,end,end,end,end,end}));
+    for(int i=0;i<=32;++i) {
+        const double s=i/32.;
+        MINI_CHECK(curve.point_at(s*end).distance(point(s))<=1e-12);
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Analytic Recognition Keeps Rhino Torus Physical Precision") {
+    const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() /
+        "tests/fixtures/rhino_booleans/inputs/InputTorus-object-0.step";
+    const auto supports = file_step::read_file_step_nurbssurfaces(path.string());
+    MINI_CHECK(supports.size() == 1);
+    if (supports.size() != 1) return;
+    const auto& torus = supports.front();
+    const auto before = torus.jsondump();
+    const double cx = .259563270114015, cy = 54.2018251668541;
+    const double major = 16.7189880045964, minor = 6.64007692750769;
+    for (double height : {0., 10.}) {
+        const auto plane = bilinear(Point(cx-30,cy-30,height), Point(cx-30,cy+30,height),
+                                    Point(cx+30,cy-30,height), Point(cx+30,cy+30,height));
+        for (bool swap : {false, true}) {
+            const auto curves = swap ? Intersection::surface_surface(plane, torus, .001) :
+                                       Intersection::surface_surface(torus, plane, .001);
+            MINI_CHECK(curves.size() == (height == 0 ? 2u : 0u));
+            bool inner = false, outer = false;
+            for (const auto& section : curves) {
+                const auto& world = std::get<0>(section);
+                const auto& pc_torus = swap ? std::get<2>(section) : std::get<1>(section);
+                const auto& pc_plane = swap ? std::get<1>(section) : std::get<2>(section);
+                MINI_CHECK(world.is_closed());
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,pc_torus,torus,.001) ==
+                           curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,pc_plane,plane,.001) ==
+                           curve_surface_intersection::ParameterMatch::Matched);
+                const auto first = world.point_at_start();
+                const double radius = std::hypot(first[0]-cx, first[1]-cy);
+                inner = inner || std::abs(radius-(major-minor)) < 1e-7;
+                outer = outer || std::abs(radius-(major+minor)) < 1e-7;
+                for (int k=0;k<=16;++k) {
+                    const auto p = world.point_at(world.domain_start()+
+                        (world.domain_end()-world.domain_start())*k/16.);
+                    MINI_CHECK(std::abs(p[2]) < 1e-7);
+                    const double rho = std::hypot(p[0]-cx,p[1]-cy);
+                    MINI_CHECK(std::min(std::abs(rho-(major-minor)),std::abs(rho-(major+minor))) < 1e-7);
+                }
+            }
+            if (height == 0) MINI_CHECK(inner && outer);
+        }
+    }
+    MINI_CHECK(torus.jsondump() == before);
+}
+
+MINI_TEST("Intersection", "Analytic Recognition Does Not Flatten Opposite Bilinear Saddles") {
+    const auto a = bilinear(Point(-1,-1,.25),Point(-1,1,-.25),Point(1,-1,-.25),Point(1,1,.25));
+    const auto b = bilinear(Point(-1,-1,-.25),Point(-1,1,.25),Point(1,-1,.25),Point(1,1,-.25));
+    const auto before_a = a.jsondump(), before_b = b.jsondump();
+    for (bool swap : {false,true}) {
+        const auto sections = swap ? Intersection::surface_surface(b,a,.001) :
+                                     Intersection::surface_surface(a,b,.001);
+        MINI_CHECK(sections.size() == 2);
+        bool x_axis = false, y_axis = false;
+        for (const auto& section : sections) {
+            const auto& world = std::get<0>(section);
+            const auto& pa = swap ? std::get<2>(section) : std::get<1>(section);
+            const auto& pb = swap ? std::get<1>(section) : std::get<2>(section);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,.001) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,.001) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            const auto first = world.point_at_start(), last = world.point_at_end();
+            const bool along_x = std::abs(first[1])+std::abs(last[1]) < 1e-12;
+            const bool along_y = std::abs(first[0])+std::abs(last[0]) < 1e-12;
+            MINI_CHECK(along_x != along_y);
+            const int varying = along_x ? 0 : 1;
+            MINI_CHECK(std::abs(std::min(first[varying],last[varying])+1) < 1e-12);
+            MINI_CHECK(std::abs(std::max(first[varying],last[varying])-1) < 1e-12);
+            x_axis = x_axis || along_x;
+            y_axis = y_axis || along_y;
+            for (int k=0;k<=8;++k) {
+                const auto p = world.point_at(world.domain_start()+
+                    (world.domain_end()-world.domain_start())*k/8.);
+                MINI_CHECK(std::abs(p[2]) < 1e-12 && std::abs(p[0]*p[1]) < 1e-12);
+            }
+        }
+        MINI_CHECK(x_axis && y_axis);
+    }
+    MINI_CHECK(a.jsondump() == before_a && b.jsondump() == before_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Genuine Positive Clipped Sections Survive Both Length Floors") {
+    for (bool absolute_floor : {false,true}) {
+        const double length=std::ldexp(1.,absolute_floor?-32:-16);
+        const double tolerance=length/(absolute_floor?16:4);
+        const auto a=bilinear(Point(-1,-1,0),Point(-1,1,0),Point(1,-1,0),Point(1,1,0));
+        const auto b=bilinear(Point(1-length,0,-1),Point(1-length,0,1),
+                              Point(3-length,0,-1),Point(3-length,0,1));
+        const auto before_a=a.jsondump(), before_b=b.jsondump();
+        for(bool swap : {false,true}) {
+            const auto sections=swap?Intersection::surface_surface(b,a,tolerance):
+                                     Intersection::surface_surface(a,b,tolerance);
+            MINI_CHECK(sections.size()==1);
+            for(const auto& section : sections) {
+                const auto& world=std::get<0>(section);
+                const auto p=world.point_at_start(), q=world.point_at_end();
+                MINI_CHECK(std::abs(std::min(p[0],q[0])-(1-length))<=tolerance);
+                MINI_CHECK(std::abs(std::max(p[0],q[0])-1)<=tolerance);
+                MINI_CHECK(std::abs(p[1])+std::abs(p[2])+std::abs(q[1])+std::abs(q[2])<=tolerance);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,
+                    swap?std::get<2>(section):std::get<1>(section),a,tolerance)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,
+                    swap?std::get<1>(section):std::get<2>(section),b,tolerance)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+            }
+        }
+        MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Original Collapsed Pole Endpoints Keep One Sided Meridian Chart") {
+    const double tolerance = 1e-7;
+    for (int variant = 0; variant < 3; ++variant) {
+        auto sphere = BRep::create_sphere(2).m_surfaces[0];
+        if (variant == 1) {
+            MINI_CHECK(sphere.set_domain(0,32,35));
+            MINI_CHECK(sphere.set_domain(1,-7,13));
+        }
+        if (variant == 2) MINI_CHECK(sphere.reverse(0));
+        const auto plane = bilinear(Point(0,-3,-3),Point(0,3,-3),Point(0,-3,3),Point(0,3,3));
+        const auto before_s = sphere.jsondump(), before_p = plane.jsondump();
+        for (bool swap : {false,true}) {
+            const auto result = swap ? Intersection::surface_surface(plane,sphere,tolerance)
+                                     : Intersection::surface_surface(sphere,plane,tolerance);
+            MINI_CHECK(!result.empty());
+            for (const auto& [world,first,second] : result) {
+                MINI_CHECK(world.domain() == first.domain() && world.domain() == second.domain());
+                MINI_CHECK(world.domain_start() < world.domain_end());
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,swap?second:first,sphere,tolerance)
+                    == curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,swap?first:second,plane,tolerance)
+                    == curve_surface_intersection::ParameterMatch::Matched);
+            }
+            for (const Point target : {Point(0,2,0),Point(0,-2,0),Point(0,0,2),Point(0,0,-2)}) {
+                bool found = false;
+                for (const auto& section : result) {
+                    const auto& world = std::get<0>(section);
+                    const auto [parameter,gap] = Closest::curve_point(world,target);
+                    found = found || (std::isfinite(parameter) && std::isfinite(gap) &&
+                        world.point_at(parameter).distance(target) <= tolerance);
+                }
+                MINI_CHECK(found);
+            }
+        }
+        MINI_CHECK(sphere.jsondump() == before_s && plane.jsondump() == before_p);
+    }
+}
 } // namespace session_cpp

@@ -593,6 +593,9 @@ Result intersect(const NurbsCurve& curve, double tolerance, const Options& optio
             if (state == AppendState::Complete)
                 continue;
             if (state == AppendState::Failed) {
+                result.has_failure_pair = true;
+                result.failure_pair = {pair.a.lo, pair.a.hi, pair.b.lo, pair.b.hi};
+                result.failure_depth = pair.depth;
                 result.complete = false;
                 break;
             }

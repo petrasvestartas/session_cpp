@@ -1,10 +1,12 @@
 #include "brep.h"
+#include "mesh_parametric_metadata.h"
 #include "brep.pb.h"
+#include "brep_boolean.h"
 #include "brep_measure.h"
+#include "brep_offset.h"
 #include "closest.h"
 #include "fmt/core.h"
 #include "nurbssurface_trimmed.h"
-#include "occt_backend.h"
 #include "primitives.h"
 #include "remesh_cdt.h"
 #include "remesh_nurbssurface_grid.h"
@@ -681,10 +683,13 @@ std::pair<std::vector<Polyline>, std::vector<Plane>> planar_faces(const BRep& b)
 // Meshing helpers
 // ═══════════════════════════════════════════════════════════════════════════
 /// Canonical boundary of every shared edge: model points, the (face, pcurve, parameters) that produced them, and refined (t, uv) samples
+using ParametricBoundarySample = std::tuple<double, Point, Point>;
+
 struct EdgeBoundary {
     std::map<int, std::vector<Point>> points; // Canonical model points per edge.
     std::map<int, std::tuple<int, int, std::vector<double>>> basis; // (face, pcurve, parameters) per edge.
     std::map<int, std::vector<std::pair<double, Point>>> samples; // Refined (t, uv) samples per edge.
+    std::map<std::tuple<int, int, int, int>, std::vector<ParametricBoundarySample>> parametric_uses;
 };
 
 /// Order (parameter, point) pairs by parameter
@@ -1422,6 +1427,20 @@ void lift_canonical(
     samples.erase(std::unique(samples.begin(), samples.end(), sample_equal), samples.end());
 }
 
+std::array<std::vector<double>, 2> parametric_crease_knots(const NurbsSurface& surface) {
+    std::array<std::vector<double>, 2> result;
+    for (int direction = 0; direction < 2; ++direction) {
+        const std::pair<double, double> domain = surface.domain(direction);
+        const std::vector<double>& knots = surface.m_nurbsknot[direction];
+        for (double knot : knots)
+            if (knot > domain.first && knot < domain.second
+                && std::count(knots.begin(), knots.end(), knot) >= surface.degree(direction)
+                && std::find(result[direction].begin(), result[direction].end(), knot) == result[direction].end())
+                result[direction].push_back(knot);
+    }
+    return result;
+}
+
 /// Phase 3: fresh samples of a pcurve nobody has sampled yet, its ends on the edge's vertices, refined to the face's angle and chord
 std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const std::pair<Point, Point>& ends, double scale, double angle, double chord) {
 
@@ -1437,6 +1456,33 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
         const int count = std::min(std::max(crv.cv_count() * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
         std::tie(points, parameters) = crv.divide_by_count(count, true);
     }
+
+    // a sample on every crease the pcurve crosses, so the face across the edge gets that vertex too
+    const std::array<std::vector<double>, 2> creases = parametric_crease_knots(srf);
+
+    for (int dir = 0; dir < 2; ++dir)
+        for (double knot : creases[dir])
+            for (size_t k = 1; k < points.size(); ++k) {
+                if (!((points[k - 1][dir] < knot && points[k][dir] > knot) || (points[k - 1][dir] > knot && points[k][dir] < knot)))
+                    continue;
+
+                double low = parameters[k - 1];
+                double high = parameters[k];
+
+                for (int step = 0; step < 64; ++step) {
+                    const double middle = 0.5 * (low + high);
+
+                    if ((crv.point_at(middle)[dir] < knot) == (points[k - 1][dir] < knot))
+                        low = middle;
+                    else
+                        high = middle;
+                }
+
+                Point crossing = crv.point_at(low);
+                crossing[dir] = knot;
+                points.insert(points.begin() + k, crossing);
+                parameters.insert(parameters.begin() + k, low);
+            }
 
     std::vector<std::tuple<double, Point, Point>> samples;
 
@@ -1468,6 +1514,11 @@ bool edge_use_samples(
 
     if (ci < 0)
         return false;
+    const auto cached = boundary.parametric_uses.find({fi, ei, ci, int(er.orientation)});
+    if (mesh_parametric_metadata::capture_depth && cached != boundary.parametric_uses.end()) {
+        samples = cached->second;
+        return samples.size() >= 2;
+    }
 
     const NurbsCurve& crv = b.m_curves_2d[ci];
 
@@ -1494,6 +1545,147 @@ bool edge_use_samples(
         std::reverse(samples.begin(), samples.end());
 
     return samples.size() >= 2;
+}
+
+
+struct ParametricBoundaryUse {
+    int face;
+    int edge;
+    int pcurve;
+    BRepOrientation orientation;
+    std::vector<ParametricBoundarySample> samples;
+    bool reversed = false;
+};
+
+bool parametric_same_point(const Point& first, const Point& second) {
+    return first[0] == second[0] && first[1] == second[1] && first[2] == second[2];
+}
+
+bool align_parametric_use(const std::vector<ParametricBoundarySample>& canonical, ParametricBoundaryUse& use) {
+    if (canonical.size() != use.samples.size())
+        return false;
+    bool forward = true, reversed = true;
+    for (size_t i = 0; i < canonical.size(); ++i) {
+        const Point& point = std::get<2>(canonical[i]);
+        forward &= parametric_same_point(point, std::get<2>(use.samples[i]));
+        reversed &= parametric_same_point(point, std::get<2>(use.samples[canonical.size() - 1 - i]));
+    }
+    if (forward == reversed)
+        return false;
+    use.reversed = reversed;
+    if (reversed)
+        std::reverse(use.samples.begin(), use.samples.end());
+    return true;
+}
+
+using ParametricPin = std::tuple<size_t, int, double>;
+using ParametricCuts = std::map<double, std::vector<ParametricPin>>;
+
+ParametricCuts parametric_segment_cuts(const BRep& brep, const std::vector<ParametricBoundaryUse>& uses,
+                                      size_t segment) {
+    ParametricCuts cuts = {{0, {}}, {1, {}}};
+    for (size_t index = 0; index < uses.size(); ++index) {
+        const ParametricBoundaryUse& use = uses[index];
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
+        const std::array<std::vector<double>, 2> knots = parametric_crease_knots(surface);
+        const Point& first = std::get<1>(use.samples[segment]);
+        const Point& last = std::get<1>(use.samples[segment + 1]);
+        for (int direction = 0; direction < 2; ++direction)
+            for (double knot : knots[direction]) {
+                if (!(knot > std::min(first[direction], last[direction])
+                    && knot < std::max(first[direction], last[direction])))
+                    continue;
+                const double fraction = (knot - first[direction]) / (last[direction] - first[direction]);
+                if (!std::isfinite(fraction) || !(fraction > 0 && fraction < 1))
+                    throw std::runtime_error("Native tessellation cannot represent a shared crease crossing");
+                cuts[fraction].push_back({index, direction, knot});
+            }
+    }
+    return cuts;
+}
+
+void verify_parametric_partition(const BRep& brep, const ParametricBoundaryUse& use) {
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
+    const std::array<std::vector<double>, 2> knots = parametric_crease_knots(surface);
+    for (size_t i = 1; i < use.samples.size(); ++i) {
+        const Point& first = std::get<1>(use.samples[i - 1]);
+        const Point& last = std::get<1>(use.samples[i]);
+        for (int direction = 0; direction < 2; ++direction)
+            for (double knot : knots[direction])
+                if (knot > std::min(first[direction], last[direction])
+                    && knot < std::max(first[direction], last[direction]))
+                    throw std::runtime_error("Native tessellation shared crease partition is unresolved");
+    }
+}
+
+bool split_parametric_edge(const BRep& brep, std::vector<ParametricBoundaryUse>& uses, size_t& added) {
+    const std::vector<ParametricBoundarySample> canonical = uses[0].samples;
+    for (size_t i = 1; i < uses.size(); ++i)
+        if (!align_parametric_use(canonical, uses[i]))
+            throw std::runtime_error("Native tessellation has incompatible shared edge sample ancestry");
+    std::vector<std::vector<ParametricBoundarySample>> expanded(uses.size());
+    bool changed = false;
+    for (size_t segment = 0; segment + 1 < canonical.size(); ++segment) {
+        const ParametricCuts cuts = parametric_segment_cuts(brep, uses, segment);
+        changed |= cuts.size() > 2;
+        for (const auto& cut : cuts) {
+            if (cut.first == 1 && segment + 2 < canonical.size())
+                continue;
+            if (cut.first != 0 && cut.first != 1 && ++added > 200000)
+                throw std::runtime_error("Native tessellation exceeded its shared boundary node budget");
+            const Point& a = std::get<2>(canonical[segment]);
+            const Point& b = std::get<2>(canonical[segment + 1]);
+            const Point point = cut.first == 0 ? a : cut.first == 1 ? b : a + (b - a) * cut.first;
+            for (size_t index = 0; index < uses.size(); ++index) {
+                const ParametricBoundarySample& first = uses[index].samples[segment];
+                const ParametricBoundarySample& last = uses[index].samples[segment + 1];
+                Point uv = cut.first == 0 ? std::get<1>(first) : cut.first == 1 ? std::get<1>(last)
+                    : std::get<1>(first) + (std::get<1>(last) - std::get<1>(first)) * cut.first;
+                for (const ParametricPin& pin : cut.second)
+                    if (std::get<0>(pin) == index)
+                        uv[std::get<1>(pin)] = std::get<2>(pin);
+                const double parameter = cut.first == 0 ? std::get<0>(first) : cut.first == 1 ? std::get<0>(last)
+                    : std::get<0>(first) + (std::get<0>(last) - std::get<0>(first)) * cut.first;
+                expanded[index].push_back({parameter, uv, point});
+            }
+        }
+    }
+    for (size_t i = 0; i < uses.size(); ++i) {
+        uses[i].samples = std::move(expanded[i]);
+        verify_parametric_partition(brep, uses[i]);
+        if (uses[i].reversed)
+            std::reverse(uses[i].samples.begin(), uses[i].samples.end());
+    }
+    return changed;
+}
+
+std::set<int> synchronize_parametric_boundaries(const BRep& brep, EdgeBoundary& boundary,
+                                              double scale, double angle, double chord) {
+    std::set<int> rebuild;
+    if (!mesh_parametric_metadata::capture_depth)
+        return rebuild;
+    std::map<int, std::vector<ParametricBoundaryUse>> groups;
+    for (int face = 0; face < brep.face_count(); ++face)
+        for (const BRepRef& wire : brep.m_faces[face].wires)
+            for (const BRepRef& edge : brep.wire_edges(wire)) {
+                if (brep.m_edges[edge.index].degenerated)
+                    continue;
+                const int pc = brep.pcurve_index(edge.index, face, edge.orientation);
+                ParametricBoundaryUse use{face, edge.index, pc, edge.orientation, {}};
+                if (!edge_use_samples(brep, face, edge, boundary, scale, angle, chord, use.samples))
+                    throw std::runtime_error("Native tessellation cannot collect a shared boundary use");
+                groups[edge.index].push_back(std::move(use));
+            }
+    size_t added = 0;
+    for (auto& group : groups) {
+        const bool changed = split_parametric_edge(brep, group.second, added);
+        for (ParametricBoundaryUse& use : group.second) {
+            if (changed)
+                rebuild.insert(use.face);
+            boundary.parametric_uses[{use.face, use.edge, use.pcurve, int(use.orientation)}] = std::move(use.samples);
+        }
+    }
+    return rebuild;
 }
 
 /// Phase 3: trim loops of a CDT face, every edge use keeping its boundary-node identities; false when some edge cannot be sampled
@@ -1591,7 +1783,9 @@ void add_ring_faces(
     const std::vector<Point>& border,
     const std::vector<std::vector<Point>>& holes,
     const std::vector<std::pair<double, double>>& border_2d,
-    const std::vector<std::vector<std::pair<double, double>>>& holes_2d
+    const std::vector<std::vector<std::pair<double, double>>>& holes_2d,
+    const std::vector<Point>& border_uv,
+    const std::vector<std::vector<Point>>& holes_uv
 ) {
 
     std::vector<size_t> vkeys;
@@ -1603,9 +1797,21 @@ void add_ring_faces(
         for (const Point& p : hole)
             vkeys.push_back(mesh.add_vertex(p));
 
+    std::vector<Point> parameters = border_uv;
+    if (mesh_parametric_metadata::capture_depth)
+        for (const std::vector<Point>& hole : holes_uv)
+            parameters.insert(parameters.end(), hole.begin(), hole.end());
     for (const std::array<int, 3>& t : cdt_triangulate(border_2d, holes_2d))
-        if (t[0] != t[1] && t[1] != t[2] && t[2] != t[0])
-            mesh.add_face({vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]});
+        if (t[0] != t[1] && t[1] != t[2] && t[2] != t[0]) {
+            const std::array<size_t, 3> keys = {vkeys[t[0]], vkeys[t[1]], vkeys[t[2]]};
+            const std::optional<size_t> face = mesh.add_face({keys[0], keys[1], keys[2]});
+            if (face && mesh_parametric_metadata::capture_depth) {
+                std::array<mesh_parametric_metadata::UV, 3> uv;
+                for (int i = 0; i < 3; ++i)
+                    uv[i] = {parameters[t[i]][0], parameters[t[i]][1]};
+                mesh_parametric_metadata::triangle(mesh, *face, keys, uv, 4);
+            }
+        }
 }
 
 /// Flip the mesh when its first face winds against the normal
@@ -1642,14 +1848,19 @@ Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
     Vector zaxis;
     Polyline(all_pts).get_average_plane(origin, xaxis, yaxis, zaxis);
     std::vector<Point> border = loops.xyz[0];
+    std::vector<Point> border_uv;
+    if (mesh_parametric_metadata::capture_depth)
+        border_uv = loops.uv[0];
     std::vector<std::pair<double, double>> border_2d = plane_coordinates(border, origin, xaxis, yaxis);
 
     if (ring_signed_area(border_2d) < 0.0) {
         std::reverse(border.begin(), border.end());
         std::reverse(border_2d.begin(), border_2d.end());
+        std::reverse(border_uv.begin(), border_uv.end());
     }
 
     std::vector<std::vector<Point>> holes;
+    std::vector<std::vector<Point>> holes_uv;
     std::vector<std::vector<std::pair<double, double>>> holes_2d;
 
     for (size_t li = 1; li < loops.xyz.size(); ++li) {
@@ -1657,18 +1868,23 @@ Mesh planar_loops_mesh(const NurbsSurface& srf, const TrimLoops& loops) {
             continue;
 
         std::vector<Point> hole = loops.xyz[li];
+        std::vector<Point> hole_uv;
+        if (mesh_parametric_metadata::capture_depth)
+            hole_uv = loops.uv[li];
         std::vector<std::pair<double, double>> hole_2d = plane_coordinates(hole, origin, xaxis, yaxis);
 
         if (ring_signed_area(hole_2d) > 0.0) {
             std::reverse(hole.begin(), hole.end());
             std::reverse(hole_2d.begin(), hole_2d.end());
+            std::reverse(hole_uv.begin(), hole_uv.end());
         }
 
         holes.push_back(hole);
+        holes_uv.push_back(hole_uv);
         holes_2d.push_back(hole_2d);
     }
 
-    add_ring_faces(mesh, border, holes, border_2d, holes_2d);
+    add_ring_faces(mesh, border, holes, border_2d, holes_2d, border_uv, holes_uv);
 
     const std::pair<double, double> du = srf.domain(0);
     const std::pair<double, double> dv = srf.domain(1);
@@ -2791,7 +3007,12 @@ BRep BRep::from_polylines(const std::vector<Polyline>& polylines, const std::vec
             continue;
 
         const Vector xa = plane.x_axis();
-        const Vector ya = plane.y_axis();
+        Vector ya = plane.y_axis();
+
+        // a concave outline can turn the averaged normal over: the outer wire must run counter-clockwise in the patch
+        if (signed_area_in_plane(pts, org, xa, ya) < 0.0)
+            ya *= -1.0;
+
         const double outer_area = signed_area_in_plane(pts, org, xa, ya);
         std::vector<int> vi;
 
@@ -3330,14 +3551,6 @@ int BRep::add_solid(const std::vector<BRepRef>& shells) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
-BRep BRep::hollow(const std::vector<int>& openings, double thickness, double tolerance) const {
-    return occt::hollow(*this, openings, thickness, tolerance);
-}
-
-Mesh BRep::tessellate(double deflection, double angle) const {
-    return occt::tessellate(*this, deflection, angle);
-}
-
 Mesh BRep::mesh() const {
 
     std::vector<std::vector<Point>> polygons;
@@ -3358,6 +3571,55 @@ Mesh BRep::mesh() const {
 std::vector<Mesh> BRep::face_meshes() const {
 
     return face_meshes_q(false, 0.0, 0.0);
+}
+
+
+static void tag_parametric_boundaries(const BRep& brep, int face, Mesh& mesh, int path) {
+    if (!mesh_parametric_metadata::capture_depth)
+        return;
+    mesh_parametric_metadata::from_vertices(mesh);
+    if (path)
+        for (const auto& triangle : mesh.face)
+            mesh.facedata[triangle.first]["tessellation_path"] = path;
+    std::vector<BRepRef> edges;
+    for (const BRepRef& wire : brep.m_faces[face].wires) {
+        const std::vector<BRepRef> uses = brep.wire_edges(wire);
+        edges.insert(edges.end(), uses.begin(), uses.end());
+    }
+    for (const auto& triangle : mesh.face)
+        for (size_t key : triangle.second) {
+            mesh_parametric_metadata::UV uv;
+            if (!mesh_parametric_metadata::read(mesh, triangle.first, key, uv))
+                continue;
+            for (const BRepRef& use : edges) {
+                const int index = brep.pcurve_index(use.index, face, use.orientation);
+                if (index < 0)
+                    continue;
+                const NurbsCurve& curve = brep.m_curves_2d[index];
+                bool on_boundary = false;
+                if (curve.degree() == 1 && curve.cv_count() == 2) {
+                    const Point first = curve.get_cv(0), last = curve.get_cv(1);
+                    for (int d = 0; d < 2; ++d)
+                        on_boundary |= first[d] == last[d] && uv[d] == first[d]
+                            && uv[1 - d] >= std::min(first[1 - d], last[1 - d])
+                            && uv[1 - d] <= std::max(first[1 - d], last[1 - d]);
+                }
+                const std::string prefix = "brep_edge/" + std::to_string(use.index) + "/";
+                const std::string interval = "brep_edge_interval/" + std::to_string(use.index) + "/";
+                for (const auto& attribute : mesh.vertex.at(key).attributes)
+                    on_boundary |= attribute.first.starts_with(prefix) || attribute.first.starts_with(interval);
+                if (!on_boundary)
+                    continue;
+                mesh.vertex[key].attributes[prefix + "parametric"] = 1;
+                const BRepEdge& edge = brep.m_edges[use.index];
+                for (int vertex : {edge.start_vertex, edge.end_vertex}) {
+                    const Point point = mesh.vertex.at(key).position();
+                    const Point& source = brep.m_vertices[vertex].point;
+                    if (point[0] == source[0] && point[1] == source[1] && point[2] == source[2])
+                        mesh.vertex[key].attributes["brep_vertex/" + std::to_string(vertex)] = 1;
+                }
+            }
+        }
 }
 
 std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const {
@@ -3411,6 +3673,14 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
 
     refine_shared_boundaries(*this, face_direct, rebuild_grid, boundary, scale, angle, chord);
 
+    const std::set<int> synchronized = synchronize_parametric_boundaries(*this, boundary, scale, angle, chord);
+    for (int face : synchronized) {
+        face_strip[face] = false;
+        face_ruled[face] = -1;
+        face_direct[face] = false;
+        rebuild_grid[face] = true;
+    }
+
     for (int fi = 0; fi < nf; ++fi)
         if (rebuild_grid[fi])
             face_direct[fi] = false;
@@ -3441,6 +3711,9 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         tag_edge_uses(fmesh[fi], loops, uses);
     }
 
+    for (int face = 0; face < nf; ++face)
+        tag_parametric_boundaries(*this, face, fmesh[face],
+            face_strip[face] ? 1 : face_ruled[face] >= 0 ? 2 : face_direct[face] ? 3 : 0);
     flip_reversed_faces(*this, fmesh);
 
     return fmesh;
@@ -3670,27 +3943,27 @@ BRep BRep::offset_convex(double distance, double tolerance) const {
 
 BRep BRep::boolean_union(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Union, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Union, tolerance);
 }
 
 BRep BRep::boolean_intersection(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Intersection, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Intersection, tolerance);
 }
 
 BRep BRep::boolean_difference(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Difference, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Difference, tolerance);
 }
 
 BRep BRep::boolean_xor(const BRep& other, double tolerance) const {
 
-    return occt::boolean_operation(*this, other, occt::BooleanOperation::Xor, tolerance);
+    return brep_boolean::apply(*this, other, brep_boolean::Operation::Xor, tolerance);
 }
 
 BRep BRep::offset(double distance, double tolerance) const {
 
-    return occt::offset(*this, distance, tolerance);
+    return brep_offset::shape(*this, distance, tolerance);
 }
 
 BRep BRep::cut_by_plane(const Plane& plane) const {

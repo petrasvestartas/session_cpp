@@ -4,6 +4,7 @@
 #include "curve_intersection.h"
 #include "curve_surface_intersection.h"
 #include "split.h"
+#include "nurbs_coincidence.h"
 
 #include <algorithm>
 #include <array>
@@ -43,6 +44,7 @@ struct Use {
 
 struct Section {
     bool valid = false;
+    bool tangent = false;
     NurbsCurve world;
     std::array<NurbsCurve, 2> pcurves;
     std::array<std::vector<double>, 2> events;
@@ -63,6 +65,10 @@ struct Context {
     std::vector<std::vector<int>> face_edges;
     std::vector<Section> sections;
     std::vector<Point> points;
+    std::vector<std::array<int, 2>> ends;
+    std::vector<std::pair<int, int>> tangent_pairs;
+    std::vector<std::map<int, int>> boundary_sections;
+    std::map<std::pair<int, int>, std::array<double, 2>> context_boundary_parameters;
 
     const NurbsSurface& surface(int face) const {
         const BRep& brep = faces[face].brep;
@@ -94,6 +100,10 @@ void collect_topology(Context& context) {
     context.face_edges.resize(context.faces.size());
     context.sections.resize(source.edge_count());
     context.points.resize(source.vertex_count());
+    context.tangent_pairs.resize(source.vertex_count(), {-1, -1});
+    context.boundary_sections.resize(context.faces.size());
+    for (const BRepEdge& edge : source.m_edges)
+        context.ends.push_back({edge.start_vertex, edge.end_vertex});
     std::set<int> visited;
     for (int i = 0; i < static_cast<int>(context.faces.size()); ++i) {
         const OffsetFace& displaced = context.faces[i];
@@ -156,22 +166,27 @@ Vector source_normal(const Context& context, const Use& use, double parameter) {
     return source.face_orientation(face) == Reversed ? -direction : direction;
 }
 
-void check_convex(const Context& context) {
+int edge_type(const Context& context) {
     const std::vector<Use>& uses = context.uses[context.edge];
     const BRepEdge& edge = context.source.m_edges[context.edge];
     const NurbsCurve& curve = context.source.m_curves_3d[edge.curve_3d_index];
     const BRepOrientation orientation = brep_compose(context.source.face_orientation(context.faces[uses[0].face].source), uses[0].orientation);
     const double sign = orientation == Forward ? 1.0 : -1.0;
     const double angular = std::min(0.01, context.tolerance / std::abs(context.distance));
+    int type = 0;
     for (int i = 1; i < 48; ++i) {
         const double t = i / 48.0;
         const double parameter = curve.domain_start() + t * (curve.domain_end() - curve.domain_start());
         const Vector tangent = unit(curve.evaluate(parameter, 1)[1]);
         const Vector first = source_normal(context, uses[0], t);
         const Vector second = source_normal(context, uses[1], t);
-        require(sign * tangent.dot(first.cross(second)) > angular,
-            "Inward construction requires consistently convex sharp joins; smooth, concave or mixed joins need another path");
+        const double turn = sign * tangent.dot(first.cross(second));
+        require(std::abs(turn) > angular, "Inward support graph requires consistently sharp source edges");
+        const int current = turn > 0.0 ? 1 : -1;
+        require(type == 0 || current == type, "Inward source edge changes concavity within its parameter range");
+        type = current;
     }
+    return type;
 }
 
 void certify(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurface& surface, double tolerance) {
@@ -191,21 +206,290 @@ void certify_source_edge(const Context& context) {
     }
 }
 
-void intersect_neighbors(Context& context) {
-    context.stage = "adjacent displaced supports";
+// Isolated straight, orthogonal context edge: a retained tangent half-cylinder,
+// ending transversely on the ORIGINAL stationary support.
+OffsetFace context_tube(Context& context, int retained, int stationary) {
+    const NurbsCurve& spine = context.source.m_curves_3d[context.source.m_edges[context.edge].curve_3d_index];
+    require(spine.degree() == 1 && spine.cv_count() == 2 && !spine.is_rational(),
+            "Context tube requires one polynomial straight source span");
+    require(context.surface(retained).is_planar() && context.surface(stationary).is_planar(),
+            "Context tube requires planar retained and stationary supports");
+    const Point c0 = spine.point_at_start(), c1 = spine.point_at_end();
+    const Vector axis = unit(c1 - c0);
+    // A working rectangle may have been enlarged for intersections. Its border
+    // is not the physical image of the ORIGINAL spine.
+    const Use retained_use = context.uses[context.edge][context.side(context.edge, retained)];
+    const Vector a = source_normal(context, retained_use, .5) * context.distance;
+    const double radius = std::abs(context.distance);
+    const Use stationary_use = context.uses[context.edge][context.side(context.edge, stationary)];
+    for (const Use& use : {retained_use, stationary_use}) {
+        const int source_face = context.faces[use.face].source;
+        require(context.source.m_surfaces[context.source.m_faces[source_face].surface_index]
+                    .is_planar(nullptr, context.tolerance * .125),
+                "Context tube requires original planar normal supports");
+    }
+    const Vector b = source_normal(context, stationary_use, .5) * -radius;
+    require(std::abs(a.magnitude() - radius) <= context.tolerance * .125 &&
+                std::abs(a.dot(axis)) <= context.tolerance * .125 &&
+                std::abs(b.dot(axis)) <= context.tolerance * .125 &&
+                std::abs(unit(a).dot(unit(b))) <= 512 * Epsilon,
+            "Context tube requires orthogonal equal-radius affine geometry");
+    NurbsSurface surface(3, true, 2, 3, 2, 5);
+    surface.m_nurbsknot[0] = {0, 1};
+    surface.m_nurbsknot[1] = {0, 0, .5, .5, 1, 1};
+    const std::array<Vector, 5> radial = {a, a + b, b, b - a, -a};
+    const double w = std::sqrt(.5);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 5; ++j) {
+            const Point pole = (i ? c1 : c0) + radial[j];
+            double* cv = surface.cv(i, j);
+            cv[3] = j % 2 ? w : 1;
+            for (int d = 0; d < 3; ++d)
+                cv[d] = pole[d] * cv[3];
+        }
+    require(surface.is_valid(), "Context tube generated invalid rational support");
+    BRep result;
+    result.add_surface(surface);
+    const std::array<NurbsCurve, 4> worlds = {surface.iso_curve(0, 0), surface.iso_curve(1, 1),
+                                              surface.iso_curve(0, 1), surface.iso_curve(1, 0)};
+    const std::array<Point, 4> uv_a = {Point(0, 0, 0), Point(1, 0, 0), Point(0, 1, 0), Point(0, 0, 0)};
+    const std::array<Point, 4> uv_b = {Point(1, 0, 0), Point(1, 1, 0), Point(1, 1, 0), Point(0, 1, 0)};
+    std::vector<BRepRef> wire;
+    const auto vertex = [&](const Point& p) {
+        for (int i = 0; i < result.vertex_count(); ++i)
+            if (result.m_vertices[i].point.distance(p) <= context.tolerance * .125)
+                return i;
+        return result.add_vertex(p, context.tolerance * .125);
+    };
+    for (int i = 0; i < 4; ++i) {
+        const NurbsCurve pc = NurbsCurve::create(false, 1, {uv_a[i], uv_b[i]});
+        certify(worlds[i], pc, surface, context.tolerance * .125);
+        const int first = vertex(worlds[i].point_at_start()), last = vertex(worlds[i].point_at_end());
+        const int edge =
+            result.add_edge(result.add_curve_3d(worlds[i]), first, last, context.tolerance * .125);
+        result.add_pcurve(edge, 0, result.add_curve_2d(pc));
+        wire.push_back({edge, i < 2 ? Forward : Reversed});
+    }
+    result.add_face(0, {{result.add_wire(wire), Forward}}, context.tolerance * .125);
+    const Point middle = surface.point_at(.5, .5);
+    const BRepOrientation outward =
+        surface.normal_at(.5, .5).dot(middle - (c0 + (c1 - c0) * .5)) > 0 ? Forward : Reversed;
+    result.add_shell({{0, brep_reverse(outward)}});
+    require(result.is_valid(), "Context tube has invalid boundary geometry");
+    return {std::move(result), -1, {}};
+}
+
+void expand_support_graph(Context& context, const std::vector<int>& stationary_faces) {
+    std::vector<int> concave;
     for (int edge = 0; edge < context.source.edge_count(); ++edge) {
         if (context.uses[edge].empty())
             continue;
         context.edge = edge;
         certify_source_edge(context);
-        check_convex(context);
+        if (edge_type(context) < 0) {
+            concave.push_back(edge);
+        }
+    }
+    std::set<int> tube_vertices;
+    for (int edge : concave) {
+        context.stage = "concave tube support graph";
+        context.edge = edge;
+        std::array<Use, 2> adjacent = {context.uses[edge][0], context.uses[edge][1]};
+        const auto stationary = [&](int face) {
+            return std::find(stationary_faces.begin(), stationary_faces.end(), context.faces[face].source) !=
+                   stationary_faces.end();
+        };
+        const bool context_mode = stationary(adjacent[0].face) || stationary(adjacent[1].face);
+        require(!(stationary(adjacent[0].face) && stationary(adjacent[1].face)),
+                "Context tube does not support adjacent stationary openings");
+        if (context_mode && stationary(adjacent[0].face)) {
+            std::swap(adjacent[0], adjacent[1]);
+            std::swap(context.uses[edge][0], context.uses[edge][1]);
+        }
+        const int tube = static_cast<int>(context.faces.size());
+        OffsetFace support = context_mode ? context_tube(context, adjacent[0].face, adjacent[1].face)
+                                          : inward_tube(context.source, context.faces, edge, adjacent[0].face,
+                                                        adjacent[1].face, context.tolerance);
+        context.faces.push_back(std::move(support));
+        context.face_edges.push_back({});
+        context.boundary_sections.push_back({});
+        const int second = static_cast<int>(context.sections.size());
+        context.sections.push_back({});
+        context.uses.push_back({adjacent[1], {tube, Forward}});
+        context.ends.push_back(context.ends[edge]);
+        context.uses[edge] = {adjacent[0], {tube, Forward}};
+        std::vector<int>& replaced = context.face_edges[adjacent[1].face];
+        const auto old_border = std::find(replaced.begin(), replaced.end(), edge);
+        require(old_border != replaced.end(), "Concave side lost its source boundary ancestry");
+        *old_border = second;
+        context.face_edges[tube] = {edge, second};
+        for (int side = 0; side < 2; ++side) {
+            const int section_index = side == 0 ? edge : second;
+            const int face = adjacent[side].face;
+            if (context_mode) {
+                // Both physical borders come from the original-spine tube,
+                // never from artificial enlarged support rectangle edges.
+                const auto& tube_brep = context.faces[tube].brep;
+                Section& section = context.sections[section_index];
+                section.valid = true;
+                section.tangent = side == 0;
+                const int tube_border = side == 0 ? 0 : 2;
+                section.world = tube_brep.m_curves_3d[tube_brep.m_edges[tube_border].curve_3d_index];
+                const auto& plane = context.surface(face);
+                require(!plane.is_rational() && plane.degree(0) == 1 && plane.degree(1) == 1 &&
+                            plane.cv_count(0) == 2 && plane.cv_count(1) == 2,
+                        "Context tube requires an affine planar chart");
+                const Point o = plane.get_cv(0, 0);
+                const Vector u = plane.get_cv(1, 0) - o, v = plane.get_cv(0, 1) - o;
+                require((plane.get_cv(1, 1) - o - u - v).magnitude() <= context.tolerance * .125,
+                        "Context tube plane has a nonaffine chart");
+                const double uu = u.dot(u), vv = v.dot(v), uv = u.dot(v), det = uu * vv - uv * uv;
+                require(std::isfinite(det) && det > 0, "Context tube plane chart is singular");
+                const auto project = [&](const Point& p) {
+                    const Vector delta = p - o;
+                    const double a = (delta.dot(u) * vv - delta.dot(v) * uv) / det;
+                    const double b = (delta.dot(v) * uu - delta.dot(u) * uv) / det;
+                    const auto du = plane.domain(0), dv = plane.domain(1);
+                    return Point(du.first + a * (du.second - du.first), dv.first + b * (dv.second - dv.first),
+                                 0);
+                };
+                section.pcurves[0] = NurbsCurve::create(
+                    false, 1,
+                    {project(section.world.point_at_start()), project(section.world.point_at_end())});
+                section.pcurves[1] = NurbsCurve::create(false, 1,
+                    {{0, double(side), 0}, {1, double(side), 0}});
+                for (NurbsCurve& pc : section.pcurves)
+                    require(pc.set_domain(section.world.domain_start(), section.world.domain_end()),
+                            "Context tube physical border parameter normalization failed");
+                for (int use = 0; use < 2; ++use)
+                    certify(section.world, section.pcurves[use],
+                            context.surface(context.uses[section_index][use].face), context.tolerance * .125);
+                if (side == 0) {
+                    const double angular = std::min(0.01, context.tolerance / std::abs(context.distance));
+                    for (int sample = 0; sample <= 48; ++sample) {
+                        const double t = section.world.domain_start() + sample / 48.0 *
+                            (section.world.domain_end() - section.world.domain_start());
+                        const Point a = section.pcurves[0].point_at(t);
+                        const Point b = section.pcurves[1].point_at(t);
+                        require(std::abs(normal(context.surface(face), a).dot(normal(context.surface(tube), b)))
+                                    > 1.0 - angular,
+                                "Context tube does not meet its retained side tangentially");
+                    }
+                }
+                // The physical tangency may lie INSIDE a grown working face;
+                // do not alias it to that face's unrelated rectangular border.
+                context.boundary_sections[tube][tube_border] = section_index;
+                continue;
+            }
+            const BRep& displaced = context.faces[face].brep;
+            const int local = context.faces[face].edges.at(edge);
+            Section& section = context.sections[section_index];
+            section.valid = section.tangent = true;
+            section.world = displaced.m_curves_3d[displaced.m_edges[local].curve_3d_index];
+            const int pc = displaced.pcurve_index(local, 0, adjacent[side].orientation);
+            require(pc >= 0, "Concave tube boundary lacks its displaced pcurve");
+            section.pcurves[0] = displaced.m_curves_2d[pc];
+            section.pcurves[1] = NurbsCurve::create(false, 1, {{0, double(side), 0}, {1, double(side), 0}});
+            require(section.world.set_domain(0, 1) && section.pcurves[0].set_domain(0, 1),
+                "Could not normalize concave tangent border");
+            for (int use = 0; use < 2; ++use)
+                certify(section.world, section.pcurves[use], context.surface(context.uses[section_index][use].face), context.tolerance * 0.25);
+            const double angular = std::min(0.01, context.tolerance / std::abs(context.distance));
+            for (int sample = 0; sample <= 48; ++sample) {
+                const double t = sample / 48.0;
+                const Point a = section.pcurves[0].point_at(t);
+                const Point b = section.pcurves[1].point_at(t);
+                require(std::abs(normal(context.surface(face), a).dot(normal(context.surface(tube), b))) > 1.0 - angular,
+                    "Concave tube does not meet its displaced side tangentially");
+            }
+            context.boundary_sections[face][local] = section_index;
+            context.boundary_sections[tube][side == 0 ? 0 : 2] = section_index;
+        }
+        const std::array<int, 2> original_ends = context.ends[edge];
+        for (int end = 0; end < 2; ++end) {
+            const int vertex = original_ends[end];
+            context.vertex = vertex;
+            require(tube_vertices.insert(vertex).second,
+                "Inward support graph does not yet resolve multiple concave tubes at one vertex");
+            int cap = -1;
+            std::array<int, 2> neighbors = {-1, -1};
+            for (int neighbor : context.vertices[vertex]) {
+                if (neighbor == edge)
+                    continue;
+                for (const Use& use : context.uses[neighbor]) {
+                    if (use.face == adjacent[0].face)
+                        neighbors[0] = neighbor;
+                    else if (use.face == adjacent[1].face)
+                        neighbors[1] = neighbor;
+                    else {
+                        require(cap < 0 || cap == use.face, "Concave endpoint has ambiguous trimming support");
+                        cap = use.face;
+                    }
+                }
+            }
+            require(cap >= 0 && neighbors[0] >= 0 && neighbors[1] >= 0,
+                "Concave endpoint requires two side/cap section ancestors");
+            if (context_mode) {
+                require(!stationary(cap) && context.surface(cap).is_planar(),
+                        "Context tube requires retained planar end supports");
+                const Vector axis = unit(context.source.m_vertices[original_ends[1]].point -
+                                         context.source.m_vertices[original_ends[0]].point);
+                const auto& cap_surface = context.surface(cap);
+                const Vector cap_normal =
+                    normal(cap_surface, {cap_surface.domain(0).first, cap_surface.domain(1).first, 0});
+                require(std::abs(std::abs(axis.dot(cap_normal)) - 1) <= 512 * Epsilon,
+                        "Context tube end supports must be perpendicular to spine");
+            }
+            const int split_vertex = static_cast<int>(context.points.size());
+            context.points.push_back({});
+            context.tangent_pairs.push_back({-1, -1});
+            context.ends[second][end] = split_vertex;
+            std::array<int, 2>& neighbor_ends = context.ends[neighbors[1]];
+            require(neighbor_ends[0] == vertex || neighbor_ends[1] == vertex,
+                "Concave endpoint lost its side ancestry");
+            neighbor_ends[neighbor_ends[0] == vertex ? 0 : 1] = split_vertex;
+            const int rim = static_cast<int>(context.sections.size());
+            context.sections.push_back({});
+            context.uses.push_back({{cap, Forward}, {tube, Forward}});
+            context.ends.push_back({vertex, split_vertex});
+            context.face_edges[cap].push_back(rim);
+            context.face_edges[tube].push_back(rim);
+            context.tangent_pairs[vertex] = {neighbors[0], rim};
+            if (!context_mode)
+                context.tangent_pairs[split_vertex] = {neighbors[1], rim};
+        }
+    }
+    context.vertices.assign(context.points.size(), {});
+    for (int edge = 0; edge < static_cast<int>(context.sections.size()); ++edge)
+        if (!context.uses[edge].empty())
+            for (int vertex : context.ends[edge])
+                context.vertices[vertex].push_back(edge);
+    for (const std::vector<int>& edges : context.vertices)
+        require(edges.empty() || edges.size() == 3, "Expanded inward graph has invalid vertex incidence");
+    context.edge = context.vertex = -1;
+}
+
+void intersect_neighbors(Context& context) {
+    context.stage = "adjacent displaced supports";
+    for (int edge = 0; edge < static_cast<int>(context.sections.size()); ++edge) {
+        if (context.uses[edge].empty() || context.sections[edge].valid)
+            continue;
+        context.edge = edge;
         const int first = context.uses[edge][0].face;
         const int second = context.uses[edge][1].face;
         const brep_section::FaceResult result = brep_section::faces(context.faces[first].brep,
             context.faces[second].brep, context.tolerance * 0.0625);
-        require(result.complete, result.failure);
-        require(result.overlaps.empty() && result.curves.size() == 1,
-            "Inward adjacent faces require exactly one transverse section branch");
+        try {
+            require(result.complete, result.failure);
+            require(result.overlaps.empty() && result.curves.size() == 1,
+                "Inward adjacent faces require exactly one transverse section branch");
+        } catch (const std::exception& failure) {
+            InwardError error = diagnostic(context, failure);
+            error.first_support = context.faces[first].brep;
+            error.second_support = context.faces[second].brep;
+            error.section_result = result;
+            throw error;
+        }
         Section& section = context.sections[edge];
         section.valid = true;
         section.world = result.curves[0].world;
@@ -269,9 +553,9 @@ void vertex_event(Context& context, int first, int second) {
         "Inward triple vertex requires one transverse pcurve crossing per incident face");
     const curve_intersection::Hit& hit = result.points[0];
     for (const std::pair<int, double>& cut : {std::pair<int, double>{first, hit.a}, {second, hit.b}}) {
-        const BRepEdge& edge = context.source.m_edges[cut.first];
-        const int end = edge.start_vertex == context.vertex ? 0 : 1;
-        require(edge.start_vertex == context.vertex || edge.end_vertex == context.vertex,
+        const std::array<int, 2>& ends = context.ends[cut.first];
+        const int end = ends[0] == context.vertex ? 0 : 1;
+        require(ends[0] == context.vertex || ends[1] == context.vertex,
             "Inward crossing lost source vertex ancestry");
         context.sections[cut.first].events[end].push_back(cut.second);
     }
@@ -283,10 +567,14 @@ void reconcile_vertex(Context& context) {
     std::map<int, Vector> normals;
     for (int edge : edges) {
         Section& section = context.sections[edge];
-        const int end = context.source.m_edges[edge].start_vertex == context.vertex ? 0 : 1;
+        const int end = context.ends[edge][0] == context.vertex ? 0 : 1;
         const std::vector<double>& events = section.events[end];
-        require(events.size() == 2, "Inward vertex lacks its two incident parameter observations");
-        const double parameter = (events[0] + events[1]) * 0.5;
+        const bool split_vertex = context.tangent_pairs[context.vertex].first >= 0;
+        const size_t expected = split_vertex && !section.tangent ? 1 : 2;
+        require(events.size() == expected, "Inward vertex lacks its independent parameter observations");
+        double parameter = 0.0;
+        for (double event : events)
+            parameter += event / static_cast<double>(events.size());
         const Point point = section.world.point_at(parameter);
         for (double event : events)
             require(point.distance(section.world.point_at(event)) <= context.tolerance * 0.125,
@@ -312,24 +600,38 @@ void reconcile_vertex(Context& context) {
     const Vector a = (it++)->second;
     const Vector b = (it++)->second;
     const Vector c = it->second;
-    require(std::abs(a.dot(b.cross(c))) > 512.0 * Epsilon,
-        "Inward triple supports are singular or tangent");
+    if (context.tangent_pairs[context.vertex].first < 0) {
+        require(std::abs(a.dot(b.cross(c))) > 512.0 * Epsilon,
+            "Inward triple supports are singular or tangent");
+    } else {
+        const auto border = std::find_if(edges.begin(), edges.end(), [&](int edge) { return context.sections[edge].tangent; });
+        require(border != edges.end(), "Split inward vertex has no tangent support border");
+        const std::vector<Use>& uses = context.uses[*border];
+        const Vector first = normals.at(uses[0].face);
+        const Vector second = normals.at(uses[1].face);
+        const double angular = std::min(0.01, context.tolerance / std::abs(context.distance));
+        require(std::abs(first.dot(second)) > 1.0 - angular,
+            "Tube and side supports are not tangent at their shared vertex");
+        require(std::max({a.cross(b).magnitude(), a.cross(c).magnitude(), b.cross(c).magnitude()}) > 512.0 * Epsilon,
+            "Tube endpoint trimming support is tangent to the tube");
+    }
     context.points[context.vertex] = center;
 }
 
 void synchronize_vertices(Context& context) {
     context.stage = "triple vertex pcurve intersections";
-    for (int vertex = 0; vertex < context.source.vertex_count(); ++vertex) {
+    for (int vertex = 0; vertex < static_cast<int>(context.vertices.size()); ++vertex) {
         const std::vector<int>& edges = context.vertices[vertex];
         if (edges.empty())
             continue;
         context.vertex = vertex;
         for (int i = 0; i < 3; ++i)
             for (int j = i + 1; j < 3; ++j)
-                vertex_event(context, edges[i], edges[j]);
+                if (std::minmax(edges[i], edges[j]) != std::minmax(context.tangent_pairs[vertex].first, context.tangent_pairs[vertex].second))
+                    vertex_event(context, edges[i], edges[j]);
     }
     context.stage = "shared triple vertex reconciliation";
-    for (int vertex = 0; vertex < context.source.vertex_count(); ++vertex)
+    for (int vertex = 0; vertex < static_cast<int>(context.vertices.size()); ++vertex)
         if (!context.vertices[vertex].empty()) {
             context.vertex = vertex;
             reconcile_vertex(context);
@@ -349,7 +651,7 @@ NurbsCurve trimmed(const NurbsCurve& curve, const std::array<double, 2>& ends) {
 
 void trim_sections(Context& context) {
     context.stage = "synchronized section trimming";
-    for (int edge = 0; edge < context.source.edge_count(); ++edge) {
+    for (int edge = 0; edge < static_cast<int>(context.sections.size()); ++edge) {
         Section& section = context.sections[edge];
         if (!section.valid)
             continue;
@@ -359,12 +661,89 @@ void trim_sections(Context& context) {
             section.pcurves[side] = trimmed(section.pcurves[side], section.cuts);
             certify(section.world, section.pcurves[side], context.surface(context.uses[edge][side].face), context.tolerance * 0.25);
         }
-        const BRepEdge& source = context.source.m_edges[edge];
-        require(section.world.point_at_start().distance(context.points[source.start_vertex]) <= context.tolerance * 0.25
-            && section.world.point_at_end().distance(context.points[source.end_vertex]) <= context.tolerance * 0.25,
+        const std::array<int, 2>& ends = context.ends[edge];
+        require(section.world.point_at_start().distance(context.points[ends[0]]) <= context.tolerance * 0.25
+            && section.world.point_at_end().distance(context.points[ends[1]]) <= context.tolerance * 0.25,
             "Trimmed inward section lost its shared triple vertices");
     }
     context.edge = -1;
+}
+
+
+bool context_affine_boundary_map(const NurbsCurve& boundary, const NurbsCurve& section_pc,
+    std::array<double, 2>& parameters) {
+    if (boundary.is_rational() || section_pc.is_rational()
+        || boundary.dimension() < 2 || section_pc.dimension() < 2
+        || boundary.degree() != 1 || section_pc.degree() != 1
+        || boundary.cv_count() != 2 || section_pc.cv_count() != 2)
+        return false;
+    const Point a = boundary.get_cv(0), b = boundary.get_cv(1);
+    const Point c = section_pc.get_cv(0), d = section_pc.get_cv(1);
+    const int varying = a[0] == b[0] ? 1 : (a[1] == b[1] ? 0 : -1);
+    if (varying < 0 || a[varying] == b[varying]
+        || a[1-varying] != c[1-varying] || a[1-varying] != d[1-varying])
+        return false;
+    double width = 0, span = 0;
+    if (!nurbs_coincidence::exact_difference(b[varying], a[varying], width)
+        || !nurbs_coincidence::exact_difference(boundary.domain_end(), boundary.domain_start(), span)
+        || !(span > 0))
+        return false;
+    std::array<double, 2> candidate{};
+    for (int end = 0; end < 2; ++end) {
+        double delta = 0;
+        if (!nurbs_coincidence::exact_difference((end ? d : c)[varying], a[varying], delta))
+            return false;
+        const double fraction = delta / width;
+        if (!std::isfinite(fraction) || fraction < 0 || fraction > 1
+            || !nurbs_coincidence::exact_products_equal(fraction, width, delta, 1))
+            return false;
+        const double shift = fraction * span;
+        if (!nurbs_coincidence::exact_products_equal(fraction, span, shift, 1))
+            return false;
+        const double parameter = boundary.domain_start() + shift;
+        double recovered = 0;
+        if (!std::isfinite(parameter)
+            || !nurbs_coincidence::exact_difference(parameter, boundary.domain_start(), recovered)
+            || recovered != shift)
+            return false;
+        candidate[end] = parameter;
+    }
+    if (candidate[0] == candidate[1])
+        return false;
+    parameters = candidate;
+    return true;
+}
+
+
+void register_context_boundaries(Context& context, const std::vector<int>& stationary) {
+    for (int edge = 0; edge < context.source.edge_count(); ++edge) {
+        if (!context.sections[edge].valid || context.sections[edge].tangent)
+            continue;
+        for (const Use& use : context.uses[edge]) {
+            const int face = use.face;
+            const int other = context.uses[edge][1 - context.side(edge, face)].face;
+            if (std::find(stationary.begin(), stationary.end(), context.faces[other].source) == stationary.end()
+                || std::find(stationary.begin(), stationary.end(), context.faces[face].source) != stationary.end())
+                continue;
+            const auto found = context.faces[face].edges.find(edge);
+            require(found != context.faces[face].edges.end(), "Context border lost original source-edge ancestry");
+            const BRep& support = context.faces[face].brep;
+            const int local = found->second;
+            const int pc = support.pcurve_index(local, 0, Forward);
+            require(pc >= 0, "Context border lacks its original pcurve");
+            const BRepEdge& border = support.m_edges[local];
+            require(border.curve_3d_index >= 0 && support.m_curves_2d[pc].domain()
+                == support.m_curves_3d[border.curve_3d_index].domain(),
+                "Context boundary requires identical raw world and pcurve parameter domains");
+            std::array<double, 2> parameters{};
+            if (!context_affine_boundary_map(support.m_curves_2d[pc], context.pcurve(edge, face), parameters))
+                continue;
+            require(context.boundary_sections[face].emplace(local, edge).second,
+                "Context border has competing section identities");
+            require(context.context_boundary_parameters.emplace(std::make_pair(face, local), parameters).second,
+                "Context border has competing parameter correspondences");
+        }
+    }
 }
 
 bool complete_sections(
@@ -425,6 +804,73 @@ int retained_face(const split::FaceSplit& result, const std::vector<int>& expect
     return selected;
 }
 
+void reconcile_boundaries(Context& context, int face, split::FaceSplit& partition) {
+    const BRep& original = context.faces[face].brep;
+    for (split::EdgePiece& piece : partition.edges) {
+        const auto found = context.boundary_sections[face].find(piece.source_edge);
+        if (piece.section >= 0 || found == context.boundary_sections[face].end())
+            continue;
+        const int section_index = found->second;
+        const Section& section = context.sections[section_index];
+        const NurbsCurve& boundary = original.m_curves_3d[original.m_edges[piece.source_edge].curve_3d_index];
+        const double span = boundary.domain_end() - boundary.domain_start();
+        const auto parameter = [&](double t) {
+            const auto context_image = context.context_boundary_parameters.find({face, piece.source_edge});
+            if (context_image != context.context_boundary_parameters.end()) {
+                const auto& ends = context_image->second;
+                return (t - ends[0]) / (ends[1] - ends[0]);
+            }
+            const double normalized = (t - boundary.domain_start()) / span;
+            return (normalized - section.cuts[0]) / (section.cuts[1] - section.cuts[0]);
+        };
+        double first = parameter(piece.first);
+        double last = parameter(piece.last);
+        if ((first + last) * 0.5 < 0.0 || (first + last) * 0.5 > 1.0)
+            continue;
+        const BRepEdge& edge = partition.brep.m_edges[piece.edge];
+        const NurbsCurve& world = partition.brep.m_curves_3d[edge.curve_3d_index];
+        const auto snap = [&](double parameter, const Point& point) {
+            if (point.distance(section.world.point_at_start()) <= context.tolerance * 0.125)
+                return 0.0;
+            if (point.distance(section.world.point_at_end()) <= context.tolerance * 0.125)
+                return 1.0;
+            return parameter;
+        };
+        first = snap(first, world.point_at_start());
+        last = snap(last, world.point_at_end());
+        require(std::min(first, last) >= 0.0 && std::max(first, last) <= 1.0 && first != last,
+            "Coincident boundary extends beyond its synchronized tangent section");
+        NurbsCurve shared = trimmed(section.world, {first, last});
+        require(shared.set_domain(world.domain_start(), world.domain_end()),
+            "Could not synchronize a retained tangent boundary image");
+        const int pc = partition.brep.pcurve_index(piece.edge, 0, Forward);
+        require(pc >= 0, "Retained tangent border lacks a pcurve");
+        require(shared.domain() == world.domain(), "Retained tangent border changed its parameter range");
+        require(shared.point_at_start().distance(partition.brep.m_vertices[edge.start_vertex].point) <= context.tolerance * 0.25
+            && shared.point_at_end().distance(partition.brep.m_vertices[edge.end_vertex].point) <= context.tolerance * 0.25,
+            "Retained tangent border lost its oriented endpoint vertices");
+        for (const BRepCurveOnSurface& relation : edge.pcurves)
+            for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
+                if (index >= 0)
+                    certify(shared, partition.brep.m_curves_2d[index], partition.brep.m_surfaces[relation.surface_index],
+                        context.tolerance * 0.25);
+        partition.brep.m_edges[piece.edge].curve_3d_index = partition.brep.add_curve_3d(shared);
+        piece.section = section_index;
+        piece.first = first;
+        piece.last = last;
+    }
+}
+
+// Tangency describes the two supports, not whether their shared line is an
+// existing boundary of this (possibly enlarged) working face.
+bool needs_arrangement_cut(const Context& context, int face, int section) {
+    if (!context.sections[section].tangent)
+        return true;
+    const auto& boundaries = context.boundary_sections[face];
+    return std::none_of(boundaries.begin(), boundaries.end(),
+        [&](const auto& boundary) { return boundary.second == section; });
+}
+
 BRep rebuild_faces(Context& context) {
     context.stage = "face arrangements";
     std::vector<split::FaceSplit> partitions;
@@ -433,9 +879,11 @@ BRep rebuild_faces(Context& context) {
         context.active_face = face;
         std::vector<split::FaceCut> cuts;
         for (int edge : context.face_edges[face])
-            cuts.push_back({context.sections[edge].world, context.pcurve(edge, face), edge});
+            if (needs_arrangement_cut(context, face, edge))
+                cuts.push_back({context.sections[edge].world, context.pcurve(edge, face), edge});
         partitions.push_back(split::split_brep_face_by_pcurves(context.faces[face].brep, 0, cuts, context.tolerance * 0.5));
         try {
+            reconcile_boundaries(context, face, partitions.back());
             retained.push_back(retained_face(partitions.back(), context.face_edges[face]));
         } catch (const std::exception& failure) {
             InwardError error = diagnostic(context, failure);
@@ -450,11 +898,20 @@ BRep rebuild_faces(Context& context) {
     std::vector<brep_assemble::FaceUse> selected;
     for (size_t i = 0; i < partitions.size(); ++i)
         selected.push_back({&partitions[i].brep, retained[i], false, &partitions[i].edges, -1});
-    BRep result = brep_assemble::assemble(selected, context.tolerance);
-    require(result.is_valid() && result.is_solid() && result.solid_count() == 1 && result.shell_count() == 1,
-        "Inward joins did not reconstruct one closed oriented solid");
-    require(result.face_count() == static_cast<int>(context.faces.size()), "Inward face ancestry changed unexpectedly");
-    return result;
+    try {
+        BRep result = brep_assemble::assemble(selected, context.tolerance);
+        require(result.is_valid() && result.is_solid() && result.solid_count() == 1 && result.shell_count() == 1,
+            "Inward joins did not reconstruct one closed oriented solid");
+        require(result.face_count() == static_cast<int>(context.faces.size()), "Inward face ancestry changed unexpectedly");
+        return result;
+    } catch (const brep_assemble::ParameterError&) {
+        throw;
+    } catch (const std::exception& failure) {
+        InwardError error = diagnostic(context, failure);
+        error.assembly_parts = partitions;
+        error.assembly_faces = retained;
+        throw error;
+    }
 }
 
 InwardError diagnostic(const Context& context, const std::exception& error) {
@@ -464,6 +921,15 @@ InwardError diagnostic(const Context& context, const std::exception& error) {
     result.source_edge = context.edge;
     result.source_vertex = context.vertex;
     result.source_face = context.active_face >= 0 ? context.faces[context.active_face].source : -1;
+    if (context.active_face >= 0) {
+        result.support_index = context.active_face;
+        result.arrangement_tolerance = context.tolerance * 0.5;
+        result.arrangement_support = context.faces[context.active_face].brep;
+        for (int edge : context.face_edges[context.active_face])
+            if (needs_arrangement_cut(context, context.active_face, edge))
+                result.arrangement_cuts.push_back({context.sections[edge].world,
+                    context.pcurve(edge, context.active_face), edge});
+    }
     for (size_t i = 0; i < context.faces.size(); ++i)
         if (context.faces[i].brep.face_count() == 1 && context.faces[i].brep.is_valid()) {
             result.source_faces.push_back(context.faces[i].source);
@@ -481,17 +947,26 @@ InwardError diagnostic(const Context& context, const std::exception& error) {
 
 }
 
-BRep inward(const BRep& source, std::vector<OffsetFace> faces, double distance, double tolerance) {
+static BRep reconstruct_inward(const BRep& source, std::vector<OffsetFace> faces, double distance,
+    double tolerance, std::vector<int>* ancestry, const std::vector<int>& stationary_faces) {
     if (!std::isfinite(distance) || distance >= 0.0 || !std::isfinite(tolerance) || tolerance <= 0.0)
         throw std::invalid_argument("Inward joins require a finite negative distance and positive tolerance");
     Context context{source, faces, distance, tolerance};
     try {
         collect_topology(context);
         validate_incidence(context);
+        expand_support_graph(context, stationary_faces);
         intersect_neighbors(context);
         synchronize_vertices(context);
         trim_sections(context);
-        return rebuild_faces(context);
+        register_context_boundaries(context, stationary_faces);
+        BRep result = rebuild_faces(context);
+        if (ancestry) {
+            ancestry->clear();
+            for (const OffsetFace& face : context.faces)
+                ancestry->push_back(face.source);
+        }
+        return result;
     } catch (const InwardError&) {
         throw;
     } catch (const brep_assemble::ParameterError&) {
@@ -499,6 +974,17 @@ BRep inward(const BRep& source, std::vector<OffsetFace> faces, double distance, 
     } catch (const std::exception& error) {
         throw diagnostic(context, error);
     }
+}
+
+BRep inward(const BRep& source, std::vector<OffsetFace> faces, double distance, double tolerance) {
+    return reconstruct_inward(source, std::move(faces), distance, tolerance, nullptr, {});
+}
+
+InwardResult inward_with_ancestry(const BRep& source, std::vector<OffsetFace> faces,
+    double distance, double tolerance, const std::vector<int>& stationary_faces) {
+    InwardResult result;
+    result.brep = reconstruct_inward(source, std::move(faces), distance, tolerance, &result.source_faces, stationary_faces);
+    return result;
 }
 
 }

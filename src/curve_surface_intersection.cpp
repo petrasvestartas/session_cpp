@@ -2,6 +2,7 @@
 #include "closest.h"
 #include "intersection.h"
 #include "nurbs_interval.h"
+#include "nurbs_coincidence.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -709,6 +710,29 @@ bool parameter_image_bound(
     return nurbs_interval::finite(squared) && squared.hi <= limit.lo;
 }
 
+bool parameter_point_mismatch(const NurbsCurve& curve, double t,
+    const NurbsCurve& pcurve, double uv_t, const NurbsSurface& surface, double tolerance) {
+    const Point anchor = curve.get_cv(0);
+    const std::array<double, 3> origin = {anchor[0], anchor[1], anchor[2]};
+    nurbs_interval::CurveBounds world, uv;
+    nurbs_interval::SurfaceBounds lifted;
+    if (!nurbs_interval::curve_bounds(curve, {t, t}, origin, world) ||
+        !nurbs_interval::curve_bounds(pcurve, {uv_t, uv_t}, {0, 0, 0}, uv) ||
+        !nurbs_interval::surface_bounds(surface,
+            {uv.point[0].lo, uv.point[0].hi, uv.point[1].lo, uv.point[1].hi}, origin, lifted, false, true))
+        return false;
+    nurbs_interval::Interval squared;
+    for (int d = 0; d < 3; ++d) {
+        const auto residual = world.point[d] - lifted.point[d];
+        if (!nurbs_interval::finite(residual))
+            return false;
+        const double lower = residual.lo > 0 ? residual.lo : residual.hi < 0 ? -residual.hi : 0;
+        squared = squared + nurbs_interval::Interval(lower) * nurbs_interval::Interval(lower);
+    }
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    return nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.lo > allowed.hi;
+}
+
 bool parameter_parts(
     NurbsCurve curve,
     NurbsCurve pcurve,
@@ -717,14 +741,22 @@ bool parameter_parts(
     std::vector<ParameterPart>& work,
     std::string* diagnostic
 ) {
+    auto* observation = parameter_diagnostics::active;
+    if (observation) ++observation->calls;
     if (!curve.set_domain(0.0, 1.0) || !pcurve.set_domain(0.0, 1.0))
         return false;
+    if (observation) observation->normalized = true;
 
     std::vector<double> cuts = graph_cuts(pcurve, surface, true);
     const std::vector<double> spans = curve.get_span_vector();
     cuts.insert(cuts.end(), spans.begin(), spans.end());
     std::sort(cuts.begin(), cuts.end());
     cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    if (observation) {
+        observation->cuts = cuts.size();
+        observation->world_spans = spans.size() > 0 ? spans.size() - 1 : 0;
+        observation->pcurve_spans = pcurve.cv_count() - pcurve.degree();
+    }
     if (cuts.size() < 2 || cuts.size() > 4096)
         return false;
 
@@ -760,6 +792,17 @@ std::vector<std::array<double, 4>> parameter_rectangles(const NurbsCurve& pcurve
             spans[d].begin()), size_t{1}, spans[d].size() - 1);
         last[d] = std::clamp(static_cast<size_t>(std::upper_bound(spans[d].begin(), spans[d].end(), uv.hi[d]) -
             spans[d].begin()), size_t{1}, spans[d].size() - 1);
+        // A polynomial control hull ending exactly at a continuous knot belongs
+        // to the closed left patch; it does not cross into the right patch.
+        // Rational Euclidean control coordinates may be rounded, so retain
+        // the existing conservative branch enumeration for those curves.
+        if (!pcurve.is_rational() && first[d] < last[d] &&
+            uv.hi[d] == spans[d][last[d] - 1]) {
+            const double knot = uv.hi[d];
+            const auto& knots = surface.m_nurbsknot[d];
+            if (std::count(knots.begin(), knots.end(), knot) <= surface.degree(d))
+                --last[d];
+        }
     }
     if ((last[0] - first[0] + 1) * (last[1] - first[1] + 1) > 64)
         return {};
@@ -795,15 +838,26 @@ ParameterMatch parameter_match(
     const ParameterPart& part,
     const NurbsSurface& surface,
     double tolerance,
-    std::string* diagnostic
+    std::string* diagnostic,
+    ParameterFailure* failure
 ) {
+    if (failure) {
+        failure->kind = ParameterFailure::Kind::Bound;
+        failure->has_interval = true;
+        failure->has_point = false;
+        failure->normalized_lo = part.curve.domain_start();
+        failure->normalized_hi = part.curve.domain_end();
+    }
     for (const double t : {part.curve.domain_start(), part.curve.domain_middle(), part.curve.domain_end()}) {
-        const Point uv = part.pcurve.point_at(t);
-        const double gap = part.curve.point_at(t).distance(surface.point_at(uv[0], uv[1]));
-        if (!std::isfinite(gap))
-            return ParameterMatch::Unresolved;
-        if (gap > tolerance)
+        if (parameter_point_mismatch(part.curve, t, part.pcurve, t, surface, tolerance)) {
+            if (failure) {
+                failure->kind = ParameterFailure::Kind::PointResidual;
+                failure->has_point = true;
+                failure->normalized_point = t;
+            }
+            parameter_diagnostic("Certified common-interval point residual exceeds tolerance", part, surface, diagnostic);
             return ParameterMatch::Mismatched;
+        }
     }
     const std::vector<std::array<double, 4>> rectangles = parameter_rectangles(part.pcurve, surface);
     if (rectangles.empty()) {
@@ -1195,46 +1249,329 @@ void intersect_general(Result& result, const NurbsCurve& curve, const NurbsSurfa
         fail(result, "Curve/surface subdivision work limit exceeded");
 }
 
+// Closed-form degree-two agreement uses ORIGINAL inputs and outward arithmetic.
+// Each linear curve has its OWN normalized knot fraction, as in parameter_parts.
+bool finite_parameter_span(const std::pair<double, double>& domain) {
+    if (!std::isfinite(domain.first) || !std::isfinite(domain.second) || !(domain.first < domain.second))
+        return false;
+    const auto width = nurbs_interval::Interval(domain.second) - nurbs_interval::Interval(domain.first);
+    return nurbs_interval::finite(width) && width.lo > 0;
 }
 
-ParameterMatch same_parameter(
+nurbs_interval::Interval centered_homogeneous_coordinate(double homogeneous, double weight, double origin) {
+    const double infinity = std::numeric_limits<double>::infinity();
+    if (!std::isfinite(homogeneous) || !std::isfinite(weight) || !(weight > 0) || !std::isfinite(origin))
+        return {-infinity, infinity};
+    const double cartesian = homogeneous / weight;
+    double difference;
+    if (nurbs_coincidence::exact_products_equal(cartesian, weight, homogeneous, 1)) {
+        if (nurbs_coincidence::exact_difference(cartesian, origin, difference))
+            return {difference};
+        return nurbs_interval::Interval(cartesian) - nurbs_interval::Interval(origin);
+    }
+    const auto product = nurbs_interval::Interval(weight) * nurbs_interval::Interval(origin);
+    if (!nurbs_interval::finite(product))
+        return {-infinity, infinity};
+    const auto numerator = nurbs_interval::Interval(homogeneous) - product;
+    if (!nurbs_interval::finite(numerator))
+        return {-infinity, infinity};
+    return numerator / nurbs_interval::Interval(weight);
+}
+
+bool constant_linear_weight(const NurbsCurve& curve, double& weight) {
+    if (curve.degree() != 1 || curve.cv_count() != 2 || !finite_parameter_span(curve.domain()))
+        return false;
+    weight = curve.weight(0);
+    return std::isfinite(weight) && weight > 0 && curve.weight(1) == weight;
+}
+
+bool constant_bilinear_weight(const NurbsSurface& surface, double& weight) {
+    if (surface.dimension() != 3 || surface.degree(0) != 1 || surface.degree(1) != 1 ||
+        surface.cv_count(0) != 2 || surface.cv_count(1) != 2 || !finite_parameter_span(surface.domain(0)) ||
+        !finite_parameter_span(surface.domain(1)))
+        return false;
+    weight = surface.weight(0, 0);
+    if (!std::isfinite(weight) || !(weight > 0))
+        return false;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            if (surface.weight(i, j) != weight)
+                return false;
+    return true;
+}
+
+bool polynomial_endpoint_fraction(double homogeneous, double weight, const std::pair<double, double>& domain,
+                                  nurbs_interval::Interval& fraction) {
+    if (!std::isfinite(homogeneous) || !std::isfinite(weight) || !(weight > 0) ||
+        !std::isfinite(domain.first) || !std::isfinite(domain.second))
+        return false;
+    if (nurbs_coincidence::exact_products_equal(domain.first, weight, homogeneous, 1))
+        fraction = {0};
+    else if (nurbs_coincidence::exact_products_equal(domain.second, weight, homogeneous, 1))
+        fraction = {1};
+    else {
+        double exact_width;
+        const auto width =
+            nurbs_coincidence::exact_difference(domain.second, domain.first, exact_width)
+                ? nurbs_interval::Interval(exact_width)
+                : nurbs_interval::Interval(domain.second) - nurbs_interval::Interval(domain.first);
+        const auto numerator = centered_homogeneous_coordinate(homogeneous, weight, domain.first);
+        if (!nurbs_interval::finite(width) || !(width.lo > 0) || !nurbs_interval::finite(numerator))
+            return false;
+        fraction = numerator / width;
+    }
+    // Exact endpoint recognition is not a clamp: uncertain/outside coordinates decline.
+    return nurbs_interval::finite(fraction) && fraction.lo >= 0 && fraction.hi <= 1;
+}
+
+bool polynomial_bilinear_value(const std::array<std::array<nurbs_interval::Interval, 3>, 4>& controls,
+                               nurbs_interval::Interval u, nurbs_interval::Interval v,
+                               std::array<nurbs_interval::Interval, 3>& value) {
+    if (!nurbs_interval::finite(u) || !nurbs_interval::finite(v))
+        return false;
+    const auto complement_u = nurbs_interval::Interval(1) - u, complement_v = nurbs_interval::Interval(1) - v;
+    if (!nurbs_interval::finite(complement_u) || !nurbs_interval::finite(complement_v))
+        return false;
+    const std::array<nurbs_interval::Interval, 4> weights{complement_u * complement_v, u * complement_v,
+                                                          complement_u * v, u * v};
+    for (int i = 0; i < 4; ++i) {
+        if (!nurbs_interval::finite(weights[i]))
+            return false;
+        for (int d = 0; d < 3; ++d) {
+            if (!nurbs_interval::finite(controls[i][d]))
+                return false;
+            const auto term = weights[i] * controls[i][d];
+            if (!nurbs_interval::finite(term))
+                return false;
+            value[d] = value[d] + term;
+            if (!nurbs_interval::finite(value[d]))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool polynomial_residual_ball(const std::array<std::array<nurbs_interval::Interval, 3>, 2>& world_controls,
+                              const std::array<std::array<nurbs_interval::Interval, 3>, 4>& lifted,
+                              double tolerance) {
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    if (!nurbs_interval::finite(allowed) || allowed.lo < 0)
+        return false;
+    for (int k = 0; k < 3; ++k) {
+        nurbs_interval::Interval squared;
+        for (int d = 0; d < 3; ++d) {
+            const auto image = k == 0   ? lifted[0][d]
+                               : k == 2 ? lifted[3][d]
+                                        : lifted[1][d] * nurbs_interval::Interval(.5) +
+                                              lifted[2][d] * nurbs_interval::Interval(.5);
+            const auto curve = k == 0   ? world_controls[0][d]
+                               : k == 2 ? world_controls[1][d]
+                                        : world_controls[0][d] * nurbs_interval::Interval(.5) +
+                                              world_controls[1][d] * nurbs_interval::Interval(.5);
+            if (!nurbs_interval::finite(image) || !nurbs_interval::finite(curve))
+                return false;
+            const auto residual = image - curve;
+            if (!nurbs_interval::finite(residual))
+                return false;
+            const double bound = nurbs_interval::magnitude(residual);
+            const auto term = nurbs_interval::Interval(bound) * nurbs_interval::Interval(bound);
+            if (!nurbs_interval::finite(term))
+                return false;
+            squared = squared + term;
+            if (!nurbs_interval::finite(squared))
+                return false;
+        }
+        if (squared.hi > allowed.lo)
+            return false;
+    }
+    return true;
+}
+
+bool certified_linear_bilinear(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurface& surface,
+                               double tolerance) {
+    double world_weight, pcurve_weight, surface_weight;
+    if (world.dimension() != 3 || (pcurve.dimension() != 2 && pcurve.dimension() != 3) ||
+        !constant_linear_weight(world, world_weight) || !constant_linear_weight(pcurve, pcurve_weight) ||
+        !constant_bilinear_weight(surface, surface_weight))
+        return false;
+    const Point origin = world.get_cv(0); // Any finite common origin; exactness is not assumed.
+    if (!std::isfinite(origin[0]) || !std::isfinite(origin[1]) || !std::isfinite(origin[2]))
+        return false;
+    std::array<std::array<nurbs_interval::Interval, 3>, 2> world_controls;
+    std::array<std::array<nurbs_interval::Interval, 2>, 2> endpoints;
+    for (int i = 0; i < 2; ++i) {
+        for (int d = 0; d < 3; ++d) {
+            world_controls[i][d] = centered_homogeneous_coordinate(world.cv(i)[d], world_weight, origin[d]);
+            if (!nurbs_interval::finite(world_controls[i][d]))
+                return false;
+        }
+        for (int d = 0; d < 2; ++d)
+            if (!polynomial_endpoint_fraction(pcurve.cv(i)[d], pcurve_weight, surface.domain(d),
+                                              endpoints[i][d]))
+                return false;
+    }
+    std::array<std::array<nurbs_interval::Interval, 3>, 4> controls;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            for (int d = 0; d < 3; ++d) {
+                controls[i + 2 * j][d] =
+                    centered_homogeneous_coordinate(surface.cv(i, j)[d], surface_weight, origin[d]);
+                if (!nurbs_interval::finite(controls[i + 2 * j][d]))
+                    return false;
+            }
+    std::array<std::array<nurbs_interval::Interval, 3>, 4> lifted;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            if (!polynomial_bilinear_value(controls, endpoints[i][0], endpoints[j][1], lifted[i + 2 * j]))
+                return false;
+    return polynomial_residual_ball(world_controls, lifted, tolerance);
+}
+}
+
+static ParameterMatch same_parameter_impl(
     const NurbsCurve& curve,
     const NurbsCurve& pcurve,
     const NurbsSurface& surface,
     double tolerance,
-    std::string* diagnostic
+    std::string* diagnostic,
+    bool* coordinate_retry = nullptr,
+    ParameterFailure* failure = nullptr
 ) {
+    if (failure) *failure = {};
+    if (coordinate_retry)
+        *coordinate_retry = false;
     if (diagnostic)
         *diagnostic = "Input or coordinate-resolution validation failed";
     if (!std::isfinite(tolerance) || tolerance <= 0.0 || !curve.is_valid() || !pcurve.is_valid() || !surface.is_valid())
         return ParameterMatch::Unresolved;
 
+    if (certified_linear_bilinear(curve, pcurve, surface, tolerance)) {
+        if (diagnostic)
+            diagnostic->clear();
+        if (failure)
+            *failure = {};
+        return ParameterMatch::Matched;
+    }
+
     Bounds a;
     Bounds b;
     Bounds uv;
-    if (!bounds(curve, a) || !bounds(surface, b) || !bounds(pcurve, uv) || a.roundoff + b.roundoff > tolerance * 0.125)
+    if (!bounds(curve, a) || !bounds(surface, b) || !bounds(pcurve, uv))
         return ParameterMatch::Unresolved;
+    if (a.roundoff + b.roundoff > tolerance * 0.125) {
+        if (coordinate_retry)
+            *coordinate_retry = true;
+        return ParameterMatch::Unresolved;
+    }
+
+    // A single certified negative witness is decisive even if common partitioning is unresolved.
+    for (int end = 0; end < 2; ++end)
+        if (parameter_point_mismatch(curve, end ? curve.domain_end() : curve.domain_start(),
+                pcurve, end ? pcurve.domain_end() : pcurve.domain_start(), surface, tolerance)) {
+            if (failure) {
+                failure->kind = ParameterFailure::Kind::EndpointResidual;
+                failure->has_interval = failure->has_point = true;
+                failure->normalized_lo = failure->normalized_hi = failure->normalized_point = end;
+            }
+            if (diagnostic)
+                *diagnostic = "Certified endpoint residual exceeds tolerance";
+            return ParameterMatch::Mismatched;
+        }
 
     std::vector<ParameterPart> work;
     if (diagnostic)
         *diagnostic = "Common parameter partition failed";
-    if (!parameter_parts(curve, pcurve, surface, tolerance, work, diagnostic))
+    if (!parameter_parts(curve, pcurve, surface, tolerance, work, diagnostic)) {
+        if (failure) failure->kind = ParameterFailure::Kind::Partition;
         return ParameterMatch::Unresolved;
+    }
 
     for (size_t iteration = 0; !work.empty() && iteration < 4096; ++iteration) {
         const ParameterPart part = std::move(work.back());
         work.pop_back();
-        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic);
+        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic, failure);
         if (match == ParameterMatch::Matched)
             continue;
         if (match == ParameterMatch::Mismatched)
             return match;
-        if (part.depth >= 20 || !split_parameters(part, work))
+        if (part.depth >= 20 || !split_parameters(part, work)) {
+            if (failure) failure->kind = ParameterFailure::Kind::RefinementLimit;
             return ParameterMatch::Unresolved;
+        }
     }
-    if (work.empty() && diagnostic)
-        diagnostic->clear();
+    if (work.empty()) {
+        if (diagnostic) diagnostic->clear();
+        if (failure) *failure = {};
+    } else if (failure) {
+        failure->kind = ParameterFailure::Kind::WorkLimit;
+        failure->has_interval = true;
+        failure->has_point = false;
+        failure->normalized_lo = work.back().curve.domain_start();
+        failure->normalized_hi = work.back().curve.domain_end();
+    }
     return work.empty() ? ParameterMatch::Matched : ParameterMatch::Unresolved;
+}
+
+// Translate both physical geometries only when EVERY homogeneous operation is exact.
+// The pcurve and raw parameter metadata are untouched. Failed candidates never escape.
+static bool exact_world_chart(NurbsCurve& world, NurbsSurface& surface) {
+    if (world.dimension() != 3 || surface.dimension() != 3)
+        return false;
+    const Point origin = world.get_cv(0);
+    for (int d = 0; d < 3; ++d)
+        if (!std::isfinite(origin[d]))
+            return false;
+    const auto shift = [&](double* cv, bool rational) {
+        const double weight = rational ? cv[3] : 1.0;
+        if (!(weight > 0) || !std::isfinite(weight))
+            return false;
+        for (int d = 0; d < 3; ++d) {
+            const double product = origin[d] * weight;
+            double local;
+            if (!nurbs_coincidence::exact_products_equal(origin[d], weight, product, 1.0)
+                || !nurbs_coincidence::exact_difference(cv[d], product, local))
+                return false;
+            cv[d] = local;
+        }
+        return true;
+    };
+    for (int i = 0; i < world.cv_count(); ++i)
+        if (!shift(world.cv(i), world.is_rational()))
+            return false;
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j)
+            if (!shift(surface.cv(i, j), surface.is_rational()))
+                return false;
+    return true;
+}
+
+ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
+    const NurbsSurface& surface, double tolerance, std::string* diagnostic, ParameterFailure* failure) {
+    const auto finish = [&](ParameterMatch match) {
+        if (failure && failure->has_interval) {
+            failure->curve_interval = {std::lerp(curve.domain_start(),curve.domain_end(),failure->normalized_lo),
+                                      std::lerp(curve.domain_start(),curve.domain_end(),failure->normalized_hi)};
+            failure->pcurve_interval = {std::lerp(pcurve.domain_start(),pcurve.domain_end(),failure->normalized_lo),
+                                       std::lerp(pcurve.domain_start(),pcurve.domain_end(),failure->normalized_hi)};
+            if (failure->has_point) {
+                failure->curve_point = std::lerp(curve.domain_start(),curve.domain_end(),failure->normalized_point);
+                failure->pcurve_point = std::lerp(pcurve.domain_start(),pcurve.domain_end(),failure->normalized_point);
+            }
+        }
+        return match;
+    };
+    // The ordinary worker runs exactly once. Only its explicit roundoff-only
+    // failure enables an exact common chart; invalid input never enables retry.
+    bool coordinate_retry = false;
+    const ParameterMatch original = same_parameter_impl(curve, pcurve, surface,
+        tolerance, diagnostic, &coordinate_retry, failure);
+    if (!coordinate_retry)
+        return finish(original);
+    NurbsCurve local_world = curve;
+    NurbsSurface local_surface = surface;
+    if (!exact_world_chart(local_world, local_surface))
+        return finish(original); // Preserve the original coordinate-guard diagnostic.
+    return finish(same_parameter_impl(local_world, pcurve, local_surface, tolerance, diagnostic, nullptr, failure));
 }
 
 Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {

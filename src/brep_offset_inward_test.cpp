@@ -47,6 +47,41 @@ void save_failure(const std::string& name, const brep_offset::InwardError& error
     for (size_t i = 0; i < error.curves.size(); ++i)
         fixture["sections"].push_back({{"world", error.curves[i].jsondump()},
             {"first_pcurve", error.first_pcurves[i].jsondump()}, {"second_pcurve", error.second_pcurves[i].jsondump()}});
+    if (error.first_support.face_count() > 0) {
+        fixture["first_support"] = error.first_support.jsondump();
+        fixture["second_support"] = error.second_support.jsondump();
+        fixture["section_complete"] = error.section_result.complete;
+        fixture["section_failure"] = error.section_result.failure;
+        fixture["candidate_sections"] = nlohmann::ordered_json::array();
+        fixture["overlaps"] = nlohmann::ordered_json::array();
+        for (const brep_section::FaceCurve& curve : error.section_result.curves)
+            fixture["candidate_sections"].push_back({{"first_face", curve.first_face}, {"second_face", curve.second_face},
+                {"world", curve.world.jsondump()}, {"first_pcurve", curve.first_pcurve.jsondump()},
+                {"second_pcurve", curve.second_pcurve.jsondump()}});
+        for (const brep_section::FaceOverlap& overlap : error.section_result.overlaps)
+            fixture["overlaps"].push_back({{"first_face", overlap.first_face}, {"second_face", overlap.second_face}});
+    }
+    if (error.support_index >= 0) {
+        fixture["support_index"] = error.support_index;
+        fixture["arrangement_tolerance"] = error.arrangement_tolerance;
+        fixture["arrangement_support"] = error.arrangement_support.jsondump();
+        fixture["arrangement_cuts"] = nlohmann::ordered_json::array();
+        for (const split::FaceCut& cut : error.arrangement_cuts)
+            fixture["arrangement_cuts"].push_back({{"section", cut.section},
+                {"world", cut.world.jsondump()}, {"pcurve", cut.pcurve.jsondump()}});
+    }
+    if (!error.assembly_parts.empty()) {
+        fixture["assembly_inputs"] = nlohmann::ordered_json::array();
+        for (size_t i = 0; i < error.assembly_parts.size(); ++i) {
+            const split::FaceSplit& part = error.assembly_parts[i];
+            nlohmann::ordered_json pieces = nlohmann::ordered_json::array();
+            for (const split::EdgePiece& piece : part.edges)
+                pieces.push_back({{"source_edge", piece.source_edge}, {"section", piece.section},
+                    {"edge", piece.edge}, {"first", piece.first}, {"last", piece.last}});
+            fixture["assembly_inputs"].push_back({{"brep", part.brep.jsondump()},
+                {"face", error.assembly_faces.at(i)}, {"reversed", false}, {"operand", -1}, {"pieces", pieces}});
+        }
+    }
     if (error.partition.face_count() > 0) {
         fixture["partition"] = error.partition.jsondump();
         fixture["pieces"] = nlohmann::ordered_json::array();

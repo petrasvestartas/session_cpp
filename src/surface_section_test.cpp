@@ -1,13 +1,16 @@
 #include "surface_section.h"
 #include "intersection.h"
+#include "closest.h"
 #include "curve_surface_intersection.h"
 #include "ssi_diagnostics.h"
+#include "nurbs_interval.h"
 #include "mini_test.h"
 #include "primitives.h"
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 
 using namespace session_cpp;
 using namespace session_cpp::mini_test;
@@ -285,7 +288,7 @@ MINI_TEST("Surface Section Native", "Two Closed Loops Inside One Knot Cell") {
 
 MINI_TEST("Surface Section Native", "Mobius Folded Parameter Branches") {
     const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
-    std::ifstream input(root / "docs/fixtures/mobius_folded_parameter_branches.json");
+    std::ifstream input(root / "tests/fixtures/mobius_folded_parameter_branches.json");
     MINI_CHECK(input.good());
     const nlohmann::json fixture = nlohmann::json::parse(input);
     const NurbsSurface a = NurbsSurface::jsonload(fixture["surfaces"][0]);
@@ -401,4 +404,526 @@ MINI_TEST("Surface Section Native", "Chair Duplicate Walking Endpoints") {
             MINI_CHECK(curve_surface_intersection::same_parameter(world, ub, b, tolerance) == ParameterMatch::Matched);
         }
     }
+}
+
+
+namespace {
+void check_rejected_seam_chart(const NurbsSurface& surface, const std::array<double, 4>& root) {
+    NurbsSurface other(3, false, 2, 3, 2, 3);
+    other.m_nurbsknot[0] = {-1, 1};
+    other.m_nurbsknot[1] = {-1, -1, 1, 1};
+    const double heights[] = {1.5, -0.5, 1.5};
+    for (int u = 0; u < 2; ++u)
+        for (int v = 0; v < 3; ++v)
+            MINI_CHECK(other.set_cv(u, v, Point(2 * u - 1, v - 1, heights[v])));
+    const std::array<double, 4> lower = {-0.125, 0.25, -1, -1};
+    const std::array<double, 4> upper = {0.125, 0.75, 1, 1};
+    const nlohmann::ordered_json witness = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(surface, other, lower, upper, root, 1e-8));
+    MINI_CHECK(!witness["covered"].get<bool>());
+    MINI_CHECK(witness["candidate_lower"] == nlohmann::ordered_json(lower));
+    MINI_CHECK(witness["candidate_upper"] == nlohmann::ordered_json(upper));
+    MINI_CHECK(witness["charts"].size() == 1);
+    MINI_CHECK(witness["charts"][0]["status"] == "candidate_outside_original_domain");
+    MINI_CHECK(witness["charts"][0]["lower"][0].get<double>() < surface.domain(0).first);
+    std::array<double, 4> outside = root;
+    outside[0] = -0.125;
+    const std::array<double, 4> retained_lower = {0, 0.25, -1, -1};
+    const nlohmann::ordered_json outside_witness = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(surface, other, retained_lower, upper, outside, 1e-8));
+    MINI_CHECK(!outside_witness["covered"].get<bool>());
+    MINI_CHECK(outside_witness["charts"].size() == 1);
+    MINI_CHECK(outside_witness["charts"][0]["status"] == "root_outside_original_domain");
+}
+}
+
+MINI_TEST("Surface Section Native", "Closed Cubic Extension Is Not Wrapped Field") {
+    NurbsSurface surface(3, false, 4, 2, 4, 2);
+    surface.m_nurbsknot[0] = {0, 0, 0, 1, 1, 1};
+    surface.m_nurbsknot[1] = {0, 1};
+    const double x[] = {0, 1.0 / 3, 1.0 / 3, 0};
+    const double y[] = {0, -1.0 / 6, 1.0 / 6, 0};
+    for (int u = 0; u < 4; ++u)
+        for (int v = 0; v < 2; ++v)
+            MINI_CHECK(surface.set_cv(u, v, Point(x[u], y[u], v)));
+    MINI_CHECK(surface.is_valid());
+    MINI_CHECK(surface.is_closed(0));
+    MINI_CHECK(!surface.is_periodic(0));
+    constexpr double e = 0.125;
+    nurbs_interval::SurfaceBounds extension;
+    MINI_CHECK(nurbs_interval::surface_bounds(surface, {-e, -e, 0.5, 0.5}, {0, 0, 0}, extension, false, true));
+    nurbs_interval::SurfaceBounds derivative_box;
+    MINI_CHECK(nurbs_interval::surface_bounds(surface, {-e, -e + 1e-6, 0.5, 0.500001},
+        {0, 0, 0}, derivative_box, true, true));
+    const std::vector<Vector> wrapped = surface.evaluate(1 - e, 0.5, 1);
+    MINI_CHECK(extension.point[0].hi < wrapped[0][0]);
+    MINI_CHECK(derivative_box.derivative[0][0].lo > wrapped[2][0]);
+    MINI_CHECK(extension.point[0].lo <= -e - e * e && extension.point[0].hi >= -e - e * e);
+    MINI_CHECK(std::abs(wrapped[0][0] - (e - e * e)) < 1e-12);
+    MINI_CHECK(std::abs(wrapped[0][0] - (-e - e * e) - 2 * e) < 1e-12);
+    check_rejected_seam_chart(surface, {0, 0.5, 0, 0});
+}
+
+MINI_TEST("Surface Section Native", "Periodic Cubic Extension Is Not Wrapped Field") {
+    NurbsSurface surface(3, false, 4, 2, 7, 2);
+    surface.m_nurbsknot[0] = {-2, -1, 0, 1, 2, 3, 4, 5, 6};
+    surface.m_nurbsknot[1] = {0, 1};
+    const double x[] = {0, 1, 1, 0, 0, 1, 1};
+    const double y[] = {0, 0, 1, 1, 0, 0, 1};
+    for (int u = 0; u < 7; ++u)
+        for (int v = 0; v < 2; ++v)
+            MINI_CHECK(surface.set_cv(u, v, Point(x[u], y[u], v)));
+    MINI_CHECK(surface.is_valid());
+    MINI_CHECK(surface.is_periodic(0));
+    MINI_CHECK(surface.is_closed(0));
+    constexpr double e = 0.125;
+    nurbs_interval::SurfaceBounds extension;
+    MINI_CHECK(nurbs_interval::surface_bounds(surface, {-e, -e, 0.5, 0.5}, {0, 0, 0}, extension, false, true));
+    nurbs_interval::SurfaceBounds derivative_box;
+    MINI_CHECK(nurbs_interval::surface_bounds(surface, {-e, -e + 1e-6, 0.5, 0.500001},
+        {0, 0, 0}, derivative_box, true, true));
+    const std::vector<Vector> wrapped = surface.evaluate(4 - e, 0.5, 1);
+    const double extrapolated_x = (5 - 3 * e - 3 * e * e) / 6;
+    MINI_CHECK(extension.point[0].lo <= extrapolated_x && extension.point[0].hi >= extrapolated_x);
+    MINI_CHECK(extension.point[0].hi < wrapped[0][0]);
+    MINI_CHECK(derivative_box.derivative[0][0].lo > wrapped[2][0]);
+    MINI_CHECK(std::abs(wrapped[0][0] - extrapolated_x - e * e * e / 3) < 1e-12);
+    MINI_CHECK(std::abs((0.5 + e) - wrapped[2][0] - e * e) < 1e-12);
+    check_rejected_seam_chart(surface, {0, 0.5 + 1.0 / 36, 5.0 / 6, 1.0 / 6});
+}
+
+MINI_TEST("Surface Section Native", "Bounded Quarter Cylinder Plane Paired Parameters") {
+    const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_quarter_cylinder_plane_parameter_failure.json");
+    MINI_CHECK(input.good());
+    const nlohmann::json fixture = nlohmann::json::parse(input);
+    const NurbsSurface tube = NurbsSurface::jsonload(fixture["surface"]);
+    NurbsSurface plane(3, false, 2, 2, 2, 2);
+    plane.m_nurbsknot[0] = {0, 1};
+    plane.m_nurbsknot[1] = {0, 1};
+    for (int u = 0; u < 2; ++u)
+        for (int v = 0; v < 2; ++v)
+            MINI_CHECK(plane.set_cv(u, v, Point(0.5 + u, 0.5 + v, 0.1)));
+    for (bool clipped : {false, true}) {
+        for (int v = 0; v < 2; ++v)
+            MINI_CHECK(plane.set_cv(1, v, Point(clipped ? 0.95 : 1.5, 0.5 + v, 0.1)));
+        for (bool reverse : {false, true}) {
+            const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections =
+                reverse ? Intersection::surface_surface(plane, tube, 3e-5) :
+                Intersection::surface_surface(tube, plane, 3e-5);
+            MINI_CHECK(sections.size() == 1);
+            const NurbsCurve& world = std::get<0>(sections[0]);
+            const NurbsCurve& tube_uv = reverse ? std::get<2>(sections[0]) : std::get<1>(sections[0]);
+            const NurbsCurve& plane_uv = reverse ? std::get<1>(sections[0]) : std::get<2>(sections[0]);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, tube_uv, tube, 7.5e-6) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, plane_uv, plane, 7.5e-6) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+            if (clipped)
+                MINI_CHECK(std::abs(std::max(world.point_at_start()[0], world.point_at_end()[0]) - 0.95) < 1e-10);
+            for (int i = 0; i <= 32; ++i) {
+                const double t = world.domain_start() + (world.domain_end() - world.domain_start()) * i / 32.0;
+                const Point p = world.point_at(t);
+                MINI_CHECK(p[0] >= 0.9 - 1e-12 && p[0] <= (clipped ? 0.95 : 1.0) + 1e-12);
+                MINI_CHECK(p[1] >= 0.9 - 1e-12 && p[1] <= 1.0 + 1e-12);
+                MINI_CHECK(std::abs(p[2] - 0.1) < 1e-12);
+                MINI_CHECK(std::abs((p[0] - 1) * (p[0] - 1) + (p[1] - 1) * (p[1] - 1) - 0.01) < 1e-12);
+            }
+        }
+    }
+}
+
+MINI_TEST("Surface Section Native", "Repeated Polished Plane Section Endpoints") {
+    const std::filesystem::path root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/inward_freeform_duplicate_plane_section.json");
+    MINI_CHECK(input.good());
+    const nlohmann::json fixture = nlohmann::json::parse(input);
+    const NurbsSurface a = NurbsSurface::jsonload(fixture["first_surface"]);
+    const NurbsSurface b = NurbsSurface::jsonload(fixture["second_surface"]);
+    const double tolerance = fixture["tolerance"].get<double>();
+    const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections =
+        Intersection::surface_surface(a, b, tolerance);
+    MINI_CHECK(sections.size() == 1);
+    const NurbsCurve& world = std::get<0>(sections[0]);
+    MINI_CHECK(world.point_at_start().distance(world.point_at_end()) > tolerance);
+    for (int i = 0; i <= 512; ++i) {
+        const double t = world.domain_start() + (world.domain_end() - world.domain_start()) * i / 512;
+        const Point point = world.point_at(t);
+        const Point ua = std::get<1>(sections[0]).point_at(t);
+        const Point ub = std::get<2>(sections[0]).point_at(t);
+        MINI_CHECK(point.distance(a.point_at(ua[0], ua[1])) <= tolerance);
+        MINI_CHECK(point.distance(b.point_at(ub[0], ub[1])) <= tolerance);
+    }
+}
+
+MINI_TEST("Surface Section Native", "Auxiliary Graph Identity Does Not Wrap Parameters") {
+    const std::array<double, 4> lower = {0, 0, 0, 0};
+    const std::array<double, 4> upper = {0.25, 1, 1, 1};
+    const std::array<double, 4> inside = {0.125, 0.5, 0.5, 0.5};
+    const std::array<double, 4> shifted = {1.125, 0.5, 0.5, 0.5};
+    MINI_CHECK(ssi_diagnostics::raw_graph_contains(lower, upper, inside, inside));
+    MINI_CHECK(!ssi_diagnostics::raw_graph_contains(lower, upper, shifted, shifted));
+    std::array<double, 4> outside = inside;
+    outside[0] = std::nextafter(0.25, 1.0);
+    MINI_CHECK(!ssi_diagnostics::raw_graph_contains(lower, upper, outside, outside));
+}
+
+MINI_TEST("Surface Section Native", "Exact Double Boundary Graph Anchor") {
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, 0.3, 6);
+    const std::array<double, 4> lower = {0, 0.585784912109375, 3.99951171875, 0.29998779296875};
+    const std::array<double, 4> upper = {6.103515625e-05, 0.5858154296875, 4, 0.3000030517578125};
+    const std::array<double, 4> root = {0, 0.585786437626905, 4, 0.30000000000000004};
+    const nlohmann::ordered_json witness = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(a, b, lower, upper, root, 1e-6));
+    MINI_CHECK(witness["covered"].get<bool>());
+    bool boundary_certified = false;
+    for (const nlohmann::ordered_json& chart : witness["charts"])
+        if (chart.value("anchor_kind", std::string()) == "exact_zero_plane_boundary" && chart["status"] == "covered") {
+            const nlohmann::ordered_json& anchor = chart["boundary_anchor"];
+            MINI_CHECK(anchor[0][0].get<double>() == 0 && anchor[0][1].get<double>() == 0);
+            MINI_CHECK(anchor[2][0].get<double>() == 4 && anchor[2][1].get<double>() == 4);
+            MINI_CHECK(anchor[1][0].get<double>() > 0 && anchor[1][1].get<double>() < 1);
+            MINI_CHECK(anchor[3][0].get<double>() > 0 && anchor[3][1].get<double>() < 1);
+            boundary_certified = true;
+        }
+    MINI_CHECK(boundary_certified);
+    NurbsSurface perturbed = b;
+    for (int j = 0; j < perturbed.cv_count(1); ++j)
+        perturbed.cv(perturbed.cv_count(0) - 1, j)[1] = 1e-6;
+    const nlohmann::ordered_json rejected = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(a, perturbed, lower, upper, root, 1e-6));
+    for (const nlohmann::ordered_json& chart : rejected["charts"])
+        MINI_CHECK(chart.value("anchor_kind", std::string()) != "exact_zero_plane_boundary");
+    NurbsSurface transformed_a = a;
+    NurbsSurface transformed_b = b;
+    MINI_CHECK(transformed_a.reverse(0) && transformed_b.reverse(0));
+    MINI_CHECK(transformed_a.set_domain(0, 8, 16) && transformed_a.set_domain(1, -3, 1));
+    MINI_CHECK(transformed_b.set_domain(0, -12, -4) && transformed_b.set_domain(1, 20, 28));
+    const std::array<double, 4> transformed_lower = {
+        16 - 2 * upper[0], -3 + 2 * lower[1], -12, 20 + 8 * lower[3]};
+    const std::array<double, 4> transformed_upper = {
+        16, -3 + 2 * upper[1], -12 + 2 * (4 - lower[2]), 20 + 8 * upper[3]};
+    const std::array<double, 4> transformed_root = {16, -3 + 2 * root[1], -12, 20 + 8 * root[3]};
+    const nlohmann::ordered_json transformed = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(transformed_a, transformed_b,
+            transformed_lower, transformed_upper, transformed_root, 1e-6));
+    MINI_CHECK(transformed["covered"].get<bool>());
+    bool transformed_boundary_certified = false;
+    for (const nlohmann::ordered_json& chart : transformed["charts"])
+        if (chart.value("anchor_kind", std::string()) == "exact_zero_plane_boundary" && chart["status"] == "covered") {
+            const nlohmann::ordered_json& anchor = chart["boundary_anchor"];
+            MINI_CHECK(anchor[0][0].get<double>() == 16 && anchor[0][1].get<double>() == 16);
+            MINI_CHECK(anchor[2][0].get<double>() == -12 && anchor[2][1].get<double>() == -12);
+            MINI_CHECK(anchor[1][0].get<double>() > -3 && anchor[1][1].get<double>() < 1);
+            MINI_CHECK(anchor[3][0].get<double>() > 20 && anchor[3][1].get<double>() < 28);
+            transformed_boundary_certified = true;
+        }
+    MINI_CHECK(transformed_boundary_certified);
+}
+
+MINI_TEST("Surface Section Native", "Boundary Graph Anchor Propagates To Near Seam Parameter") {
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, 0.3, 6);
+    const std::array<double, 4> lower = {0, 0.585786437626867, 0, 0.2999999999999791};
+    const std::array<double, 4> upper = {5.639246822509432e-14, 0.5857864376269427,
+        3.0173093107285425e-13, 0.30000000000002075};
+    const std::array<double, 4> root = {1.1494257904886467e-15, 0.5857864376269049,
+        7.101371421825311e-15, 0.29999999999999993};
+    const nlohmann::ordered_json witness = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(a, b, lower, upper, root, 1e-6));
+    MINI_CHECK(witness["covered"].get<bool>());
+    MINI_CHECK(witness["root_box_proved"].get<bool>());
+    const nlohmann::ordered_json& box = witness["root_box"];
+    MINI_CHECK(box[0][0].get<double>() > 0 && box[0][1].get<double>() < 4);
+    MINI_CHECK(box[2][0].get<double>() > 0 && box[2][1].get<double>() < 4);
+    MINI_CHECK(box[1][0].get<double>() > 0 && box[1][1].get<double>() < 2);
+    MINI_CHECK(box[3][0].get<double>() > 0 && box[3][1].get<double>() < 1);
+}
+
+MINI_TEST("Surface Section Native", "Reciprocal Joint Seam Event Identity") {
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, 0.3, 6);
+    const std::array<double, 4> first = {0.005896226337477924, 0.5856641578837348,
+        0.03122309431729166, 0.2999462485864679};
+    const std::array<double, 4> last = {-0.004381638118343928, 0.5857189731434406,
+        -0.02324366999882702, 0.29997034322667815};
+    const nlohmann::ordered_json original = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seam_step_diagnostic(a, b, first, last, 1e-6));
+    MINI_CHECK(original["descriptors"].size() == 2);
+    MINI_CHECK(original["cuts"].size() == 1);
+    MINI_CHECK(original["joint_proofs"].size() == 1);
+    MINI_CHECK(original["joint_proofs"][0]["incident_graphs"].get<int>() == 4);
+    const std::array<double, 4> joint = original["output"][1].get<std::array<double, 4>>();
+    MINI_CHECK(joint[0] == 0 && joint[2] == 0);
+    MINI_CHECK(a.point_at(joint[0], joint[1]).distance(b.point_at(joint[2], joint[3])) <= 1e-6);
+    NurbsSurface reversed_a = a;
+    NurbsSurface reversed_b = b;
+    MINI_CHECK(reversed_a.reverse(0) && reversed_b.reverse(0));
+    MINI_CHECK(reversed_a.set_domain(0, 8, 16) && reversed_a.set_domain(1, -3, 1));
+    MINI_CHECK(reversed_b.set_domain(0, -12, -4) && reversed_b.set_domain(1, 20, 28));
+    const std::array<double, 4> transformed_first = {
+        16 - 2 * first[0], -3 + 2 * first[1], -4 - 2 * first[2], 20 + 8 * first[3]};
+    const std::array<double, 4> transformed_last = {
+        16 - 2 * last[0], -3 + 2 * last[1], -4 - 2 * last[2], 20 + 8 * last[3]};
+    const nlohmann::ordered_json transformed = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seam_step_diagnostic(reversed_a, reversed_b,
+            transformed_first, transformed_last, 1e-6));
+    MINI_CHECK(transformed["descriptors"].size() == 2);
+    MINI_CHECK(transformed["cuts"].size() == 1);
+    MINI_CHECK(transformed["joint_proofs"].size() == 1);
+    const std::array<double, 4> transformed_joint = transformed["output"][1].get<std::array<double, 4>>();
+    MINI_CHECK(transformed_joint[0] == 16 && transformed_joint[2] == -4);
+    MINI_CHECK(reversed_a.point_at(transformed_joint[0], transformed_joint[1]).distance(
+        reversed_b.point_at(transformed_joint[2], transformed_joint[3])) <= 1e-6);
+    const NurbsSurface nearby_b = Primitives::cylinder_surface(1.3, 1e-8, -3, 0.3, 6);
+    const nlohmann::ordered_json distinct = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seam_step_diagnostic(a, nearby_b, first, last, 1e-6));
+    MINI_CHECK(distinct["descriptors"].size() == 2);
+    MINI_CHECK(distinct["cuts"].size() == 2);
+    MINI_CHECK(distinct["joint_proofs"].empty());
+    const std::array<double, 4> separate_first = {-0.004062330104737367, 0.34110679344816053,
+        -1.9864942997088835, 0.21133176454470626};
+    const std::array<double, 4> separate_last = {0.011068202627609047, 0.3412710643698366,
+        -2.0366590605382022, 0.21137636842352447};
+    const nlohmann::ordered_json separate = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seam_step_diagnostic(a, b, separate_first, separate_last, 1e-6));
+    MINI_CHECK(separate["descriptors"].size() == 1);
+    MINI_CHECK(separate["cuts"].size() == 1);
+    MINI_CHECK(separate["joint_proofs"].empty());
+    MINI_CHECK(separate["output"][1][0].get<double>() == 0);
+    const std::array<double, 4> separate_joint = separate["output"][1].get<std::array<double, 4>>();
+    MINI_CHECK(separate_joint[2] > separate_last[2] && separate_joint[2] < separate_first[2]);
+    MINI_CHECK(a.point_at(separate_joint[0], separate_joint[1]).distance(
+        b.point_at(separate_joint[2] + 4, separate_joint[3])) <= 1e-6);
+}
+
+MINI_TEST("Surface Section Native", "Certified Boundary Trace Start And Exact Loop Closure") {
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, 0.3, 6);
+    const std::array<double, 4> lower = {0, 0.585784912109375, 3.99951171875, 0.29998779296875};
+    const std::array<double, 4> upper = {6.103515625e-05, 0.5858154296875, 4, 0.3000030517578125};
+    const std::array<double, 4> root = {9.31215743542365e-16, 0.5857864376269016, 4, 0.2999999999999979};
+    const nlohmann::ordered_json certified = nlohmann::ordered_json::parse(
+        ssi_diagnostics::seed_chart_diagnostic(a, b, lower, upper, root, 1e-6));
+    MINI_CHECK(certified["covered"].get<bool>());
+    MINI_CHECK(certified["boundary_start_proved"].get<bool>());
+    const std::array<double, 4> start = certified["boundary_start"].get<std::array<double, 4>>();
+    MINI_CHECK(start[0] == 0 && start[2] == 4);
+    const std::array<double, 4> last = {0.003835990437281993, 0.5857347468545971,
+        0.020362295393816135, 0.29997727700601756};
+    const nlohmann::ordered_json loop = nlohmann::ordered_json::parse(
+        ssi_diagnostics::loop_seam_diagnostic(a, b, {start, last}, 1e-6));
+    const std::array<double, 4> end = loop["closed_quad"].back().get<std::array<double, 4>>();
+    MINI_CHECK(end[0] == 0 && end[2] == 0);
+    MINI_CHECK(end[1] == start[1] && end[3] == start[3]);
+    MINI_CHECK(loop["closure"][0].get<double>() == 0);
+    MINI_CHECK(loop["closure"][2].get<double>() == -4);
+    MINI_CHECK(loop["cuts"].front().get<int>() == 0);
+    MINI_CHECK(loop["pieces"].size() == 1);
+    MINI_CHECK(loop["pieces"][0].size() == 3);
+    NurbsSurface perturbed = b;
+    for (int v = 0; v < perturbed.cv_count(1); ++v)
+        perturbed.cv(perturbed.cv_count(0) - 1, v)[1] = 1e-14;
+    MINI_CHECK(perturbed.is_closed(0));
+    const nlohmann::ordered_json unsupported = nlohmann::ordered_json::parse(
+        ssi_diagnostics::loop_seam_diagnostic(a, perturbed, {start, last}, 1e-6));
+    const double old_endpoint = last[2] + ((start[2] - last[2]) - 4);
+    MINI_CHECK(unsupported["closed_quad"].back()[2].get<double>() == old_endpoint);
+    const std::array<double, 4> interior = {0.125, root[1], 0.25, root[3]};
+    const std::array<double, 4> interior_last = {0.25, last[1], 0.375, last[3]};
+    const nlohmann::ordered_json no_turn = nlohmann::ordered_json::parse(
+        ssi_diagnostics::loop_seam_diagnostic(a, b, {interior, interior_last}, 1e-6));
+    const std::array<double, 4> no_turn_end = no_turn["closed_quad"].back().get<std::array<double, 4>>();
+    const std::array<double, 4> no_turn_shift = no_turn["closure"].get<std::array<double, 4>>();
+    const std::array<double, 4> zero{};
+    MINI_CHECK(no_turn_end == interior);
+    MINI_CHECK(no_turn_shift == zero);
+}
+
+MINI_TEST("Surface Section Native", "Isolated Raw Boundary Root Image Ownership") {
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, 0.3, 6);
+    const std::array<ssi_diagnostics::Parameters, 3> source = {{
+        {0, 0.585784912109375, 3.99951171875, 0.29998779296875},
+        {6.103515625e-05, 0.5858154296875, 4, 0.3000030517578125},
+        {0, 0.585786437626905, 4, 0.3}}};
+    const std::array<ssi_diagnostics::Parameters, 3> destination = {{
+        {3.99993896484375, 0.585784912109375, 3.99951171875, 0.29998779296875},
+        {4, 0.5858154296875, 4, 0.3000030517578125},
+        {4, 0.585786437626905, 4, 0.3}}};
+    const nlohmann::ordered_json isolated = nlohmann::ordered_json::parse(
+        ssi_diagnostics::boundary_point_image_diagnostic(a, b, source, destination, {2, 2}, 1e-6));
+    MINI_CHECK(isolated["covered"][0].get<bool>() && isolated["covered"][1].get<bool>());
+    MINI_CHECK(isolated["source_is_point"].get<bool>());
+    MINI_CHECK(isolated["same_boundary_point"].get<bool>());
+    std::array<ssi_diagnostics::Parameters, 3> interior_source = source;
+    std::array<ssi_diagnostics::Parameters, 3> interior_destination = destination;
+    for (std::array<ssi_diagnostics::Parameters, 3>* chart : {&interior_source, &interior_destination}) {
+        (*chart)[0][2] = 0;
+        (*chart)[1][2] = 0.00048828125;
+        (*chart)[2][2] = 0;
+    }
+    const nlohmann::ordered_json interior = nlohmann::ordered_json::parse(
+        ssi_diagnostics::boundary_point_image_diagnostic(a, b,
+            interior_source, interior_destination, {2, 2}, 1e-6));
+    MINI_CHECK(interior["covered"][0].get<bool>() && interior["covered"][1].get<bool>());
+    MINI_CHECK(!interior["source_is_point"].get<bool>());
+    MINI_CHECK(!interior["same_boundary_point"].get<bool>());
+    NurbsSurface unequal = a;
+    for (int v = 0; v < unequal.cv_count(1); ++v)
+        unequal.cv(unequal.cv_count(0) - 1, v)[0] += 1e-14;
+    MINI_CHECK(unequal.is_closed(0));
+    const nlohmann::ordered_json unsupported = nlohmann::ordered_json::parse(
+        ssi_diagnostics::boundary_point_image_diagnostic(unequal, b, source, destination, {2, 2}, 1e-6));
+    MINI_CHECK(unsupported["covered"][0].get<bool>() && unsupported["covered"][1].get<bool>());
+    MINI_CHECK(unsupported["source_is_point"].get<bool>());
+    MINI_CHECK(!unsupported["same_boundary_point"].get<bool>());
+}
+
+namespace {
+Point critical_transform(const Point& p, bool transformed) {
+    if (!transformed)
+        return p;
+    return {16 + p[0] + 2 * p[2], -8 + p[1] - p[2], 32 + p[2] + p[0] * .5 + p[1] * .25};
+}
+NurbsSurface critical_patch(bool second, bool nonbinary, bool transformed, double perturbation = 0) {
+    NurbsSurface surface(3, false, 2, 2, 2, 2);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            const double x = 2 * i - 1., y = 2 * j - 1.;
+            const double height = -1 + .25 * x * y;
+            const double q =
+                nonbinary ? (3 * i - 1.) * (5 * j - 2.) + perturbation : .5 * x * y + perturbation;
+            MINI_CHECK(
+                surface.set_cv(i, j, critical_transform({x, y, height - (second ? q : 0)}, transformed)));
+        }
+    return surface;
+}
+void critical_paired_checks(const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections,
+                            const NurbsSurface& a, const NurbsSurface& b, bool nonbinary, bool transformed) {
+    MINI_CHECK(sections.size() == 2);
+    const double roots[2] = {nonbinary ? 1. / 3 : .5, nonbinary ? 2. / 5 : .5};
+    int coverage[2] = {0, 0};
+    for (const auto& [world, pa, pb] : sections) {
+        MINI_CHECK(world.degree() == 1 && world.domain() == pa.domain() && world.domain() == pb.domain());
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, pa, a, 1e-12) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, pb, b, 1e-12) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        bool found = false;
+        for (int fixed = 0; fixed < 2; ++fixed) {
+            const double x = fixed == 0 ? 2 * roots[0] - 1 : -1.;
+            const double y = fixed == 1 ? 2 * roots[1] - 1 : -1.;
+            const double xe = fixed == 0 ? x : 1., ye = fixed == 1 ? y : 1.;
+            const Point start = critical_transform({x, y, -1 + .25 * x * y}, transformed);
+            const Point end = critical_transform({xe, ye, -1 + .25 * xe * ye}, transformed);
+            const Point p = world.point_at_start(), q = world.point_at_end();
+            if (std::min(std::max(p.distance(start), q.distance(end)),
+                         std::max(p.distance(end), q.distance(start))) <= 1e-12) {
+                ++coverage[fixed];
+                found = true;
+            }
+        }
+        MINI_CHECK(found);
+        const double x = 2 * roots[0] - 1, y = 2 * roots[1] - 1;
+        const Point junction = critical_transform({x, y, -1 + .25 * x * y}, transformed);
+        const auto [at_junction, unused_gap] = Closest::curve_point(world, junction);
+        MINI_CHECK(world.point_at(at_junction).distance(junction) <= 1e-12);
+        for (int i = 0; i <= 16; ++i) {
+            const double t = std::lerp(world.domain_start(), world.domain_end(), i / 16.);
+            const auto ua = pa.point_at(t), ub = pb.point_at(t);
+            for (int d = 0; d < 2; ++d) {
+                MINI_CHECK(ua[d] >= a.domain(d).first && ua[d] <= a.domain(d).second);
+                MINI_CHECK(ub[d] >= b.domain(d).first && ub[d] <= b.domain(d).second);
+            }
+        }
+    }
+    MINI_CHECK(coverage[0] == 1 && coverage[1] == 1);
+}
+} // namespace
+
+MINI_TEST("Surface Section Native", "Exact Bilinear Critical Crossing Covers Both Branches") {
+    for (int variant = 0; variant < 8; ++variant)
+        for (bool transformed : {false, true}) {
+            auto a = critical_patch(false, false, transformed), b = critical_patch(true, false, transformed);
+            if (variant || transformed) {
+                MINI_CHECK(a.set_domain(0, -7, 13) && a.set_domain(1, 32, 35));
+                MINI_CHECK(b.set_domain(0, -16, -8) && b.set_domain(1, 128, 132));
+            }
+            if (variant & 1)
+                MINI_CHECK(b.reverse(0));
+            if (variant & 2)
+                MINI_CHECK(b.reverse(1));
+            if (variant & 4)
+                MINI_CHECK(b.transpose());
+            if (variant & 2) {
+                for (auto* surface : {&a, &b}) {
+                    MINI_CHECK(surface->to_rational());
+                    for (int i = 0; i < 2; ++i)
+                        for (int j = 0; j < 2; ++j) {
+                            const auto point = surface->get_cv(i, j);
+                            const double weight = surface == &a ? 2. : 3.;
+                            MINI_CHECK(surface->set_cv_4d(i, j, point[0] * weight, point[1] * weight,
+                                                          point[2] * weight, weight));
+                        }
+                }
+            }
+            const auto before_a = a.jsondump(), before_b = b.jsondump();
+            for (bool swap : {false, true}) {
+                const auto& first = swap ? b : a;
+                const auto& second = swap ? a : b;
+                const auto proof = surface_section::bilinear_crossing(first, second, 1e-12);
+                if (!proof)
+                    std::cerr << "[critical-case] variant=" << variant << " transformed=" << transformed
+                              << " swap=" << swap << std::endl;
+                MINI_CHECK(proof.has_value());
+                critical_paired_checks(*proof, first, second, false, transformed);
+                const auto public_sections = Intersection::surface_surface(first, second, 1e-12);
+                critical_paired_checks(public_sections, first, second, false, transformed);
+            }
+            MINI_CHECK(a.jsondump() == before_a && b.jsondump() == before_b);
+        }
+}
+
+MINI_TEST("Surface Section Native", "Bilinear Critical Rational Roots Are Bounded Without False Factoring") {
+    auto a = critical_patch(false, true, true), b = critical_patch(true, true, true);
+    MINI_CHECK(a.set_domain(0, -7, 13) && a.set_domain(1, 32, 35));
+    MINI_CHECK(b.set_domain(0, 8, 16) && b.set_domain(1, -32, -24));
+    for (bool swap : {false, true}) {
+        const auto& first = swap ? b : a;
+        const auto& second = swap ? a : b;
+        const auto result = surface_section::bilinear_crossing(first, second, 1e-12);
+        if (!result)
+            std::cerr << "[critical-nonbinary-case] swap=" << swap << std::endl;
+        MINI_CHECK(result.has_value());
+        critical_paired_checks(*result, first, second, true, true);
+    }
+    // q=(3u-1)(5v-2)+epsilon is a hyperbola, never two crossing iso lines.
+    const auto near = critical_patch(true, true, true, std::ldexp(1., -30));
+    MINI_CHECK(!surface_section::bilinear_crossing(a, near, 1e-7).has_value());
+    MINI_CHECK(!surface_section::bilinear_crossing(near, a, 1e-7).has_value());
+}
+
+MINI_TEST("Surface Section Native", "Bilinear Critical Route Declines Unsupported Zero Sets") {
+    const auto a = critical_patch(false, false, true);
+    for (int mode = 0; mode < 4; ++mode) {
+        auto b = a;
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j) {
+                // Boundary root, outside roots, coincident, and zero product term.
+                const double q = mode == 0   ? i * (j - .5)
+                                 : mode == 1 ? (i + 1.) * (j + 1.)
+                                 : mode == 2 ? 0.
+                                             : 1. + i + j;
+                const auto point = a.get_cv(i, j);
+                MINI_CHECK(b.set_cv(i, j, point - Vector(2, -1, 1) * q));
+            }
+        MINI_CHECK(!surface_section::bilinear_crossing(a, b, 1e-12).has_value());
+    }
+    auto different = critical_patch(true, false, true);
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            MINI_CHECK(different.set_cv(i, j, different.get_cv(i, j) + Vector(.125, 0, 0)));
+    MINI_CHECK(!surface_section::bilinear_crossing(a, different, 1e-12).has_value());
 }

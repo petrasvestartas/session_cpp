@@ -421,4 +421,24 @@ MINI_TEST("NurbsOffset", "Invalid Data And Zero Distance") {
     MINI_CHECK(rejected);
 }
 
+MINI_TEST("NurbsOffset", "Parabolic Translation Direction Fitting") {
+    for (bool transposed : {false, true}) {
+        NurbsSurface source = NurbsSurface::create(false, false, 2, 1, 3, 2,
+            {{0, 0, 0}, {0, 1, 0}, {.5, 0, 0}, {.5, 1, 0}, {1, 0, 16}, {1, 1, 16}});
+        if (transposed)
+            MINI_CHECK(source.transpose());
+        const double tolerance = 6.25e-7, distance = 1.0 / 64;
+        const NurbsSurface result = nurbs_offset::surface(source, transposed ? -distance : distance, tolerance);
+        MINI_CHECK(result.is_valid());
+        for (int i = 0; i <= 37; ++i)
+            for (int j = 0; j <= 7; ++j) {
+                const double u = i / 37.0, v = j / 7.0;
+                const double length = std::sqrt(1 + 1024 * u * u);
+                const Point expected(u - distance * 32 * u / length, v, 16 * u * u + distance / length);
+                const Point actual = transposed ? result.point_at(v, u) : result.point_at(u, v);
+                MINI_CHECK(actual.distance(expected) <= tolerance);
+            }
+    }
+}
+
 }

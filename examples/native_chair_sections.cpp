@@ -72,7 +72,9 @@ nlohmann::ordered_json fit_failure(const BRep& a, const BRep& b, double toleranc
 
 }
 
-int main(int argc, char** argv) {
+namespace native_chair_sections {
+
+int run(int argc, char** argv) {
     const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
     const auto folder = root / "build/native-geometry-tests/viewer";
     std::filesystem::create_directories(folder);
@@ -125,4 +127,6 @@ int main(int argc, char** argv) {
                 {"backend", "session_cpp_native"}, {"tolerance", tolerance}, {"failures", failures}, {"pairs", records}}.dump(2);
         }
     return failures ? 1 : 0;
+}
+
 }

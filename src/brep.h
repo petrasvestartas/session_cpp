@@ -259,7 +259,7 @@ public:
     /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only
     double volume() const;
 
-    /// Integrate the trimmed NURBS solid volume through OCCT without tessellation.
+    /// Integrate the trimmed NURBS solid volume natively without tessellation.
     double volume_exact(double tolerance = 1e-7) const;
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -301,7 +301,7 @@ public:
     /// One welded triangle mesh of every face, wound to the face's outward orientation
     Mesh mesh() const;
 
-    /// Tessellate trimmed faces through OCCT with absolute chord deflection and angular deflection in radians.
+    /// Tessellate trimmed faces with absolute chord deflection and angular deflection in radians.
     Mesh tessellate(double deflection, double angle = 0.35) const;
 
     /// One mesh per face, in face order (vertices not shared across faces)
@@ -337,19 +337,19 @@ public:
     /// Miter-offset a convex planar solid; reject curved or nonconvex inputs and return empty after complete erosion.
     BRep offset_convex(double distance, double tolerance = 1e-6) const;
 
-    /// Union of solid BReps through the configured OCCT backend.
+    /// Union of solid BReps using native face intersections and shell assembly.
     BRep boolean_union(const BRep& other, double tolerance = 1e-7) const;
 
-    /// Common volume of solid BReps through the configured OCCT backend.
+    /// Common volume of solid BReps using native face intersections and shell assembly.
     BRep boolean_intersection(const BRep& other, double tolerance = 1e-7) const;
 
-    /// Subtract another solid BRep through the configured OCCT backend.
+    /// Subtract another solid BRep using native face intersections and shell assembly.
     BRep boolean_difference(const BRep& other, double tolerance = 1e-7) const;
 
-    /// Symmetric difference of solid BReps through the configured OCCT backend.
+    /// Symmetric difference of solid BReps using native face intersections and shell assembly.
     BRep boolean_xor(const BRep& other, double tolerance = 1e-7) const;
 
-    /// Offset a BRep through OCCT, rejecting failed or invalid results.
+    /// Offset a BRep natively.
     BRep offset(double distance, double tolerance = 1e-7) const;
 
     /// Build a hollow solid with signed wall thickness, removing the specified faces as openings.

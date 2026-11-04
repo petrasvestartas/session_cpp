@@ -282,15 +282,15 @@ The original inward diagnostic was then captured before repair: `Common interval
 
 ## Tiny-interval surface image proof: continuity prerequisite
 
-Independent review found that `nurbs_interval::surface_bounds` encloses each touched polynomial span but does not add a separate right-hand branch at an interval's exact upper knot. Its Cartesian-product residual proof therefore requires continuity. The public `NurbsSurface::is_valid_nurbsknot_vector` at 569–585 permits degree+1 internal multiplicity, unlike the generic `nurbsknot::is_valid` at 141–143. The surface does not delegate to that generic validator; assuming delegation would miss this prerequisite.
+Independent review found that `nurbs_interval::surface_bounds` encloses each touched polynomial span but does not add a separate right-hand branch at an interval's exact upper knot. Its Cartesian-product residual proof therefore requires continuity. The public `NurbsSurface::is_valid_nurbsknot_vector` at 569â€“585 permits degree+1 internal multiplicity, unlike the generic `nurbsknot::is_valid` at 141â€“143. The surface does not delegate to that generic validator; assuming delegation would miss this prerequisite.
 
-OCCT enforces it before construction: `Geom_BSplineSurface.cxx:97–105` requires the pole counts returned by `BSplCLib::NbPoles`, whose interior-knot loop at `BSplCLib.cxx:439–450` returns zero when multiplicity exceeds degree. The native tiny-cell fallback now conservatively declines any support with such an internal knot. Existing composition checks remain unchanged; there is no tolerance change or branch padding. `Same Parameter Tiny Interval At Surface Jump` preserves a degree-one support jumping by one unit at U=.5 and a one-ULP common-parameter cell touching that jump. It requires a non-Matched result. This is a static proof-prerequisite repair and negative regression, not a claim of an observed previous false-Matched result. Runtime validation is pending the parent's serialized build.
+OCCT enforces it before construction: `Geom_BSplineSurface.cxx:97â€“105` requires the pole counts returned by `BSplCLib::NbPoles`, whose interior-knot loop at `BSplCLib.cxx:439â€“450` returns zero when multiplicity exceeds degree. The native tiny-cell fallback now conservatively declines any support with such an internal knot. Existing composition checks remain unchanged; there is no tolerance change or branch padding. `Same Parameter Tiny Interval At Surface Jump` preserves a degree-one support jumping by one unit at U=.5 and a one-ULP common-parameter cell touching that jump. It requires a non-Matched result. This is a static proof-prerequisite repair and negative regression, not a claim of an observed previous false-Matched result. Runtime validation is pending the parent's serialized build.
 
 ## Stationary endpoint without self-intersection
 
-`tests/fixtures/self_stationary_endpoint_spec.json` preserves the exact degree-four curve `C(t)=(6t²,t4,0)` on [0,1], with integer control points `(0,0),(0,0),(1,0),(3,0),(6,1)`. Its derivative is zero at t=0, but its X coordinate is strictly increasing. The native helper currently requires a strictly positive lower bound for every projected rational-derivative Bernstein coefficient, including endpoint coefficients. Thus the diagonal cell at t=0 cannot be discharged by that proof, although its geometry is injective.
+`tests/fixtures/self_stationary_endpoint_spec.json` preserves the exact degree-four curve `C(t)=(6tÂ²,t4,0)` on [0,1], with integer control points `(0,0),(0,0),(1,0),(3,0),(6,1)`. Its derivative is zero at t=0, but its X coordinate is strictly increasing. The native helper currently requires a strictly positive lower bound for every projected rational-derivative Bernstein coefficient, including endpoint coefficients. Thus the diagonal cell at t=0 cannot be discharged by that proof, although its geometry is injective.
 
-OCCT does not impose nonzero endpoint D1 for the initial one-curve exclusion. `IntCurve_IntPolyPolyGen.gxx:414–422` builds the geometric polygon and accepts `AutoIntersectionIsPossible()==false`; `IntCurve_Polygon2dGen.gxx:268–280` checks successive chord projections, not the endpoint derivative. For an actual isolated contact, the same self-intersection caller at `IntCurve_IntPolyPolyGen.gxx:581–596` falls back from the first-derivative transition test to D2. These are different caller stages; copying a transition threshold into diagonal exclusion would be unjustified.
+OCCT does not impose nonzero endpoint D1 for the initial one-curve exclusion. `IntCurve_IntPolyPolyGen.gxx:414â€“422` builds the geometric polygon and accepts `AutoIntersectionIsPossible()==false`; `IntCurve_Polygon2dGen.gxx:268â€“280` checks successive chord projections, not the endpoint derivative. For an actual isolated contact, the same self-intersection caller at `IntCurve_IntPolyPolyGen.gxx:581â€“596` falls back from the first-derivative transition test to D2. These are different caller stages; copying a transition threshold into diagonal exclusion would be unjustified.
 
 The staged native change keeps the original homogeneous derivative proof but allows all coefficient lower bounds to be nonnegative with at least one strictly positive coefficient on every nonempty original-span part (or the negative counterpart). Every Bernstein basis function is positive in the open span, so the projected derivative is strictly positive there even if endpoint derivatives vanish. Continuity across original knots then proves strict monotonicity of the union. An all-zero span, uncertain coefficient sign, discontinuity, overlap or exhausted work budget remains unresolved. No parameter diagonal is deleted from sampled direction alone. The change and regression remain staged pending an unchanged-code baseline run.
 
@@ -324,3 +324,398 @@ The full staged integration in `build/tangent_sector_draft/split.cpp` proposes c
 Validation update: parent build 12759 passed. All ten self-intersection groups pass in 0.728 seconds, including both exact reversed/affine representation failures and the multi-knot stationary cases. All four stationary direction variants and the quartic two-loop splitter regression pass; twelve ray and eleven classifier groups also pass with the shared exact-endpoint blossom change. Tangent Sector Input Permutations remains the sole failing direction group (five of six groups pass), preserving the independent angular-order failure.
 
 After independent review by root and the SSI agent, the disjoint-prefix-cone integration was promoted with a fresh write while preserving the root's validated full curve/pcurve correspondence check. Runtime tangent validation is pending. `tests/fixtures/native_split_same_side_tangent_unresolved_spec.json` records a separate proposed safe-failure test for two distinct positive-side tangent parabolas. It must throw explicitly under this first-stage certificate and is not counted as successful feature coverage.
+
+
+## Adjacent-float surface span selection
+
+Build1002 preserves the trimmed focal support failure on the common interval
+[0.66666666666666663,0.66666666666666674]. The exact fixture is
+`tests/fixtures/native_thicken_trimmed_focal_parameter_failure.json`, SHA256
+f07f43a29f4d42afb5ddfb355e75c740b453d7ac95dbb58c463242bbd55c8254.
+Its affine pcurve produces an outward U hull crossing knot .75. After splitting
+at that knot, the left cell is [nextafter(.75,-infinity),.75]; its floating
+midpoint rounds to .75. Selecting a span at that midpoint chooses the right
+span, which fails the existing whole-cell containment guard.
+
+At pinned OCCT revision d3056ef80c9668f395da40f5fd7be186cae4501f,
+Geom_BSplineSurface.cxx:591-643 locates both requested segment endpoints
+before inserting their knots. BSplCLib.cxx:218-317 states the half-open span
+contract and handles periodic parameters and endpoint tolerances explicitly.
+That segment API permits knot tolerance handling; it is not a proof that an
+arbitrarily snapped interval encloses the original surface. Native interval
+bounds instead retain the exact input interval and select its containing span
+from the lower endpoint, matching the existing native curve-bound procedure.
+Both containment guards, positive-weight checks, exact knot splits and the
+restricted extension gates remain unchanged. Singleton knot evaluation keeps
+the existing right-side convention; an unsplit cross-span cell still rejects.
+
+Build1043 passes the exact focal replay, the trimmed-support thickening case,
+adjacent-float C0 surface cell, singleton knot behavior and cross-span rejection.
+The displaced negative is rejected as Unresolved, not the Mismatched state
+required by our overly specific test. Its actual common-interval failure and
+over-tolerance physical gap are archived; the reviewed test-only correction
+requires rejection while preserving strict Matched acceptance for the original.
+The proposed composition fallback does not address the observed span failure
+and was not promoted.
+
+## Retained unclamped trim endpoint, 2026-10-29
+
+The actual affine triple-event Boolean failure is preserved in the external
+`triple-events-self-overlap-draft/actual-affine-intersection-1005` archive.
+The exact raw surface-pair replay at `raw-ssi-affine-20261029-1036` has 1,056
+world control points and a correct first endpoint. The retained section has
+the same first control points but its outer knots have been replaced with
+zero, moving the world endpoint by 0.0218110038 and its pcurve by 0.0875836.
+Beyond the first two short spans the curves agree. Independent evaluation
+therefore confirms a trimming defect; the self-overlap rejection is correct.
+
+At pinned OCCT revision d3056ef80c9668f395da40f5fd7be186cae4501f,
+`Geom_BSplineCurve::Segment` (Geom_BSplineCurve.cxx:527-675) locates both
+requested ends and inserts them with degree multiplicity before extracting
+poles and setting end multiplicities to degree+1. Periodic curves additionally
+move their origin and become nonperiodic before extraction. The essential
+invariant is that end saturation transforms poles as well as knots.
+
+Native `keep_span_range` clamps retained knots but previously kept the old
+unclamped end poles. `NurbsCurve::trim` now invokes the existing homogeneous
+de Boor clamping for an original endpoint that survives a partial trim, before
+knot insertion and extraction. Full-domain identity returns unchanged; already
+clamped ends remain unchanged. No intersection tolerance or work limit changed.
+
+The polynomial/rational/periodic regression first fails on build1038 and then
+passes on build1043, including 129 parameter samples, knot locations, both
+retained ends and full-domain byte identity. The full curve group passes37/37.
+The full native Boolean run remains pending; this curve result alone does not
+establish completion of the ten-operation triple-event Boolean regression.
+
+
+## Boolean split reconstruction profile, 2026-10-29
+
+The native triple-event regression did not finish. Ten bounded stack captures
+of the owned computation thread all unwind through `split::add_run_edge`,
+`vertex_interval` and full interval curve bounds. PE unwind records and
+relocation-masked current COFF functions identify the callers; the preserved
+proof is `boolean-offline-frames-named-1134.json` under the external migration
+folder. Earlier RIP-only samples did not establish a geometric phase.
+
+`add_run_edge` computed interval matching even after determining that a saved
+piece belongs to a different source edge. Its acceptance predicate already
+required source identity. The repair continues immediately for unrelated
+sources, preserving all eligible interval checks and their tolerances.
+OCCT d3056ef, `BOPDS_PaveBlock::Update`, lines 248-317, sorts paves within a
+block and explicitly propagates `myOriginalEdge` to each new block. The native
+repair respects that existing identity invariant; it does not merge unrelated
+curves or replace geometric certification with endpoint matching.
+
+The 26 earlier cases passed. The final case was interrupted for this identified
+unnecessary computation, not a wall limit. The repair and an opt-in phase
+observer are promoted but unbuilt; measured runtime and complete acceptance
+remain pending. Logs and the interruption receipt are retained separately.
+
+
+## CI surface-mesh crease incidence, 2026-10-29
+
+Remote Linux and macOS at e1b820 each passed 1324/1325 tests. Their sole
+remaining failure was `NurbsSurface::Split By Surface`. The preserved witnesses
+contain 136 triangles and 118 vertices. A boundary point at U=3-4.75e-14
+(macOS) or U=3-4.88e-15 (Linux) was reused when the boundary splitter requested
+the exact U=3 crease crossing. The exact-knot constraint collector then omitted
+that endpoint. The first rejected triangle uses vertices 108,32,33 across U=3.
+The source surface and trim remain unchanged; this is mesh constraint incidence.
+
+OCCT d3056ef, `BRepMesh_Delaun::createTrianglesOnNewVertices`, lines 612-706,
+distinguishes free vertices near frontier edges from vertices with neighboring
+frontier edges, then calls `ProcessConstraints`. `insertInternalEdges` then
+uses retained link identities and their connected triangles. The native issue
+was treating geometric proximity as sufficient identity even across a declared
+crease. It was not fixed by copying an OCCT tolerance.
+
+Draft4725d85 now requires identical below/on/above incidence for every crease
+before a nearby vertex may be reused. Required insertions and constraints are
+checked; the strict final crossing check is unchanged. Both raw OS loops are
+saved and replayed directly, as well as through ordinary meshing. This repair
+is independently source-reviewed and pushed for the 1326-test suite; no runtime
+pass for it is claimed yet. The temporary diagnostic has been removed after
+its actual witnesses were retained outside the project and in focused fixtures.
+
+The witness also reveals that uniform arc-length trim sampling can omit a
+polycurve corner such as (4,.5). That separate discretization issue remains
+open and is not hidden by the crease repair.
+
+
+## Exact crease replay: incorrect triangle location
+
+The strict saved-loop replay exposes a second defect after preserving crease
+incidence. Linux requests P=(3,.5) beside A=(2.999999999999995,.5).
+For the located triangle edge from C=(82,-79.25) to A, the original double
+orientation rounds to zero. The determinant of the exact binary inputs is
+-3.8957725934096743e-13: P is outside that triangle. Its negative incircle test
+is correct; forcing the cavity or increasing a tolerance would hide the cause.
+The arithmetic replay and exact-predicate discriminator are preserved in
+`C:/pc/tmp/session-migration-20261028/ci-crease-insertion-arithmetic-v1`.
+Both saved boundary loops complete the initial insertion stage when only
+orientation uses exact rational arithmetic. This is not full native meshing.
+
+OCCT `BRepMesh_Delaun.cxx:642-679` selects candidate circles, then calls
+`Contains` before removing a triangle. Its `Contains` implementation at2578
+checks all three oriented edge distances and treats frontier proximity
+separately. The relevant invariant is a containing triangle with correctly
+classified frontier incidence; the native rounded walk violated it. OCCT does
+not supply the exact integer predicate introduced here, and no such translation
+claim is made.
+
+The native correction filters ordinary orientation results with a conservative
+error bound. Ambiguous cases sum six products of the original binary64
+coordinates using67 fixed integer limbs, retaining exact zero/sign without
+rounded coordinate differences, external libraries or long-double assumptions.
+The maximum4199-bit accumulator fits4288 bits. Its magnitude rounds directly
+to the normal/subnormal lattice; a nonzero value below representable range keeps
+its sign as denorm_min. Existing area thresholds, incircle arithmetic, crease
+incidence and required-constraint checks remain unchanged. The direct witness,
+cyclic/reversed permutations, translated dyadic scales, maximum finite inputs
+and minimum subnormals have a new regression. Two independent source reviews
+passed; native compilation and complete mesh regression remain required.
+
+
+## 2026-10-29: approximate closest-pair rejection and endpoint incidence
+
+Source reference: external OCCT checkout `C:/pc/occt8`, revision
+`d3056ef80c9668f395da40f5fd7be186cae4501f`.
+
+Native `curve_intersection::add_hit` rejects a flat leaf when the distance
+returned by `Closest::curve_curve` exceeds 1.2 times tolerance, before calling
+its more robust refinement. Closest uses a grid seed and exits at an absolute
+Hessian determinant below 1e-14. Its returned distance is an upper bound on the
+minimum, not a certificate of separation. Exact degree-one endpoint and interior
+crossing regressions now preserve this defect at tolerance 1e-10. Source algebra
+predicts rejection with determinant 2^-52; native RED/GREEN is still pending.
+
+OCCT `IntTools_EdgeEdge.cxx:198-233` dispatches line/line to `ComputeLineLine`.
+Its early distance rejection for certain line/conic pairs uses a completed
+`BRepExtrema_DistShapeShape` minimum calculation. That invariant does not hold
+for our local grid-seeded Newton result. Copying its distance multiplier onto
+our approximate result would retain the defect. The proposed minimal correction
+removes only the unsupported pre-refinement rejection, retaining the final gap,
+finite-value, domain and event checks. It is not proof of general completeness:
+refinement over an original span can migrate between roots, and flatness alone
+does not establish a unique root.
+
+Independently, `BOPAlgo_PaveFiller.cxx:254-312` processes VV and VE before EE and
+FF. In `BOPAlgo_PaveFiller_3.cxx:381-420`, an edge-edge event at an existing pave
+calls `ForceInterfVE` on the opposite edge. The latter (`828-910`) computes the
+vertex-edge parameter, registers the interference, and appends an external pave.
+Thus a lone endpoint incidence survives without requiring an overlap interval.
+Our endpoint_matches helper currently contributes only to overlap detection.
+Explicit endpoint-event retention remains a separate candidate, not a substitute
+for fixing missed interior crossings or establishing shared topological identity.
+
+The saved Windows dense-chair graph has disconnected cutter endpoints; the
+saved dodecahedron has a retraced cutter chain ending on an unsplit boundary.
+Exact incidence certificates and direct regressions are retained externally and
+in fixtures. These establish geometric incidence, not the failing runtime path.
+Candidate-pair/hit instrumentation was added without changing solver decisions.
+Do not claim the closest-pair defect explains either Windows failure until that
+trace or a native reproduction establishes causality.
+
+
+### Flatness is not a root-count certificate
+
+A separate exact quadratic witness uses `tol=2^-20`, `a=2^-24` and
+Bezier controls `(0,3a/16), (1/2,-5a/16), (1,3a/16)` against the unit
+horizontal line. Its signed residual is `a(t-1/4)(t-3/4)` and its control
+flatness is `tol/32`, below the current leaf threshold. Two roots separated
+by half the parameter domain can therefore reach a leaf that reports only one
+hit. The whole curve also lies within tolerance of the line, so an explicitly
+certified common range is a legitimate alternative under tolerant semantics;
+an arbitrary single hit marked complete describes neither outcome.
+
+OCCT `IntTools_EdgeEdge::FindSolutions` contracts bounded parameter ranges,
+checks coincidence, then subdivides unresolved ranges. `MergeSolutions` retains
+common-range extent; `FindBestSolution` constrains projection to the narrowed
+range. The native design must similarly separate isolation from refinement.
+For planar line/Bezier pairs, homogeneous Bernstein residual sign variation or
+strict derivative bounds can certify at most one interior root. General pairs
+need a two-parameter uniqueness enclosure or certified common ranges. Existing
+self-intersection interval root proofs offer reusable primitives but do not
+cover boundary roots or singular tangencies by themselves. This is an open
+algorithmic gate, separate from the reviewed two-line prefilter correction.
+The exact witness and alternative event/range regression remain in
+`C:/pc/tmp/session-migration-20261028/cc-flat-leaf-multiplicity-proof-v1` pending
+explicit semantics and implementation review; no acceptance claim is made.
+
+
+Native validation update: build `wip-build-20261029-2320-endpoint-baseline`
+reproduced both near-parallel failures, 17/19 curve-intersection cases passing.
+After removal of only the unsupported two-line distance prefilter, build
+`wip-build-20261029-2322-cc-prefilter` passed all 19 cases in 0.997743 seconds.
+The baseline and fixed binaries, source manifests, logs and guard receipts are
+preserved under `C:/pc/tmp/session-migration-20261028/cc-endpoint-baseline-2321*`
+and `cc-prefilter-green-2322*`. Exact saved chair and dodecahedron endpoint pairs
+pass both locally; Windows failure causality still requires the event trace.
+
+
+## 2026-10-29: certified reconstruction rejection and broadphase audit
+
+Ten current-executable stack samples identify `add_run_edge -> vertex_interval
+-> curve_bounds -> curve_controls` during affine triple-event reconstruction.
+The first source-identity optimization did not eliminate comparisons between
+separate pieces of the same source. The new negative filter encloses each
+endpoint in relative homogeneous interval arithmetic and rejects only when a
+certified lower squared distance exceeds the upper tolerance square. Uncertain
+cases retain the original full-interval certificate. This follows the conservative
+rejection principle in OCCT `IntTools_EdgeEdge::FindSolutions`; it does not copy
+its projection estimates or tolerance policy. The translated polynomial/rational
+shared-edge regression and the unchanged triple-event test are pending native
+validation. The interrupted profiled run remains incomplete (26 passes, 509 s).
+
+The Windows `bcc42dfa` dense-chair trace records no boundary/cutter candidates.
+Independent replay of all 647 original span boxes finds 1551 total candidates,
+including boundary/cut pairs (31,394) and (42,395). Instrumentation now retains
+actual runtime boxes and all candidate indices before solving, to distinguish
+box-generation failures from spatial-tree omissions. A separate source defect
+was found: three internal RTree branches copied an uninitialized scalar data
+field. Those branches are now value-initialized; causality for the Windows
+failure remains unproved. The new regression preserves box order and compares
+every query-before-insert result against brute-force inclusive overlap.
+
+OCCT reference path: `BOPAlgo_PaveFiller.cxx:209` calls
+`BOPDS_Iterator::Prepare`; `BOPDS_Iterator.cxx:270` populates a BVH with explicit
+shape IDs and precomputed conservative boxes, builds it and enumerates pairs.
+`BVH_BoxSet.hxx:60` stores and swaps IDs with their boxes;
+`BOPTools_PairSelector.hxx:31` initializes pair IDs. `BOPDS_DS.cxx:1678`
+includes both edge geometry and vertex boxes in edge bounds. OCCT uses a BVH,
+not our RTree: the transferred invariants are conservative bounds and valid
+box/identity association, not implementation identity. Source audits, fixture
+checks and pending-native boundaries are sealed in the external
+`rtree-dense-boxes-v1` directory.
+
+
+## 2026-10-30: dense span budgets and translated UV charts
+
+The fresh Hollow retained-wall failure contains two incident section pcurves
+with 961 and 684 knot spans. The native loop charged all 657324 Cartesian pairs
+against a 200000 detailed-intersection budget before bounding-box rejection.
+OCCT `IntCurve_IntPolyPolyGen` delegates candidate polygon pairs to
+`Intf_InterferencePolygon2d::Interference` (TKGeomAlgo/Intf, lines 141-174), which
+rejects enlarged disjoint boxes before calling `Intersect`. The native repair
+uses outward bounds of the original NURBS spans instead of polygon estimates.
+Only strictly separated pairs bypass detailed work; inconclusive bounds retain
+the original path. Tolerance, surviving pair order, parameter mapping and work
+limit are unchanged. Regression-only build: 25/26; repaired build: 26/26.
+
+A separate curve/surface negative witness was hidden by failed common parameter
+partitioning. `BRepLib::ComputeTol` (TKTopAlgo/BRepLib, line 1070 onward) and
+`SameParameter` establish the common-parameter residual contract, but OCCT's
+sampled error estimates and tolerance adjustment are not native certificates.
+The Session repair uses outward singleton curve/UV/surface bounds and requires
+a strict squared-residual lower bound above the tolerance-squared upper bound.
+The original focal mismatch assertion is unchanged: full group 25/27 before,
+27/27 after. These local fixes are not yet part of published CI head 28fa434.
+
+The shifted Hollow chart has another exact witness: section U about 1016..1040,
+UV tolerance 6.880911246454869e-13, versus the current raw-coordinate resolution
+guard 7.38964445191e-12. Boundary 0 is provably disjoint; boundary 1 genuinely
+crosses by endpoint signs and the intermediate value theorem. Two separately
+reviewed drafts remain unqualified: certified whole-input disjoint rejection,
+and shared exact homogeneous translation in BRep section trimming. The latter
+preserves both weights and raw parameter domains, checks every product and
+difference for exactness, and falls back to untouched original curves if any
+coordinate cannot be translated exactly. Only curve parameters leave this local
+intersection call; original UV geometry and physical metric remain unchanged.
+No tolerance increase or OCCT runtime call is introduced.
+
+Source reference remains local OCCT revision d3056ef80c9668f395da40f5fd7be186cae4501f.
+Exact fixtures, source reviews and RED/GREEN logs are under
+`C:/pc/tmp/session-migration-20261028/cc-span-pruning-20261030-v1`,
+`same-parameter-certified-negative-v1`, `cc-certified-disjoint-resolution-v1`
+and `section-exact-local-chart-v1`. The current retained-wall shape passes
+construction and full boundary checks but still fails volume measurement.
+
+
+## 2026-10-30: common physical chart and analytic pullback parameters
+
+The restored public translated-box test fails at (1000000,-1000000,1000000):
+world/support absolute-coordinate roundoff sums to 1.4210868926056719e-8, above
+the unchanged 1.25e-8 guard. The captured raw domain is [1,2]. All 18 homogeneous
+translations are exact; in the common chart C(t)=(0,t-1,0),
+S(u,v)=(-2+2u,-1+2v,0), and PC(t)=(1,t/2), giving identically zero residual.
+The native repair translates cloned world/support controls only after every
+product/subtraction is certified exact; pcurves, knots, domains and tolerances
+remain unchanged. Failure falls back to the original unresolved result.
+CS 31/31, the public scale test and Boolean 27/27 pass. The subsequent single-pass
+wrapper is source-reviewed but awaits runtime qualification.
+
+OCCT Approx_SameParameter.cxx 153â€“188/318ff uses sampled residual estimation and
+reparameterization; its tolerance floor/growth is not a whole-interval proof and
+was not copied. Native acceptance retains the complete interval certificate,
+4096 work iterations and depth 20. Proof/fixtures are under external
+same-parameter-exact-world-chart-v1 and public-scale-witness-v1.witness.json.
+
+The actual sphere Boolean failure preserves world sections [.25,.75] and
+[.75,1.25] but constructs pcurves over chord-length domains near [0,2.153].
+Changing only their endpoints still fails same-parameter certification. OCCT
+IntTools_FaceFace.cxx 1653â€“1719 builds paired approximations with common knots or
+world First/Last parameters. The native candidate retains raw sample parameters,
+shifts wrapped samples by the original period, and accepts adaptive pcurves only
+after full interval certification on the original support. Initial work caps and
+both-order physical circle coverage are mandatory. Candidate runtime remains
+pending; fixture native_analytic_sphere_pullback_raw_parameters.json preserves
+the actual failure. Isolated-point and short-section completeness remain separate.
+
+**Exact trim-knot ownership (2026-11-01, applied; qualification pending).**
+The retained rational pullback has distinct quintic knots at `.5` and
+`.5000000000000002`. Native trim snapped the exact first knot to the second,
+retaining eleven control points where a single Bezier span requires six. This
+caused the composition certificate to fail despite increasing subdivision.
+Exact stored endpoints now take precedence over nearby coordinate proposals;
+off-knot behavior and proof budgets are unchanged. The regression preserves a
+physical `1e-3` feature across one- and two-ULP spans, with polynomial and
+rational curves and shifted domains.
+
+OCCT `GeomConvert::SplitBSplineCurve` distinguishes knot-index and coordinate
+overloads; `BSplCLib::LocateParameter` documents explicit span ownership.
+Its epsilon-based coordinate policy is not copied, and OCCT is not claimed to
+preserve every adjacent-ULP query. The native correction preserves an already
+known knot identity. Source audit and actual index replay are retained under
+`C:/pc/tmp/session-migration-20261028/nurbs-trim-exact-knot-preservation-v1`.
+
+**Analytic seam events and tiny raw spans (2026-11-01, source review).**
+Six captured failures distinguish two rejected interpolation ranges, three
+sampled seam plateaus, and one wrapped range. Complete curve/seam events must
+own region boundaries; a rounded UV sample can choose a chart alias but cannot
+invent a cut. Every positive original raw interval remains. An anchorless tiny
+region can share a neighboring fitting alias only after an outward whole-curve
+ball bound; the original paired-curve certificate still decides acceptance.
+Invalid global cubic interpolation can try the existing independent quintic
+spans before rejection, preserving every raw node and the original proof limits.
+
+OCCT8 `GeomInt_LineConstructor.cxx:129` takes analytic endpoints from
+`ParameterOnLine` events before periodic interior classification at lines
+134â€“145. `Approx_SameParameter.cxx:408` and lines 421â€“478 distinguish initial
+interpolation from higher-order approximation and refinement.
+`AdvApprox_ApproxAFunction.cxx:488` and lines 526â€“545 construct local interval
+polynomials and subdivide them. These are design references, not a literal
+translation: OCCT's tiny-interval threshold and sampled acceptance are not copied.
+
+Lazy seam-query triggering does not prove global root discovery. Samples all
+on one boundary can omit a query; full paired certification remains mandatory
+for Boolean results. The legacy `run_curves` consumer requires separate review.
+Immutable failure rows, exact tiny-prefix ball bounds and the detailed source
+audit are retained in `C:/pc/tmp/session-migration-20261028/seam-route-actual-diagnosis-v1`.
+The repaired Intersection group passes 109/109 on
+`wip-build-boolean-critical-events-20261101-v1`, including the six captured
+failures and the positive tiny-span regression. Public Booleans pass 3/3 and
+native Booleans 27/27 on that same build; broader qualification remains open.
+
+**Bilinear same-parameter guard (2026-11-01, diagnosis).**
+The strict critical-section captures fail the coarse coordinate guard before
+composition, at accuracy `2.5e-13`. OCCT `GeomLib.cxx:1087` and lines 1101â€“1114
+prefer planar or actual iso-curve construction before general approximation;
+`Approx_SameParameter.cxx:343` checks the existing parameter law before fitting.
+Its sampled check is not copied. A native directed Bernstein residual proof is
+being developed for original linear world/pcurves and bilinear supports, with
+constant positive weights, original raw domains and strict negative controls.
+Failure to prove the complete law must preserve the existing guarded path.
+The current plain-double `certified_composition` helper cannot independently
+justify bypassing that guard. Design review is retained under
+`C:/pc/tmp/session-migration-20261028/same-parameter-bilinear-proof-design-audit-v1`.

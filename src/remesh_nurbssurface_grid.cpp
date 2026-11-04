@@ -1,9 +1,11 @@
 #include "remesh_nurbssurface_grid.h"
+#include "mesh_parametric_metadata.h"
 #include "tolerance.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <set>
 
 namespace session_cpp {
@@ -393,6 +395,8 @@ std::vector<size_t> add_grid(
 void add_faces(
     Mesh& mesh,
     const std::vector<size_t>& grid,
+    const NurbsSurface& surface,
+    const std::vector<double>& us,
     int nu,
     bool closed_u,
     bool wrap_v,
@@ -401,12 +405,30 @@ void add_faces(
 ) {
 
     const int nv = (int)grid.size() / nu;
+    const auto emit = [&](const std::array<size_t, 3>& keys, int i, bool wrap, bool pole) {
+        const std::optional<size_t> face = mesh.add_face({keys[0], keys[1], keys[2]});
+        if (!face || !mesh_parametric_metadata::capture_depth)
+            return;
+        std::array<mesh_parametric_metadata::UV, 3> uv;
+        const double next_u = i + 1 < nu ? us[i + 1] : surface.domain(0).second;
+        for (int k = 0; k < 3; ++k) {
+            const Attributes& attributes = mesh.vertex.at(keys[k]).attributes;
+            uv[k] = {attributes.at("u"), attributes.at("v")};
+            if (closed_u && i + 1 == nu && uv[k][0] == surface.domain(0).first)
+                uv[k][0] = surface.domain(0).second;
+            if (wrap && uv[k][1] == surface.domain(1).first)
+                uv[k][1] = surface.domain(1).second;
+            if (pole && ((south && keys[k] == *south) || (north && keys[k] == *north)))
+                uv[k][0] = std::midpoint(us[i], next_u);
+        }
+        mesh_parametric_metadata::triangle(mesh, *face, keys, uv, 3);
+    };
     const int nu_faces = closed_u ? nu : nu - 1;
     const int nv_faces = wrap_v ? nv : nv - 1;
 
     if (south)
         for (int i = 0; i < nu_faces; ++i)
-            mesh.add_face({*south, grid[((i + 1) % nu) * nv], grid[i * nv]});
+            emit({*south, grid[((i + 1) % nu) * nv], grid[i * nv]}, i, false, true);
 
     for (int i = 0; i < nu_faces; ++i)
         for (int j = 0; j < nv_faces; ++j) {
@@ -418,17 +440,17 @@ void add_faces(
             const size_t v11 = grid[i1 * nv + j1];
 
             if ((i + j) % 2 == 0) {
-                mesh.add_face({v00, v10, v11});
-                mesh.add_face({v00, v11, v01});
+                emit({v00, v10, v11}, i, wrap_v && j + 1 == nv, false);
+                emit({v00, v11, v01}, i, wrap_v && j + 1 == nv, false);
             } else {
-                mesh.add_face({v00, v10, v01});
-                mesh.add_face({v10, v11, v01});
+                emit({v00, v10, v01}, i, wrap_v && j + 1 == nv, false);
+                emit({v10, v11, v01}, i, wrap_v && j + 1 == nv, false);
             }
         }
 
     if (north)
         for (int i = 0; i < nu_faces; ++i)
-            mesh.add_face({grid[i * nv + nv - 1], grid[((i + 1) % nu) * nv + nv - 1], *north});
+            emit({grid[i * nv + nv - 1], grid[((i + 1) % nu) * nv + nv - 1], *north}, i, false, true);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -631,7 +653,7 @@ Mesh RemeshNurbsSurfaceGrid::from_u_v_q(
 
     const std::vector<size_t> grid = add_grid(s, mesh, us, vs, sing_v0 ? 1 : 0, sing_v1 ? nv - 1 : nv);
 
-    add_faces(mesh, grid, (int)us.size(), s.is_closed(0), s.is_closed(1) && !sing_v0 && !sing_v1, south, north);
+    add_faces(mesh, grid, s, us, (int)us.size(), s.is_closed(0), s.is_closed(1) && !sing_v0 && !sing_v1, south, north);
     set_normals(s, mesh, south, north);
     split_crease_normals(s, mesh);
 
@@ -694,6 +716,7 @@ void RemeshNurbsSurfaceGrid::split_crease_normals(const NurbsSurface& s, Mesh& m
                 mesh.vertex[target].set_normal(sign * n[0] / length, sign * n[1] / length, sign * n[2] / length);
             }
 
+            mesh_parametric_metadata::copied_corner(mesh, face.first, key, target);
             key = target;
         }
     }

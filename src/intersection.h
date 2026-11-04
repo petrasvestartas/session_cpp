@@ -24,9 +24,13 @@ class NurbsSurface;
 class BRep;
 
 /// Isolated intersection points and overlapping or section curves.
+/// Coverage is reported only by the shared BRep interference consumer.
+enum class SectionCoverage { Unreported, OriginalDomainQualified, LegacyLocusUnqualified };
+
 struct SectionResult {
     std::vector<Point> points;
     std::vector<NurbsCurve> curves;
+    SectionCoverage coverage = SectionCoverage::Unreported;
 };
 
 /// Static intersection routines for lines, planes, rays, NURBS, polylines and elements.
@@ -41,7 +45,7 @@ public:
     /// Intersect a curve with trimmed BRep boundaries using native geometry and trim classification.
     static SectionResult curve_brep(const NurbsCurve& curve, const BRep& brep, double tolerance = 1e-7);
 
-    /// Intersect trimmed BRep boundaries through OCCT.
+    /// Return native section curves and isolated points between trimmed BRep boundaries; unresolved cases raise an error.
     static SectionResult brep_brep(const BRep& a, const BRep& b, double tolerance = 1e-7);
 
     // ═══════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,7 @@
 #include "file_step.h"
 #include "closest.h"
+#include "nurbs_coincidence.h"
+#include "curve_surface_intersection.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -9,6 +11,7 @@
 #include <map>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -741,6 +744,8 @@ struct Axis2 {
 struct Proj {
     int kind = 0; // 0 none, 1 plane, 2 cylinder.
     Axis2 a; // Surface frame.
+    double u0 = 0.0;
+    double v0 = 0.0;
 };
 
 /// Analytic surface of a face.
@@ -1010,34 +1015,74 @@ static std::pair<double, double> project(const Proj& pr, const Point& pt) {
     const Vector d = pt - pr.a.origin;
 
     if (pr.kind == 1)
-        return {d.dot(pr.a.ax), d.dot(pr.a.ay)};
+        return {pr.u0 + d.dot(pr.a.ax), pr.v0 + d.dot(pr.a.ay)};
 
     return {std::atan2(d.dot(pr.a.ay), d.dot(pr.a.ax)) * 2.0 / PI, d.dot(pr.a.az)};
 }
 
-/// Affine projector of a bilinear patch from its corner p00; kind 0 when the patch is not bilinear or degenerate.
+/// Require an exact Cartesian parallelogram before proposing an affine inverse.
+static bool affine_patch_frame(const NurbsSurface& srf, Point& origin, Vector& eu, Vector& ev) {
+    if (!srf.is_valid() || srf.dimension() != 3 || srf.degree(0) != 1 || srf.degree(1) != 1 ||
+        srf.cv_count(0) != 2 || srf.cv_count(1) != 2)
+        return false;
+    const double weight = srf.weight(0, 0);
+    if (!(weight > 0.0) || !std::isfinite(weight))
+        return false;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            double x, y, z, w;
+            if (!srf.get_cv_4d(i, j, x, y, z, w) || w != weight)
+                return false;
+            const Point point = srf.get_cv(i, j);
+            const double homogeneous[3] = {x, y, z};
+            for (int d = 0; d < 3; ++d)
+                if (!nurbs_coincidence::exact_products_equal(point[d], w, homogeneous[d], 1.0))
+                    return false;
+        }
+    origin = srf.get_cv(0, 0);
+    const Point pu = srf.get_cv(1, 0), pv = srf.get_cv(0, 1), opposite = srf.get_cv(1, 1);
+    for (int d = 0; d < 3; ++d) {
+        double upper;
+        if (!nurbs_coincidence::exact_difference(pu[d], origin[d], eu[d]) ||
+            !nurbs_coincidence::exact_difference(pv[d], origin[d], ev[d]) ||
+            !nurbs_coincidence::exact_difference(opposite[d], pu[d], upper) || upper != ev[d])
+            return false;
+    }
+    return true;
+}
+
+/// Raw-chart Gram dual; the rounded inverse remains a proposal checked on each edge.
 static Proj bilinear_projector(const NurbsSurface& srf) {
-
     Proj pr;
-
-    if (!srf.is_valid() || srf.degree(0) != 1 || srf.degree(1) != 1)
+    Vector eu, ev;
+    if (!affine_patch_frame(srf, pr.a.origin, eu, ev))
         return pr;
-
-    const Point p00 = srf.get_cv(0, 0);
-    const Vector eu = srf.get_cv(1, 0) - p00;
-    const Vector ev = srf.get_cv(0, 1) - p00;
-    const double eu2 = eu.dot(eu);
-    const double ev2 = ev.dot(ev);
-
-    if (eu2 <= 1e-28 || ev2 <= 1e-28)
+    const auto u = srf.domain(0), v = srf.domain(1);
+    const double du = u.second - u.first, dv = v.second - v.first;
+    if (!std::isfinite(u.first) || !std::isfinite(v.first) || !std::isfinite(du) ||
+        !std::isfinite(dv) || !(du > 0.0) || !(dv > 0.0))
         return pr;
-
+    nurbs_interval::Interval uu, vv, uv;
+    for (int d = 0; d < 3; ++d) {
+        uu = uu + nurbs_interval::Interval(eu[d]) * nurbs_interval::Interval(eu[d]);
+        vv = vv + nurbs_interval::Interval(ev[d]) * nurbs_interval::Interval(ev[d]);
+        uv = uv + nurbs_interval::Interval(eu[d]) * nurbs_interval::Interval(ev[d]);
+    }
+    const auto determinant = uu * vv - uv * uv;
+    const double eu2 = eu.dot(eu), ev2 = ev.dot(ev), cross = eu.dot(ev);
+    const double det = std::fma(eu2, ev2, -cross * cross);
+    if (!nurbs_interval::finite(determinant) || !(determinant.lo > 0.0) ||
+        !std::isfinite(det) || !(det > 0.0))
+        return pr;
+    pr.a.ax = (eu * ev2 - ev * cross) * (du / det);
+    pr.a.ay = (ev * eu2 - eu * cross) * (dv / det);
+    for (int d = 0; d < 3; ++d)
+        if (!std::isfinite(pr.a.ax[d]) || !std::isfinite(pr.a.ay[d]))
+            return Proj();
+    pr.u0 = u.first;
+    pr.v0 = v.first;
     pr.kind = 1;
-    pr.a.origin = p00;
-    pr.a.ax = eu * (1.0 / eu2);
-    pr.a.ay = ev * (1.0 / ev2);
     pr.a.ok = true;
-
     return pr;
 }
 
@@ -1080,18 +1125,24 @@ static NurbsCurve polyline_nurbs(const std::vector<Point>& pts, int dim) {
 }
 
 /// Exact rational arc on the circle (axis a, radius rad) from vs to ve, the full circle when they coincide.
-static NurbsCurve circle_nurbs(const Axis2& a, double rad, const Point& vs, const Point& ve) {
+static NurbsCurve circle_nurbs(const Axis2& a, double rad, const Point& vs, const Point& ve,
+                               int requested_spans = 0, bool force_open = false) {
 
     const double sa = angle_of(a, vs);
     double ea = angle_of(a, ve);
 
-    if (vs.distance(ve) < 1e-10)
+    if (force_open && ea == sa)
+        return NurbsCurve(); // Distinct Cartesian trims with unresolved angular extent.
+
+    if (!force_open && vs.distance(ve) < 1e-10)
         ea = sa + 2.0 * PI;
     else if (ea <= sa)
         ea += 2.0 * PI;
 
     const double span = ea - sa;
-    const int ns = std::max(1, (int)std::ceil(std::abs(span) / PI_2));
+    const int ns = requested_spans > 0 ? requested_spans : std::max(1, (int)std::ceil(std::abs(span) / PI_2));
+    if (ns < 1 || !(span > 0) || !(span / ns < PI))
+        return NurbsCurve();
     const int n_cp = 2 * ns + 1;
     const double wm = std::cos(span / (2.0 * ns));
     NurbsCurve crv(3, true, 3, n_cp);
@@ -1582,6 +1633,85 @@ public:
         return an;
     }
 
+    /// Source 2D analytic frame; do not interpret a 2D direction as a 3D default axis.
+    Axis2 pcurve_circle_axis(int id) {
+        const StepEntity* entity = get(id);
+        const StepSubEntity* placement = entity ? entity->find("AXIS2_PLACEMENT_2D") : nullptr;
+        if (!placement) return get_axis2(id);
+        const auto references = all_refs(placement->params);
+        Axis2 axis;
+        if (references.empty()) return axis;
+        const StepEntity* origin = get(references[0]);
+        const StepSubEntity* point = origin ? origin->find("CARTESIAN_POINT") : nullptr;
+        const auto xy = point ? coords(point->params) : std::vector<double>();
+        if (xy.size() != 2 || !std::isfinite(xy[0]) || !std::isfinite(xy[1])) return axis;
+        axis.origin = Point(xy[0], xy[1], 0);
+        if (references.size() > 1) {
+            const StepEntity* direction = get(references[1]);
+            const StepSubEntity* item = direction ? direction->find("DIRECTION") : nullptr;
+            const auto values = item ? coords(item->params) : std::vector<double>();
+            if (values.size() != 2 || !std::isfinite(values[0]) || !std::isfinite(values[1])) return axis;
+            const double norm = std::hypot(values[0], values[1]);
+            if (!(norm > 0) || !std::isfinite(norm)) return axis;
+            axis.ax = Vector(values[0] / norm, values[1] / norm, 0);
+        }
+        axis.ay = Vector(-axis.ax[1], axis.ax[0], 0);
+        axis.ok = true;
+        return axis;
+    }
+
+    /// Transfer the original rational cos/sin law, not equal-angle samples, to its source UV circle.
+    NurbsCurve source_circle_pcurve(int geometry_id, int pcurve_id, const NurbsCurve& world) {
+        const StepEntity* source = get(basis_curve_of(geometry_id));
+        const StepSubEntity* circle = source ? source->find("CIRCLE") : nullptr;
+        const StepEntity* image = get(pcurve_id);
+        const StepSubEntity* pcircle = image ? image->find("CIRCLE") : nullptr;
+        if (!circle || !pcircle || !world.is_valid() || world.dimension() != 3) return NurbsCurve();
+        const Axis2 from = get_axis2(first_ref(circle->params));
+        const Axis2 to = pcurve_circle_axis(first_ref(pcircle->params));
+        const auto radii = nums(circle->params), pradii = nums(pcircle->params);
+        if (!from.ok || !to.ok || radii.empty() || pradii.empty() || !(radii[0] > 0) ||
+            !(pradii[0] > 0) || !std::isfinite(radii[0]) || !std::isfinite(pradii[0]) ||
+            to.origin[2] != 0 || to.ax[2] != 0 || to.ay[2] != 0) return NurbsCurve();
+        const double ratio = pradii[0] / radii[0];
+        if (!std::isfinite(ratio)) return NurbsCurve();
+        NurbsCurve result(3, world.is_rational(), world.order(), world.cv_count());
+        result.m_nurbsknot = world.m_nurbsknot;
+        for (int i = 0; i < world.cv_count(); ++i) {
+            const double weight = world.weight(i);
+            if (!(weight > 0) || !std::isfinite(weight)) return NurbsCurve();
+            const Vector radial = world.get_cv(i) - from.origin;
+            const Point uv = to.origin + to.ax * (ratio * radial.dot(from.ax)) +
+                to.ay * (ratio * radial.dot(from.ay));
+            if (!std::isfinite(uv[0]) || !std::isfinite(uv[1]) ||
+                !result.set_cv_4d(i, uv[0] * weight, uv[1] * weight, 0, weight)) return NurbsCurve();
+        }
+        return result.is_valid() ? result : NurbsCurve();
+    }
+
+    /// All original NURBS pcurves on this exact support, including like-seams.
+    std::vector<NurbsCurve> original_pcurves(int geometry_id, int surface_id, const NurbsCurve& world) {
+        const StepEntity* entity = get(geometry_id);
+        const StepSubEntity* source = entity ? entity->find("SURFACE_CURVE") : nullptr;
+        if (!source && entity) source = entity->find("SEAM_CURVE");
+        std::vector<NurbsCurve> curves;
+        if (!source) return curves;
+        for (int associated : list_refs(source->params)) {
+            const StepEntity* item = get(associated);
+            const StepSubEntity* pc = item ? item->find("PCURVE") : nullptr;
+            const auto references = pc ? all_refs(pc->params) : std::vector<int>();
+            if (references.size() < 2 || references[0] != surface_id) continue;
+            const StepEntity* representation = get(references[1]);
+            const StepSubEntity* definition = representation ? representation->find("DEFINITIONAL_REPRESENTATION") : nullptr;
+            const auto items = definition ? list_refs(definition->params) : std::vector<int>();
+            if (items.empty()) continue;
+            NurbsCurve curve = get_nurbs_curve(items.front());
+            if (!curve.is_valid()) curve = source_circle_pcurve(geometry_id, items.front(), world);
+            if (curve.is_valid()) curves.push_back(std::move(curve));
+        }
+        return curves;
+    }
+
     /// Canonical (s, t) samples of the pcurve an edge carries on a surface; a SEAM_CURVE holds two, the second for the reversed use.
     std::vector<Point> pcurve_st_samples(int ec_geom_id, int surface_ref, bool forward_use, int n) {
 
@@ -1707,6 +1837,7 @@ struct LoopEdge {
     std::vector<Point> uv; // Sampled uv points.
     NurbsCurve pc2d; // Parameter-space curve.
     bool exact = false; // Whether pc2d is exact rather than sampled.
+    bool source_pcurve = false; // Certified original chart; never shift only its UV samples.
 };
 
 /// One face loop with its edge uses in traversal order.
@@ -1874,6 +2005,8 @@ static void chain_loops(std::vector<Loop>& loops, double tau_u, double tau_v) {
         return;
 
     for (Loop& lp : loops) {
+        if (std::any_of(lp.edges.begin(), lp.edges.end(), [](const LoopEdge& edge) { return edge.source_pcurve; }))
+            continue;
         Point prev_end(0, 0, 0);
         bool have_prev = false;
 
@@ -1914,6 +2047,8 @@ static void center_inner_loops(std::vector<Loop>& loops, double tau_u) {
         return;
 
     for (Loop& lp : loops) {
+        if (std::any_of(lp.edges.begin(), lp.edges.end(), [](const LoopEdge& edge) { return edge.source_pcurve; }))
+            continue;
         const std::optional<double> center = lp.is_outer ? std::nullopt : loop_ucenter(lp);
 
         if (!center)
@@ -2161,6 +2296,7 @@ static std::vector<Point> st_unwrapped(
 /// BRep of one STEP shell, built face by face.
 class BRepBuilder {
     StepReader& r; // Entity reader.
+    double tolerance;
     BRep brep; // Brep under construction.
     std::unordered_map<int, int> vmap; // Brep vertex by VERTEX_POINT id.
     std::unordered_map<int, int> emap; // Brep edge by EDGE_CURVE id.
@@ -2169,7 +2305,7 @@ class BRepBuilder {
 public:
 
     /// Construct over an entity reader.
-    explicit BRepBuilder(StepReader& reader) : r(reader) {}
+    BRepBuilder(StepReader& reader, double precision) : r(reader), tolerance(precision) {}
 
     /// Existing vertex within tol of q, else a new one.
     int vertex_at(const Point& q, double tol) {
@@ -2237,8 +2373,63 @@ public:
         return vmap[vp_id] = brep.add_vertex(r.get_vertex_point(vp_id).value_or(Point(0, 0, 0)));
     }
 
+    /// Cartesian trim selectors of a circle are physical bounds, not disposable wrappers.
+    std::optional<Point> cartesian_trim(const StepParam& selector) {
+        for (int id : all_refs(selector.list)) {
+            const StepEntity* point = r.get(id);
+            if (point && point->has("CARTESIAN_POINT")) return r.get_point(id);
+        }
+        return std::nullopt;
+    }
+
+    /// Partition is a proposal; preserve the actual trim angles and circular locus.
+    int trimmed_circle_quarter_count(const Axis2& axis, double radius, const Point& start, const Point& end) const {
+        const double first = angle_of(axis, start);
+        double last = angle_of(axis, end);
+        if (last == first) return 0;
+        if (last < first) last += 2 * PI;
+        const double span = last - first;
+        const int quarters = static_cast<int>(std::floor(span / PI_2 + .5));
+        if (quarters < 1 || quarters > 4 || !(span / quarters < PI)) return 0;
+        const double endpoint_gap = 2 * radius * std::abs(std::sin((span - quarters * PI_2) * .5));
+        return std::isfinite(endpoint_gap) && endpoint_gap <= tolerance ? quarters : 0;
+    }
+
+    NurbsCurve trimmed_circle(const StepSubEntity& trim, const Point& start, const Point& end,
+                              bool edge_sense) {
+        if (trim.params.size() < 6 || trim.params[4].tag != StepTag::Enum ||
+            (trim.params[4].str != "T" && trim.params[4].str != "F") ||
+            trim.params[5].tag != StepTag::Enum || trim.params[5].str != "CARTESIAN")
+            return NurbsCurve();
+        const int basis_id = first_ref(trim.params);
+        const StepEntity* basis = r.get(basis_id);
+        const StepSubEntity* circle = basis ? basis->find("CIRCLE") : nullptr;
+        const auto first = cartesian_trim(trim.params[2]), last = cartesian_trim(trim.params[3]);
+        if (!circle || !first || !last || first->distance(*last) == 0) return NurbsCurve();
+        const Point expected_start = edge_sense ? *first : *last;
+        const Point expected_end = edge_sense ? *last : *first;
+        if (!(start.distance(expected_start) <= tolerance) || !(end.distance(expected_end) <= tolerance))
+            return NurbsCurve();
+        const int axis_id = first_ref(circle->params);
+        const auto radii = nums(circle->params);
+        const Axis2 axis = r.get_axis2(axis_id);
+        if (!axis.ok || radii.empty() || !std::isfinite(radii[0]) || !(radii[0] > 0)) return NurbsCurve();
+        for (const Point& endpoint : {start, end}) {
+            const double angle = angle_of(axis, endpoint);
+            const Point on_circle = axis.origin + (axis.ax * std::cos(angle) + axis.ay * std::sin(angle)) * radii[0];
+            if (!(on_circle.distance(endpoint) <= tolerance)) return NurbsCurve();
+        }
+        const bool forward = (trim.params[4].str == "T") == edge_sense;
+        const Point& arc_start = forward ? start : end;
+        const Point& arc_end = forward ? end : start;
+        const int quarters = trimmed_circle_quarter_count(axis, radii[0], arc_start, arc_end);
+        NurbsCurve result = circle_nurbs(axis, radii[0], arc_start, arc_end, quarters, true);
+        if (!forward && !result.reverse()) return NurbsCurve();
+        return result;
+    }
+
     /// Exact 3D curve of an edge basis: the B-spline itself or a rational arc of a CIRCLE, invalid otherwise.
-    NurbsCurve edge_curve(int curve_id, const Point& vs, const Point& ve) {
+    NurbsCurve edge_curve(int curve_id, const Point& vs, const Point& ve, bool edge_sense) {
 
         const StepEntity* e = r.get(curve_id);
 
@@ -2247,6 +2438,9 @@ public:
 
         if (e->has("B_SPLINE_CURVE_WITH_KNOTS"))
             return r.get_nurbs_curve(curve_id);
+
+        if (const StepSubEntity* trim = e->find("TRIMMED_CURVE"))
+            return trimmed_circle(*trim, vs, ve, edge_sense);
 
         const StepSubEntity* circle = e->find("CIRCLE");
 
@@ -2261,7 +2455,9 @@ public:
         if (ax_ref < 0 || rad <= 0 || !a.ok)
             return NurbsCurve();
 
-        return circle_nurbs(a, rad, vs, ve);
+        NurbsCurve result = edge_sense ? circle_nurbs(a, rad, vs, ve) : circle_nurbs(a, rad, ve, vs);
+        if (!edge_sense && !result.reverse()) return NurbsCurve();
+        return result;
     }
 
     /// BRep edge of an EDGE_CURVE, made once: exact curve when possible, else a sampled polyline.
@@ -2282,7 +2478,10 @@ public:
         const int curve_id = r.basis_curve_of(refs[2]);
         const Point vs = brep.m_vertices[sv].point;
         const Point ve = brep.m_vertices[ev].point;
-        NurbsCurve crv3d = edge_curve(curve_id, vs, ve);
+        const StepEntity* entity = r.get(ec_id);
+        const StepSubEntity* edge = entity ? entity->find("EDGE_CURVE") : nullptr;
+        const bool edge_sense = edge ? last_flag(edge->params, true) : true;
+        NurbsCurve crv3d = edge_curve(curve_id, vs, ve, edge_sense);
 
         if (!crv3d.is_valid())
             crv3d = polyline_nurbs(r.sample_curve(curve_id, vs, ve, 16), 3);
@@ -2602,11 +2801,58 @@ public:
         return ids;
     }
 
+    /// Select the forward boundary of two certified axis-aligned seam aliases.
+    static int forward_source_seam(const std::vector<NurbsCurve>& curves) {
+        if (curves.size() != 2) return -1;
+        for (const auto& curve : curves)
+            if (curve.degree() != 1 || curve.cv_count() != 2) return -1;
+        const Point a = curves[0].point_at_start(), b = curves[0].point_at_end();
+        const Point c = curves[1].point_at_start(), d = curves[1].point_at_end();
+        for (int varying = 0; varying < 2; ++varying) {
+            const int fixed = 1 - varying;
+            if (a[fixed] != b[fixed] || c[fixed] != d[fixed] || a[fixed] == c[fixed]) continue;
+            const bool positive = b[varying] > a[varying];
+            if (b[varying] == a[varying] || d[varying] == c[varying] ||
+                (d[varying] > c[varying]) != positive) continue;
+            // For +V the forward boundary has maximal U; for +U minimal V.
+            const bool maximum = (varying == 1) == positive;
+            return (a[fixed] > c[fixed]) == maximum ? 0 : 1;
+        }
+        return -1;
+    }
+
+    /// A source curve is a proposal until the WHOLE original world/support law matches.
+    std::optional<NurbsCurve> certified_source_pcurve(int geometry_id, int surface_id,
+        const NurbsCurve& world, const NurbsSurface& support, bool forward) {
+        if (!world.is_valid() || !support.is_valid()) return std::nullopt;
+        const StepEntity* source = r.get(surface_id);
+        if (!source || !source->has("B_SPLINE_SURFACE_WITH_KNOTS")) return std::nullopt;
+        std::vector<NurbsCurve> accepted;
+        for (NurbsCurve pc : r.original_pcurves(geometry_id, surface_id, world)) {
+            auto match = curve_surface_intersection::same_parameter(world, pc, support, tolerance);
+            if (match != curve_surface_intersection::ParameterMatch::Matched) {
+                if (!pc.reverse()) continue;
+                match = curve_surface_intersection::same_parameter(world, pc, support, tolerance);
+            }
+            if (match != curve_surface_intersection::ParameterMatch::Matched) continue;
+            const bool duplicate = std::any_of(accepted.begin(), accepted.end(), [&](const NurbsCurve& item) {
+                return item.jsondump() == pc.jsondump();
+            });
+            if (!duplicate) accepted.push_back(std::move(pc));
+        }
+        if (accepted.size() == 1) return accepted.front();
+        const int selected = forward_source_seam(accepted);
+        if (selected < 0) return std::nullopt;
+        return accepted[forward ? selected : 1 - selected];
+    }
+
     /// Loops of a face on a projected surface: uv samples in curve order, exact pcurves under an affine projector.
     void projected_loops(
         const std::vector<int>& bound_refs,
         const Proj& proj,
         const NurbsSurface& proj_srf,
+        int surface_ref,
+        bool same_sense,
         std::vector<Loop>& loops
     ) {
 
@@ -2643,6 +2889,18 @@ public:
                 LoopEdge le;
                 le.edge_idx = edge_idx;
                 le.reversed = oe_orient != b->orient;
+                if (be.curve_3d_index >= 0) {
+                    const bool forward = !le.reversed == same_sense;
+                    const auto pc = certified_source_pcurve(edge_geom_id(r, ec_ref), surface_ref,
+                        brep.m_curves_3d[be.curve_3d_index], proj_srf, forward);
+                    if (pc) {
+                        le.pc2d = *pc;
+                        le.exact = le.source_pcurve = true;
+                        le.uv = sample_nurbs(le.pc2d, n);
+                        lp.edges.push_back(std::move(le));
+                        continue;
+                    }
+                }
                 le.uv = uv_of_samples(proj, proj_srf, r.sample_curve(edge_geom_id(r, ec_ref), vs, ve, n));
 
                 if (proj.kind == 2)
@@ -2652,6 +2910,10 @@ public:
                     le.pc2d = exact_pcurve(exact, brep.m_curves_3d[be.curve_3d_index]);
 
                 le.exact = le.pc2d.is_valid();
+                if (le.exact && proj.kind == 0)
+                    le.exact = curve_surface_intersection::same_parameter(
+                        brep.m_curves_3d[be.curve_3d_index], le.pc2d, proj_srf, tolerance) ==
+                        curve_surface_intersection::ParameterMatch::Matched;
                 lp.edges.push_back(le);
             }
 
@@ -2662,13 +2924,53 @@ public:
         }
     }
 
+    /// Complete only a certified full original boundary span at an existing pole vertex.
+    std::vector<PendingEdge> projected_pending(const Loop& loop, const NurbsSurface& support) {
+        const auto original = pending_of(loop);
+        std::vector<PendingEdge> result;
+        for (size_t i = 0; i < original.size(); ++i) {
+            const auto& current = original[i];
+            const auto& next = original[(i + 1) % original.size()];
+            result.push_back(current);
+            if (!support.is_valid() || !current.c2d.is_valid() || !next.c2d.is_valid())
+                continue;
+            const auto& first_edge = brep.m_edges.at(current.edge);
+            const auto& second_edge = brep.m_edges.at(next.edge);
+            const int vertex = current.reversed ? first_edge.start_vertex : first_edge.end_vertex;
+            const int next_vertex = next.reversed ? second_edge.end_vertex : second_edge.start_vertex;
+            if (vertex != next_vertex)
+                continue;
+            const Point a = current.c2d.point_at_end(), b = next.c2d.point_at_start();
+            bool full_boundary = false;
+            for (int fixed = 0; fixed < 2; ++fixed) {
+                const auto boundary = support.domain(fixed), span = support.domain(1 - fixed);
+                full_boundary |= a[fixed] == b[fixed] &&
+                    (a[fixed] == boundary.first || a[fixed] == boundary.second) &&
+                    ((a[1 - fixed] == span.first && b[1 - fixed] == span.second) ||
+                     (a[1 - fixed] == span.second && b[1 - fixed] == span.first));
+            }
+            if (!full_boundary)
+                continue;
+            const NurbsCurve bridge = polyline_nurbs({a, b}, 2);
+            NurbsCurve world(3, false, 2, 2);
+            world.m_nurbsknot = {0, 1};
+            const Point& point = brep.m_vertices.at(vertex).point;
+            if (!world.set_cv(0, point) || !world.set_cv(1, point) ||
+                curve_surface_intersection::same_parameter(world, bridge, support, tolerance) !=
+                    curve_surface_intersection::ParameterMatch::Matched)
+                continue;
+            result.push_back({brep.add_edge(-1, vertex, vertex), false, bridge});
+        }
+        return result;
+    }
+
     /// Face projected onto its plane, cylinder chart or B-spline surface, with a filled surface when the projection has none.
     void add_face_projected(const std::vector<int>& bound_refs, int surface_ref, bool same_sense) {
 
         const Proj proj = r.get_projector(surface_ref);
         const NurbsSurface proj_srf = proj.kind == 0 ? r.fill_surface(surface_ref, 0, 1, 0, 1) : NurbsSurface();
         std::vector<Loop> loops;
-        projected_loops(bound_refs, proj, proj_srf, loops);
+        projected_loops(bound_refs, proj, proj_srf, surface_ref, same_sense, loops);
 
         double tau_u = 0.0;
         double tau_v = 0.0;
@@ -2701,7 +3003,7 @@ public:
         std::vector<std::vector<PendingEdge>> pending;
 
         for (const Loop& lp : loops)
-            pending.push_back(pending_of(lp));
+            pending.push_back(projected_pending(lp, srf));
 
         finish_face(srf_idx, !same_sense, pending);
     }
@@ -3434,7 +3736,10 @@ std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std:
     return out;
 }
 
-std::vector<BRep> read_file_step_breps(const std::string& filepath) {
+std::vector<BRep> read_file_step_breps(const std::string& filepath, double tolerance) {
+
+    if (!std::isfinite(tolerance) || tolerance <= 0)
+        throw std::invalid_argument("STEP BRep tolerance must be finite and positive");
 
     const StepFile sf = parse_step_file(filepath);
     StepReader r(sf);
@@ -3473,7 +3778,7 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath) {
         const StepEntity* sh = r.get(shell_ref);
         const StepSubEntity* os = sh ? sh->find("ORIENTED_CLOSED_SHELL") : nullptr;
         const int inner = os ? first_ref(os->params) : -1;
-        BRepBuilder builder(r);
+        BRepBuilder builder(r, tolerance);
         BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref);
 
         if (!b.m_faces.empty())

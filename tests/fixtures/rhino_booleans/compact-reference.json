@@ -1,0 +1,4392 @@
+{
+  "schema": "rhino_compact_reference_draft_v1",
+  "fixture_promotion": false,
+  "source_provenance": {
+    "audit": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\audit.json",
+      "sha256": "e7ed49ba39d220a7a1a4adb3632c671b0324c3a0b123b4aa8a78913e8a76595d"
+    },
+    "Boxes": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Boxes-usable-probes.jsonl",
+      "sha256": "dc3c1dd7369fb2badacccca59a15a840614b70ee00ba84c32e2f15a6cf47ff20",
+      "usable_rows": 3153
+    },
+    "Cones": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Cones-usable-probes.jsonl",
+      "sha256": "440d283c79bda6099327cf4bdb42d0bbeb2a9464c1ea1a8eb0367c4e6252a342",
+      "usable_rows": 2512
+    },
+    "Cylinders": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Cylinders-usable-probes.jsonl",
+      "sha256": "126de7a413a1b5d860030ef803d0cbdc3050350e1d2af67adc08c28bd1d15576",
+      "usable_rows": 2602
+    },
+    "Pyramids": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Pyramids-usable-probes.jsonl",
+      "sha256": "917f3eae2eca01332704e9731b88896ee5bb7c31275b563ddb3418d5cc6a53db",
+      "usable_rows": 2735
+    },
+    "Spheres": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Spheres-usable-probes.jsonl",
+      "sha256": "c77df83233bff94f9caa205846ecb156a8d911fe80f6d1fccaffc871f0580545",
+      "usable_rows": 2357
+    },
+    "Torus": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Torus-usable-probes.jsonl",
+      "sha256": "757444cb44b89b07040cd600bc2d97b32cdf1feac49a7fd04fc5197021af8c04",
+      "usable_rows": 2351
+    },
+    "Twisted": {
+      "path": "C:\\pc\\tmp\\session-migration-20261028\\rhino-booleans-oracle-20261101-v1\\Twisted-usable-probes.jsonl",
+      "sha256": "7e91504b781d7ed5e59ee54d3a7c9d5633cee86c6041f8dbeb05a8243597fea0",
+      "usable_rows": 3158
+    }
+  },
+  "selection": {
+    "per_region": 8,
+    "method": "first source row, then normalized farthest point with earliest source-index tie break",
+    "source_indices": "zero-based JSONL line indices",
+    "geometry_coordinates": "unchanged original doubles"
+  },
+  "families": [
+    {
+      "family": "Boxes",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputBoxes.3dm",
+          "original_sha256": "8d98d890bead7dbd301f9230031708e6c6e61312dd64bab8df031741167a7d6b",
+          "object_table_index": 0,
+          "object_guid": "dd2f086e-c049-4e71-a196-2be33876add5",
+          "signed_volume": 5016.4934855329475,
+          "reported_volume_error": 6.710534950868411e-12,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputBoxes-object-0.step",
+          "qualified_step_sha256": "6697a0add19ce21ac303a6718c284dcd859453cdf9ec32bccaa85de83f905350"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputBoxes.3dm",
+          "original_sha256": "8d98d890bead7dbd301f9230031708e6c6e61312dd64bab8df031741167a7d6b",
+          "object_table_index": 1,
+          "object_guid": "84bde83c-ec92-4237-ac16-05eb10fd479f",
+          "signed_volume": 5016.493485532947,
+          "reported_volume_error": 5.3462928982090186e-12,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputBoxes-object-1.step",
+          "qualified_step_sha256": "cefbf83a9371fedddc2bd3e8fc329884073d4a300210afb2dc829ac6e0bef4c9"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputBoxesUnion.3dm",
+            "original_sha256": "23a096e744dac013fea86b497cd01e7b82a15007069bad53157f8035486b6fe8",
+            "object_table_index": 0,
+            "object_guid": "b8a28b84-dc8e-4282-989b-8fc0337e2d52",
+            "signed_volume": 9219.36487716752,
+            "reported_volume_error": 1.4901568811737017e-11,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputBoxesIntersection.3dm",
+            "original_sha256": "e6d23023b77c59883a2f7623d7f0403f760bb9dd9983e2a9e79339d931b7eb97",
+            "object_table_index": 0,
+            "object_guid": "bd1db4b0-100c-43a1-91e6-36e3785eb1d4",
+            "signed_volume": 813.6220938983772,
+            "reported_volume_error": 1.8244589849857247e-12,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ab",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputBoxesDifference.3dm",
+            "original_sha256": "a33a9365009810c75844f496e34914a9bd143ca4722af76cab47b3af5127cf07",
+            "object_table_index": 0,
+            "object_guid": "36511b93-533c-427d-80a7-932056111313",
+            "signed_volume": 4202.871391634576,
+            "reported_volume_error": 9.433906661462702e-12,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1779,
+        "01": 565,
+        "10": 657,
+        "11": 152
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 7,
+          "region": "00",
+          "point": [
+            -6.327652471408615,
+            -7.907598379303311,
+            19.80373087565741
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2184,
+          "region": "00",
+          "point": [
+            18.60399412087022,
+            17.232274562025722,
+            1.3202487250438273
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2105,
+          "region": "00",
+          "point": [
+            18.60399412087022,
+            2.5673486795837857,
+            33.00621812609568
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 337,
+          "region": "00",
+          "point": [
+            -4.250015255385379,
+            17.232274562025722,
+            33.00621812609568
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1690,
+          "region": "00",
+          "point": [
+            14.448719688823743,
+            -7.907598379303311,
+            1.3202487250438273
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 130,
+          "region": "00",
+          "point": [
+            -6.327652471408615,
+            13.042295738470882,
+            1.3202487250438273
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1685,
+          "region": "00",
+          "point": [
+            12.371082472800513,
+            17.232274562025722,
+            22.444228325745062
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2335,
+          "region": "00",
+          "point": [
+            -0.9805599653029518,
+            -2.5691819710747392,
+            -0.008
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 279,
+          "region": "01",
+          "point": [
+            -4.250015255385379,
+            8.852316914916043,
+            17.163233425569754
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2154,
+          "region": "01",
+          "point": [
+            18.60399412087022,
+            10.947306326693463,
+            25.084725775832716
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1218,
+          "region": "01",
+          "point": [
+            8.215808040754037,
+            -3.717619555748472,
+            25.084725775832716
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1343,
+          "region": "01",
+          "point": [
+            8.215808040754037,
+            17.232274562025722,
+            11.882238525394445
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1130,
+          "region": "01",
+          "point": [
+            6.1381708247308016,
+            8.852316914916043,
+            33.00621812609568
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2257,
+          "region": "01",
+          "point": [
+            8.606306705872967,
+            3.8167291430425414,
+            11.809343280400869
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2480,
+          "region": "01",
+          "point": [
+            3.01243829926584,
+            15.196538233683096,
+            23.462912814705113
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2514,
+          "region": "01",
+          "point": [
+            -0.4019966514739531,
+            1.9092253297442263,
+            24.04914698520408
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 0,
+          "region": "10",
+          "point": [
+            -6.327652471408615,
+            -7.907598379303311,
+            1.3202487250438273
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1276,
+          "region": "10",
+          "point": [
+            8.215808040754037,
+            6.757327503138624,
+            6.601243625219136
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2374,
+          "region": "10",
+          "point": [
+            2.212395591755687,
+            -5.76213752813338,
+            19.674238800668117
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 96,
+          "region": "10",
+          "point": [
+            -6.327652471408615,
+            6.757327503138624,
+            14.5227359754821
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1183,
+          "region": "10",
+          "point": [
+            8.215808040754037,
+            -7.907598379303311,
+            1.3202487250438273
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2332,
+          "region": "10",
+          "point": [
+            -4.173515522361592,
+            3.816729143042542,
+            0.008
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2324,
+          "region": "10",
+          "point": [
+            -7.358471079420233,
+            -5.7621375281333815,
+            15.745791040534494
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 717,
+          "region": "10",
+          "point": [
+            1.9828963926843297,
+            -1.6226301439710529,
+            6.601243625219136
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 83,
+          "region": "11",
+          "point": [
+            -6.327652471408615,
+            4.662338091361205,
+            14.5227359754821
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2252,
+          "region": "11",
+          "point": [
+            8.590306705872969,
+            0.6237735859838986,
+            15.745791040534492
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2542,
+          "region": "11",
+          "point": [
+            4.410516925249071,
+            6.51990009140712,
+            7.993984189023566
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2370,
+          "region": "11",
+          "point": [
+            -0.9805599653029518,
+            0.6237735859838995,
+            19.674238800668117
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 942,
+          "region": "11",
+          "point": [
+            4.060533608707566,
+            6.757327503138624,
+            17.163233425569754
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2282,
+          "region": "11",
+          "point": [
+            -0.9805599653029478,
+            7.001684700101181,
+            11.809343280400867
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2402,
+          "region": "11",
+          "point": [
+            4.276144279446636,
+            -1.0225964068402367,
+            19.539034922809645
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2406,
+          "region": "11",
+          "point": [
+            3.01881645298644,
+            2.0532704511969624,
+            11.720107958651909
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 10032.986971065897,
+          "right": 10032.986971065893,
+          "absolute_discrepancy": 3.637978807091713e-12,
+          "sum_reported_integration_errors": 2.878285564580017e-11,
+          "fixed_requested_integration_allowance": 1.0033986971065898e-06,
+          "exceeds_reported_errors_plus_requested_allowance": false,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 5016.493485532953,
+          "right": 5016.4934855329475,
+          "absolute_discrepancy": 5.4569682106375694e-12,
+          "sum_reported_integration_errors": 1.7968900597316835e-11,
+          "fixed_requested_integration_allowance": 5.017493485532953e-07,
+          "exceeds_reported_errors_plus_requested_allowance": false,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    },
+    {
+      "family": "Cones",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputCones.3dm",
+          "original_sha256": "03037d88c23bf7e758df3d292a3013ccadd52299b89fd54693986365a66aba9a",
+          "object_table_index": 0,
+          "object_guid": "a60b6795-91d6-49bf-9af6-d47baa19e294",
+          "signed_volume": 18546.91859735344,
+          "reported_volume_error": 3.4956264884716525e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputCones-object-0.step",
+          "qualified_step_sha256": "ff26b6d29d5a107a6fd9f681f82403f4ca669642d16ec9b31f880b5cc94d84fc"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputCones.3dm",
+          "original_sha256": "03037d88c23bf7e758df3d292a3013ccadd52299b89fd54693986365a66aba9a",
+          "object_table_index": 1,
+          "object_guid": "1f77a0d3-7299-4a6c-adaa-b350d34ce4f3",
+          "signed_volume": 18546.918597352047,
+          "reported_volume_error": 2.9797278638408544e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputCones-object-1.step",
+          "qualified_step_sha256": "bf823a5a13890aad498493423ebc846b8549f2a71e51a4cea5572fec0dddbf75"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputConesUnion.3dm",
+            "original_sha256": "5f14f6c86737f72648e91e4f416002bb5410c8e4c38a08d257e344a4f9be6f36",
+            "object_table_index": 0,
+            "object_guid": "d3622e3a-13c2-49e6-a2bf-81da84747eef",
+            "signed_volume": 32950.418557187004,
+            "reported_volume_error": 1.2050401395067997e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputConesIntersection.3dm",
+            "original_sha256": "40187d718410d3337006160001f8d87fa42b27a9e7eed48a2e5f83d17f580585",
+            "object_table_index": 0,
+            "object_guid": "fa7d12a4-a349-4530-9707-3919244f6333",
+            "signed_volume": 4143.426975379369,
+            "reported_volume_error": 4.194875184607725e-08,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ab",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputConesDifference.3dm",
+            "original_sha256": "5cd23cc6dc58c1140c2b9033f5a3af3715068d9f1477f456072f33cebdfe4dca",
+            "object_table_index": 0,
+            "object_guid": "e914dd91-748c-47c9-99e3-fc898ffc7a2f",
+            "signed_volume": 14403.492921347053,
+            "reported_volume_error": 4.8029586218197316e-08,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1742,
+        "01": 323,
+        "10": 349,
+        "11": 98
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            -6.126746503221814,
+            246.5634796015749,
+            1.9437389838461623
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2195,
+          "region": "00",
+          "point": [
+            36.66927538492789,
+            294.818916137188,
+            48.59347459615405
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 162,
+          "region": "00",
+          "point": [
+            -6.126746503221814,
+            294.818916137188,
+            25.26860679000011
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2033,
+          "region": "00",
+          "point": [
+            36.66927538492789,
+            246.5634796015749,
+            25.26860679000011
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 376,
+          "region": "00",
+          "point": [
+            1.0059238114698044,
+            254.6060523575104,
+            48.59347459615405
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1819,
+          "region": "00",
+          "point": [
+            29.536605070236277,
+            286.77634338125245,
+            1.9437389838461623
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2252,
+          "region": "00",
+          "point": [
+            -5.03090189575296,
+            277.1519401156191,
+            -0.008
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 973,
+          "region": "00",
+          "point": [
+            11.70492928350723,
+            282.7550570032847,
+            48.59347459615405
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 537,
+          "region": "01",
+          "point": [
+            4.572258968815614,
+            254.6060523575104,
+            17.49365085461546
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1335,
+          "region": "01",
+          "point": [
+            18.83759959819885,
+            290.79762975922023,
+            40.81851866076941
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2069,
+          "region": "01",
+          "point": [
+            36.66927538492789,
+            258.62733873547813,
+            13.606172886923135
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2281,
+          "region": "01",
+          "point": [
+            20.664244223023054,
+            265.4873735400097,
+            36.11025515168625
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2265,
+          "region": "01",
+          "point": [
+            25.55276775422993,
+            277.227641416988,
+            18.96022859158634
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1527,
+          "region": "01",
+          "point": [
+            25.970269912890465,
+            246.5634796015749,
+            29.156084757692437
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2313,
+          "region": "01",
+          "point": [
+            20.123117773068948,
+            258.11711479247515,
+            11.10966875841546
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 851,
+          "region": "01",
+          "point": [
+            11.70492928350723,
+            246.5634796015749,
+            29.156084757692437
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 78,
+          "region": "10",
+          "point": [
+            -6.126746503221814,
+            270.6911978693814,
+            1.9437389838461623
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 946,
+          "region": "10",
+          "point": [
+            11.70492928350723,
+            274.7124842473492,
+            44.70599662846173
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1637,
+          "region": "10",
+          "point": [
+            25.970269912890465,
+            282.7550570032847,
+            1.9437389838461623
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1052,
+          "region": "10",
+          "point": [
+            15.271264440853042,
+            258.62733873547813,
+            1.9437389838461623
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 628,
+          "region": "10",
+          "point": [
+            4.572258968815614,
+            282.7550570032847,
+            21.381128822307783
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2257,
+          "region": "10",
+          "point": [
+            6.312265275110848,
+            286.9306695345772,
+            0.008
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 574,
+          "region": "10",
+          "point": [
+            4.572258968815614,
+            266.6699114914137,
+            13.606172886923135
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1290,
+          "region": "10",
+          "point": [
+            18.83759959819885,
+            278.73377062531694,
+            17.49365085461546
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 728,
+          "region": "11",
+          "point": [
+            8.138594126161422,
+            262.6486251134459,
+            5.8312169515384875
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1113,
+          "region": "11",
+          "point": [
+            15.271264440853042,
+            274.7124842473492,
+            36.93104069307709
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1445,
+          "region": "11",
+          "point": [
+            22.40393475554466,
+            274.7124842473492,
+            13.606172886923135
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 758,
+          "region": "11",
+          "point": [
+            8.138594126161422,
+            270.6911978693814,
+            21.381128822307783
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2323,
+          "region": "11",
+          "point": [
+            20.905336649021798,
+            264.0828024749276,
+            2.3950718450051967
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1292,
+          "region": "11",
+          "point": [
+            18.83759959819885,
+            278.73377062531694,
+            25.26860679000011
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1081,
+          "region": "11",
+          "point": [
+            15.271264440853042,
+            266.6699114914137,
+            13.606172886923135
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2215,
+          "region": "11",
+          "point": [
+            11.431803458041092,
+            268.52378375717484,
+            30.319549248322065
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 37093.845532566374,
+          "right": 37093.837194705484,
+          "absolute_discrepancy": 0.008337860890605953,
+          "sum_reported_integration_errors": 1.6310030123198849e-07,
+          "fixed_requested_integration_allowance": 3.7094845532566374e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 18546.919896726424,
+          "right": 18546.91859735344,
+          "absolute_discrepancy": 0.0012993729833397083,
+          "sum_reported_integration_errors": 9.032790071312174e-08,
+          "fixed_requested_integration_allowance": 1.8547919896726425e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    },
+    {
+      "family": "Cylinders",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputCylinders.3dm",
+          "original_sha256": "adf6a0f544fa3f05bb825e6c902026ce5886292fdb2be85c99aaa85cc8b27dfa",
+          "object_table_index": 0,
+          "object_guid": "9c42d9d5-7edc-4aad-b134-de8780e6228b",
+          "signed_volume": 15640.75786212624,
+          "reported_volume_error": 1.9949043895981505e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputCylinders-object-0.step",
+          "qualified_step_sha256": "3b73625f6d4ed1d677f74d400a312bbe08c334f8b71cab34dd9005871bd12179"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputCylinders.3dm",
+          "original_sha256": "adf6a0f544fa3f05bb825e6c902026ce5886292fdb2be85c99aaa85cc8b27dfa",
+          "object_table_index": 1,
+          "object_guid": "5c743de0-836d-4217-a780-dd07baeff3d8",
+          "signed_volume": 15640.757862126258,
+          "reported_volume_error": 1.7402458731017309e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputCylinders-object-1.step",
+          "qualified_step_sha256": "403825827ed49ea5ec1b5bd9ba0789665325971fc8c64047d0a7779f74347c72"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputCylindersUnion.3dm",
+            "original_sha256": "a93ee2eb4a04060844c8f40af627ef8127fdf459c7fc910d6c996580914b1644",
+            "object_table_index": 0,
+            "object_guid": "8b4fea6c-4f23-4ef3-ba2a-705726094c00",
+            "signed_volume": 22303.45401753753,
+            "reported_volume_error": 3.0085897243343733e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputCylindersIntersection.3dm",
+            "original_sha256": "e64873df886906e087dbe77f9d1643b8cab971d21c9a91cf89f8f1362d4a939f",
+            "object_table_index": 0,
+            "object_guid": "f624853c-b923-4c90-a8db-40ed1e0588ba",
+            "signed_volume": 8978.061897102516,
+            "reported_volume_error": 6.286962300317721e-08,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ba",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputCylindersDifference.3dm",
+            "original_sha256": "9e966c758cad47a9c024857744aeee9d8d9e3c9fb4d1e8646d3363cd210a7d24",
+            "object_table_index": 0,
+            "object_guid": "84b25fcc-43ba-4fb1-9edf-598942e92101",
+            "signed_volume": 6662.696072417141,
+            "reported_volume_error": 2.264914000419902e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1346,
+        "01": 412,
+        "10": 369,
+        "11": 475
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            -12.148982894726934,
+            84.36939495127758,
+            1.5797662963320287
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2196,
+          "region": "00",
+          "point": [
+            14.27356703767741,
+            123.30464365259185,
+            39.494157408300715
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 90,
+          "region": "00",
+          "point": [
+            -12.148982894726934,
+            103.83701930193472,
+            39.494157408300715
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2106,
+          "region": "00",
+          "point": [
+            14.27356703767741,
+            103.83701930193472,
+            1.5797662963320287
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 326,
+          "region": "00",
+          "point": [
+            -9.94710373369324,
+            123.30464365259185,
+            4.739298888996086
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1870,
+          "region": "00",
+          "point": [
+            12.071687876643715,
+            84.36939495127758,
+            36.33462481563666
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 996,
+          "region": "00",
+          "point": [
+            -1.1395870895584572,
+            120.060039594149,
+            26.856027037644488
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1200,
+          "region": "00",
+          "point": [
+            3.2641712325089323,
+            87.61399900972044,
+            14.21789666698826
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 372,
+          "region": "01",
+          "point": [
+            -7.745224572659543,
+            90.85860306816329,
+            26.856027037644488
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2161,
+          "region": "01",
+          "point": [
+            14.27356703767741,
+            116.81543553570614,
+            11.058364074324201
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2077,
+          "region": "01",
+          "point": [
+            14.27356703767741,
+            94.10320712660615,
+            33.1750922229726
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 471,
+          "region": "01",
+          "point": [
+            -7.745224572659543,
+            116.81543553570614,
+            11.058364074324201
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2290,
+          "region": "01",
+          "point": [
+            6.4186932119500115,
+            93.74870980506057,
+            14.087435271118528
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1320,
+          "region": "01",
+          "point": [
+            3.2641712325089323,
+            116.81543553570614,
+            23.69649444498043
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1078,
+          "region": "01",
+          "point": [
+            1.0622920714752375,
+            97.34781118504901,
+            39.494157408300715
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2221,
+          "region": "01",
+          "point": [
+            3.3247870911274617,
+            114.81623825082757,
+            7.0102575444510755
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 65,
+          "region": "10",
+          "point": [
+            -12.148982894726934,
+            100.59241524349186,
+            1.5797662963320287
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1791,
+          "region": "10",
+          "point": [
+            9.86980871561002,
+            107.08162336037758,
+            33.1750922229726
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 88,
+          "region": "10",
+          "point": [
+            -12.148982894726934,
+            103.83701930193472,
+            33.1750922229726
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1768,
+          "region": "10",
+          "point": [
+            9.86980871561002,
+            103.83701930193472,
+            1.5797662963320287
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 888,
+          "region": "10",
+          "point": [
+            -1.1395870895584572,
+            94.10320712660615,
+            14.21789666698826
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 963,
+          "region": "10",
+          "point": [
+            -1.1395870895584572,
+            113.57083147726328,
+            4.739298888996086
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 971,
+          "region": "10",
+          "point": [
+            -1.1395870895584572,
+            113.57083147726328,
+            30.015559630308548
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 278,
+          "region": "10",
+          "point": [
+            -9.94710373369324,
+            110.32622741882042,
+            17.377429259652317
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 384,
+          "region": "11",
+          "point": [
+            -7.745224572659543,
+            94.10320712660615,
+            23.69649444498043
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1625,
+          "region": "11",
+          "point": [
+            7.667929554576322,
+            110.32622741882042,
+            1.5797662963320287
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1790,
+          "region": "11",
+          "point": [
+            9.86980871561002,
+            107.08162336037758,
+            30.015559630308548
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 458,
+          "region": "11",
+          "point": [
+            -7.745224572659543,
+            113.57083147726328,
+            11.058364074324201
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1395,
+          "region": "11",
+          "point": [
+            5.466050393542627,
+            94.10320712660615,
+            14.21789666698826
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 970,
+          "region": "11",
+          "point": [
+            -1.1395870895584572,
+            113.57083147726328,
+            26.856027037644488
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1232,
+          "region": "11",
+          "point": [
+            3.2641712325089323,
+            94.10320712660615,
+            33.1750922229726
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 744,
+          "region": "11",
+          "point": [
+            -3.3414662505921537,
+            100.59241524349186,
+            11.058364074324201
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 31281.515914640047,
+          "right": 31281.5157242525,
+          "absolute_discrepancy": 0.00019038754908251576,
+          "sum_reported_integration_errors": 3.641021104628845e-07,
+          "fixed_requested_integration_allowance": 3.1282515914640047e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 15640.757969519658,
+          "right": 15640.757862126258,
+          "absolute_discrepancy": 0.00010739339995780028,
+          "sum_reported_integration_errors": 2.8953504763247756e-07,
+          "fixed_requested_integration_allowance": 1.5641757969519658e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    },
+    {
+      "family": "Pyramids",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputPyramids.3dm",
+          "original_sha256": "38da67cdb0aaf1ddd03beaa40eae3be44fc3e75d55d91822f66dd6c72a9d2340",
+          "object_table_index": 0,
+          "object_guid": "704282d3-d57e-49b2-9eaf-f8094d63c60e",
+          "signed_volume": 5984.116051170853,
+          "reported_volume_error": 1.7138055836301943e-11,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputPyramids-object-0.step",
+          "qualified_step_sha256": "68e1060089800a4a157b6b625595e5d63129b1657f183cfce7805fa7f49cdf36"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputPyramids.3dm",
+          "original_sha256": "38da67cdb0aaf1ddd03beaa40eae3be44fc3e75d55d91822f66dd6c72a9d2340",
+          "object_table_index": 1,
+          "object_guid": "688be162-0df2-45c6-8899-fe42ec8c391a",
+          "signed_volume": 5984.116051170864,
+          "reported_volume_error": 2.2540809828559667e-11,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputPyramids-object-1.step",
+          "qualified_step_sha256": "7d162e4bd3b4a01271a31849deb98a91fec1be1557706cc92bbe72fda9e55d78"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputPyramidsUnion.3dm",
+            "original_sha256": "22a315f83a291dcb9679ed4e2e752aaadf89cecc2f9240ddfcd4aff686f9bfff",
+            "object_table_index": 0,
+            "object_guid": "273bc9bc-f7a3-470e-bf3a-9276790d12b0",
+            "signed_volume": 10721.526764812084,
+            "reported_volume_error": 3.447409190769309e-11,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputPyramidsIntersection.3dm",
+            "original_sha256": "ce82b4009be505f7d4cf1c07fc1f8c1260fb4eb2def0027537f3368d0dbd8075",
+            "object_table_index": 0,
+            "object_guid": "b69da79b-7519-4ec2-8d66-37b3dd58378f",
+            "signed_volume": 1246.7053375296352,
+            "reported_volume_error": 7.545727692309034e-12,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ab",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputPyramidsDifference.3dm",
+            "original_sha256": "a87d2f2552c894d0461ec2fada19becee7bc0d3f0e3d5c702508357672305da7",
+            "object_table_index": 0,
+            "object_guid": "d3e43dc2-3baa-4b9c-91a1-a3e945b760f9",
+            "signed_volume": 4737.410713641219,
+            "reported_volume_error": 2.142432573896282e-11,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1721,
+        "01": 416,
+        "10": 452,
+        "11": 146
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            -4.612988436872383,
+            201.3512538529309,
+            1.3196979244323503
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2196,
+          "region": "00",
+          "point": [
+            22.97319054323283,
+            233.34409046389743,
+            32.99244811080876
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1026,
+          "region": "00",
+          "point": [
+            9.180101053180222,
+            201.3512538529309,
+            32.99244811080876
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1170,
+          "region": "00",
+          "point": [
+            9.180101053180222,
+            233.34409046389743,
+            1.3196979244323503
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 154,
+          "region": "00",
+          "point": [
+            -4.612988436872383,
+            230.6780207463169,
+            30.353052261944054
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2042,
+          "region": "00",
+          "point": [
+            22.97319054323283,
+            204.01732357051145,
+            3.9590937732970506
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1606,
+          "region": "00",
+          "point": [
+            16.076645798206524,
+            217.34767215841418,
+            19.795468866485255
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 228,
+          "region": "00",
+          "point": [
+            -2.314140188530282,
+            212.01553272325307,
+            19.795468866485255
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 328,
+          "region": "01",
+          "point": [
+            -2.314140188530282,
+            233.34409046389743,
+            9.237885471026452
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1020,
+          "region": "01",
+          "point": [
+            9.180101053180222,
+            201.3512538529309,
+            17.156073017620553
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2190,
+          "region": "01",
+          "point": [
+            22.97319054323283,
+            233.34409046389743,
+            17.156073017620553
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1011,
+          "region": "01",
+          "point": [
+            6.88125280483812,
+            233.34409046389743,
+            27.713656413079356
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2249,
+          "region": "01",
+          "point": [
+            13.21812496004287,
+            219.9689892856388,
+            13.72749961991984
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1340,
+          "region": "01",
+          "point": [
+            11.478949301522324,
+            233.34409046389743,
+            3.9590937732970506
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 618,
+          "region": "01",
+          "point": [
+            2.283556308153919,
+            222.67981159357527,
+            19.795468866485255
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2362,
+          "region": "01",
+          "point": [
+            16.10072969441251,
+            227.639293428245,
+            23.917806190617288
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 39,
+          "region": "10",
+          "point": [
+            -4.612988436872383,
+            209.34946300567253,
+            1.3196979244323503
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 934,
+          "region": "10",
+          "point": [
+            6.88125280483812,
+            217.34767215841418,
+            30.353052261944054
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1781,
+          "region": "10",
+          "point": [
+            18.375494046548624,
+            220.01374187599473,
+            1.3196979244323503
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 637,
+          "region": "10",
+          "point": [
+            2.283556308153919,
+            228.01195102873635,
+            1.3196979244323503
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1057,
+          "region": "10",
+          "point": [
+            9.180101053180222,
+            209.34946300567253,
+            11.877281319891152
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 434,
+          "region": "10",
+          "point": [
+            -0.015291940188181918,
+            220.01374187599473,
+            14.516677168755852
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2290,
+          "region": "10",
+          "point": [
+            5.66564133364661,
+            214.19620026829153,
+            0.008
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2335,
+          "region": "10",
+          "point": [
+            11.180089382234911,
+            227.18208164235463,
+            6.171047389450063
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 603,
+          "region": "11",
+          "point": [
+            2.283556308153919,
+            220.01374187599473,
+            14.516677168755852
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2336,
+          "region": "11",
+          "point": [
+            11.184910342208223,
+            227.18772670300714,
+            6.18522101408052
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2234,
+          "region": "11",
+          "point": [
+            11.0651233150263,
+            211.52672917266383,
+            13.722217208273051
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1113,
+          "region": "11",
+          "point": [
+            9.180101053180222,
+            220.01374187599473,
+            22.434864715349953
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1447,
+          "region": "11",
+          "point": [
+            13.777797549864424,
+            220.01374187599473,
+            11.877281319891152
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2226,
+          "region": "11",
+          "point": [
+            6.454298824594698,
+            212.1178858333128,
+            20.584646415321274
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 796,
+          "region": "11",
+          "point": [
+            4.582404556496019,
+            225.3458813111558,
+            9.237885471026452
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1123,
+          "region": "11",
+          "point": [
+            9.180101053180222,
+            222.67981159357527,
+            14.516677168755852
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 11968.232102341719,
+          "right": 11968.232102341717,
+          "absolute_discrepancy": 1.8189894035458565e-12,
+          "sum_reported_integration_errors": 8.169868526486373e-11,
+          "fixed_requested_integration_allowance": 1.1969232102341718e-06,
+          "exceeds_reported_errors_plus_requested_allowance": false,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 5984.116051170855,
+          "right": 5984.116051170853,
+          "absolute_discrepancy": 1.8189894035458565e-12,
+          "sum_reported_integration_errors": 4.6108109267573797e-11,
+          "fixed_requested_integration_allowance": 5.985116051170855e-07,
+          "exceeds_reported_errors_plus_requested_allowance": false,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    },
+    {
+      "family": "Spheres",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputSpheres.3dm",
+          "original_sha256": "93565b89c6a2c593bf71e0c66984f942ce43f73347a35c51382fabaa5e123c21",
+          "object_table_index": 0,
+          "object_guid": "994e4d8e-dfa4-49db-b5cf-bf8a74074d6f",
+          "signed_volume": 17607.377194802128,
+          "reported_volume_error": 5.003039404982701e-08,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputSpheres-object-0.step",
+          "qualified_step_sha256": "c0ce0242de2e06811a38e979b41597f07a71ee886305fe9f1ff61da11d7bc68a"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputSpheres.3dm",
+          "original_sha256": "93565b89c6a2c593bf71e0c66984f942ce43f73347a35c51382fabaa5e123c21",
+          "object_table_index": 1,
+          "object_guid": "f51c0b14-dd08-4f92-b86e-7f339e695c36",
+          "signed_volume": 17607.377194802117,
+          "reported_volume_error": 5.0025846576318145e-08,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputSpheres-object-1.step",
+          "qualified_step_sha256": "21c4527c2fadefbe7e2faf3c912f434abf6da1e4e47063f4403bce9f5d334e22"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputSpheresUnion.3dm",
+            "original_sha256": "fc896ba067b2aaf24ca37953ef8a02f7ed36c8f69814ce9b3bc01d809763710a",
+            "object_table_index": 0,
+            "object_guid": "c5ad91e5-a704-4f5b-b6f7-3e62e3a7bdd2",
+            "signed_volume": 26582.04703068352,
+            "reported_volume_error": 3.5041929828866987e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1152,
+        "01": 400,
+        "10": 420,
+        "11": 385
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [
+        3,
+        4
+      ],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            -22.81300637578286,
+            149.3946361768877,
+            -14.763075514752108
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2196,
+          "region": "00",
+          "point": [
+            16.64790772087617,
+            181.9856504440687,
+            18.25203486179975
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1026,
+          "region": "00",
+          "point": [
+            -3.0825493274533464,
+            149.3946361768877,
+            18.25203486179975
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1170,
+          "region": "00",
+          "point": [
+            -3.0825493274533464,
+            181.9856504440687,
+            -14.763075514752108
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 154,
+          "region": "00",
+          "point": [
+            -22.81300637578286,
+            179.26973258847028,
+            15.50077566375376
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2042,
+          "region": "00",
+          "point": [
+            16.64790772087617,
+            152.1105540324861,
+            -12.01181631670612
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2251,
+          "region": "00",
+          "point": [
+            17.538724222207193,
+            163.25524277875482,
+            6.39963309074736
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 107,
+          "region": "00",
+          "point": [
+            -22.81300637578286,
+            171.12197902167503,
+            -6.509297920614143
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 947,
+          "region": "01",
+          "point": [
+            -6.370958835508265,
+            168.4060611660766,
+            15.50077566375376
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2248,
+          "region": "01",
+          "point": [
+            8.296961740752462,
+            160.82055036273104,
+            -9.989573644004913
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1682,
+          "region": "01",
+          "point": [
+            6.78267919671141,
+            181.9856504440687,
+            -1.0067795245221678
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2242,
+          "region": "01",
+          "point": [
+            4.5043170718628005,
+            151.9651220677277,
+            8.226743682335526
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2128,
+          "region": "01",
+          "point": [
+            16.64790772087617,
+            168.4060611660766,
+            9.998257267661785
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1505,
+          "region": "01",
+          "point": [
+            3.494269688656491,
+            179.26973258847028,
+            12.74951646570777
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1967,
+          "region": "01",
+          "point": [
+            13.359498212821244,
+            171.12197902167503,
+            -3.7580387225681573
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1288,
+          "region": "01",
+          "point": [
+            0.2058601806015723,
+            171.12197902167503,
+            -12.01181631670612
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 44,
+          "region": "10",
+          "point": [
+            -22.81300637578286,
+            157.54238974368295,
+            -1.0067795245221678
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 992,
+          "region": "10",
+          "point": [
+            -6.370958835508265,
+            179.26973258847028,
+            -3.7580387225681573
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 778,
+          "region": "10",
+          "point": [
+            -9.659368343563184,
+            168.4060611660766,
+            15.50077566375376
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2214,
+          "region": "10",
+          "point": [
+            0.30285363861661907,
+            160.22963465932224,
+            -13.050014568294928
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1035,
+          "region": "10",
+          "point": [
+            -3.0825493274533464,
+            152.1105540324861,
+            7.246998069615799
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 430,
+          "region": "10",
+          "point": [
+            -16.23618735967302,
+            168.4060611660766,
+            -12.01181631670612
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 293,
+          "region": "10",
+          "point": [
+            -19.52459686772794,
+            173.83789687727344,
+            4.495738871569806
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2208,
+          "region": "10",
+          "point": [
+            -10.079707563227466,
+            148.93560017249848,
+            -4.984662011407377
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 578,
+          "region": "11",
+          "point": [
+            -12.947777851618103,
+            162.9742254548798,
+            1.74447967352382
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2224,
+          "region": "11",
+          "point": [
+            2.0640551858088676,
+            175.46941684968735,
+            -4.984662011407377
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2216,
+          "region": "11",
+          "point": [
+            5.631146934428503,
+            157.79102846750186,
+            -4.984662011407377
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2228,
+          "region": "11",
+          "point": [
+            -1.9017303030196102,
+            171.15547954583417,
+            13.050014568294927
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1218,
+          "region": "11",
+          "point": [
+            0.2058601806015723,
+            154.8264718880845,
+            9.998257267661785
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 925,
+          "region": "11",
+          "point": [
+            -6.370958835508265,
+            165.6901433104782,
+            -9.260557118660133
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1606,
+          "region": "11",
+          "point": [
+            6.78267919671141,
+            165.6901433104782,
+            4.495738871569806
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 995,
+          "region": "11",
+          "point": [
+            -6.370958835508265,
+            179.26973258847028,
+            4.495738871569806
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": []
+    },
+    {
+      "family": "Torus",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputTorus.3dm",
+          "original_sha256": "2281b9d0d8796e915831886d55cd1efa5f12cd776c3f4aab2ffd53fc0170bfac",
+          "object_table_index": 0,
+          "object_guid": "24d8c20f-eb97-4324-a211-9085e0326c85",
+          "signed_volume": 14550.769092898963,
+          "reported_volume_error": 2.6830093702301383e-11,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputTorus-object-0.step",
+          "qualified_step_sha256": "158798669651f4d147bc07582613865a0ba326bab8df0be7fe8a6e39acd40bc0"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputTorus.3dm",
+          "original_sha256": "2281b9d0d8796e915831886d55cd1efa5f12cd776c3f4aab2ffd53fc0170bfac",
+          "object_table_index": 1,
+          "object_guid": "2ef1a2bc-9cad-44ae-abf5-7c236ec7655c",
+          "signed_volume": 14550.769092898965,
+          "reported_volume_error": 4.6838977141305804e-11,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputTorus-object-1.step",
+          "qualified_step_sha256": "b42f9c32c34c127b7621fe22de5786126cd272a87112d9c15849f74f903c61a2"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTorusUnion.3dm",
+            "original_sha256": "c950ae95d445dd21a4666b234dedb600065d8642dfa4baf1045c43f28cc20048",
+            "object_table_index": 0,
+            "object_guid": "68294a0f-a737-4e44-a6e1-e63ad725cc9d",
+            "signed_volume": 25506.001223199295,
+            "reported_volume_error": 2.656581550988397e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTorusIntersection.3dm",
+            "original_sha256": "5200ebdffebaca74ea69ebba31ee631ab83b42f97ef1e2d70721edaf127c5c6c",
+            "object_table_index": 0,
+            "object_guid": "bc495c20-197d-457a-82d2-057fb1d30411",
+            "signed_volume": 3595.539114901853,
+            "reported_volume_error": 1.0338598168924652e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ba",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTorusDifference.3dm",
+            "original_sha256": "3ba84ded66010d0f6798cc6299792517ce3765346a08fedc66d0c9928748c709",
+            "object_table_index": 0,
+            "object_guid": "dc3d1236-298d-49c7-8167-db1d3526b838",
+            "signed_volume": 10955.23213029612,
+            "reported_volume_error": 1.6772093829656046e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1490,
+        "01": 367,
+        "10": 373,
+        "11": 121
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            -21.328379751578773,
+            26.64626517662635,
+            -7.728470875666692
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2196,
+          "region": "00",
+          "point": [
+            21.820747884066257,
+            75.52430519690881,
+            20.281376912043644
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 162,
+          "region": "00",
+          "point": [
+            -21.328379751578773,
+            75.52430519690881,
+            6.276453018188477
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2034,
+          "region": "00",
+          "point": [
+            21.820747884066257,
+            26.64626517662635,
+            6.276453018188477
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 376,
+          "region": "00",
+          "point": [
+            -14.136858478971266,
+            34.79260518000676,
+            20.281376912043644
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1820,
+          "region": "00",
+          "point": [
+            14.629226611458748,
+            67.3779651935284,
+            -7.728470875666692
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1098,
+          "region": "00",
+          "point": [
+            0.24618406624374245,
+            51.08528518676758,
+            6.276453018188477
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 442,
+          "region": "00",
+          "point": [
+            -14.136858478971266,
+            59.23162519014799,
+            -7.728470875666692
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 43,
+          "region": "01",
+          "point": [
+            -21.328379751578773,
+            38.86577518169696,
+            1.6081450535700874
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1805,
+          "region": "01",
+          "point": [
+            14.629226611458748,
+            59.23162519014799,
+            17.94722292973445
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1705,
+          "region": "01",
+          "point": [
+            14.629226611458748,
+            30.71943517831656,
+            -3.0601629110483026
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 452,
+          "region": "01",
+          "point": [
+            -14.136858478971266,
+            59.23162519014799,
+            15.613068947425255
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2087,
+          "region": "01",
+          "point": [
+            21.820747884066257,
+            42.93894518338717,
+            8.610607000497673
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 689,
+          "region": "01",
+          "point": [
+            -6.945337206363764,
+            30.71943517831656,
+            -7.728470875666692
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2242,
+          "region": "01",
+          "point": [
+            2.3509300797148405,
+            57.21240213445833,
+            8.717299642103383
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1032,
+          "region": "01",
+          "point": [
+            0.24618406624374245,
+            30.71943517831656,
+            3.942299035879282
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 68,
+          "region": "10",
+          "point": [
+            -21.328379751578773,
+            47.01211518507738,
+            -0.7260089287391072
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2134,
+          "region": "10",
+          "point": [
+            21.820747884066257,
+            59.23162519014799,
+            -3.0601629110483026
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1006,
+          "region": "10",
+          "point": [
+            -3.349576570060009,
+            75.52430519690881,
+            3.942299035879282
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1228,
+          "region": "10",
+          "point": [
+            3.8419447025474973,
+            38.86577518169696,
+            6.276453018188477
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2220,
+          "region": "10",
+          "point": [
+            11.291359336679925,
+            39.01786051050774,
+            -6.307479978476932
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 625,
+          "region": "10",
+          "point": [
+            -10.541097842667513,
+            63.30479519183819,
+            -5.394316893357497
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1496,
+          "region": "10",
+          "point": [
+            7.437705338851245,
+            71.4511351952186,
+            -5.394316893357497
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 716,
+          "region": "10",
+          "point": [
+            -6.945337206363764,
+            38.86577518169696,
+            -5.394316893357497
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 69,
+          "region": "11",
+          "point": [
+            -21.328379751578773,
+            47.01211518507738,
+            1.6081450535700874
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2236,
+          "region": "11",
+          "point": [
+            19.14729857866942,
+            50.5244234007028,
+            3.3864619190162886
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1041,
+          "region": "11",
+          "point": [
+            0.24618406624374245,
+            34.79260518000676,
+            -5.394316893357497
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2256,
+          "region": "11",
+          "point": [
+            -8.205711660672861,
+            37.14652279411278,
+            5.101148617839165
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1383,
+          "region": "11",
+          "point": [
+            7.437705338851245,
+            34.79260518000676,
+            3.942299035879282
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 448,
+          "region": "11",
+          "point": [
+            -14.136858478971266,
+            59.23162519014799,
+            6.276453018188477
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1731,
+          "region": "11",
+          "point": [
+            14.629226611458748,
+            38.86577518169696,
+            -3.0601629110483026
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 379,
+          "region": "11",
+          "point": [
+            -14.136858478971266,
+            38.86577518169696,
+            -3.0601629110483026
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 29101.54033810115,
+          "right": 29101.53818579793,
+          "absolute_discrepancy": 0.0021523032191907987,
+          "sum_reported_integration_errors": 3.6911780585892983e-07,
+          "fixed_requested_integration_allowance": 2.910254033810115e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 14550.771245197973,
+          "right": 14550.769092898965,
+          "absolute_discrepancy": 0.0021522990082303295,
+          "sum_reported_integration_errors": 2.7115375896294826e-07,
+          "fixed_requested_integration_allowance": 1.4551771245197973e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    },
+    {
+      "family": "Twisted",
+      "units": "Millimeters",
+      "model_absolute_tolerance": 0.001,
+      "input_order": [
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputTwisted.3dm",
+          "original_sha256": "a51a358f5b364fd01af1b6b9a506b8a868ac7b037fdd6cde107b80d6a6690f44",
+          "object_table_index": 0,
+          "object_guid": "3177e8f4-b924-48b9-ae34-dc0fd2cabc76",
+          "signed_volume": 20907.000924679633,
+          "reported_volume_error": 1.3574239866413702e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputTwisted-object-0.step",
+          "qualified_step_sha256": "718ae80c4751f2a73241e3c9487121febd630142d8cb474b8c3548b61d9fb633"
+        },
+        {
+          "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\InputTwisted.3dm",
+          "original_sha256": "a51a358f5b364fd01af1b6b9a506b8a868ac7b037fdd6cde107b80d6a6690f44",
+          "object_table_index": 1,
+          "object_guid": "75d869ba-125b-49fe-99b2-4902804b9a84",
+          "signed_volume": 20907.00092467968,
+          "reported_volume_error": 1.2871615179244903e-10,
+          "orientation": "Outward",
+          "qualified_step": "inputs/InputTwisted-object-1.step",
+          "qualified_step_sha256": "5e9f5619122462f11d094cd3f3aca1ee1bb6d03f86d015e82c9a7fb9e3377669"
+        }
+      ],
+      "output_references": [
+        {
+          "operation": "union",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTwistedUnion.3dm",
+            "original_sha256": "3f88cfe9077f42deb55dbf6d5dd7ebf5fd3d50d66b7fbada4cfb9ce087a8e044",
+            "object_table_index": 0,
+            "object_guid": "dd5bb6cf-34d2-4243-a3f1-3c52c9a424dd",
+            "signed_volume": 30999.89822846955,
+            "reported_volume_error": 1.5068886032114892e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "intersection",
+          "difference_order": null,
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTwistedIntersection.3dm",
+            "original_sha256": "9d61aa49b29f83979ea77dea747f627b1b61525f8debd31bf2af771c77c69206",
+            "object_table_index": 0,
+            "object_guid": "d8e534e1-f78e-4a06-a6c5-6ee032c19728",
+            "signed_volume": 10814.10371959839,
+            "reported_volume_error": 1.5246135739994103e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        },
+        {
+          "operation": "difference",
+          "difference_order": "ba",
+          "reference": {
+            "original_3dm": "C:\\Users\\Petras\\Desktop\\RhinoBooleans\\OutputTwistedDifference.3dm",
+            "original_sha256": "ef70e7bc1f95fdd85677451d63c9661cd82d43e5aaeb17a6c334a8850f6deaa5",
+            "object_table_index": 0,
+            "object_guid": "577483f0-7dd8-4947-91a0-8672fb123568",
+            "signed_volume": 10092.89722415398,
+            "reported_volume_error": 1.4806405469727557e-07,
+            "orientation": "Outward"
+          },
+          "validation": "all archived usable probes, not only compact subset",
+          "archived_probe_mismatches": 0
+        }
+      ],
+      "all_source_region_counts": {
+        "00": 1727,
+        "01": 550,
+        "10": 446,
+        "11": 435
+      },
+      "state_column_order": [
+        "A",
+        "B",
+        "Union",
+        "Intersection",
+        "Difference"
+      ],
+      "untrusted_state_columns": [],
+      "compact_probes": [
+        {
+          "source_line_index_zero_based": 0,
+          "region": "00",
+          "point": [
+            5.419226155511353,
+            321.9049967870685,
+            -5.988255674091414
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2195,
+          "region": "00",
+          "point": [
+            32.39406885208652,
+            372.1020315729133,
+            44.437886721508924
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1025,
+          "region": "00",
+          "point": [
+            18.906647503798936,
+            321.9049967870685,
+            44.437886721508924
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1169,
+          "region": "00",
+          "point": [
+            18.906647503798936,
+            372.1020315729133,
+            -5.988255674091414
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 154,
+          "region": "00",
+          "point": [
+            5.419226155511353,
+            367.9189453407596,
+            40.23570818854223
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2041,
+          "region": "00",
+          "point": [
+            32.39406885208652,
+            326.0880830192222,
+            -1.7860771411247196
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1967,
+          "region": "00",
+          "point": [
+            30.146165294038592,
+            355.3696866442984,
+            15.022636990742061
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 264,
+          "region": "00",
+          "point": [
+            7.667129713559284,
+            351.1866004121446,
+            10.820458457775366
+          ],
+          "states": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 20,
+          "region": "01",
+          "point": [
+            5.419226155511353,
+            326.0880830192222,
+            23.42699405667545
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2019,
+          "region": "01",
+          "point": [
+            30.146165294038592,
+            372.1020315729133,
+            15.022636990742061
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1721,
+          "region": "01",
+          "point": [
+            27.898261735990662,
+            330.27116925137597,
+            19.224815523708756
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 303,
+          "region": "01",
+          "point": [
+            7.667129713559284,
+            363.73585910860584,
+            10.820458457775366
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 919,
+          "region": "01",
+          "point": [
+            16.658743945751006,
+            342.8204279478372,
+            36.033529655575535
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2457,
+          "region": "01",
+          "point": [
+            21.963856503295688,
+            351.8881479505455,
+            9.052753795700077
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1008,
+          "region": "01",
+          "point": [
+            16.658743945751006,
+            372.1020315729133,
+            27.629172589642145
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1957,
+          "region": "01",
+          "point": [
+            30.146165294038592,
+            351.1866004121446,
+            27.629172589642145
+          ],
+          "states": [
+            0,
+            1,
+            1,
+            0,
+            1
+          ]
+        },
+        {
+          "source_line_index_zero_based": 30,
+          "region": "10",
+          "point": [
+            5.419226155511353,
+            330.27116925137597,
+            10.820458457775366
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2155,
+          "region": "10",
+          "point": [
+            32.39406885208652,
+            359.5527728764521,
+            40.23570818854223
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1743,
+          "region": "10",
+          "point": [
+            27.898261735990662,
+            338.6373417156834,
+            2.416101391841977
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2363,
+          "region": "10",
+          "point": [
+            10.143004563328947,
+            361.1669634764762,
+            32.87026771464341
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2279,
+          "region": "10",
+          "point": [
+            13.633688145144657,
+            350.6646499311957,
+            8.994195180611056
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1270,
+          "region": "10",
+          "point": [
+            21.15455106184687,
+            347.00351417999093,
+            36.033529655575535
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1502,
+          "region": "10",
+          "point": [
+            23.402454619894797,
+            367.9189453407596,
+            27.629172589642145
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1044,
+          "region": "10",
+          "point": [
+            18.906647503798936,
+            330.27116925137597,
+            15.022636990742061
+          ],
+          "states": [
+            1,
+            0,
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 96,
+          "region": "11",
+          "point": [
+            5.419226155511353,
+            351.1866004121446,
+            15.022636990742061
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1958,
+          "region": "11",
+          "point": [
+            30.146165294038592,
+            351.1866004121446,
+            31.831351122608844
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2461,
+          "region": "11",
+          "point": [
+            18.709754119888288,
+            333.20513537014494,
+            16.51029397869297
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 2395,
+          "region": "11",
+          "point": [
+            15.73587938304475,
+            366.6368194613019,
+            30.390982685189293
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 582,
+          "region": "11",
+          "point": [
+            12.162936829655145,
+            342.8204279478372,
+            36.033529655575535
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 1615,
+          "region": "11",
+          "point": [
+            25.65035817794273,
+            351.1866004121446,
+            10.820458457775366
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 941,
+          "region": "11",
+          "point": [
+            16.658743945751006,
+            351.1866004121446,
+            19.224815523708756
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        },
+        {
+          "source_line_index_zero_based": 214,
+          "region": "11",
+          "point": [
+            7.667129713559284,
+            334.4542554835297,
+            19.224815523708756
+          ],
+          "states": [
+            1,
+            1,
+            1,
+            1,
+            0
+          ]
+        }
+      ],
+      "volume_identity_diagnostics": [
+        {
+          "identity": "union_plus_intersection_equals_inputs",
+          "left": 41814.00194806794,
+          "right": 41814.00184935931,
+          "absolute_discrepancy": 9.870863141259179e-05,
+          "sum_reported_integration_errors": 3.0341467627154654e-07,
+          "fixed_requested_integration_allowance": 4.181500194806794e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        },
+        {
+          "identity": "difference_plus_intersection_equals_minuend",
+          "left": 20907.00094375237,
+          "right": 20907.00092467968,
+          "absolute_discrepancy": 1.9072689610766247e-05,
+          "sum_reported_integration_errors": 3.0065412824900903e-07,
+          "fixed_requested_integration_allowance": 2.090800094375237e-06,
+          "exceeds_reported_errors_plus_requested_allowance": true,
+          "interpretation": "Integration error estimates are not certified geometry bounds; discrepancy flagged separately, never used to adjust modeling tolerance or override occupancy contradictions"
+        }
+      ]
+    }
+  ],
+  "excluded_stale_outputs": [
+    "OutputSpheresIntersection",
+    "OutputSpheresDifference"
+  ],
+  "scope": "Finite original Rhino occupancy evidence; no exhaustive set equality proof. STEP ingestion/roundtrip qualification remains independent."
+}

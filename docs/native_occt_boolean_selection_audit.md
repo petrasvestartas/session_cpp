@@ -310,3 +310,81 @@ The exact negative FaceCut fixture on the identity plane pairs W(t)=(t,1/2,0) wi
 `BOPTools_AlgoTools2D_1.cxx:75-94` reverses an existing pcurve consistently with its edge occurrence and normalizes its range. Lines102-132 then check paired tolerance and call `BRepLib::SameParameter` on a temporary edge. `BRepLib.cxx:1372-1396` handles both seam branches and separates SameRange from paired residual. `Approx_SameParameter.cxx:318-445` computes a monotone parameter map and approximates the composed pcurve; lines223-244 check ordered mapped parameters. Finally `BRepAlgo_Loop.cxx:803-810,836-853,893-916` sorts source edge parameters, preserves closed-edge endpoint occurrences and restricts all edge representations with the retained source ranges.
 
 The reviewed native splitter now uses the full interval certificate before returning a paired boundary. Its 33 normalized samples run only after certificate failure to populate diagnostics. Mismatched and Unresolved are explicit distinct failures; both seam pcurves and the existing effective edge tolerance are retained. General nonlinear reparameterization is still absent in both splitter and assembler. Endpoint inversion alone does not repair the interior map. Until that separate operation exists, nonlinear FaceCut correspondence must fail explicitly rather than return an invalid paired edge or claim the curve is geometrically off the surface. The active output versus unreferenced copied edge-pool distinction also needs to be maintained if repair is added later. The source review and executable negative/positive contract draft are `build/native-offset-draft/split_parameter_contract_review.md` and `split_parameter_contract_test.cpp`; no execution is claimed.
+
+
+## Hollow context boundaries and finite working supports, 2026-10-29
+
+Build1002 retained three exact hollow failures. The original box reaches face
+arrangement but loses the section identity of an inherited context border.
+The two curved opening rims stop at triple intersection because finite affine
+retained supports clip the required sections. The curved retained walls have
+a separate finite-domain loss and dense curve-intersection subdivision failure.
+All original captures remain under build/native-geometry-tests/hollow-failures.
+
+At OCCT revision d3056ef80c9668f395da40f5fd7be186cae4501f,
+BRepOffset_Inter3d.cxx:1355-1400 reuses the offset ancestor edge only after
+requiring pcurves on both the context and offset face, then orients and stores
+that same edge. Native context-boundary mapping now requires original edge
+ancestry, a stationary adjacent opening, identical raw world/pcurve domains,
+and an exactly representable affine map between polynomial straight pcurves.
+Existing complete-section coverage, endpoint and full same-parameter checks
+still decide whether the reconstructed boundary can be retained.
+
+BRepOffset_Tool.cxx:3437-3570 treats face UV bounds separately from underlying
+surface bounds, explicitly controls extension and limits periodic coverage.
+Native working extension is restricted to an exact polynomial 2x2 affine
+support with one complete rectangular UV loop. Its finite enlarged chart is
+bounded by outward projection of the positive-weight source control hull plus
+the requested distance. Corner construction roundoff is bounded over the whole
+bilinear rectangle. The source chart and edge IDs are retained; every rebuilt
+boundary must pass full same-parameter and shared-corner checks before a copied
+working face is committed. Rational supports contribute hull bounds only;
+neither rational supports nor fitted curved offsets are extrapolated.
+
+Both repairs are promoted after build1002, uncompiled and unrun. They do not
+resolve curved retained support extension, adjacent openings, general joins or
+global offset self-intersection cleanup. Replays now retain each additional
+failure in a fresh timestamped child directory without replacing the original.
+
+
+## 2026-10-30: qualified isolated concave opening context
+
+The strict L-prism hollow test at thicknesses 0.1/0.2 now passes independent
+semicylinder-volume, physical-mouth, material-probe, topology and full-pcurve
+checks. The full native Hollow group passes 10/10. This is restricted orthogonal
+planar context support, not general freeform/multiple-concave-corner completion.
+
+Three preserved failures established the repair: enlarged working borders are
+not physical offset edge images; tangent support contact does not imply an
+existing face boundary; and a+(b-a) may not preserve an exact requested raw knot
+endpoint. OCCT BRepOffset_MakeOffset 1935–1995 and BRepOffset_Offset 1112–1195 retain
+original-path/generated-edge ancestry, while MakeLoops 41–125 distinguishes
+existing images from new interference edges. Geom_BSplineSurface 180ff constructs
+from supplied knots directly. Native code now uses original spine/normal geometry,
+adds an interior tangent cut unless explicit boundary ancestry represents it,
+and supplies exact knot endpoints when constructing a fresh bilinear working
+patch. No tolerance or physical assertion was relaxed. Full general concave,
+nonorthogonal, freeform-cap and self-intersection cleanup remain open.
+
+
+### Sphere shell orientation: exact witness, 2026-10-30
+
+`public-seams-nesting-witness-v2.jsonl` captures the native public intersection
+of unit spheres whose centers are one unit apart. All 18 orientation rays are
+complete. Every first hit is Boundary, so the strict first-crossing gate properly
+rejects it. All three chosen targets lie on the actual section circle x=0.5.
+The UV proposal filter uses roundoff-scale clearance; the ray classifier uses
+model tolerance and root-enclosure padding. A proposal is therefore not a
+certificate of a trim-interior crossing.
+
+OCCT `BRepClass3d_SClassifier.cxx:82` (`PerformInfinitePoint`) retries interior
+points after boundary or tangent hits, up to ten points per face, and accepts
+only an interior, non-tangent first transition. `BOPTools_AlgoTools.cxx:2398`
+uses that infinite-point classification to determine inverted solids.
+
+The native correction under review retries existing deterministic UV proposals
+instead of stopping at the first proposal. It retains the certified exterior
+origin and all existing complete-ray, strict-interior, nonzero-crossing and
+strict-distance-order conditions. No tolerance change or sampled-volume
+orientation substitute is justified by this witness. Runtime qualification of
+the correction is pending; this section records diagnosis, not a passing result.

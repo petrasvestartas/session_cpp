@@ -1,6 +1,7 @@
 #pragma once
 
 #include "brep.h"
+#include "brep_face_boundary.h"
 #include <array>
 #include <vector>
 
@@ -34,6 +35,9 @@ struct RayResult {
 
 /// Classify a parameter-space point against the face's NURBS trimming wires.
 State face_uv(const BRep& brep, int face, const Point& uv, double tolerance);
+
+/// Query a pre-extracted boundary of an unchanged, already validated owner.
+State face_uv(const brep_face_boundary::Result& boundary, const Point& uv, double tolerance);
 
 /// Intersect a forward ray with trimmed NURBS faces; distance uses a unit direction.
 RayResult ray(

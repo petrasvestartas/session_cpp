@@ -301,7 +301,9 @@ void surface_surface_case(Evidence& evidence, bool interior_loop) {
 
 }
 
-int main(int argc, char** argv) {
+namespace native_viewer_evidence {
+
+int run(int argc, char** argv) {
     if (argc > 1) {
         try {
             if (argc != 5 || std::string(argv[1]) != "--reexport-brep")
@@ -386,3 +388,280 @@ int main(int argc, char** argv) {
     return evidence.failures ? 1 : 0;
 }
 
+
+}
+
+#include <limits>
+#include "tolerance.h"
+
+namespace {
+
+void intersection_bytes(const std::filesystem::path& path, const std::string& bytes) {
+    if (bytes.size() > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()))
+        throw std::runtime_error("Native evidence file exceeds stream size: " + path.string());
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output)
+        throw std::runtime_error("Could not open native evidence file: " + path.string());
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    output.flush();
+    if (!output)
+        throw std::runtime_error("Could not write native evidence file: " + path.string());
+    output.close();
+    if (output.fail())
+        throw std::runtime_error("Could not close native evidence file: " + path.string());
+}
+
+void intersection_checkpoint(const Evidence& evidence) {
+    const nlohmann::ordered_json report = {{"backend", "session_cpp_native"}, {"cases", evidence.cases},
+        {"failures", evidence.failures}, {"geometry_placement", "Original world coordinates; no display transforms"},
+        {"legend", {{"source_a", "blue"}, {"source_b", "orange"}, {"computed_result", "mauve"}}},
+        {"renderer", "actual SessionViewer loads exported scenes; does not recompute intersections"},
+        {"numerical_acceptance_from_image", false}};
+    const std::string bytes = report.dump(2);
+    intersection_bytes(evidence.folder / "native_geometry_cases.json", bytes);
+}
+
+void intersection_inputs(Evidence& evidence, const std::string& name, Session& scene,
+                         const nlohmann::ordered_json& geometry) {
+    const std::string scene_bytes = scene.pb_dumps();
+    intersection_bytes(evidence.folder / (name + ".inputs.pb"), scene_bytes);
+    const std::string geometry_bytes = geometry.dump(2);
+    intersection_bytes(evidence.folder / (name + ".inputs.json"), geometry_bytes);
+}
+
+void intersection_result(Evidence& evidence, const std::string& name, Session& scene,
+                         nlohmann::ordered_json report) {
+    report["inputs"] = name + ".inputs.json";
+    report["input_scene"] = name + ".inputs.pb";
+    report["renderer_recomputes_intersection"] = false;
+    report["numerical_acceptance_from_image"] = false;
+    report["scene"] = name + ".pb";
+    report["name"] = name;
+    const std::string scene_bytes = scene.pb_dumps();
+    intersection_bytes(evidence.folder / (name + ".pb"), scene_bytes);
+    const std::string assertion_bytes = report.dump(2);
+    intersection_bytes(evidence.folder / (name + ".assertions.json"), assertion_bytes);
+    if (!report.value("passed", false))
+        ++evidence.failures;
+    evidence.cases.push_back(std::move(report));
+    intersection_checkpoint(evidence);
+}
+
+void intersection_failure(Evidence& evidence, const std::string& name, const std::exception& error) {
+    ++evidence.failures;
+    const nlohmann::ordered_json report = {{"passed", false}, {"name", name}, {"error", error.what()},
+        {"input_scene", name + ".inputs.pb"}, {"inputs", name + ".inputs.json"},
+        {"input_scene_exists", std::filesystem::exists(evidence.folder / (name + ".inputs.pb"))},
+        {"input_geometry_exists", std::filesystem::exists(evidence.folder / (name + ".inputs.json"))},
+        {"renderer_recomputes_intersection", false}, {"numerical_acceptance_from_image", false}};
+    const std::string bytes = report.dump(2);
+    intersection_bytes(evidence.folder / (name + ".assertions.json"), bytes);
+    evidence.cases.push_back(report);
+    intersection_checkpoint(evidence);
+}
+
+void intersection_curves(Evidence& evidence, const std::string& name, const NurbsCurve& a,
+                         const NurbsCurve& b, size_t points, size_t overlaps, bool tangent) {
+    const double tolerance = 1e-7;
+    Session scene(name);
+    add_curve(scene, a, SourceColor);
+    add_curve(scene, b, ToolColor);
+    intersection_inputs(evidence, name, scene, {{"first_curve", a.jsondump()}, {"second_curve", b.jsondump()}});
+    const curve_intersection::Result result = curve_intersection::intersect(a, b, tolerance);
+    nlohmann::ordered_json hits = nlohmann::ordered_json::array(), shared = nlohmann::ordered_json::array();
+    double residual = 0;
+    bool domains = true, tangencies = true, full_overlap_coverage = true;
+    for (const curve_intersection::Hit& hit : result.points) {
+        const double gap = a.point_at(hit.a).distance(b.point_at(hit.b));
+        const double first_gap = hit.point.distance(a.point_at(hit.a));
+        const double second_gap = hit.point.distance(b.point_at(hit.b));
+        domains &= std::isfinite(gap) && std::isfinite(first_gap) && std::isfinite(second_gap);
+        residual = std::max({residual, gap, first_gap, second_gap});
+        domains &= hit.a >= a.domain_start() && hit.a <= a.domain_end()
+            && hit.b >= b.domain_start() && hit.b <= b.domain_end();
+        tangencies &= hit.tangent == tangent;
+        hits.push_back({{"point", {hit.point[0], hit.point[1], hit.point[2]}}, {"first_parameter", hit.a},
+            {"second_parameter", hit.b}, {"tangent", hit.tangent}, {"residual", gap}});
+        add_hit(scene, hit.point);
+    }
+    for (const curve_intersection::Overlap& overlap : result.overlaps) {
+        NurbsCurve curve = a;
+        if (!curve.trim(overlap.a0, overlap.a1))
+            throw std::runtime_error("Could not trim computed native curve overlap");
+        const double first = a.point_at(overlap.a0).distance(b.point_at(overlap.b0));
+        const double last = a.point_at(overlap.a1).distance(b.point_at(overlap.b1));
+        domains &= std::isfinite(first) && std::isfinite(last);
+        residual = std::max({residual, first, last});
+        domains &= overlap.a0 >= a.domain_start() && overlap.a1 <= a.domain_end() && overlap.a0 < overlap.a1
+            && std::min(overlap.b0, overlap.b1) >= b.domain_start() && std::max(overlap.b0, overlap.b1) <= b.domain_end();
+        const bool full = std::abs(overlap.a0 - a.domain_start()) < 1e-9
+            && std::abs(overlap.a1 - a.domain_end()) < 1e-9
+            && std::abs(overlap.b0 - b.domain_start()) < 1e-9
+            && std::abs(overlap.b1 - b.domain_end()) < 1e-9;
+        full_overlap_coverage &= full;
+        shared.push_back({{"full_expected_coverage", full}, {"first_interval", {overlap.a0, overlap.a1}}, {"second_interval", {overlap.b0, overlap.b1}},
+            {"endpoint_residuals", {first, last}}, {"world", curve.jsondump()}});
+        add_curve(scene, curve, ResultColor);
+    }
+    intersection_result(evidence, name, scene, {{"kind", "curve_curve"}, {"complete", result.complete},
+        {"failure", result.failure}, {"points", hits}, {"overlaps", shared}, {"expected_points", points},
+        {"expected_overlaps", overlaps}, {"expected_tangent", tangent}, {"original_parameter_domains", domains},
+        {"full_expected_overlap_coverage", full_overlap_coverage}, {"overlap_endpoint_parameter_tolerance", 1e-9},
+        {"expected_first_interval", {a.domain_start(), a.domain_end()}},
+        {"expected_second_interval", {b.domain_start(), b.domain_end()}},
+        {"max_event_or_overlap_endpoint_residual", residual}, {"tolerance", tolerance},
+        {"passed", result.complete && result.points.size() == points && result.overlaps.size() == overlaps
+            && domains && tangencies && full_overlap_coverage && std::isfinite(residual) && residual <= tolerance}});
+}
+
+void intersection_curve_surface(Evidence& evidence, const std::string& name, const NurbsCurve& curve,
+    const NurbsSurface& surface, size_t expected, int tangent, const Point& target) {
+    const double tolerance = 1e-7;
+    Session scene(name);
+    add_surface(scene, surface, SourceColor);
+    add_curve(scene, curve, ToolColor);
+    intersection_inputs(evidence, name, scene, {{"curve", curve.jsondump()}, {"surface", surface.jsondump()}});
+    const curve_surface_intersection::Result result = curve_surface_intersection::intersect(curve, surface, tolerance);
+    nlohmann::ordered_json hits = nlohmann::ordered_json::array();
+    double residual = 0, target_gap = 0;
+    bool domains = true, tangencies = true;
+    const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
+    for (const curve_surface_intersection::Hit& hit : result.points) {
+        const double gap = curve.point_at(hit.t).distance(surface.point_at(hit.u, hit.v));
+        const double curve_gap = hit.point.distance(curve.point_at(hit.t));
+        const double surface_gap = hit.point.distance(surface.point_at(hit.u, hit.v));
+        const double target_error = hit.point.distance(target);
+        domains &= std::isfinite(gap) && std::isfinite(curve_gap) && std::isfinite(surface_gap) && std::isfinite(target_error);
+        residual = std::max({residual, gap, curve_gap, surface_gap});
+        target_gap = std::max(target_gap, target_error);
+        domains &= hit.t >= curve.domain_start() && hit.t <= curve.domain_end()
+            && hit.u >= u.first && hit.u <= u.second && hit.v >= v.first && hit.v <= v.second;
+        tangencies &= tangent < 0 || hit.tangent == bool(tangent);
+        hits.push_back({{"point", {hit.point[0], hit.point[1], hit.point[2]}}, {"t", hit.t}, {"uv", {hit.u, hit.v}},
+            {"tangent", hit.tangent}, {"residual", gap}});
+        add_hit(scene, hit.point);
+    }
+    intersection_result(evidence, name, scene, {{"kind", "curve_surface"}, {"complete", result.complete},
+        {"failure", result.failure}, {"points", hits}, {"overlaps", result.overlaps.size()},
+        {"expected_points", expected}, {"expected_tangent", tangent}, {"expected_target", {target[0], target[1], target[2]}},
+        {"max_target_gap", target_gap}, {"original_parameter_domains", domains}, {"max_event_residual", residual},
+        {"tolerance", tolerance}, {"passed", result.complete && result.points.size() == expected && result.overlaps.empty()
+            && domains && tangencies && std::isfinite(residual) && residual <= tolerance && target_gap <= tolerance}});
+}
+
+void intersection_seam_sections(Evidence& evidence) {
+    const std::string name = "ssi_sphere_cylinder_raw_seams";
+    const double tolerance = Tolerance::ZERO_TOLERANCE;
+    const NurbsSurface a = Primitives::sphere_surface(0, 0, 0, 2);
+    const NurbsSurface b = Primitives::cylinder_surface(1.3, 0, -3, .3, 6);
+    Session scene(name);
+    add_surface(scene, a, SourceColor);
+    add_surface(scene, b, ToolColor);
+    intersection_inputs(evidence, name, scene, {{"first_surface", a.jsondump()}, {"second_surface", b.jsondump()}});
+    const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections = Intersection::surface_surface(a, b);
+    nlohmann::ordered_json curves = nlohmann::ordered_json::array();
+    bool paired = true;
+    double residual = 0, analytic = 0, seam_gap = 0;
+    for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : sections) {
+        const NurbsCurve& world = std::get<0>(section);
+        const NurbsCurve& first = std::get<1>(section);
+        const NurbsCurve& second = std::get<2>(section);
+        const bool same_domains = world.domain() == first.domain() && world.domain() == second.domain();
+        const bool first_proved = same_domains && curve_surface_intersection::same_parameter(world, first, a, 1e-6)
+            == curve_surface_intersection::ParameterMatch::Matched;
+        const bool second_proved = same_domains && curve_surface_intersection::same_parameter(world, second, b, 1e-6)
+            == curve_surface_intersection::ParameterMatch::Matched;
+        paired &= first_proved && second_proved;
+        for (int i = 0; i <= 512; ++i) {
+            const double t = world.domain_start() + (world.domain_end() - world.domain_start()) * i / 512;
+            const Point point = world.point_at(t), ua = first.point_at(t), ub = second.point_at(t);
+            const double first_error = point.distance(a.point_at(ua[0], ua[1]));
+            const double second_error = point.distance(b.point_at(ub[0], ub[1]));
+            const double sphere_error = std::abs(std::sqrt(point[0] * point[0] + point[1] * point[1] + point[2] * point[2]) - 2);
+            const double cylinder_error = std::abs(std::hypot(point[0] - 1.3, point[1]) - .3);
+            paired &= std::isfinite(first_error) && std::isfinite(second_error) && std::isfinite(sphere_error) && std::isfinite(cylinder_error);
+            residual = std::max({residual, first_error, second_error});
+            analytic = std::max({analytic, sphere_error, cylinder_error});
+        }
+        for (const Point& uv : {first.point_at_start(), first.point_at_end()})
+            seam_gap = std::max(seam_gap, std::min(std::abs(uv[0]), std::abs(uv[0] - 4)));
+        curves.push_back({{"world", world.jsondump()}, {"first_pcurve", first.jsondump()}, {"second_pcurve", second.jsondump()},
+            {"common_raw_parameter_domain", same_domains}, {"first_same_parameter", first_proved}, {"second_same_parameter", second_proved}});
+        add_curve(scene, world, ResultColor);
+    }
+    intersection_result(evidence, name, scene, {{"kind", "surface_surface"}, {"sections", curves}, {"expected_branches", 4},
+        {"max_sampled_paired_residual", residual}, {"max_sampled_analytic_residual", analytic}, {"seam_endpoint_gap", seam_gap},
+        {"samples_per_section", 513}, {"paired_interval_certificates", paired}, {"tolerance", tolerance},
+        {"paired_certificate_tolerance", 1e-6}, {"passed", sections.size() == 4 && paired && std::isfinite(residual)
+            && residual <= 1e-6 && analytic < 1e-5 && seam_gap < 1e-8}});
+}
+
+void intersection_fixture(Evidence& evidence, const std::string& name) {
+    if (name == "cc_rational_tangent")
+        return intersection_curves(evidence, name, Primitives::circle(0, 0, 0, 1), Primitives::circle(0, 2, 0, 1), 1, 0, true);
+    if (name == "cc_rational_refined_overlap") {
+        NurbsCurve a = Primitives::circle(0, 0, 0, 1);
+        if (!a.set_domain(0, 1) || !a.trim(.03, .68))
+            throw std::runtime_error("Could not prepare tested rational overlap input");
+        NurbsCurve b = a;
+        if (!b.increase_degree(4) || !b.insert_nurbsknot(.32, 2))
+            throw std::runtime_error("Could not refine tested rational overlap input");
+        return intersection_curves(evidence, name, a, b, 0, 1, false);
+    }
+    if (name == "cs_isolated_corner")
+        return intersection_curve_surface(evidence, name, NurbsCurve::create(false, 1, {{0, 2, 0}, {2, 0, 0}}),
+            plane(0), 1, -1, {1, 1, 0});
+    if (name == "cs_planar_tangent")
+        return intersection_curve_surface(evidence, name,
+            NurbsCurve::create(false, 2, {{-.5, 0, .25}, {0, 0, -.25}, {.5, 0, .25}}), plane(0), 1, true, {0, 0, 0});
+    if (name == "cs_rational_freeform") {
+        const NurbsSurface polynomial = bowl();
+        NurbsSurface surface(3, true, 3, 3, 3, 3);
+        for (int axis = 0; axis < 2; ++axis)
+            for (int i = 0; i < surface.nurbsknot_count(axis); ++i)
+                if (!surface.set_nurbsknot(axis, i, polynomial.nurbsknot(axis, i)))
+                    throw std::runtime_error("Could not prepare tested rational support knots");
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+                const Point point = polynomial.get_cv(i, j);
+                const double weight = 1 + .2 * i + .15 * j;
+                if (!surface.set_cv_4d(i, j, point[0] * weight, point[1] * weight, point[2] * weight, weight))
+                    throw std::runtime_error("Could not prepare tested rational support controls");
+            }
+        const Point target = surface.point_at(.37, .61);
+        return intersection_curve_surface(evidence, name, NurbsCurve::create(false, 1,
+            {target + Vector(0, 0, -3), target + Vector(0, 0, 3)}), surface, 1, false, target);
+    }
+    if (name == "ssi_sphere_cylinder_raw_seams")
+        return intersection_seam_sections(evidence);
+    throw std::invalid_argument("Unknown native intersection evidence case");
+}
+}
+
+namespace native_viewer_evidence {
+int intersections(int argc, char** argv) {
+    if (argc < 2 || argc > 3)
+        throw std::invalid_argument("Usage: native_geometry_evidence intersections NEW-output-folder [case]");
+    Evidence evidence{std::filesystem::absolute(argv[1])};
+    if (std::filesystem::exists(evidence.folder))
+        throw std::invalid_argument("Intersection evidence requires a new output folder");
+    if (!std::filesystem::create_directories(evidence.folder))
+        throw std::invalid_argument("Intersection evidence output folder already exists");
+    const std::array<std::string, 6> names = {"cc_rational_tangent", "cc_rational_refined_overlap", "cs_isolated_corner",
+        "cs_planar_tangent", "cs_rational_freeform", "ssi_sphere_cylinder_raw_seams"};
+    const std::string selected = argc == 3 ? argv[2] : "all";
+    if (selected != "all" && std::find(names.begin(), names.end(), selected) == names.end())
+        throw std::invalid_argument("Unknown native intersection evidence case");
+    for (const std::string& name : names) {
+        if (selected != "all" && selected != name)
+            continue;
+        try {
+            intersection_fixture(evidence, name);
+        } catch (const std::exception& error) {
+            intersection_failure(evidence, name, error);
+        }
+    }
+    intersection_checkpoint(evidence);
+    return evidence.failures ? 1 : 0;
+}
+}

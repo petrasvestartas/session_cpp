@@ -1,4 +1,5 @@
 #include "brep_classify.h"
+#include "brep_face_boundary.h"
 #include "closest.h"
 #include "surface_ray.h"
 #include <algorithm>
@@ -90,12 +91,13 @@ State curve_winding(const NurbsCurve& curve, const Point& query, double toleranc
     return work.empty() ? State::Outside : State::Unknown;
 }
 
-State wire_state(const BRep& brep, int face, const BRepRef& wire, const Point& uv, double tolerance) {
+State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const Point& uv, double tolerance) {
     int winding = 0;
-    for (const BRepRef& edge : brep.wire_edges(wire)) {
+    for (const auto& use : wire.uses) {
+        const auto& edge = use.edge;
         if (edge.orientation == BRepOrientation::Internal || edge.orientation == BRepOrientation::External)
             continue;
-        const int ci = brep.pcurve_index(edge.index, face, edge.orientation);
+        const int ci = use.pcurve;
         if (ci < 0 || ci >= static_cast<int>(brep.m_curves_2d.size()))
             return State::Unknown;
         int contribution = 0;
@@ -252,14 +254,25 @@ State face_uv(const BRep& brep, int face, const Point& uv, double tolerance) {
     check_tolerance(tolerance);
     if (face < 0 || face >= brep.face_count() || !finite(uv) || !brep.is_valid())
         throw std::invalid_argument("BRep classification requires a valid face and finite UV point");
-    const BRepFace& boundary = brep.m_faces[face];
-    if (boundary.wires.empty())
+    const auto boundary = brep_face_boundary::extract(brep, face);
+    if (!boundary.complete)
         return State::Unknown;
-    const State outer = wire_state(brep, face, boundary.wires[0], uv, tolerance);
+    return face_uv(boundary, uv, tolerance);
+}
+
+State face_uv(const brep_face_boundary::Result& boundary, const Point& uv, double tolerance) {
+    check_tolerance(tolerance);
+    if (!finite(uv))
+        throw std::invalid_argument("BRep classification requires a finite UV point");
+    if (!boundary.complete || !boundary.owner || boundary.wires.empty() ||
+        boundary.face < 0 || boundary.face >= boundary.owner->face_count())
+        return State::Unknown;
+    const BRep& brep = *boundary.owner;
+    const State outer = wire_state(brep, boundary.wires[0], uv, tolerance);
     if (outer != State::Inside)
         return outer;
     for (size_t i = 1; i < boundary.wires.size(); ++i) {
-        const State hole = wire_state(brep, face, boundary.wires[i], uv, tolerance);
+        const State hole = wire_state(brep, boundary.wires[i], uv, tolerance);
         if (hole == State::Unknown || hole == State::Boundary)
             return hole;
         if (hole == State::Inside)

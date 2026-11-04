@@ -2,6 +2,7 @@
 #include "brep_assemble.h"
 #include "brep_classify.h"
 #include "brep_section.h"
+#include "brep_interference_internal.h"
 #include "curve_intersection.h"
 #include "curve_surface_intersection.h"
 #include "split.h"
@@ -10,13 +11,25 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <map>
+#include <numeric>
+#include <fstream>
 #include <stdexcept>
 
 namespace session_cpp::brep_boolean {
 namespace {
 
 using State = brep_classify::State;
+
+void boolean_progress(const char* phase) {
+    if (!std::getenv("SESSION_BOOLEAN_PROGRESS"))
+        return;
+    std::fprintf(stderr, "boolean_progress phase=%s\n", phase);
+    std::fflush(stderr);
+}
 
 struct Partition {
     BRep brep;
@@ -83,12 +96,13 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
     cuts.push_back(std::move(cut));
 }
 
-void same_parameter_cuts(
+void mapped_parameter_cuts(
     std::vector<split::FaceCut>& cuts,
     const BRep& target,
     int face,
     const BRep& other,
     int other_face,
+    const nurbs_coincidence::ParameterMap& mapping,
     double tolerance
 ) {
     for (const BRepRef& wire : other.m_faces[other_face].wires)
@@ -99,10 +113,16 @@ void same_parameter_cuts(
             const int index = other.pcurve_index(use.index, other_face, use.orientation);
             if (index < 0)
                 throw std::runtime_error("Native Boolean encountered a missing coincident pcurve");
-            const NurbsCurve& pcurve = other.m_curves_2d[index];
+            NurbsCurve pcurve = other.m_curves_2d[index];
+            if (!nurbs_coincidence::map_pcurve(mapping, pcurve))
+                throw std::runtime_error("Native Boolean could not map a coincident boundary pcurve");
             NurbsCurve world = other.m_curves_3d[edge.curve_3d_index];
             if (!world.set_domain(pcurve.domain_start(), pcurve.domain_end()))
                 throw std::runtime_error("Native Boolean could not synchronize a coincident boundary");
+            if (curve_surface_intersection::same_parameter(world, pcurve,
+                    target.m_surfaces[target.m_faces[face].surface_index], tolerance)
+                != curve_surface_intersection::ParameterMatch::Matched)
+                throw std::runtime_error("Native Boolean mapped boundary lacks a same-parameter certificate");
             append_cut(cuts, target, face, {world, pcurve, -1}, tolerance);
         }
 }
@@ -123,8 +143,11 @@ void coincident_cuts(
             continue;
         const int other_face = second ? overlap.first_face : overlap.second_face;
         const NurbsSurface& support = other.m_surfaces[other.m_faces[other_face].surface_index];
-        if (nurbs_coincidence::same_parameters(surface, support, tolerance)) {
-            same_parameter_cuts(cuts, target, face, other, other_face, tolerance);
+        nurbs_coincidence::ParameterMap mapping;
+        if (nurbs_coincidence::same_parameters(surface, support, tolerance)
+            || nurbs_coincidence::parameter_mapping(support, surface, tolerance, mapping)
+            || nurbs_coincidence::common_basis_agreement(support, surface, tolerance)) {
+            mapped_parameter_cuts(cuts, target, face, other, other_face, mapping, tolerance);
             continue;
         }
         if (!nurbs_coincidence::coplanar(surface, support, tolerance))
@@ -168,6 +191,96 @@ void retain_lineage(Partition& result, split::FaceSplit next) {
     result.brep = std::move(next.brep);
 }
 
+// Canonical graph nodes are materialized separately in each existing topological
+// component. Distinct original vertex identities are never proximity-welded.
+void split_original_events(Partition& partition,const brep_section::FaceResult& inventory,
+                           bool second,double tolerance) {
+    const auto component=brep_section::detail::active_components(partition.brep,active_faces(partition.brep));
+    const auto root=[&](int vertex) { return component[vertex]; };
+    std::vector<split::EdgeEvent> events;
+    for (const auto& node:inventory.nodes) {
+        struct LocalNode {
+            int vertex=-1;
+            std::vector<const brep_section::BoundaryEvent*> events;
+        };
+        std::map<int,LocalNode> groups;
+        const auto retain_vertex=[&](int vertex) {
+            auto& local=groups[root(vertex)];
+            if (local.vertex>=0 && local.vertex!=vertex)
+                throw std::runtime_error("Interference node has distinct existing owner-local vertices");
+            local.vertex=vertex;
+        };
+        for (size_t index:node.uv_only_incidences) {
+            const auto& use=inventory.uv_only_incidences[index];
+            if (use.operand==static_cast<int>(second))
+                retain_vertex(use.vertex);
+        }
+        for (size_t index:node.boundary_events) {
+            const auto& event=inventory.boundary_events[index];
+            if (event.operand==static_cast<int>(second)) {
+                const auto& edge=partition.brep.m_edges[event.edge];
+                groups[root(edge.start_vertex)].events.push_back(&event);
+                if (event.vertex>=0)
+                    retain_vertex(event.vertex);
+            }
+        }
+        for (auto& [unused,local]:groups) {
+            // UV-only incidences preserve their existing vertex without a fake raw t.
+            if (local.events.empty())
+                continue;
+            if (local.vertex<0)
+                local.vertex=partition.brep.add_vertex(node.point,tolerance);
+            for (const auto* event:local.events)
+                events.push_back({event->edge,event->hit.t,local.vertex});
+        }
+    }
+    if (!events.empty()) {
+        auto partitioned=split::split_brep_edges_at_events(partition.brep,events,tolerance);
+        for (const auto& event:events)
+            if (std::none_of(partitioned.edge_events.begin(),partitioned.edge_events.end(),[&](const auto& receipt) {
+                    return receipt.edge==event.edge && receipt.parameter==event.parameter && receipt.vertex==event.vertex;
+                }))
+                throw std::runtime_error("Original edge event receipt lost its canonical owner-local vertex");
+        retain_lineage(partition,std::move(partitioned));
+    }
+}
+
+void observe_partition(const char* path, const BRep& source, const std::vector<split::FaceCut>& cuts,
+                       const split::ArrangementDiagnostic& diagnostic, double tolerance, const char* stage, int operand = 0, int face = 5) {
+    nlohmann::ordered_json row = {{"operand", operand}, {"face", face}, {"stage", stage},
+        {"tolerance", tolerance}, {"shape", source.jsondump()},
+        {"cuts", nlohmann::ordered_json::array()}, {"boundary_cut_pairs", nlohmann::ordered_json::array()},
+        {"uv_tolerance", diagnostic.uv_tolerance}, {"sources", diagnostic.sources},
+        {"spans", diagnostic.spans}, {"nodes", diagnostic.nodes}, {"half_edges", diagnostic.half_edges},
+        {"retained_cycles", diagnostic.retained_cycles}, {"regions", diagnostic.regions}};
+    for (const auto& cut : cuts)
+        row["cuts"].push_back({{"world", cut.world.jsondump()}, {"pcurve", cut.pcurve.jsondump()}, {"section", cut.section}});
+    for (const auto& pair : diagnostic.boundary_cut_pairs)
+        row["boundary_cut_pairs"].push_back({{"first_source", pair.first_source}, {"second_source", pair.second_source},
+            {"first", pair.first.jsondump()}, {"second", pair.second.jsondump()},
+            {"first_hits", pair.first_hits}, {"second_hits", pair.second_hits}, {"overlaps", pair.overlaps}});
+    row["cycles"] = nlohmann::ordered_json::array();
+    for (const auto& cycle : diagnostic.cycles) {
+        nlohmann::ordered_json points = nlohmann::ordered_json::array();
+        for (const auto& p : cycle.points) points.push_back({p[0], p[1], p[2]});
+        row["cycles"].push_back({{"area", cycle.area}, {"points", points}, {"edge_ids", cycle.edges},
+            {"disposition", cycle.disposition}, {"runs", cycle.runs}, {"first_source", cycle.first_source},
+            {"probe_evaluated", cycle.probe_evaluated}, {"probe", {cycle.probe[0], cycle.probe[1], cycle.probe[2]}}});
+    }
+    row["parent_tests"] = nlohmann::ordered_json::array();
+    for (const auto& test : diagnostic.parent_tests)
+        row["parent_tests"].push_back({{"hole_retained_index", test.hole}, {"outer_retained_index", test.outer},
+            {"shared_edge", test.shared}, {"area_eligible", test.area_eligible},
+            {"inside_evaluated", test.inside_evaluated}, {"inside", test.contained}});
+    std::ofstream output(path, std::ios::app);
+    if (!output)
+        throw std::runtime_error(std::string("Cannot open dodecahedron partition observation: ") + path);
+    output << row.dump() << '\n';
+    output.flush();
+    if (!output)
+        throw std::runtime_error(std::string("Cannot write dodecahedron partition observation: ") + path);
+}
+
 Partition partition(
     const BRep& source,
     const BRep& other,
@@ -182,6 +295,7 @@ Partition partition(
             : source.m_curves_3d[edge.curve_3d_index].domain();
         result.pieces.push_back({i, -1, i, domain.first, domain.second});
     }
+    split_original_events(result,sections,second,tolerance);
     for (int face : active_faces(source)) {
         std::vector<split::FaceCut> cuts;
         for (size_t i = 0; i < sections.curves.size(); ++i) {
@@ -191,8 +305,31 @@ Partition partition(
                     second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)}, tolerance);
         }
         coincident_cuts(cuts, result.brep, face, other, sections, second, tolerance);
-        if (!cuts.empty())
-            retain_lineage(result, split::split_brep_face_by_pcurves(result.brep, face, cuts, tolerance));
+        if (!cuts.empty()) {
+            const char* observation = std::getenv("SESSION_DODECA_PARTITION_OBSERVATION");
+            if (observation && *observation && !second && face == 5
+                && source.face_count() == 12 && other.face_count() == 12) {
+                split::ArrangementDiagnostic diagnostic;
+                observe_partition(observation, result.brep, cuts, diagnostic, tolerance, "input");
+                try {
+                    auto next = split::split_brep_face_by_pcurves(result.brep, face, cuts, tolerance, &diagnostic);
+                    observe_partition(observation, result.brep, cuts, diagnostic, tolerance, "complete");
+                    retain_lineage(result, std::move(next));
+                } catch (...) {
+                    observe_partition(observation, result.brep, cuts, diagnostic, tolerance, "exception");
+                    throw;
+                }
+            } else if (const char* general = std::getenv("SESSION_BOOLEAN_PARTITION_OBSERVATION"); general && *general) {
+                split::ArrangementDiagnostic diagnostic;
+                try {
+                    retain_lineage(result, split::split_brep_face_by_pcurves(result.brep, face, cuts, tolerance, &diagnostic));
+                } catch (...) {
+                    observe_partition(general, result.brep, cuts, diagnostic, tolerance, "exception", second ? 1 : 0, face);
+                    throw;
+                }
+            } else
+                retain_lineage(result, split::split_brep_face_by_pcurves(result.brep, face, cuts, tolerance));
+        }
     }
     return result;
 }
@@ -300,16 +437,21 @@ int coincident_region(
     int face,
     const BRep& other,
     const Point& uv,
+    Point& other_uv,
     double tolerance
 ) {
     const NurbsSurface& a = source.m_surfaces[source.m_faces[face].surface_index];
     const Point point = a.point_at(uv[0], uv[1]);
     for (int candidate : active_faces(other)) {
         const NurbsSurface& b = other.m_surfaces[other.m_faces[candidate].surface_index];
-        const bool same_parameters = nurbs_coincidence::same_parameters(a, b, tolerance);
-        if (!same_parameters && !nurbs_coincidence::coplanar(a, b, tolerance))
+        nurbs_coincidence::ParameterMap mapping;
+        const bool mapped = nurbs_coincidence::same_parameters(a, b, tolerance)
+            || nurbs_coincidence::parameter_mapping(a, b, tolerance, mapping)
+            || nurbs_coincidence::common_basis_agreement(a, b, tolerance);
+        if (!mapped && !nurbs_coincidence::coplanar(a, b, tolerance))
             continue;
-        const std::pair<double, double> parameters = same_parameters ? std::pair<double, double>{uv[0], uv[1]}
+        const Point mapped_uv = mapping.apply(uv);
+        const std::pair<double, double> parameters = mapped ? std::pair<double, double>{mapped_uv[0], mapped_uv[1]}
             : b.closest_parameters(point);
         if (b.point_at(parameters.first, parameters.second).distance(point) > tolerance
             || brep_classify::face_uv(other, candidate, {parameters.first, parameters.second, 0},
@@ -319,15 +461,15 @@ int coincident_region(
         const std::vector<const NurbsCurve*> second = boundary_curves(other, candidate);
         if (!boundary_covers(first, second, tolerance) || !boundary_covers(second, first, tolerance))
             throw std::runtime_error("Native Boolean same-domain regions have unmatched partition boundaries");
+        other_uv = {parameters.first, parameters.second, 0};
         return candidate;
     }
     return -1;
 }
 
-Vector oriented_normal(const BRep& brep, int face, const Point& point) {
+Vector oriented_normal(const BRep& brep, int face, const Point& uv) {
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    const std::pair<double, double> uv = surface.closest_parameters(point);
-    const std::vector<Vector> derivatives = surface.evaluate(uv.first, uv.second, 1);
+    const std::vector<Vector> derivatives = surface.evaluate(uv[0], uv[1], 1);
     Vector normal = derivatives[2].cross(derivatives[1]);
     if (!normal.normalize_self())
         throw std::runtime_error("Native Boolean coincident region has a singular normal");
@@ -353,7 +495,8 @@ void select(
         State state = brep_classify::point(other, p, tolerance);
         if (state == State::Unknown)
             throw ClassificationError(other, p, face, second, tolerance);
-        const int coincident = state == State::Boundary ? coincident_region(source, face, other, uv, tolerance) : -1;
+        Point other_uv;
+        const int coincident = state == State::Boundary ? coincident_region(source, face, other, uv, other_uv, tolerance) : -1;
         if (state == State::Boundary && coincident < 0) {
             uv = interior(source, face, tolerance, &other);
             p = surface.point_at(uv[0], uv[1]);
@@ -369,7 +512,7 @@ void select(
         } else {
             if (second)
                 continue;
-            const double sense = oriented_normal(source, face, p).dot(oriented_normal(other, coincident, p));
+            const double sense = oriented_normal(source, face, uv).dot(oriented_normal(other, coincident, other_uv));
             if (!std::isfinite(sense) || std::abs(sense) < 1.0 - 1e-8)
                 throw std::runtime_error("Native Boolean could not resolve coincident face orientation");
             minus = occupied(true, sense > 0.0, operation);
@@ -383,6 +526,70 @@ void select(
 bool empty(const BRep& brep) {
     return brep.m_faces.empty() && brep.m_vertices.empty() && brep.m_edges.empty()
         && brep.m_wires.empty() && brep.m_shells.empty() && brep.m_solids.empty();
+}
+
+void observe_assembly_failure(const char* path, const BRep& first, const BRep& second,
+    const Partition& a, const Partition& b, const std::vector<brep_assemble::FaceUse>& selected,
+    Operation operation, double tolerance, const brep_assemble::TopologyError& error) {
+    nlohmann::ordered_json row = {{"schema", "native_boolean_assembly_failure_v1"},
+        {"failure", error.what()}, {"operation", static_cast<int>(operation)}, {"tolerance", tolerance},
+        {"operands", {first.jsondump(), second.jsondump()}}, {"assembly_shapes", nlohmann::ordered_json::array()},
+        {"assembly_faces", nlohmann::ordered_json::array()}, {"partial", error.partial.jsondump()},
+        {"face_orientations", nlohmann::ordered_json::array()}, {"images", nlohmann::ordered_json::array()},
+        {"input_index_contract", "image.input is the first selected FaceUse for its BRep owner; assembly_faces[input].shape identifies its unique owner"}};
+    row["assembly_stage"] = error.stage;
+    row["orientation_attempts"] = nlohmann::ordered_json::array();
+    const auto xyz = [](const Point& p) { return std::array<double, 3>{p[0], p[1], p[2]}; };
+    row["containment_attempts"] = nlohmann::ordered_json::array();
+    for (const auto& attempt : error.containment_attempts)
+        row["containment_attempts"].push_back({{"shell", attempt.shell},
+            {"reference_shell", attempt.reference_shell}, {"face", attempt.face},
+            {"uv", xyz(attempt.uv)}, {"point", xyz(attempt.point)},
+            {"state", static_cast<int>(attempt.state)}});
+    for (const auto& attempt : error.orientation_attempts) {
+        nlohmann::ordered_json hits = nlohmann::ordered_json::array();
+        for (const auto& hit : attempt.ray.hits)
+            hits.push_back({{"point", xyz(hit.point)}, {"distance", hit.distance},
+                {"distance_enclosure", hit.distance_enclosure}, {"face", hit.face},
+                {"uv", {hit.u, hit.v}}, {"trim", static_cast<int>(hit.trim)}, {"crossing", hit.crossing}});
+        row["orientation_attempts"].push_back({{"shell", attempt.shell}, {"face", attempt.face},
+            {"axis", attempt.axis}, {"side", attempt.side}, {"uv", xyz(attempt.uv)},
+            {"origin", xyz(attempt.origin)}, {"target", xyz(attempt.target)},
+            {"complete", attempt.ray.complete}, {"failure", attempt.ray.failure},
+            {"unresolved_face", attempt.ray.unresolved_face},
+            {"unresolved_domain", attempt.ray.unresolved_domain}, {"hits", std::move(hits)},
+            {"crossing", attempt.crossing}, {"decision", attempt.reason}});
+    }
+    for (const Partition* partition : {&a, &b}) {
+        nlohmann::ordered_json pieces = nlohmann::ordered_json::array();
+        for (const auto& piece : partition->pieces)
+            pieces.push_back({{"source_edge", piece.source_edge}, {"section", piece.section}, {"edge", piece.edge},
+                {"first", piece.first}, {"last", piece.last}});
+        row["assembly_shapes"].push_back({{"brep", partition->brep.jsondump()},
+            {"operand", partition->operand}, {"pieces", std::move(pieces)}});
+    }
+    for (const auto& face : selected) {
+        const int owner = face.brep == &a.brep ? 0 : face.brep == &b.brep ? 1 : -1;
+        if (owner < 0)
+            throw std::runtime_error("Assembly failure has an unknown selected shape owner");
+        row["assembly_faces"].push_back({{"shape", owner}, {"face", face.face},
+            {"reversed", face.reversed}, {"operand", face.operand}});
+    }
+    for (const auto orientation : error.face_orientations)
+        row["face_orientations"].push_back(static_cast<int>(orientation));
+    for (const auto& image : error.images)
+        row["images"].push_back({{"input", image.input}, {"local_edge", image.local_edge},
+            {"original_edge", image.original_edge}, {"section", image.section}, {"output_edge", image.output_edge},
+            {"first", image.first}, {"last", image.last}, {"reversed", image.reversed}});
+    std::ofstream output(path, std::ios::app | std::ios::binary);
+    if (!output || !(output << row.dump() << '\n'))
+        throw std::runtime_error(std::string("Cannot write Boolean assembly failure observation: ") + path);
+    output.flush();
+    if (!output)
+        throw std::runtime_error(std::string("Cannot flush Boolean assembly failure observation: ") + path);
+    output.close();
+    if (!output)
+        throw std::runtime_error(std::string("Cannot close Boolean assembly failure observation: ") + path);
 }
 
 BRep empty_operation(const BRep& first, const BRep& second, Operation operation) {
@@ -408,15 +615,45 @@ BRep apply(const BRep& first, const BRep& second, Operation operation, double to
             throw std::invalid_argument("Native BRep Booleans require closed oriented solid operands");
     if (empty(first) || empty(second))
         return empty_operation(first, second, operation);
-    const brep_section::FaceResult sections = brep_section::faces(first, second, tolerance);
+    boolean_progress("section");
+    const brep_section::FaceResult sections = brep_section::interferences(first, second, tolerance);
     if (!sections.complete)
         throw std::runtime_error(sections.failure);
+    if (std::getenv("SESSION_BOOLEAN_PROGRESS")) {
+        std::fprintf(stderr,"boolean_interferences execution_complete=1 coverage_complete=%d boundary_ownership_complete=%d pairs=%zu boundary_events=%zu nodes=%zu uv_only=%zu unrepresented_uv=%zu\n",
+            sections.coverage_complete()?1:0,sections.boundary_ownership_complete?1:0,sections.coverage.size(),
+            sections.boundary_events.size(),sections.nodes.size(),sections.uv_only_incidences.size(),
+            sections.unrepresented_uv_incidences.size());
+        std::fflush(stderr);
+    }
+    boolean_progress("partition_a");
     const Partition a = partition(first, second, sections, false, tolerance);
+    boolean_progress("partition_b");
     const Partition b = partition(second, first, sections, true, tolerance);
     std::vector<brep_assemble::FaceUse> selected;
+    boolean_progress("select_a");
     select(selected, a, b, false, operation, tolerance);
+    boolean_progress("select_b");
     select(selected, b, a, true, operation, tolerance);
-    return brep_assemble::assemble(selected, tolerance);
+    boolean_progress("assemble");
+    try {
+        BRep result = brep_assemble::assemble(selected, tolerance);
+        boolean_progress("complete");
+        return result;
+    } catch (const brep_assemble::TopologyError& error) {
+        const char* observation = std::getenv("SESSION_BOOLEAN_FAILURE_OBSERVATION");
+        if (observation && *observation)
+            try {
+                observe_assembly_failure(observation, first, second, a, b, selected, operation, tolerance, error);
+            } catch (const std::exception& capture_error) {
+                std::fprintf(stderr, "Boolean failure observation failed: %s\n", capture_error.what());
+                std::fflush(stderr);
+            } catch (...) {
+                std::fprintf(stderr, "Boolean failure observation failed with unknown error\n");
+                std::fflush(stderr);
+            }
+        throw;
+    }
 }
 
 }

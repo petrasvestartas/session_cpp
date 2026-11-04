@@ -1,0 +1,46 @@
+{
+  "surfaces": [
+    {
+      "type": "NurbsSurface",
+      "dimension": 3,
+      "is_rational": true,
+      "order_u": 3,
+      "order_v": 3,
+      "cv_count_u": 3,
+      "cv_count_v": 3,
+      "nurbsknots_u": [0, 0, 1, 1],
+      "nurbsknots_v": [0, 0, 1, 1],
+      "control_points": [
+        0.25, -1, 0.125, 1, 0.25, 0, -0.125, 1, 0.25, 1, 0.125, 1,
+        -25000000, -100000000, 12500000, 100000000,
+        -25000000, 0, -12500000, 100000000,
+        -25000000, 100000000, 12500000, 100000000,
+        2500000000000000, -10000000000000000, 1250000000000000, 10000000000000000,
+        2500000000000000, 0, -1250000000000000, 10000000000000000,
+        2500000000000000, 10000000000000000, 1250000000000000, 10000000000000000
+      ]
+    },
+    {
+      "type": "NurbsSurface",
+      "dimension": 3,
+      "is_rational": false,
+      "order_u": 2,
+      "order_v": 3,
+      "cv_count_u": 2,
+      "cv_count_v": 3,
+      "nurbsknots_u": [0, 1],
+      "nurbsknots_v": [0, 0, 1, 1],
+      "control_points": [
+        -0.0625, -2, 0, -0.0625, 0, -1, -0.0625, 2, 0,
+        0.1875, -2, 1, 0.1875, 0, 0, 0.1875, 2, 1
+      ]
+    }
+  ],
+  "mobius_scale": 100000000,
+  "expected_components": 2,
+  "expected_world_curve": "x=0.0625, z=0.125*y*y, -1<=y<=1",
+  "cutter_parameterization": "B(w,y)=(0.0625+0.25*w,y,0.125*y*y+w), -0.5<=w<=0.5, -2<=y<=2",
+  "expected_first_surface_u": [3.3333333222222224e-9, 2.9999999100000026e-8],
+  "tolerance": 1e-7,
+  "validation_status": "preserved, not yet executed"
+}

@@ -1,11 +1,13 @@
 #include "nurbs_offset.h"
 #include "nurbs_surface_span.h"
+#include "nurbs_coincidence.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <string>
 
 namespace session_cpp::nurbs_offset {
 namespace {
@@ -438,7 +440,7 @@ bool cylinder_profile(const NurbsSurface& source, Point& center, Vector& axis) {
     return true;
 }
 
-bool exact_cylinder(const NurbsSurface& source, double distance, NurbsSurface& result) {
+bool exact_cylinder(const NurbsSurface& source, double distance, NurbsSurface& result, bool sweep) {
     Point center;
     Vector axis;
     if (!cylinder_profile(source, center, axis))
@@ -452,6 +454,8 @@ bool exact_cylinder(const NurbsSurface& source, double distance, NurbsSurface& r
     const double radius = radial.magnitude();
     const double sign = source.normal_at(um, vm).dot(radial) > 0.0 ? 1.0 : -1.0;
     const double factor = 1.0 + sign * distance / radius;
+    if (sweep && (!std::isfinite(factor) || factor <= 128.0 * Epsilon))
+        throw std::runtime_error("BRep normal sweep reaches or crosses an analytic focal collapse");
     if (std::abs(factor) <= 128.0 * Epsilon)
         throw std::runtime_error("Cylinder offset collapses to its axis");
     result = source;
@@ -537,7 +541,8 @@ bool exact_surface(
     const NurbsSurface& source,
     double distance,
     double tolerance,
-    NurbsSurface& result
+    NurbsSurface& result,
+    bool sweep
 ) {
     const std::pair<double, double> u = source.domain(0);
     const std::pair<double, double> v = source.domain(1);
@@ -554,6 +559,8 @@ bool exact_surface(
         return false;
     const double sign = sphere_orientation(source, center);
     const double factor = 1.0 + sign * distance / radius;
+    if (sweep && (!std::isfinite(factor) || factor <= 128.0 * Epsilon))
+        throw std::runtime_error("BRep normal sweep reaches or crosses an analytic focal collapse");
     if (std::abs(factor) <= 128.0 * Epsilon)
         throw std::runtime_error("Surface offset collapses to a point");
     result = source;
@@ -663,27 +670,72 @@ std::vector<double> refine_parameters(const std::vector<double>& parameters, con
     return result;
 }
 
+bool translational_parameter(const NurbsSurface& surface, int direction) {
+    if (surface.dimension() != 3 || surface.degree(direction) != 1 || surface.cv_count(direction) != 2)
+        return false;
+    const double* first = surface.cv(0, 0);
+    const double* last = direction == 0 ? surface.cv(1, 0) : surface.cv(0, 1);
+    const double weight = surface.is_rational() ? first[3] : 1.0;
+    if (!(weight > 0.0) || !std::isfinite(weight))
+        return false;
+    std::array<double, 3> translation;
+    bool nonzero = false;
+    for (int d = 0; d < 3; ++d) {
+        double delta;
+        if (!nurbs_coincidence::exact_difference(last[d], first[d], delta))
+            return false;
+        translation[d] = delta / weight;
+        if (!std::isfinite(translation[d])
+            || !nurbs_coincidence::exact_products_equal(translation[d], weight, delta, 1.0))
+            return false;
+        nonzero = nonzero || translation[d] != 0.0;
+    }
+    if (!nonzero)
+        return false;
+    for (int row = 0; row < surface.cv_count(1 - direction); ++row) {
+        const double* a = direction == 0 ? surface.cv(0, row) : surface.cv(row, 0);
+        const double* b = direction == 0 ? surface.cv(1, row) : surface.cv(row, 1);
+        const double wa = surface.is_rational() ? a[3] : 1.0;
+        const double wb = surface.is_rational() ? b[3] : 1.0;
+        if (!(wa > 0.0) || !std::isfinite(wa) || wa != wb)
+            return false;
+        for (int d = 0; d < 3; ++d) {
+            double delta;
+            if (!nurbs_coincidence::exact_difference(b[d], a[d], delta)
+                || !nurbs_coincidence::exact_products_equal(translation[d], wa, delta, 1.0))
+                return false;
+        }
+    }
+    return true;
+}
+
 bool refine_surface(
     const SurfaceField& field,
     const NurbsSurface& result,
     double tolerance,
+    const std::array<bool, 2>& split_direction,
     std::vector<double>& u,
-    std::vector<double>& v
+    std::vector<double>& v,
+    double& maximum_error
 ) {
     nurbs_detail::SurfaceEvaluator evaluation(result);
     std::vector<bool> split_u(u.size() - 1, false);
     std::vector<bool> split_v(v.size() - 1, false);
     bool passed = true;
+    maximum_error = 0.0;
     for (size_t i = 0; i + 1 < u.size(); ++i)
         for (size_t j = 0; j + 1 < v.size(); ++j)
             for (int a = 1; a < 4; ++a)
                 for (int b = 1; b < 4; ++b) {
                     const double x = u[i] + (u[i + 1] - u[i]) * a / 4.0;
                     const double y = v[j] + (v[j + 1] - v[j]) * b / 4.0;
-                    if (field.at(x, y).distance(evaluation.point_at(x, y)) <= tolerance * 0.25)
+                    const double error = field.at(x, y).distance(evaluation.point_at(x, y));
+                    maximum_error = !std::isfinite(error) ? std::numeric_limits<double>::infinity()
+                        : std::max(maximum_error, error);
+                    if (error <= tolerance * 0.25)
                         continue;
-                    split_u[i] = true;
-                    split_v[j] = true;
+                    split_u[i] = split_direction[0];
+                    split_v[j] = split_direction[1];
                     passed = false;
                 }
     if (!passed) {
@@ -727,7 +779,7 @@ NurbsCurve curve(
     return result;
 }
 
-NurbsSurface surface(const NurbsSurface& source, double distance, double tolerance) {
+static NurbsSurface surface_impl(const NurbsSurface& source, double distance, double tolerance, bool sweep) {
     validate_options(distance, tolerance);
     NurbsSurface basis = source;
     validate_surface(basis, tolerance);
@@ -735,21 +787,37 @@ NurbsSurface surface(const NurbsSurface& source, double distance, double toleran
         return source;
     check_surface_continuity(basis);
     NurbsSurface result;
-    if (exact_surface(basis, distance, tolerance, result))
+    if (exact_surface(basis, distance, tolerance, result, sweep))
         return result;
-    if (exact_cylinder(basis, distance, result))
+    if (exact_cylinder(basis, distance, result, sweep))
         return result;
     const SurfaceField field{basis, distance};
+    const std::array<bool, 2> split_direction = {
+        !translational_parameter(basis, 0), !translational_parameter(basis, 1)};
     std::vector<double> u = initial_parameters(basis.get_span_vector(0));
     std::vector<double> v = initial_parameters(basis.get_span_vector(1));
+    int completed = 0;
+    double maximum_error = 0.0;
     for (int iteration = 0; iteration < 12; ++iteration) {
         if (u.size() > 257 || v.size() > 257)
             break;
+        ++completed;
         result = interpolate_surface(field, u, v);
-        if (refine_surface(field, result, tolerance, u, v))
+        if (refine_surface(field, result, tolerance, split_direction, u, v, maximum_error))
             return result;
     }
-    throw std::runtime_error("Surface offset refinement cannot meet sampled tolerance");
+    throw std::runtime_error("Surface offset refinement cannot meet sampled tolerance; completed="
+        + std::to_string(completed) + ", u_parameters=" + std::to_string(u.size())
+        + ", v_parameters=" + std::to_string(v.size()) + ", maximum_error/tolerance="
+        + std::to_string(maximum_error / tolerance));
+}
+
+NurbsSurface surface(const NurbsSurface& source, double distance, double tolerance) {
+    return surface_impl(source, distance, tolerance, false);
+}
+
+NurbsSurface surface_sweep(const NurbsSurface& source, double distance, double tolerance) {
+    return surface_impl(source, distance, tolerance, true);
 }
 
 }

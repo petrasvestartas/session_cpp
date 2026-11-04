@@ -1,3 +1,5 @@
+#include <iostream>
+#include "brep_assemble.h"
 #include "mini_test.h"
 #include "brep.h"
 #include "brep.pb.h"
@@ -34,13 +36,6 @@ namespace session_cpp {
         brep.file_json_dump((folder / (name + ".brep.json")).string());
         const Mesh mesh = brep.mesh();
         mesh.file_json_dump((folder / (name + ".mesh.json")).string());
-#ifdef SESSION_WITH_OCCT
-        if (name.starts_with("rhino_") || name.starts_with("boolean_")) {
-            const Mesh controlled = brep.tessellate(0.005, 0.15);
-            controlled.file_json_dump((folder / (name + ".controlled.mesh.json")).string());
-            MINI_CHECK(std::abs(std::abs(controlled.volume()) - brep.volume_exact()) < brep.volume_exact() * 0.01);
-        }
-#endif
     }
 
     /// Every non-degenerated edge of a solid is used by exactly two faces with opposite composed orientations
@@ -742,7 +737,6 @@ namespace session_cpp {
         }
     }
 
-#ifdef SESSION_WITH_OCCT
     MINI_TEST("BRep", "Boolean OCCT Box Configurations") {
         const std::filesystem::path source = std::filesystem::path(__FILE__).parent_path().parent_path();
         std::ifstream input(source / "tests/fixtures/occt_boolean_boxes.json");
@@ -820,9 +814,13 @@ namespace session_cpp {
             const BRep other = sphere.transformed(Xform::translation(distance, 0.0, 0.0));
             const double overlap = distance < 2.0
                 ? Tolerance::PI * (4.0 + distance) * std::pow(2.0 - distance, 2) / 12.0 : 0.0;
+            std::cerr << "[public-seams-stage] sphere distance=" << distance << " operation=intersection" << std::endl;
             const BRep common = sphere.boolean_intersection(other);
+            std::cerr << "[public-seams-stage] sphere distance=" << distance << " operation=union" << std::endl;
             const BRep united = sphere.boolean_union(other);
+            std::cerr << "[public-seams-stage] sphere distance=" << distance << " operation=difference" << std::endl;
             const BRep cut = sphere.boolean_difference(other);
+            std::cerr << "[public-seams-stage] sphere distance=" << distance << " operation=xor" << std::endl;
             const BRep exclusive = sphere.boolean_xor(other);
             MINI_CHECK(distance >= 2.0 || common.is_solid());
             MINI_CHECK(std::abs(common.volume_exact() - overlap) < 1e-5);
@@ -838,6 +836,7 @@ namespace session_cpp {
 
         const BRep torus = BRep::create_torus(2.0, 0.1);
         const BRep cutter = BRep::create_box(6.0, 6.0, 1.0).transformed(Xform::translation(0.0, 0.0, 0.5));
+        std::cerr << "[public-seams-stage] torus-half operation=intersection" << std::endl;
         const BRep half = torus.boolean_intersection(cutter);
         const double expected = Tolerance::PI * Tolerance::PI * 2.0 * 0.1 * 0.1;
         MINI_CHECK(half.is_solid());
@@ -845,36 +844,34 @@ namespace session_cpp {
         save_brep_geometry("boolean_torus_half", half);
     }
 
-    MINI_TEST("BRep", "Offset Curved Solids") {
-        for (double distance : {-0.1, 0.1}) {
-            const BRep sphere = BRep::create_sphere(1.0).offset(distance);
-            const double radius = 1.0 + distance;
-            MINI_CHECK(sphere.is_solid());
-            MINI_CHECK(std::abs(sphere.volume_exact() - 4.0 * Tolerance::PI * radius * radius * radius / 3.0) < 1e-5);
-            save_brep_geometry(distance < 0 ? "offset_sphere_inward" : "offset_sphere_outward", sphere);
-        }
-    }
-
-    MINI_TEST("BRep", "Hollow Solid With Opening") {
-        const BRep box = BRep::create_box(2.0, 2.0, 2.0);
-        const BRep hollow = box.hollow({0}, -0.2);
-        MINI_CHECK(hollow.is_valid());
-        MINI_CHECK(hollow.is_solid());
-        MINI_CHECK(std::abs(hollow.volume_exact() - (8.0 - 1.6 * 1.6 * 1.8)) < 1e-5);
-        save_brep_geometry("boolean_hollow_box", hollow);
-    }
-
     MINI_TEST("BRep", "Boolean Scale And Translation") {
+        const auto observed_common = [](const BRep& a, const BRep& b, const std::string& stage) {
+            std::cerr << "[public-scale-stage] " << stage << std::endl;
+            try {
+                return a.boolean_intersection(b);
+            } catch (const brep_assemble::ParameterError& error) {
+                std::string diagnostic;
+                const auto repeated = curve_surface_intersection::same_parameter(
+                    error.curve, error.pcurve, error.surface, error.tolerance, &diagnostic);
+                const nlohmann::ordered_json witness = {{"stage",stage}, {"failure",error.what()},
+                    {"tolerance",error.tolerance}, {"match",static_cast<int>(error.match)},
+                    {"repeat_match",static_cast<int>(repeated)}, {"diagnostic",diagnostic},
+                    {"world",error.curve.jsondump()}, {"pcurve",error.pcurve.jsondump()},
+                    {"surface",error.surface.jsondump()}};
+                std::cerr << "[public-scale-parameter-witness] " << witness.dump() << std::endl;
+                throw;
+            }
+        };
         for (double scale : {0.001, 1.0, 1000.0}) {
             const BRep first = BRep::create_box(2 * scale, 2 * scale, 2 * scale);
             const BRep second = first.transformed(Xform::translation(scale, scale, scale));
-            const BRep common = first.boolean_intersection(second);
+            const BRep common = observed_common(first, second, "scale=" + std::to_string(scale));
             MINI_CHECK(common.is_solid());
             MINI_CHECK(std::abs(common.volume_exact() / (scale * scale * scale) - 1.0) < 1e-5);
         }
         const BRep first = BRep::create_box(2, 2, 2).transformed(Xform::translation(1e6, -1e6, 1e6));
         const BRep second = first.transformed(Xform::translation(1, 1, 1));
-        const BRep common = first.boolean_intersection(second);
+        const BRep common = observed_common(first, second, "translation=1000000,-1000000,1000000");
         MINI_CHECK(common.is_solid());
         MINI_CHECK(std::abs(common.volume_exact() - 1.0) < 1e-5);
     }
@@ -976,22 +973,6 @@ namespace session_cpp {
         MINI_CHECK(std::abs(volumes[4] - volumes[1] + volumes[0]) < tolerance);
         std::ofstream("build/geometry-tests/rhino_chairs_report.json") << report.dump(2);
     }
-
-    MINI_TEST("BRep", "Rhino Freeform Chairs Inward Offsets") {
-        const std::filesystem::path source = std::filesystem::path(__FILE__).parent_path().parent_path();
-        const std::vector<BRep> chairs = file_step::read_file_step_breps((source / "tests/fixtures/solidbrep.stp").string());
-        const std::array<double, 2> reference = {2913.7708513751622, 2913.7708514508217};
-        MINI_CHECK(chairs.size() == 2);
-        for (size_t i = 0; i < chairs.size(); ++i) {
-            const BRep offset = chairs[i].offset(-0.01);
-            MINI_CHECK(offset.is_valid());
-            MINI_CHECK(offset.is_solid());
-            MINI_CHECK(offset.volume_exact() < chairs[i].volume_exact());
-            MINI_CHECK(std::abs(offset.volume_exact() - reference[i]) < 0.001);
-            save_brep_geometry("rhino_offset_inward_" + std::to_string(i), offset);
-        }
-    }
-#endif
 
     MINI_TEST("BRep", "Wire Edges") {
         // using session_cpp::BRep;
@@ -2079,6 +2060,31 @@ namespace session_cpp {
 
         MINI_CHECK(json.is_locked);
         MINI_CHECK(proto.is_locked);
+    }
+
+    MINI_TEST("BRep", "From Polylines Concave Outline Runs Counter Clockwise In Its Patch") {
+        // Corners of this outline average to a normal against its winding.
+        const std::vector<Point> outline = {Point(42, 96, 0), Point(60, 96, 0), Point(60, 112, 0), Point(-60, 112, 0),
+            Point(-60, 96, 0), Point(-42, 96, 0), Point(-42, 42, 0), Point(-96, 42, 0), Point(-96, 60, 0), Point(-112, 60, 0),
+            Point(-112, -60, 0), Point(-96, -60, 0), Point(-96, -42, 0), Point(-42, -42, 0), Point(-42, -96, 0), Point(-60, -96, 0),
+            Point(-60, -112, 0), Point(60, -112, 0), Point(60, -96, 0), Point(42, -96, 0), Point(42, -42, 0), Point(96, -42, 0),
+            Point(96, -60, 0), Point(112, -60, 0), Point(112, 60, 0), Point(96, 60, 0), Point(96, 42, 0), Point(42, 42, 0)};
+        for (const bool reversed : {false, true}) {
+            std::vector<Point> points = outline;
+            if (reversed)
+                std::reverse(points.begin(), points.end());
+            points.push_back(points.front());
+            const BRep brep = BRep::from_polylines({Polyline(points)});
+            double area = 0.0;
+            for (const BRepRef& use : brep.wire_edges(brep.m_faces[0].wires[0])) {
+                NurbsCurve pcurve = brep.m_curves_2d[brep.pcurve_index(use.index, 0, use.orientation)];
+                if (use.orientation == BRepOrientation::Reversed)
+                    MINI_CHECK(pcurve.reverse());
+                const Point a = pcurve.point_at_start(), b = pcurve.point_at_end();
+                area += a[0] * b[1] - a[1] * b[0];
+            }
+            MINI_CHECK(area > 0.0);
+        }
     }
 
 } // namespace session_cpp

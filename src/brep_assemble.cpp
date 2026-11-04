@@ -1,10 +1,16 @@
 #include "brep_assemble.h"
+#include "brep_acceptance.h"
+#include "nurbs_coincidence.h"
+#include "nurbs_interval.h"
+#include <map>
+#include <set>
 #include "brep_classify.h"
 #include "curve_intersection.h"
 #include "curve_surface_intersection.h"
 #include "split.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -254,7 +260,29 @@ bool covers(double a, double b, const NurbsCurve& curve) {
         std::abs(b - curve.domain_end()) <= span * 1e-10;
 }
 
-bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool& reverse) {
+struct VertexCaps {
+    const BRepVertex* first;
+    const BRepVertex* last;
+};
+
+bool within_vertex_cap(const NurbsCurve& curve, double a, double b, const BRepVertex& vertex, double tolerance) {
+    if (a == b)
+        return true;
+    const double radius = std::min(vertex.tolerance, tolerance * 0.25);
+    return radius > 0.0 && nurbs_interval::curve_within_ball(curve, {a, b},
+        {vertex.point[0], vertex.point[1], vertex.point[2]}, radius);
+}
+
+bool covers_with_vertex_caps(double first, double last, const NurbsCurve& curve,
+    const BRepVertex& start, const BRepVertex& end, double tolerance) {
+    if (first < curve.domain_start() || last > curve.domain_end() || first > last)
+        return false;
+    return within_vertex_cap(curve, curve.domain_start(), first, start, tolerance)
+        && within_vertex_cap(curve, last, curve.domain_end(), end, tolerance);
+}
+
+bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool& reverse,
+    const VertexCaps* caps = nullptr) {
     const bool along = a.point_at_start().distance(b.point_at_start()) <= tolerance &&
         a.point_at_end().distance(b.point_at_end()) <= tolerance;
     const bool against = a.point_at_start().distance(b.point_at_end()) <= tolerance &&
@@ -268,11 +296,17 @@ bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool
         + std::to_string(b.domain_start()) + "," + std::to_string(b.domain_end())
         + "; hull diameters " + std::to_string(Bounds(a).lo.distance(Bounds(a).hi))
         + "," + std::to_string(Bounds(b).lo.distance(Bounds(b).hi)));
-    for (const curve_intersection::Overlap& shared : result.overlaps)
-        if (covers(shared.a0, shared.a1, a) && covers(std::min(shared.b0, shared.b1), std::max(shared.b0, shared.b1), b)) {
-            reverse = shared.b1 < shared.b0;
+    for (const curve_intersection::Overlap& shared : result.overlaps) {
+        const bool opposite = shared.b1 < shared.b0;
+        const double first_b = std::min(shared.b0, shared.b1), last_b = std::max(shared.b0, shared.b1);
+        const bool strict = covers(shared.a0, shared.a1, a) && covers(first_b, last_b, b);
+        if (strict || (caps && covers_with_vertex_caps(shared.a0, shared.a1, a,
+                opposite ? *caps->last : *caps->first, opposite ? *caps->first : *caps->last, tolerance)
+            && covers_with_vertex_caps(first_b, last_b, b, *caps->first, *caps->last, tolerance))) {
+            reverse = opposite;
             return true;
         }
+    }
 
     return false;
 }
@@ -289,7 +323,9 @@ Piece add_piece(Assembly& assembly, size_t index, double a, double b) {
             const BRepEdge& edge = assembly.result.m_edges[candidate.edge];
             const NurbsCurve& stored = assembly.result.m_curves_3d[edge.curve_3d_index];
             bool reverse = false;
-            if (equivalent(curve, stored, assembly.tolerance, reverse))
+            const VertexCaps caps{&assembly.result.m_vertices[edge.start_vertex],
+                &assembly.result.m_vertices[edge.end_vertex]};
+            if (equivalent(curve, stored, assembly.tolerance, reverse, &caps))
                 return {candidate.edge, a, b, reverse};
         }
 
@@ -603,6 +639,309 @@ Vector face_binormal(const BRep& brep, int edge, const BRepRef& use,
     return binormal;
 }
 
+struct TransversePrefix {
+    std::vector<std::array<double, 3>> controls; // two transverse homogeneous offsets and weight
+};
+
+bool rectangular_trim(const BRep& brep, int face) {
+    const BRepFace& region = brep.m_faces[face];
+    if (region.wires.size() != 1)
+        return false;
+    const NurbsSurface& surface = brep.m_surfaces[region.surface_index];
+    if (surface.dimension() != 3)
+        return false;
+    const std::vector<BRepRef> uses = brep.wire_edges(region.wires.front());
+    if (uses.size() != 4)
+        return false;
+    std::set<std::pair<int, int>> corners;
+    std::vector<std::pair<Point, Point>> boundaries;
+    for (const BRepRef& use : uses) {
+        if (use.orientation != forward && use.orientation != reversed)
+            return false;
+        const int index = brep.pcurve_index(use.index, face, use.orientation);
+        if (index < 0)
+            return false;
+        const NurbsCurve& pc = brep.m_curves_2d[index];
+        if (pc.degree() != 1 || pc.cv_count() != 2 || pc.is_rational())
+            return false;
+        const Point a = pc.get_cv(use.orientation == forward ? 0 : 1);
+        const Point b = pc.get_cv(use.orientation == forward ? 1 : 0);
+        boundaries.push_back({a, b});
+        int corner[2];
+        for (int d = 0; d < 2; ++d) {
+            const std::pair<double, double> domain = surface.domain(d);
+            if ((a[d] != domain.first && a[d] != domain.second)
+                || (b[d] != domain.first && b[d] != domain.second))
+                return false;
+            corner[d] = a[d] == domain.second ? 1 : 0;
+        }
+        if ((a[0] == b[0]) == (a[1] == b[1]) || !corners.insert({corner[0], corner[1]}).second)
+            return false;
+    }
+    for (size_t i = 0; i < boundaries.size(); ++i)
+        for (int d = 0; d < 2; ++d)
+            if (boundaries[i].second[d] != boundaries[(i + 1) % boundaries.size()].first[d])
+                return false;
+    return corners.size() == 4;
+}
+
+bool extrusion_rows(const NurbsSurface& surface, int generator, int axis, double height) {
+    const int angular = 1 - generator;
+    if (surface.degree(generator) != 1 || surface.cv_count(generator) != 2)
+        return false;
+    for (int i = 0; i < surface.cv_count(angular); ++i) {
+        const double* a = generator == 1 ? surface.cv(i, 0) : surface.cv(0, i);
+        const double* b = generator == 1 ? surface.cv(i, 1) : surface.cv(1, i);
+        const double wa = surface.is_rational() ? a[3] : 1;
+        const double wb = surface.is_rational() ? b[3] : 1;
+        if (!(wa > 0) || !std::isfinite(wa) || wa != wb)
+            return false;
+        for (int d = 0; d < 3; ++d)
+            if (d != axis && a[d] != b[d])
+                return false;
+        double delta;
+        if (!nurbs_coincidence::exact_difference(b[axis], a[axis], delta)
+            || !nurbs_coincidence::exact_products_equal(delta, 1, height, wa))
+            return false;
+    }
+    return true;
+}
+
+bool pole_at(const NurbsSurface& surface, int i, int j, const Point& point) {
+    const double* cv = surface.cv(i, j);
+    const double weight = surface.is_rational() ? cv[3] : 1;
+    if (!(weight > 0) || !std::isfinite(weight))
+        return false;
+    for (int d = 0; d < 3; ++d)
+        if (!nurbs_coincidence::exact_products_equal(cv[d], 1, point[d], weight))
+            return false;
+    return true;
+}
+
+struct TransverseDomain {
+    int angular;
+    bool reverse;
+    std::array<double, 4> rectangle;
+};
+
+bool full_generator(const NurbsSurface& surface, int generator, int angular, bool reverse, int axis,
+                    const Point& start, const Point& end, double height) {
+    const std::pair<double, double> domain = surface.domain(angular);
+    for (int k = 0; k < surface.degree(angular); ++k)
+        if (surface.m_nurbsknot[angular][k] != domain.first
+            || surface.m_nurbsknot[angular][surface.m_nurbsknot[angular].size() - 1 - k] != domain.second)
+            return false;
+    const int boundary = reverse ? surface.cv_count(angular) - 1 : 0;
+    const int i = generator == 1 ? boundary : 0, j = generator == 1 ? 0 : boundary;
+    const int ie = generator == 1 ? boundary : 1, je = generator == 1 ? 1 : boundary;
+    if (!(pole_at(surface, i, j, start) && pole_at(surface, ie, je, end))
+        && !(pole_at(surface, i, j, end) && pole_at(surface, ie, je, start)))
+        return false;
+    if (!extrusion_rows(surface, generator, axis, height)
+        && !extrusion_rows(surface, generator, axis, -height))
+        return false;
+    return true;
+}
+
+bool seam_domain(const BRep& brep, int edge, const BRepRef& use,
+                       const std::vector<BRepOrientation>& orientations, int axis,
+                       const Point& start, const Point& end, double height, TransverseDomain& region) {
+    if (!rectangular_trim(brep, use.index))
+        return false;
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index];
+    const BRepOrientation local = brep_compose(orientations[use.index], use.orientation);
+    const int index = brep.pcurve_index(edge, use.index, local);
+    if (index < 0)
+        return false;
+    const NurbsCurve& pc = brep.m_curves_2d[index];
+    const Point a = pc.get_cv(0), b = pc.get_cv(1);
+    const int generator = a[0] == b[0] ? 1 : a[1] == b[1] ? 0 : -1;
+    if (generator < 0)
+        return false;
+    const int angular = 1 - generator;
+    const std::pair<double, double> domain = surface.domain(angular);
+    const bool reverse = a[angular] == domain.second;
+    if (a[angular] != (reverse ? domain.second : domain.first))
+        return false;
+    const std::pair<double, double> axial = surface.domain(generator);
+    if (std::min(a[generator], b[generator]) != axial.first || std::max(a[generator], b[generator]) != axial.second)
+        return false;
+    if (!full_generator(surface, generator, angular, reverse, axis, start, end, height))
+        return false;
+    const std::vector<double> spans = surface.get_span_vector(angular);
+    if (spans.size() < 2)
+        return false;
+    std::array<double, 4> rectangle;
+    rectangle[2 * generator] = rectangle[2 * generator + 1] = axial.first;
+    rectangle[2 * angular] = reverse ? spans[spans.size() - 2] : spans.front();
+    rectangle[2 * angular + 1] = reverse ? spans.back() : spans[1];
+    region = {angular, reverse, rectangle};
+    return true;
+}
+
+bool transverse_prefix(const BRep& brep, int edge, const BRepRef& use,
+                       const std::vector<BRepOrientation>& orientations, int axis,
+                       const Point& origin, const Point& start, const Point& end, double height, TransversePrefix& prefix) {
+    TransverseDomain region;
+    if (!seam_domain(brep, edge, use, orientations, axis, start, end, height, region))
+        return false;
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index];
+    const std::vector<nurbs_interval::Homogeneous> data = nurbs_interval::surface_controls(surface, region.rectangle, {0, 0, 0});
+    const int first = (axis + 1) % 3, second = (axis + 2) % 3;
+    for (int i = 0; i <= surface.degree(region.angular); ++i) {
+        const int pole = region.reverse ? surface.degree(region.angular) - i : i;
+        const int offset = region.angular == 0 ? pole * (surface.degree(1) + 1) : pole;
+        if (offset >= static_cast<int>(data.size()))
+            return false;
+        const nurbs_interval::Homogeneous& cv = data[offset];
+        if (cv[3].lo != cv[3].hi || !(cv[3].lo > 0))
+            return false;
+        std::array<double, 3> control{0, 0, cv[3].lo};
+        for (int j = 0; j < 2; ++j) {
+            const int d = j == 0 ? first : second;
+            const double shift = origin[d] * cv[3].lo;
+            if (cv[d].lo != cv[d].hi || !nurbs_coincidence::exact_products_equal(origin[d], cv[3].lo, shift, 1)
+                || !nurbs_coincidence::exact_difference(cv[d].lo, shift, control[j]))
+                return false;
+        }
+        prefix.controls.push_back(control);
+    }
+    return !prefix.controls.empty() && prefix.controls.front()[0] == 0 && prefix.controls.front()[1] == 0;
+}
+
+int projection_sign(double x, double y, double a, double b, bool cross) {
+    if (x == 0 && y == 0)
+        return 0;
+    if (cross && nurbs_coincidence::exact_products_equal(x, b, y, a))
+        return 0;
+    const nurbs_interval::Interval value = cross
+        ? nurbs_interval::Interval(x) * nurbs_interval::Interval(b) - nurbs_interval::Interval(y) * nurbs_interval::Interval(a)
+        : nurbs_interval::Interval(x) * nurbs_interval::Interval(a) + nurbs_interval::Interval(y) * nurbs_interval::Interval(b);
+    return value.lo > 0 ? 1 : value.hi < 0 ? -1 : 2;
+}
+
+bool seam_occurrences(const BRep& brep, int edge, const std::vector<BRepRef>& uses,
+                      const std::vector<BRepOrientation>& orientations) {
+    std::map<int, std::set<int>> branches;
+    for (const BRepRef& use : uses) {
+        const BRepOrientation local = brep_compose(orientations[use.index], use.orientation);
+        const int index = brep.pcurve_index(edge, use.index, local);
+        if (index < 0 || !branches[use.index].insert(index).second)
+            return false;
+    }
+    if (branches.size() != 2)
+        return false;
+    for (const std::pair<const int, std::set<int>>& face : branches)
+        if (face.second.size() != 2)
+            return false;
+    return true;
+}
+
+bool prefix_direction(const TransversePrefix& prefix, double a, double b, int axis,
+                      Vector& ray, std::pair<int, int>& sector) {
+    int along = 0, side = 0;
+    for (size_t i = 1; i < prefix.controls.size(); ++i) {
+        const std::array<double, 3>& cv = prefix.controls[i];
+        const int dot = projection_sign(cv[0], cv[1], a, b, false);
+        const int cross = projection_sign(cv[0], cv[1], a, b, true);
+        if (dot == 2 || cross == 2 || (dot && along && dot != along) || (cross && side && cross != side))
+            return false;
+        if (dot)
+            along = dot;
+        if (cross)
+            side = cross;
+    }
+    const std::array<double, 3>& tangent = prefix.controls.at(1);
+    if (projection_sign(tangent[0], tangent[1], a, b, true) != 0
+        || !along || !side)
+        return false;
+    const std::array<double, 3>& last = prefix.controls.back();
+    if (projection_sign(last[0], last[1], a, b, false) != along
+        || projection_sign(last[0], last[1], a, b, true) != side)
+        return false;
+    ray[(axis + 1) % 3] = last[0];
+    ray[(axis + 2) % 3] = last[1];
+    if (!ray.normalize_self())
+        return false;
+    if (projection_sign(ray[(axis + 1) % 3], ray[(axis + 2) % 3], a, b, false) != along
+        || projection_sign(ray[(axis + 1) % 3], ray[(axis + 2) % 3], a, b, true) != side)
+        return false;
+    sector = {along, side};
+    return true;
+}
+
+bool certified_transverse_directions(const BRep& brep, int edge, const std::vector<BRepRef>& uses,
+                                    const std::vector<BRepOrientation>& orientations, std::vector<Vector>& directions) {
+    if (uses.size() != 4)
+        return false;
+    const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
+    if (world.dimension() != 3 || world.degree() != 1 || world.cv_count() != 2 || world.is_rational())
+        return false;
+    const Point start = world.get_cv(0), end = world.get_cv(1), origin = world.point_at_middle();
+    int axis = -1;
+    for (int d = 0; d < 3; ++d)
+        if (start[d] != end[d]) {
+            if (axis >= 0)
+                return false;
+            axis = d;
+        }
+    if (axis < 0)
+        return false;
+    if (!seam_occurrences(brep, edge, uses, orientations))
+        return false;
+    double height;
+    if (!nurbs_coincidence::exact_difference(end[axis], start[axis], height))
+        return false;
+    std::vector<TransversePrefix> prefixes(uses.size());
+    for (size_t i = 0; i < uses.size(); ++i)
+        if (!transverse_prefix(brep, edge, uses[i], orientations, axis, origin, start, end, height, prefixes[i]))
+            return false;
+    const std::array<double, 3>& reference = prefixes.front().controls.at(1);
+    const double a = reference[0], b = reference[1];
+    if (a == 0 && b == 0)
+        return false;
+    std::set<std::pair<int, int>> sectors;
+    std::vector<Vector> proposed;
+    for (TransversePrefix& prefix : prefixes) {
+        Vector ray;
+        std::pair<int, int> sector;
+        if (!prefix_direction(prefix, a, b, axis, ray, sector) || !sectors.insert(sector).second)
+            return false;
+        proposed.push_back(ray);
+    }
+    directions = std::move(proposed);
+    return true;
+}
+
+bool angular_mates(const std::vector<BRepRef>& uses, const Vector& tangent,
+                   const std::vector<Vector>& directions, std::vector<int>& mates) {
+    mates.assign(uses.size(), -1);
+    for (size_t i = 0; i < uses.size(); ++i) {
+        double best = Tolerance::TWO_PI + 1, next = best;
+        const Vector axis = uses[i].orientation == forward ? tangent * -1.0 : tangent;
+        for (size_t j = 0; j < uses.size(); ++j) {
+            if (uses[i].orientation == uses[j].orientation)
+                continue;
+            double angle = std::atan2(axis.dot(directions[i].cross(directions[j])), directions[i].dot(directions[j]));
+            if (angle < 0)
+                angle += Tolerance::TWO_PI;
+            if (angle < best) {
+                next = best;
+                best = angle;
+                mates[i] = static_cast<int>(j);
+            } else {
+                next = std::min(next, angle);
+            }
+        }
+        if (!(mates[i] >= 0 && best > 1e-7 && next - best > 1e-7))
+            return false;
+    }
+    for (size_t i = 0; i < mates.size(); ++i)
+        if (mates[mates[i]] != static_cast<int>(i))
+            return false;
+    return true;
+}
+
 std::vector<int> edge_mates(const BRep& brep, int edge, const std::vector<BRepRef>& uses,
                            const std::vector<BRepOrientation>& orientations) {
     if (uses.size() == 2)
@@ -613,30 +952,12 @@ std::vector<int> edge_mates(const BRep& brep, int edge, const std::vector<BRepRe
     std::vector<Vector> directions;
     for (const BRepRef& use : uses)
         directions.push_back(face_binormal(brep, edge, use, orientations, tangent));
-    const double pi = std::acos(-1.0);
-    std::vector<int> mates(uses.size(), -1);
-    for (size_t i = 0; i < uses.size(); ++i) {
-        double best = 2 * pi + 1, next = best;
-        const Vector axis = uses[i].orientation == forward ? tangent * -1.0 : tangent;
-        for (size_t j = 0; j < uses.size(); ++j) {
-            if (uses[i].orientation == uses[j].orientation)
-                continue;
-            double angle = std::atan2(axis.dot(directions[i].cross(directions[j])), directions[i].dot(directions[j]));
-            if (angle < 0)
-                angle += 2 * pi;
-            if (angle < best) {
-                next = best;
-                best = angle;
-                mates[i] = static_cast<int>(j);
-            } else {
-                next = std::min(next, angle);
-            }
-        }
-        require(mates[i] >= 0 && best > 1e-7 && next - best > 1e-7,
-            "ambiguous tangent faces at edge " + std::to_string(edge));
-    }
-    for (size_t i = 0; i < mates.size(); ++i)
-        require(mates[mates[i]] == static_cast<int>(i), "inconsistent angular face pairing");
+    std::vector<int> mates;
+    if (angular_mates(uses, tangent, directions, mates))
+        return mates;
+    require(certified_transverse_directions(brep, edge, uses, orientations, directions)
+        && angular_mates(uses, tangent, directions, mates),
+        "ambiguous tangent faces at edge " + std::to_string(edge));
     return mates;
 }
 
@@ -684,7 +1005,8 @@ bool interior_uv(const BRep& brep, int face, const Point& uv) {
     return brep_classify::face_uv(brep, face, uv, epsilon * scale * 128.0) == brep_classify::State::Inside;
 }
 
-Point face_parameter(const BRep& brep, int face) {
+template <typename Probe>
+bool visit_face_parameters(const BRep& brep, int face, Probe&& probe) {
     const BRepFace& boundary = brep.m_faces[face];
     const NurbsSurface& surface = brep.m_surfaces[boundary.surface_index];
     const std::pair<double, double> u = surface.domain(0);
@@ -693,8 +1015,8 @@ Point face_parameter(const BRep& brep, int face) {
         for (int j = 1; j < 8; ++j) {
             const Point uv(u.first + (u.second - u.first) * i / 8.0,
                 v.first + (v.second - v.first) * j / 8.0, 0.0);
-            if (interior_uv(brep, face, uv))
-                return uv;
+            if (interior_uv(brep, face, uv) && probe(uv))
+                return true;
         }
     const double scale = std::max(u.second - u.first, v.second - v.first);
     for (const BRepRef& edge : brep.wire_edges(boundary.wires.front())) {
@@ -711,13 +1033,13 @@ Point face_parameter(const BRep& brep, int face) {
         for (int i = 0; i < 10; ++i) {
             for (const double sign : {-1.0, 1.0}) {
                 const Point uv = midpoint + normal * (distance * sign);
-                if (interior_uv(brep, face, uv))
-                    return uv;
+                if (interior_uv(brep, face, uv) && probe(uv))
+                    return true;
             }
             distance *= 0.1;
         }
     }
-    throw std::runtime_error("BRep assembly: could not find an interior face parameter");
+    return false;
 }
 
 BRep shell_solid(const BRep& brep, int shell) {
@@ -727,50 +1049,120 @@ BRep shell_solid(const BRep& brep, int shell) {
     return result;
 }
 
-Point shell_point(const BRep& brep, int shell) {
-    const int face = brep.m_shells[shell].faces.front().index;
-    const Point uv = face_parameter(brep, face);
-    return brep.m_surfaces[brep.m_faces[face].surface_index].point_at(uv[0], uv[1]);
-}
-
-bool outward(const BRep& brep, int shell, double tolerance) {
-    const BRep region = shell_solid(brep, shell);
+std::array<nurbs_interval::Interval, 3> shell_bounds(const BRep& brep, int shell) {
+    std::array<nurbs_interval::Interval, 3> bounds;
+    bool first = true;
     for (const BRepRef& face : brep.m_shells[shell].faces) {
         const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
-        const Point uv = face_parameter(brep, face.index);
-        const Point point = surface.point_at(uv[0], uv[1]);
-        Vector normal = surface.normal_at(uv[0], uv[1]);
-        if (face.orientation == reversed)
-            normal = -normal;
-        if (!normal.normalize_self())
-            continue;
+        for (int i = 0; i < surface.cv_count(0); ++i)
+            for (int j = 0; j < surface.cv_count(1); ++j) {
+                double x, y, z, w;
+                require(surface.get_cv_4d(i, j, x, y, z, w) && std::isfinite(w) && w > 0.0,
+                    "shell orientation requires positive finite control weights");
+                const double coordinates[3] = {x, y, z};
+                for (int d = 0; d < 3; ++d) {
+                    const nurbs_interval::Interval coordinate = nurbs_interval::Interval(coordinates[d])
+                        / nurbs_interval::Interval(w);
+                    require(nurbs_interval::finite(coordinate), "shell orientation bounds are unresolved");
+                    bounds[d] = first ? coordinate : nurbs_interval::interval_hull(bounds[d], coordinate);
+                }
+                first = false;
+            }
+    }
+    require(!first, "shell orientation has no control bounds");
+    return bounds;
+}
 
-        double step = tolerance * 64.0;
-        for (int i = 0; i < 5; ++i) {
-            const brep_classify::State plus = brep_classify::point(region, point + normal * step, tolerance);
-            const brep_classify::State minus = brep_classify::point(region, point - normal * step, tolerance);
-            if (plus == brep_classify::State::Outside && minus == brep_classify::State::Inside)
-                return true;
-            if (plus == brep_classify::State::Inside && minus == brep_classify::State::Outside)
-                return false;
+int first_crossing(const brep_classify::RayResult& result, std::string* reason = nullptr) {
+    const auto reject = [&](const char* text) { if (reason) *reason = text; return 0; };
+    if (!result.complete)
+        return reject("ray_incomplete");
+    if (result.hits.empty())
+        return reject("no_hits");
+    const brep_classify::RayHit* first = &result.hits.front();
+    for (const brep_classify::RayHit& hit : result.hits)
+        if (hit.distance_enclosure[0] < first->distance_enclosure[0])
+            first = &hit;
+    if (first->trim != brep_classify::State::Inside)
+        return reject("first_trim_not_inside");
+    if (first->crossing == 0)
+        return reject("first_crossing_zero");
+    if (!(first->distance_enclosure[0] > 0.0))
+        return reject("first_distance_not_positive");
+    for (const brep_classify::RayHit& hit : result.hits)
+        if (&hit != first && !(first->distance_enclosure[1] < hit.distance_enclosure[0]))
+            return reject("first_distance_not_strictly_before_every_other_hit");
+    if (reason) *reason = "accepted";
+    return first->crossing;
+}
 
-            step *= 2.0;
-        }
+bool outward(const BRep& brep, int shell, double tolerance,
+             std::vector<OrientationAttempt>* attempts) {
+    const BRep region = shell_solid(brep, shell);
+    const std::array<nurbs_interval::Interval, 3> bounds = shell_bounds(brep, shell);
+    for (const BRepRef& face : brep.m_shells[shell].faces) {
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+        bool orientation = false;
+        const bool resolved = visit_face_parameters(brep, face.index, [&](const Point& uv) {
+            const Point target = surface.point_at(uv[0], uv[1]);
+            for (int d = 0; d < 3; ++d)
+                for (int side : {-1, 1}) {
+                    const nurbs_interval::Interval span = bounds[d] - nurbs_interval::Interval(bounds[d].lo);
+                    const double margin = std::max(span.hi, tolerance);
+                    const nurbs_interval::Interval exterior = side < 0
+                        ? nurbs_interval::Interval(bounds[d].lo) - nurbs_interval::Interval(margin)
+                        : nurbs_interval::Interval(bounds[d].hi) + nurbs_interval::Interval(margin);
+                    if (!nurbs_interval::finite(exterior))
+                        continue;
+                    Point origin = target;
+                    origin[d] = side < 0 ? exterior.lo : exterior.hi;
+                    if (!(side < 0 ? origin[d] < bounds[d].lo : origin[d] > bounds[d].hi))
+                        continue;
+                    auto ray = brep_classify::ray(region, origin, target - origin, tolerance);
+                    std::string reason;
+                    const int crossing = first_crossing(ray, attempts ? &reason : nullptr);
+                    if (attempts)
+                        attempts->push_back({shell, face.index, d, side, uv, origin, target,
+                                             std::move(ray), crossing, std::move(reason)});
+                    if (crossing != 0) {
+                        orientation = crossing < 0;
+                        return true;
+                    }
+                }
+            return false;
+        });
+        if (resolved)
+            return orientation;
     }
     throw std::runtime_error("BRep assembly: shell orientation classification is unresolved");
 }
 
-void nest_shells(BRep& brep, double tolerance) {
+void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* attempts,
+                 std::vector<ContainmentAttempt>* containment) {
     const int count = brep.shell_count();
     std::vector<std::vector<bool>> inside(count, std::vector<bool>(count, false));
     std::vector<int> depth(count, 0);
     for (int i = 0; i < count; ++i) {
-        const Point point = shell_point(brep, i);
         for (int j = 0; j < count; ++j) {
             if (i == j)
                 continue;
 
-            const brep_classify::State state = brep_classify::point(shell_solid(brep, j), point, tolerance);
+            const BRep reference = shell_solid(brep, j);
+            brep_classify::State state = brep_classify::State::Unknown;
+            // As before, containment assumes arranged, noncrossing shell interiors.
+            // Shared-boundary probes do not establish a relation; only the existing
+            // strict solid classifier can accept a later interior-face proposal.
+            for (const BRepRef& face : brep.m_shells[i].faces) {
+                const NurbsSurface& support = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+                if (visit_face_parameters(brep, face.index, [&](const Point& uv) {
+                    const Point point = support.point_at(uv[0], uv[1]);
+                    state = brep_classify::point(reference, point, tolerance);
+                    if (containment)
+                        containment->push_back({i, j, face.index, uv, point, state});
+                    return state == brep_classify::State::Inside || state == brep_classify::State::Outside;
+                }))
+                    break;
+            }
             require(state == brep_classify::State::Inside || state == brep_classify::State::Outside,
                 "shell containment is ambiguous");
             inside[i][j] = state == brep_classify::State::Inside;
@@ -782,7 +1174,7 @@ void nest_shells(BRep& brep, double tolerance) {
         for (int j = i + 1; j < count; ++j)
             require(!inside[i][j] || !inside[j][i], "intersecting shell interiors");
 
-        if (!outward(brep, i, tolerance))
+        if (!outward(brep, i, tolerance, attempts))
             for (BRepRef& face : brep.m_shells[i].faces)
                 face.orientation = brep_reverse(face.orientation);
     }
@@ -800,6 +1192,90 @@ void nest_shells(BRep& brep, double tolerance) {
     }
 }
 
+std::vector<BRepOrientation> material_orientations(const BRep& brep) {
+    std::vector<BRepOrientation> result(brep.face_count(), forward);
+    std::vector<int> faces(brep.face_count()), shells(brep.shell_count());
+    for (const BRepSolid& solid : brep.m_solids)
+        for (const BRepRef& shell : solid.shells) {
+            require(++shells[shell.index] == 1, "material shell has multiple solid owners");
+            for (const BRepRef& face : brep.m_shells[shell.index].faces) {
+                require(++faces[face.index] == 1, "material face has multiple shell owners");
+                result[face.index] = brep_compose(shell.orientation, face.orientation);
+                require(result[face.index] == forward || result[face.index] == reversed,
+                        "material face has unsupported orientation");
+            }
+        }
+    require(std::all_of(faces.begin(), faces.end(), [](int count) { return count == 1; }) &&
+                std::all_of(shells.begin(), shells.end(), [](int count) { return count == 1; }),
+            "material boundary has unowned faces or shells");
+    return result;
+}
+
+bool shared_solid_shell_contact(const BRep& brep) {
+    for (const BRepSolid& solid : brep.m_solids) {
+        std::map<int, int> owners;
+        for (const BRepRef& shell : solid.shells)
+            for (const BRepRef& face : brep.m_shells[shell.index].faces)
+                for (const BRepRef& wire : brep.m_faces[face.index].wires)
+                    for (const BRepRef& use : brep.wire_edges(wire)) {
+                        const BRepEdge& edge = brep.m_edges[use.index];
+                        for (int vertex : {edge.start_vertex, edge.end_vertex}) {
+                            const auto [found, inserted] = owners.emplace(vertex, shell.index);
+                            if (!inserted && found->second != shell.index)
+                                return true;
+                        }
+                    }
+    }
+    return false;
+}
+
+bool regular_solid_boundaries(const BRep& brep) {
+    for (const BRepSolid& solid : brep.m_solids) {
+        BRepShell boundary;
+        std::map<int, std::pair<int, int>> incidence;
+        for (const BRepRef& shell : solid.shells)
+            for (const BRepRef& face : brep.m_shells[shell.index].faces) {
+                const BRepOrientation orientation = brep_compose(shell.orientation, face.orientation);
+                boundary.faces.push_back({face.index, orientation});
+                for (const BRepRef& wire : brep.m_faces[face.index].wires)
+                    for (const BRepRef& edge : brep.wire_edges(wire))
+                        if (!brep.m_edges[edge.index].degenerated) {
+                            ++incidence[edge.index].first;
+                            incidence[edge.index].second +=
+                                brep_compose(orientation, edge.orientation) == forward ? 1 : -1;
+                        }
+            }
+        for (const auto& edge : incidence)
+            if (edge.second.first != 2 || edge.second.second != 0)
+                return false;
+        // The link test is local to each vertex; combining all solid shells
+        // catches two disconnected link cycles at a touching cavity boundary.
+        if (brep_acceptance::shell_vertex_links(brep, boundary) != brep_acceptance::VertexLinks::Matched)
+            return false;
+    }
+    return true;
+}
+
+void regularize_material_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* attempts,
+                                std::vector<ContainmentAttempt>* containment) {
+    const auto material = material_orientations(brep);
+    if (regular_solid_boundaries(brep))
+        return;
+    require(shared_solid_shell_contact(brep), "nonregular material boundary is not a shell contact grouping");
+    // Only shell/solid references change. Pair from the normalized MATERIAL
+    // chain, not the stale connectivity built before outward/hole orientation.
+    brep.m_solids.clear();
+    brep.m_shells.clear();
+    build_shells(brep, material);
+    require(brep.is_solid(), "material shell reconstruction is not closed");
+    nest_shells(brep, tolerance, attempts, containment);
+    require(brep.is_solid(), "material shell reconstruction has invalid solid topology");
+    require(material_orientations(brep) == material,
+            "material shell reconstruction changed the effective boundary chain");
+    require(regular_solid_boundaries(brep), "material shell reconstruction remains nonregular");
+    // One pass only: unchanged geometry/material input makes deterministic
+    // build_shells idempotent. A changed chain or unresolved contact is an error.
+}
 }
 
 ParameterError::ParameterError(
@@ -832,10 +1308,43 @@ BRep assemble(const std::vector<FaceUse>& faces, double tolerance) {
         orientations.push_back(orientation);
     }
     require(assembly.result.is_valid(), "reconstructed face topology is invalid");
-    build_shells(assembly.result, orientations);
-    require(assembly.result.is_solid(), "reconstructed shells are not closed oriented solids");
-    nest_shells(assembly.result, tolerance);
-    require(assembly.result.is_solid(), "nested solid topology is invalid");
+    const char* observation = std::getenv("SESSION_BOOLEAN_FAILURE_OBSERVATION");
+    std::vector<OrientationAttempt> attempts;
+    std::vector<ContainmentAttempt> containment;
+    const char* stage = "build_shells";
+    try {
+        build_shells(assembly.result, orientations);
+        stage = "closed_shell_check";
+        require(assembly.result.is_solid(), "reconstructed shells are not closed oriented solids");
+        stage = "nest_shells";
+        nest_shells(assembly.result, tolerance, observation && *observation ? &attempts : nullptr,
+                    observation && *observation ? &containment : nullptr);
+        stage = "nested_solid_check";
+        require(assembly.result.is_solid(), "nested solid topology is invalid");
+        stage = "material_shell_regularization";
+        regularize_material_shells(assembly.result, tolerance,
+                                   observation && *observation ? &attempts : nullptr,
+                                   observation && *observation ? &containment : nullptr);
+    } catch (const std::exception& failure) {
+        TopologyError error(failure.what());
+        error.partial = assembly.result;
+        error.stage = stage;
+        error.orientation_attempts = std::move(attempts);
+        error.containment_attempts = std::move(containment);
+        error.face_orientations = orientations;
+        for (const Source& source : assembly.sources) {
+            int input = -1;
+            for (size_t i = 0; i < faces.size(); ++i)
+                if (faces[i].brep == source.brep) {
+                    input = static_cast<int>(i);
+                    break;
+                }
+            for (const Piece& piece : source.pieces)
+                error.images.push_back({input, source.edge, source.original, source.section,
+                    piece.edge, piece.first, piece.last, piece.reversed});
+        }
+        throw error;
+    }
     return assembly.result;
 }
 

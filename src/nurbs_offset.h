@@ -16,4 +16,7 @@ NurbsCurve curve(
 /// Approximate a signed surface offset, rejecting ambiguous normals and unresolved sampled residuals.
 NurbsSurface surface(const NurbsSurface& source, double distance, double tolerance);
 
+/// BRep sweep path: reject crossed analytic radii; generic fitting retains its sampled contract.
+NurbsSurface surface_sweep(const NurbsSurface& source, double distance, double tolerance);
+
 }

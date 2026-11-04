@@ -1,6 +1,7 @@
 #include "brep_offset.h"
 #include "brep_offset_join.h"
 #include "nurbs_offset.h"
+#include "nurbs_normal_sweep_brep.h"
 #include "primitives.h"
 
 #include <algorithm>
@@ -75,19 +76,28 @@ void check_focal_point(const NurbsSurface& source, double u, double v, double di
         throw std::runtime_error("BRep offset reaches or crosses a focal collapse; topology reconstruction is required");
 }
 
-void check_focal_crossings(const NurbsSurface& source, double distance) {
-    const std::vector<double> u = source.get_span_vector(0);
-    const std::vector<double> v = source.get_span_vector(1);
+void check_focal_crossings(const BRep& source, int face, const NurbsSurface& surface,
+                          double distance, double tolerance) {
+    const std::vector<double> u = surface.get_span_vector(0);
+    const std::vector<double> v = surface.get_span_vector(1);
+    const double metric = nurbs_bounds::surface_metric(surface);
+    if (!(metric > 0) || !std::isfinite(metric))
+        throw std::runtime_error("BRep focal check has an unresolved original surface metric");
+    const double trim_tolerance = tolerance / metric;
+    if (!(trim_tolerance > 0) || !std::isfinite(trim_tolerance))
+        throw std::runtime_error("BRep focal check has an unresolved original trim tolerance");
     for (size_t i = 0; i + 1 < u.size(); ++i)
         for (size_t j = 0; j + 1 < v.size(); ++j)
             for (int a = 1; a < 4; ++a)
-                for (int b = 1; b < 4; ++b)
-                    check_focal_point(
-                        source,
-                        u[i] + (u[i + 1] - u[i]) * a / 4.0,
-                        v[j] + (v[j + 1] - v[j]) * b / 4.0,
-                        distance
-                    );
+                for (int b = 1; b < 4; ++b) {
+                    const Point uv(u[i] + (u[i + 1] - u[i]) * a / 4.0,
+                        v[j] + (v[j + 1] - v[j]) * b / 4.0, 0);
+                    const brep_classify::State state = brep_classify::face_uv(source, face, uv, trim_tolerance);
+                    if (state == brep_classify::State::Unknown)
+                        throw std::runtime_error("BRep focal check has an unresolved original trim witness");
+                    if (state != brep_classify::State::Outside)
+                        check_focal_point(surface, uv[0], uv[1], distance);
+                }
 }
 
 struct TorusFrame {
@@ -393,11 +403,16 @@ OffsetFace offset_face(const BRep& source, int face, double distance, double tol
         source.m_surfaces[source.m_faces[face].surface_index], 0.0, tolerance * 0.5
     );
     const double signed_distance = source.face_orientation(face) == Reversed ? -distance : distance;
+    const normal_sweep::FaceResult sweep = normal_sweep::original_face(source, face,
+        signed_distance, tolerance, 4096);
+    if (sweep.proof.state == normal_sweep::State::Fold)
+        throw std::runtime_error("BRep offset proves a focal collapse in the original trimmed face");
+    // Unknown retains the numerical approximation path; it is not certified regular.
     if (!source.m_solids.empty())
-        check_focal_crossings(surface, signed_distance);
+        check_focal_crossings(source, face, surface, signed_distance, tolerance);
     NurbsSurface shifted;
     if (!torus_offset(surface, signed_distance, shifted))
-        shifted = nurbs_offset::surface(surface, signed_distance, tolerance * 0.5);
+        shifted = nurbs_offset::surface_sweep(surface, signed_distance, tolerance * 0.5);
     FaceBuilder builder{source, face, {}, tolerance, {}, {}};
     builder.result.add_surface(shifted);
     builder.topology();
@@ -425,6 +440,45 @@ bool convex_planes(const BRep& source, double tolerance) {
     return true;
 }
 
+}
+
+OffsetFace displaced_face(const BRep& source, int face, double distance, double tolerance) {
+    if (!source.is_valid() || !std::isfinite(distance) || !std::isfinite(tolerance) || tolerance <= 0)
+        throw std::invalid_argument("Displaced face requires valid geometry and finite offset parameters");
+    if (face < 0 || face >= source.face_count())
+        throw std::out_of_range("Displaced source face index is out of range");
+    return offset_face(source, face, distance, tolerance);
+}
+
+
+OffsetFace displaced_working_face(const BRep& original, int face, const OffsetFace& working,
+    double distance, double tolerance) {
+    if (!original.is_valid() || !working.brep.is_valid() || working.source != face
+        || face < 0 || face >= original.face_count() || working.brep.face_count() != 1
+        || !std::isfinite(distance) || !std::isfinite(tolerance) || tolerance <= 0)
+        throw std::invalid_argument("Displaced working face requires valid original ancestry and parameters");
+    const double signed_distance = original.face_orientation(face) == Reversed ? -distance : distance;
+    const normal_sweep::FaceResult sweep = normal_sweep::original_face(original, face,
+        signed_distance, tolerance, 4096);
+    if (sweep.proof.state == normal_sweep::State::Fold)
+        throw std::runtime_error("BRep offset proves a focal collapse in the original trimmed face");
+    const NurbsSurface& source = original.m_surfaces[original.m_faces[face].surface_index];
+    if (!original.m_solids.empty())
+        check_focal_crossings(original, face, source, signed_distance, tolerance);
+    if (working.brep.face_orientation(0) != original.face_orientation(face))
+        throw std::runtime_error("Displaced working face changed original support orientation");
+    const NurbsSurface& support = working.brep.m_surfaces[working.brep.m_faces[0].surface_index];
+    const NurbsSurface shifted = nurbs_offset::surface_sweep(support, signed_distance, tolerance * .5);
+    FaceBuilder builder{working.brep, 0, {}, tolerance, {}, {}};
+    builder.result.add_surface(shifted);
+    builder.topology();
+    std::map<int, int> ancestry;
+    for (const std::pair<const int, int>& edge : working.edges) {
+        const auto image = builder.edges.find(edge.second);
+        if (image == builder.edges.end() || !ancestry.emplace(edge.first, image->second).second)
+            throw std::runtime_error("Displaced working face lost original edge ancestry");
+    }
+    return {std::move(builder.result), face, std::move(ancestry)};
 }
 
 BRep shape(const BRep& source, double distance, double tolerance) {

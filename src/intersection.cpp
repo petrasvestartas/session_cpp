@@ -5,9 +5,10 @@
 #include "brep_section.h"
 #include "surface_section.h"
 #include "nurbs_interval.h"
+#include "nurbs_hermite.h"
+#include "nurbs_coincidence.h"
 #include "ssi_diagnostics.h"
 #include "nurbscurve.h"
-#include "occt_backend.h"
 #include "nurbssurface.h"
 #include "boolean_polyline.h"
 #include "closest.h"
@@ -16,7 +17,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <string_view>
 #include <tuple>
@@ -75,7 +80,18 @@ SectionResult Intersection::curve_brep(const NurbsCurve& curve, const BRep& brep
 }
 
 SectionResult Intersection::brep_brep(const BRep& a, const BRep& b, double tolerance) {
-    return occt::section(a, b, tolerance);
+    const brep_section::FaceResult events = brep_section::interferences(a, b, tolerance);
+    if (!events.complete)
+        throw std::runtime_error(events.failure);
+    SectionResult result;
+    for (size_t representative : events.curve_representatives)
+        result.curves.push_back(events.curves[representative].world);
+    for (const auto& node : events.nodes)
+        if (node.isolated)
+            result.points.push_back(node.point);
+    result.coverage = events.coverage_complete() ? SectionCoverage::OriginalDomainQualified
+                                               : SectionCoverage::LegacyLocusUnqualified;
+    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1605,7 +1621,8 @@ bool surface_plane_march(
     const std::vector<Vector> derivatives = field.surface.evaluate(su, sv, 1);
     const Vector start_tangent = derivatives[2] * start_u + derivatives[1] * start_v;
 
-    for (int s = 0; s < field.max_steps; s++) {
+    int steps = 0;
+    for (; steps < field.max_steps; ++steps) {
         double tu;
         double tv;
         double local_step;
@@ -1645,6 +1662,8 @@ bool surface_plane_march(
         consume_seeds(field, p_cur, seeds);
     }
 
+    if (steps == field.max_steps)
+        throw std::runtime_error("Surface-plane march exhausted its step budget");
     return false;
 }
 
@@ -2838,6 +2857,11 @@ bool piece_curves(
         if (!field.polish(uv[0], uv[1]))
             throw std::runtime_error("Native plane section point did not converge");
     for (int iteration = 0; iteration < 20 && pts_uv.size() <= 32768; ++iteration) {
+        pts_uv.erase(std::unique(pts_uv.begin(), pts_uv.end(), [](const Point& a, const Point& b) {
+            return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
+        }), pts_uv.end());
+        if (pts_uv.size() < (piece.is_loop ? 4u : 2u))
+            throw std::runtime_error("Native plane section has too few distinct parameter samples");
         std::vector<Point> pts3(pts_uv.size());
         for (size_t i = 0; i < pts_uv.size(); i++)
             pts3[i] = field.point({pts_uv[i][0], pts_uv[i][1]});
@@ -3996,13 +4020,13 @@ static bool plane_cone_parabola(const PlaneConeFrame& f, NurbsCurve& c3) {
     for (int cs : {-1, +1}) {
         std::array<double, 3> c2{cen[0] + cs * dc * f.axex[0], cen[1] + cs * dc * f.axex[1], cen[2] + cs * dc * f.axex[2]};
         double zc = (c2[0] - f.apex[0]) * f.w[0] + (c2[1] - f.apex[1]) * f.w[1] + (c2[2] - f.apex[2]) * f.w[2];
-        double t1s = 2.0 * pf * (f.height - zc) / f.axw;
+        double t1s = 4.0 * pf * (f.height - zc) / f.axw;
 
         if (t1s <= 0)
             continue;
 
         double t1 = std::sqrt(t1s);
-        double xi = t1s / (2.0 * pf);
+        double xi = t1s / (4.0 * pf);
 
         std::array<double, 3> pa{
             c2[0] + xi * f.axex[0] - t1 * f.axey[0],
@@ -4357,8 +4381,344 @@ static void plane_cone_through_apex(const PlaneConeSection& s, std::vector<Nurbs
     }
 }
 
+// Strict exclusion uses whole projected control bounds. Near-cap ranges are
+// retained only with a Euclidean whole-range certificate to the ACTUAL cap.
+static void clip_exact_conic_to_cone(const NurbsCurve& conic, const NurbsSurface& support,
+                                     const PlaneConeSection& section, double tolerance,
+                                     std::vector<NurbsCurve>& out) {
+    using I = nurbs_interval::Interval;
+    int axial_direction = -1;
+    for (int d = 0; d < 2; ++d)
+        if (support.degree(d) == 1 && support.cv_count(d) == 2)
+            axial_direction = d;
+    if (axial_direction < 0)
+        throw std::runtime_error("Exact cone conic clipping needs a linear axial support chart");
+    struct Cap {
+        NurbsCurve curve;
+        Point origin;
+        I height;
+        std::array<double, 3> negative_normal;
+        I negative_height;
+    };
+    std::array<Cap, 2> caps;
+    const auto project = [&](const auto& cv, const std::array<double, 3>& normal) {
+        I value;
+        for (int d = 0; d < 3; ++d)
+            value = value + I(normal[d]) * cv[d];
+        return value / cv[3];
+    };
+    const auto control_bounds = [&](const Cap& cap, const std::array<double, 3>& normal, bool entire_support,
+                                    I& bound) {
+        bool first = true, valid = true;
+        const auto add = [&](const double* control, double weight) {
+            if (!(weight > 0) || !std::isfinite(weight)) {
+                valid = false;
+                return;
+            }
+            nurbs_interval::Homogeneous cv;
+            for (int d = 0; d < 3; ++d)
+                cv[d] = I(control[d]) - I(cap.origin[d]) * I(weight);
+            cv[3] = I(weight);
+            const I value = project(cv, normal);
+            if (!nurbs_interval::finite(value)) {
+                valid = false;
+                return;
+            }
+            bound = first ? value : nurbs_interval::interval_hull(bound, value);
+            first = false;
+        };
+        if (entire_support)
+            for (int u = 0; u < support.cv_count(0); ++u)
+                for (int v = 0; v < support.cv_count(1); ++v)
+                    add(support.cv(u, v), support.weight(u, v));
+        else
+            for (int i = 0; i < cap.curve.cv_count(); ++i)
+                add(cap.curve.cv(i), cap.curve.weight(i));
+        return valid && !first;
+    };
+    for (int end = 0; end < 2; ++end) {
+        const auto axis = support.domain(axial_direction);
+        caps[end].curve = support.iso_curve(1 - axial_direction, end ? axis.second : axis.first);
+        if (!caps[end].curve.is_valid())
+            throw std::runtime_error("Exact cone conic cap curve is invalid");
+        caps[end].origin = caps[end].curve.get_cv(0);
+        caps[end].negative_normal = section.w;
+        if (!control_bounds(caps[end], section.w, false, caps[end].height))
+            throw std::runtime_error("Exact cone conic cap bound is unresolved");
+    }
+    const auto separation = [&](const Cap& first, const Cap& last) {
+        I value;
+        for (int d = 0; d < 3; ++d)
+            value = value + I(section.w[d]) * (I(last.origin[d]) - I(first.origin[d]));
+        return value;
+    };
+    if (separation(caps[0], caps[1]).hi < 0)
+        std::swap(caps[0], caps[1]);
+    const I cap_separation = separation(caps[0], caps[1]);
+    if (!nurbs_interval::finite(cap_separation) ||
+        !((cap_separation + caps[1].height).lo > caps[0].height.hi))
+        throw std::runtime_error("Exact cone conic support caps are not separated");
+    for (auto& cap : caps)
+        cap.negative_height = cap.height;
+    // A plane from actual cap controls is a proposal only. Accept its tighter
+    // bound only when ALL original finite-support controls certify the proper side.
+    for (int end = 0; end < 2; ++end) {
+        auto& cap = caps[end];
+        Vector chord, normal;
+        for (int i = 1; i < cap.curve.cv_count(); ++i) {
+            const Vector direction = cap.curve.get_cv(i) - cap.origin;
+            if (direction.magnitude_squared() > chord.magnitude_squared())
+                chord = direction;
+        }
+        for (int i = 1; i < cap.curve.cv_count(); ++i) {
+            const Vector candidate = chord.cross(cap.curve.get_cv(i) - cap.origin);
+            if (candidate.magnitude_squared() > normal.magnitude_squared())
+                normal = candidate;
+        }
+        if (!normal.normalize_self())
+            continue;
+        I alignment;
+        for (int d = 0; d < 3; ++d)
+            alignment = alignment + I(normal[d]) * I(section.w[d]);
+        if (alignment.hi < 0)
+            normal *= -1.;
+        else if (!(alignment.lo > 0))
+            continue;
+        const std::array<double, 3> proposed = {normal[0], normal[1], normal[2]};
+        I height, finite_support;
+        if (!control_bounds(cap, proposed, false, height) ||
+            !control_bounds(cap, proposed, true, finite_support))
+            continue;
+        const bool proper_side = end == 0 ? finite_support.lo >= height.lo : finite_support.hi <= height.hi;
+        if (proper_side && height.hi - height.lo < cap.height.hi - cap.height.lo) {
+            cap.negative_normal = proposed;
+            cap.negative_height = height;
+        }
+    }
+    const auto domain = conic.domain();
+    std::vector<double> cuts = {domain.first, domain.second};
+    const auto propose = [&](double root) {
+        if (!(root > domain.first && root < domain.second))
+            return;
+        cuts.push_back(root);
+        const auto derivatives = conic.evaluate(root, 1);
+        if (derivatives.size() < 2)
+            return;
+        const double speed = derivatives[1].magnitude();
+        if (!(speed > 0) || !std::isfinite(speed))
+            return;
+        const double width = tolerance / (8 * speed);
+        cuts.push_back(std::max(domain.first, std::min(root - width, std::nextafter(root, domain.first))));
+        cuts.push_back(std::min(domain.second, std::max(root + width, std::nextafter(root, domain.second))));
+    };
+    for (const auto& cap : caps) {
+        const Plane plane =
+            Plane::from_point_normal(cap.origin, Vector(section.w[0], section.w[1], section.w[2]));
+        for (double root : Intersection::curve_plane(conic, plane, tolerance))
+            propose(root);
+        // Additional quadratic proposals avoid an absolute zero threshold erasing
+        // two shallow crossings. They still require whole-range certificates.
+        const auto spans = conic.get_span_vector();
+        for (size_t i = 1; i < spans.size(); ++i) {
+            const auto controls = nurbs_interval::curve_controls(
+                conic, {spans[i - 1], spans[i]}, {cap.origin[0], cap.origin[1], cap.origin[2]});
+            if (controls.size() != 3)
+                continue;
+            std::array<double, 3> h;
+            for (int j = 0; j < 3; ++j) {
+                I numerator;
+                for (int d = 0; d < 3; ++d)
+                    numerator = numerator + I(section.w[d]) * controls[j][d];
+                h[j] = std::midpoint(numerator.lo, numerator.hi);
+                if (conic.degree() == 2 && conic.cv_count() == 2 * static_cast<int>(spans.size() - 1) + 1) {
+                    const int index = 2 * static_cast<int>(i - 1) + j;
+                    const double* cv = conic.cv(index);
+                    const double weight = conic.weight(index);
+                    h[j] = 0;
+                    for (int d = 0; d < 3; ++d)
+                        h[j] += section.w[d] * (cv[d] - cap.origin[d] * weight);
+                }
+            }
+            const double product = h[0] * h[2];
+            const double discriminant = std::fma(h[1], h[1], -product) + std::fma(-h[0], h[2], product);
+            const double a = h[0] - 2 * h[1] + h[2];
+            if (discriminant >= 0 && a != 0) {
+                const double delta = std::sqrt(discriminant);
+                for (double fraction : {(h[0] - h[1] - delta) / a, (h[0] - h[1] + delta) / a})
+                    if (fraction > 0 && fraction < 1)
+                        propose(std::lerp(spans[i - 1], spans[i], fraction));
+            }
+        }
+    }
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    const auto range = [&](double first, double last, const Cap& cap, const std::array<double, 3>& normal) {
+        std::vector<double> pieces = {first};
+        for (double knot : conic.get_span_vector())
+            if (knot > first && knot < last)
+                pieces.push_back(knot);
+        pieces.push_back(last);
+        I bound;
+        bool initial = true;
+        for (size_t i = 1; i < pieces.size(); ++i) {
+            const auto controls = nurbs_interval::curve_controls(
+                conic, {pieces[i - 1], pieces[i]}, {cap.origin[0], cap.origin[1], cap.origin[2]});
+            if (controls.empty())
+                throw std::runtime_error("Exact cone conic cap range is unresolved");
+            for (const auto& cv : controls) {
+                if (!(cv[3].lo > 0))
+                    throw std::runtime_error("Exact cone conic range requires positive weights");
+                const I value = project(cv, normal);
+                if (!nurbs_interval::finite(value))
+                    throw std::runtime_error("Exact cone conic cap range is nonfinite");
+                bound = initial ? value : nurbs_interval::interval_hull(bound, value);
+                initial = false;
+            }
+        }
+        return bound;
+    };
+    std::vector<std::pair<double, double>> retained;
+    const auto retain = [&](double first, double last) {
+        if (!retained.empty() && retained.back().second == first)
+            retained.back().second = last;
+        else
+            retained.push_back({first, last});
+    };
+    size_t work = 0;
+    const auto classify = [&](auto&& self, double first, double last, int depth) -> void {
+        if (++work > 4096)
+            throw std::runtime_error("Exact cone conic cap partition exceeded its proof budget");
+        const I low = range(first, last, caps[0], section.w), high = range(first, last, caps[1], section.w);
+        if (low.lo >= caps[0].height.hi && high.hi <= caps[1].height.lo) {
+            retain(first, last);
+            return;
+        }
+        if (low.hi < caps[0].height.lo || high.lo > caps[1].height.hi)
+            return;
+        // Additional necessary halfspaces can REJECT only. Original axial
+        // bounds above remain the sole finite-range positive certificate.
+        const I negative_low =
+            caps[0].negative_normal == section.w ? low : range(first, last, caps[0], caps[0].negative_normal);
+        const I negative_high = caps[1].negative_normal == section.w
+                                    ? high
+                                    : range(first, last, caps[1], caps[1].negative_normal);
+        if (negative_low.hi < caps[0].negative_height.lo || negative_high.lo > caps[1].negative_height.hi)
+            return;
+        const double middle = std::midpoint(first, last);
+        const char* capture = std::getenv("SESSION_CONIC_CAP_FAILURE");
+        const bool observing = capture && *capture && (depth >= 22 || middle == first || middle == last);
+        auto cap_attempts = nlohmann::ordered_json::array();
+        // Projection is only a proposal for an actual finite cap point. Both
+        // enclosures are Euclidean; no assumption that the stored axis is unit.
+        for (const auto& cap : caps) {
+            const Point target = conic.point_at(middle);
+            auto [parameter, gap] = Closest::curve_point(cap.curve, target);
+            // A clamped global Newton proposal at a closed seam cannot step
+            // across that seam. Try its opposite adjacent raw span only;
+            // agreement still requires both original-geometry ball certificates.
+            if (cap.curve.is_closed() && std::isfinite(parameter) && std::isfinite(gap)) {
+                const auto cap_domain = cap.curve.domain();
+                const auto spans = cap.curve.get_span_vector();
+                if (spans.size() >= 2 &&
+                    (parameter == cap_domain.first || parameter == cap_domain.second)) {
+                    const std::pair<double, double> adjacent = parameter == cap_domain.first
+                        ? std::pair<double, double>{spans[spans.size() - 2], spans.back()}
+                        : std::pair<double, double>{spans.front(), spans[1]};
+                    NurbsCurve proposal_span = cap.curve;
+                    if (proposal_span.trim(adjacent.first, adjacent.second) && proposal_span.domain() == adjacent) {
+                        const auto [candidate, unused_gap] = Closest::curve_point(proposal_span, target);
+                        if (std::isfinite(candidate) && candidate >= adjacent.first && candidate <= adjacent.second) {
+                            const double candidate_gap = cap.curve.point_at(candidate).distance(target);
+                            if (std::isfinite(candidate_gap) && candidate_gap < gap) {
+                                parameter = candidate;
+                                gap = candidate_gap;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!std::isfinite(parameter) || !std::isfinite(gap) || parameter < cap.curve.domain_start() ||
+                parameter > cap.curve.domain_end()) {
+                if (observing)
+                    cap_attempts.push_back({{"cap", &cap - caps.data()}, {"parameter", parameter},
+                        {"gap_diagnostic_only", gap}, {"valid_raw_parameter", false}});
+                continue;
+            }
+            const Point point = cap.curve.point_at(parameter);
+            const std::array<double, 3> origin = {point[0], point[1], point[2]};
+            const bool singleton = nurbs_interval::curve_within_ball(cap.curve, {parameter, parameter},
+                origin, tolerance * .125);
+            const bool whole = singleton &&
+                nurbs_interval::curve_within_ball(conic, {first, last}, origin, tolerance * .5);
+            if (observing)
+                cap_attempts.push_back({{"cap", &cap - caps.data()}, {"parameter", parameter},
+                    {"gap_diagnostic_only", gap}, {"valid_raw_parameter", true},
+                    {"point", origin}, {"cap_singleton_ball", singleton}, {"world_whole_ball", whole}});
+            if (whole) {
+                retain(first, last);
+                return;
+            }
+        }
+        if (depth >= 22 || middle == first || middle == last) {
+            if (observing)
+                try {
+                    auto cap_rows = nlohmann::ordered_json::array();
+                    for (const auto& cap : caps)
+                        cap_rows.push_back({{"curve", cap.curve.jsondump()},
+                                            {"origin", {cap.origin[0], cap.origin[1], cap.origin[2]}},
+                                            {"height", {cap.height.lo, cap.height.hi}},
+                                            {"negative_normal", cap.negative_normal},
+                                            {"negative_height", {cap.negative_height.lo, cap.negative_height.hi}}});
+                    const nlohmann::ordered_json row = {{"schema", "native_conic_cap_proof_failure_v1"},
+                        {"tolerance", tolerance}, {"interval", {first, last}}, {"depth", depth},
+                        {"work", work}, {"axis", section.w}, {"cuts", cuts},
+                        {"retained_before_failure", retained}, {"low", {low.lo, low.hi}},
+                        {"high", {high.lo, high.hi}}, {"conic", conic.jsondump()},
+                        {"support", support.jsondump()}, {"caps", cap_rows},
+                        {"cap_attempts", cap_attempts}};
+                    std::ofstream output(capture, std::ios::app | std::ios::binary);
+                    if (!output || !(output << row.dump() << '\n'))
+                        throw std::runtime_error("Cannot append conic cap proof observation");
+                    output.flush();
+                    if (!output) throw std::runtime_error("Cannot flush conic cap proof observation");
+                    output.close();
+                    if (!output) throw std::runtime_error("Cannot close conic cap proof observation");
+                } catch (const std::exception& error) {
+                    std::cerr << "Conic cap observation failed: " << error.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "Conic cap observation failed with unknown error" << std::endl;
+                }
+            throw std::runtime_error("Exact cone conic cap partition is unresolved");
+        }
+        self(self, first, middle, depth + 1);
+        self(self, middle, last, depth + 1);
+    };
+    for (size_t i = 1; i < cuts.size(); ++i)
+        classify(classify, cuts[i - 1], cuts[i], 0);
+    if (conic.is_closed() && retained.size() > 1 && retained.front().first == domain.first &&
+        retained.back().second == domain.second) {
+        const auto wrapped =
+            std::pair(retained.back().first, retained.front().second + domain.second - domain.first);
+        retained.erase(retained.begin());
+        retained.pop_back();
+        retained.push_back(wrapped);
+    }
+    for (const auto& interval : retained) {
+        NurbsCurve piece = conic;
+        if (interval.second > domain.second) {
+            if (!piece.change_closed_curve_seam(interval.first) ||
+                piece.domain_start() != interval.first || piece.domain_end() < interval.second)
+                throw std::runtime_error("Exact cone conic cap seam did not cover its wrapped raw interval");
+        }
+        if (!piece.trim(interval.first, interval.second) || piece.domain() != interval)
+            throw std::runtime_error("Exact cone conic cap trim changed its requested raw interval");
+        out.push_back(std::move(piece));
+    }
+}
+
 /// Exact plane-cone conic: circle, ellipse, parabola or hyperbola; false when none fits the cone.
-static bool plane_cone_exact(const PlaneConeSection& s, std::vector<NurbsCurve>& out) {
+static bool plane_cone_exact(const PlaneConeSection& s, const NurbsSurface& support,
+                             std::vector<NurbsCurve>& out, double tolerance) {
 
     const double ang = 1e-6;
     bool is_circle = false;
@@ -4396,9 +4756,8 @@ static bool plane_cone_exact(const PlaneConeSection& s, std::vector<NurbsCurve>&
 
     NurbsCurve c3;
 
-    if (is_ellipse && build_exact_plane_cone_ellipse(s.o, s.nu, s.apex, s.w, s.alpha, c3) && conic_within_cone(c3, s.apex, s.w, s.height)) {
-        out.push_back(c3);
-
+    if (is_ellipse && build_exact_plane_cone_ellipse(s.o, s.nu, s.apex, s.w, s.alpha, c3)) {
+        clip_exact_conic_to_cone(c3, support, s, tolerance, out);
         return true;
     }
 
@@ -4412,12 +4771,8 @@ static bool plane_cone_exact(const PlaneConeSection& s, std::vector<NurbsCurve>&
 }
 
 /// Plane-cone section: exact lines or conic when possible, fitted arcs otherwise.
-static bool ssi_plane_cone(
-    const RecogSurface& plane,
-    const RecogSurface& cone,
-    const NurbsSurface& cone_srf,
-    std::vector<NurbsCurve>& out
-) {
+static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone, const NurbsSurface& cone_srf,
+                           std::vector<NurbsCurve>& out, double tolerance) {
 
     PlaneConeSection s;
 
@@ -4430,7 +4785,7 @@ static bool ssi_plane_cone(
         return true;
     }
 
-    if (plane_cone_exact(s, out))
+    if (plane_cone_exact(s, cone_srf, out, tolerance))
         return true;
 
     std::vector<std::vector<Point>> runs;
@@ -4778,7 +5133,7 @@ static bool ssi_plane_plane(
             const double tmin = std::max(span_a.first, span_b.first);
             const double tmax = std::min(span_a.second, span_b.second);
 
-            if (tmax - tmin <= 1e-9)
+            if (!(tmax > tmin))
                 continue;
 
             Point start(anchor[0] + tmin * dir[0], anchor[1] + tmin * dir[1], anchor[2] + tmin * dir[2]);
@@ -4968,12 +5323,14 @@ static NurbsCurve inverted_plane_pcurve(const NurbsSurface& srf, const FaceFrame
         uvs.push_back(Point(std::get<0>(closest), std::get<1>(closest), 0.0));
     }
 
-    NurbsCurve pc = NurbsCurve::create(false, 1, uvs);
-
-    if (!pc.set_domain(domain.first, domain.second))
-        return NurbsCurve();
-
-    return pc;
+    // The inverse points were sampled at these WORLD parameters. Chord-length
+    // UV knots would change their correspondence even at the sampled points.
+    NurbsCurve pc(3,false,2,static_cast<int>(uvs.size()));
+    for (size_t i=0;i<uvs.size();++i) {
+        pc.m_nurbsknot[i]=domain.first+(domain.second-domain.first)*i/64.0;
+        if (!pc.set_cv(static_cast<int>(i),uvs[i])) return {};
+    }
+    return pc.is_valid() ? pc : NurbsCurve{};
 }
 
 /// Plane pcurve: inverted points on a face that is not its corner parallelogram, else the control points mapped to its parameters.
@@ -5568,44 +5925,166 @@ static void drop_seam_slivers(std::vector<PullbackRun>& runs, double step) {
         runs.erase(runs.begin());
 }
 
-/// Runs of (u, v, t) samples with u unwrapped, split where u crosses the seam.
-static std::vector<PullbackRun> split_pullback_u(const std::vector<std::array<double, 3>>& uv, double u0, double range_u) {
-
-    std::vector<PullbackRun> out;
-    PullbackRun seg;
-    int cur_k = period_index(uv[0][0], u0, range_u);
-    push_run_sample(seg, uv[0][0] - cur_k * range_u, uv[0][1], uv[0][2]);
-
-    for (size_t i = 1; i < uv.size(); ++i) {
-        int ki = period_index(uv[i][0], u0, range_u);
-
-        while (ki != cur_k) {
-            int step = (ki > cur_k) ? 1 : -1;
-            int nk = cur_k + step;
-            double seam_cont = u0 + (step > 0 ? nk : cur_k) * range_u;
-            double denom = uv[i][0] - uv[i - 1][0];
-            double f = (std::abs(denom) > 1e-15) ? (seam_cont - uv[i - 1][0]) / denom : 0.0;
-            f = std::min(std::max(f, 0.0), 1.0);
-            double vc = uv[i - 1][1] + (uv[i][1] - uv[i - 1][1]) * f;
-            double tc = uv[i - 1][2] + (uv[i][2] - uv[i - 1][2]) * f;
-            push_run_sample(seg, seam_cont - cur_k * range_u, vc, tc);
-
-            if (seg.uv.size() >= 2)
-                out.push_back(seg);
-
-            seg = PullbackRun();
-            push_run_sample(seg, seam_cont - nk * range_u, vc, tc);
-            cur_k = nk;
+template<class Snapshot> static void observe_analytic_route_failure(Snapshot&& snapshot) {
+    if (const char* path=std::getenv("SESSION_ANALYTIC_ROUTE_FAILURE"); path && *path)
+        try {
+            const std::string bytes=snapshot().dump();
+            if (bytes.size()>8*1024*1024) throw std::runtime_error("Analytic route observation exceeds size bound");
+            std::ofstream output(path,std::ios::app|std::ios::binary);
+            if (!output || !(output<<bytes<<'\n')) throw std::runtime_error("Cannot append analytic route observation");
+            output.flush();
+            if (!output) throw std::runtime_error("Cannot flush analytic route observation");
+            output.close();
+            if (!output) throw std::runtime_error("Cannot close analytic route observation");
+        } catch (const std::exception& error) {
+            std::cerr<<"Analytic route observation failed: "<<error.what()<<std::endl;
         }
+}
 
-        push_run_sample(seg, uv[i][0] - cur_k * range_u, uv[i][1], uv[i][2]);
+static nlohmann::ordered_json raw_run_observation(const PullbackRun& run) {
+    auto uv=nlohmann::ordered_json::array();
+    for (const auto& p:run.uv) uv.push_back({p[0],p[1],p[2]});
+    return {{"parameters",run.ts},{"uv",uv}};
+}
+
+/// Runs of (u, v, t) samples with u unwrapped, split where u crosses the seam.
+static std::vector<PullbackRun> split_pullback_u(const std::vector<std::array<double, 3>>& samples,
+    double u0, double range_u, const NurbsSurface& surface, const NurbsCurve& world, double tolerance) {
+    if (samples.size()<2 || !(range_u>0) || !std::isfinite(range_u))
+        throw std::runtime_error("Analytic raw seam samples are invalid");
+    const auto cell = [&](double u) {
+        const double value=std::floor((u-u0)/range_u);
+        if (!std::isfinite(value) || value<std::numeric_limits<int>::min() || value>std::numeric_limits<int>::max())
+            throw std::runtime_error("Analytic raw seam chart phase is unresolved");
+        return static_cast<int>(value);
+    };
+    bool crossing=false;
+    for (size_t i=1;i<samples.size();++i)
+        crossing |= cell(samples[i-1][0])!=cell(samples[i][0]);
+    std::vector<std::array<double,3>> uv=samples;
+    std::map<double,double> seam_events;
+    NurbsCurve seam_query;
+    if (crossing) {
+        seam_query=surface.iso_curve(1,u0);
+        NurbsCurve& seam=seam_query;
+        if (!seam.is_valid()) throw std::runtime_error("Analytic raw seam is invalid");
+        // Existing supporting-quadric pullbacks may use an axial endspan.
+        // Extend only the LOCAL linear seam query to those existing raw samples;
+        // neither the original support nor the returned world range changes.
+        double first=seam.domain_start(), last=seam.domain_end();
+        for (const auto& sample : samples) {
+            if (!std::isfinite(sample[1])) throw std::runtime_error("Analytic raw seam V is nonfinite");
+            first=std::min(first,sample[1]); last=std::max(last,sample[1]);
+        }
+        if (first<seam.domain_start() || last>seam.domain_end()) {
+            if (seam.degree()!=1 || !seam.extend(first,last) ||
+                seam.domain_start()!=first || seam.domain_end()!=last || !seam.is_valid())
+                throw std::runtime_error("Analytic raw seam endspan query is unresolved");
+        }
+        const auto events=curve_intersection::intersect(world,seam,tolerance);
+        if (!events.complete || !events.overlaps.empty())
+            throw std::runtime_error("Analytic raw seam intersection is unresolved");
+        for (const auto& hit : events.points) {
+            if (!std::isfinite(hit.a) || !std::isfinite(hit.b) ||
+                hit.a<samples.front()[2] || hit.a>samples.back()[2] ||
+                hit.b<seam.domain_start() || hit.b>seam.domain_end())
+                throw std::runtime_error("Analytic raw seam event lost its source range");
+            const auto [event,inserted]=seam_events.emplace(hit.a,hit.b);
+            if (!inserted) {
+                if (event->second!=hit.b) throw std::runtime_error("Conflicting exact raw seam events");
+                continue;
+            }
+            const auto at=std::lower_bound(uv.begin(),uv.end(),hit.a,
+                [](const auto& point,double t) { return point[2]<t; });
+            const size_t i=static_cast<size_t>(at-uv.begin());
+            const double seed=i==0 ? uv.front()[0] : i==uv.size() ? uv.back()[0] :
+                std::lerp(uv[i-1][0],uv[i][0],(hit.a-uv[i-1][2])/(uv[i][2]-uv[i-1][2]));
+            const double boundary=u0+std::round((seed-u0)/range_u)*range_u;
+            if (!std::isfinite(boundary)) throw std::runtime_error("Analytic raw seam phase is nonfinite");
+            const std::array<double,3> value{boundary,hit.b,hit.a};
+            if (at!=uv.end() && (*at)[2]==hit.a) *at=value;
+            else uv.insert(at,value);
+        }
+        if (seam_events.empty()) {
+            observe_analytic_route_failure([&] { return nlohmann::ordered_json{
+                {"schema","analytic_route_failure_v1"},{"stage","seam_no_event"},
+                {"world",world.jsondump()},{"surface",surface.jsondump()},{"queried_seam",seam.jsondump()},
+                {"tolerance",tolerance},{"u0",u0},{"range_u",range_u},{"samples",samples},{"augmented",uv},
+                {"cc_complete",events.complete},{"cc_point_count",events.points.size()},{"cc_overlap_count",events.overlaps.size()}}; });
+            throw std::runtime_error("Analytic raw seam crossing has no geometric event");
+        }
     }
-
-    if (seg.uv.size() >= 2)
-        out.push_back(seg);
-
-    drop_seam_slivers(out, (uv.back()[2] - uv.front()[2]) / (uv.size() - 1));
-
+    // Complete geometric events own the regions. Rounded sample plateaus at
+    // a boundary may choose an alias, but can never create an interior cut.
+    std::vector<double> boundaries{uv.front()[2],uv.back()[2]};
+    for (const auto& event:seam_events)
+        if (event.first>boundaries.front() && event.first<uv.back()[2]) boundaries.push_back(event.first);
+    std::sort(boundaries.begin(),boundaries.end());
+    boundaries.erase(std::unique(boundaries.begin(),boundaries.end()),boundaries.end());
+    std::vector<int> aliases(boundaries.size()-1);
+    std::vector<bool> anchored(aliases.size(),false);
+    for (size_t k=0;k<aliases.size();++k) {
+        for (const auto& point:uv) {
+            if (point[2]<boundaries[k] || point[2]>boundaries[k+1]) continue;
+            aliases[k]=cell(point[0]);
+            const double boundary=u0+std::round((point[0]-u0)/range_u)*range_u;
+            if (point[0]!=boundary && !seam_events.count(point[2])) {
+                anchored[k]=true;
+                break;
+            }
+        }
+    }
+    for (size_t k=0;k<aliases.size();++k) {
+        if (anchored[k]) continue;
+        size_t neighbor=aliases.size();
+        for (size_t distance=1;distance<aliases.size();++distance) {
+            if (k>=distance && anchored[k-distance]) { neighbor=k-distance; break; }
+            if (k+distance<aliases.size() && anchored[k+distance]) { neighbor=k+distance; break; }
+        }
+        auto event=seam_events.find(boundaries[k]);
+        if (event==seam_events.end()) event=seam_events.find(boundaries[k+1]);
+        if (neighbor==aliases.size() || event==seam_events.end()) continue;
+        // Keep the ENTIRE positive raw region. A certified tiny endpoint region
+        // may share its neighbor's fitting alias, never be dropped or EPS-merged.
+        const Point point=seam_query.point_at(event->second);
+        const std::array<double,3> origin{point[0],point[1],point[2]};
+        if (nurbs_interval::curve_within_ball(seam_query,{event->second,event->second},origin,tolerance*.125) &&
+            nurbs_interval::curve_within_ball(world,{boundaries[k],boundaries[k+1]},origin,tolerance*.5))
+            aliases[k]=aliases[neighbor];
+    }
+    std::vector<PullbackRun> out;
+    PullbackRun run;
+    int current=0;
+    for (size_t i=1;i<uv.size();++i) {
+        if (!(uv[i][2]>uv[i-1][2])) throw std::runtime_error("Analytic raw seam parameters are not ordered");
+        const size_t region=std::min(static_cast<size_t>(std::upper_bound(boundaries.begin(),boundaries.end(),uv[i-1][2])-
+            boundaries.begin()-1),aliases.size()-1);
+        if (uv[i][2]>boundaries[region+1]) throw std::runtime_error("Analytic seam region lost a raw event");
+        const int next=aliases[region];
+        if (run.ts.empty() || next!=current) {
+            if (!run.ts.empty()) {
+                if (!seam_events.count(uv[i-1][2])) {
+                    observe_analytic_route_failure([&] {
+                        auto events=nlohmann::ordered_json::array();
+                        for (const auto& event:seam_events) events.push_back({event.first,event.second});
+                        return nlohmann::ordered_json{{"schema","analytic_route_failure_v1"},{"stage","seam_cell_without_event"},
+                            {"world",world.jsondump()},{"surface",surface.jsondump()},{"tolerance",tolerance},
+                            {"samples",samples},{"augmented",uv},{"events",events},{"interval_index",i},
+                            {"u0",u0},{"range_u",range_u},{"current_cell",current},{"next_cell",next}};
+                    });
+                    throw std::runtime_error("Analytic raw seam split is not a geometric event");
+                }
+                out.push_back(std::move(run));
+                run={};
+            }
+            current=next;
+            push_run_sample(run,uv[i-1][0]-current*range_u,uv[i-1][1],uv[i-1][2]);
+        }
+        push_run_sample(run,uv[i][0]-current*range_u,uv[i][1],uv[i][2]);
+    }
+    if (!run.ts.empty()) out.push_back(std::move(run));
+    // Exact endpoint/tangent events never create a zero-length run. Every
+    // positive original raw interval remains, without a seam-sliver threshold.
     return out;
 }
 
@@ -5613,7 +6092,7 @@ static std::vector<PullbackRun> split_pullback_u(const std::vector<std::array<do
 static std::vector<PullbackRun> analytic_sphere_pullback(
     const NurbsSurface& srf,
     const RecogSurface& recog,
-    const NurbsCurve& c3d
+    const NurbsCurve& c3d, double tolerance
 ) {
 
     if (recog.kind != RecogSurface::SPHERE)
@@ -5669,7 +6148,7 @@ static std::vector<PullbackRun> analytic_sphere_pullback(
         uv.push_back({u, v, t});
     }
 
-    return split_pullback_u(uv, u0, range_u);
+    return split_pullback_u(uv, u0, range_u, srf, c3d, tolerance);
 }
 
 /// Samples (u, v, t) with u unwrapped; an apex sample (u NaN) takes the u of the generator it lies on.
@@ -5747,7 +6226,7 @@ static std::vector<std::array<double, 3>> cone_pullback_samples(
 static std::vector<PullbackRun> analytic_cone_pullback(
     const NurbsSurface& srf,
     const RecogSurface& recog,
-    const NurbsCurve& c3d
+    const NurbsCurve& c3d, double tolerance
 ) {
 
     if (recog.kind != RecogSurface::CONE && recog.kind != RecogSurface::CYLINDER)
@@ -5781,7 +6260,7 @@ static std::vector<PullbackRun> analytic_cone_pullback(
     AngleMap lon_map = angle_map(AngleProbe{srf, frame, v_ref, true, false, 0.0, 0.0}, u0, u1);
     std::vector<std::array<double, 3>> uv = cone_pullback_samples(c3d, frame, lon_map, h0, h1, v0, v1);
 
-    return split_pullback_u(uv, u0, range_u);
+    return split_pullback_u(uv, u0, range_u, srf, c3d, tolerance);
 }
 
 /// Period cells of a torus pull-back in (a, b), swapped when a is the surface v.
@@ -6019,16 +6498,16 @@ static std::vector<PullbackRun> analytic_torus_pullback(
 }
 
 /// Analytic pull-back matching the recognized kind: sphere, cone or cylinder, torus.
-static std::vector<PullbackRun> analytic_pullback(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d) {
+static std::vector<PullbackRun> analytic_pullback(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3d, double tolerance) {
 
     if (recog.kind == RecogSurface::TORUS)
         return analytic_torus_pullback(srf, recog, c3d);
 
     if (recog.kind == RecogSurface::SPHERE)
-        return analytic_sphere_pullback(srf, recog, c3d);
+        return analytic_sphere_pullback(srf, recog, c3d, tolerance);
 
     if (recog.kind == RecogSurface::CONE || recog.kind == RecogSurface::CYLINDER)
-        return analytic_cone_pullback(srf, recog, c3d);
+        return analytic_cone_pullback(srf, recog, c3d, tolerance);
 
     return {};
 }
@@ -6060,46 +6539,867 @@ static Point run_point(const PullbackRun& run, double t) {
     return run.uv.back();
 }
 
-/// Samples of the run covering the 3D curve span [lo, hi], empty when none does.
-static std::vector<Point> run_span_points(const std::vector<PullbackRun>& runs, double lo, double hi) {
-
-    const double mid = 0.5 * (lo + hi);
-
+/// Initial samples retain the original world parameter, including wrapped pieces.
+static PullbackRun run_span_samples(const std::vector<PullbackRun>& runs, double lo, double hi) {
     for (const PullbackRun& run : runs) {
-        if (mid < run.ts.front() || mid > run.ts.back())
+        if (run.ts.empty() || run.ts.size() != run.uv.size() || lo < run.ts.front() || hi > run.ts.back())
             continue;
-
-        std::vector<Point> pts{run_point(run, lo)};
-
+        PullbackRun result;
+        result.ts.push_back(lo);
+        result.uv.push_back(run_point(run, lo));
         for (size_t i = 0; i < run.ts.size(); ++i)
-            if (run.ts[i] > lo && run.ts[i] < hi)
-                pts.push_back(run.uv[i]);
-
-        pts.push_back(run_point(run, hi));
-
-        return pts;
+            if (run.ts[i] > lo && run.ts[i] < hi) {
+                result.ts.push_back(run.ts[i]);
+                result.uv.push_back(run.uv[i]);
+            }
+        result.ts.push_back(hi);
+        result.uv.push_back(run_point(run, hi));
+        return result;
     }
-
     return {};
 }
 
-/// Degree-1 pcurve of the runs over [lo, hi]; a span past the domain end wraps onto the start of the closed curve.
-static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain, double lo, double hi) {
-
-    const double period = domain.second - domain.first;
-    std::vector<Point> pts = run_span_points(runs, lo, std::min(hi, domain.second));
-
-    if (hi > domain.second) {
-        std::vector<Point> head = run_span_points(runs, domain.first, hi - period);
-
-        if (!head.empty())
-            pts.insert(pts.end(), head.begin() + 1, head.end());
+// Closest supplies proposals only. The complete same_parameter certificate is
+// the sole acceptance condition, for the entire original world interval.
+static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& world, double parameter,
+                               const Point& seed, const Point& before, const Point& after) {
+    std::array<double, 4> window;
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        const double pad = std::max(std::abs(after[d] - before[d]) * 2, (domain.second - domain.first) * .01);
+        window[2 * d] = std::max(domain.first, seed[d] - pad);
+        window[2 * d + 1] = std::min(domain.second, seed[d] + pad);
     }
+    // Closest's nonpositive window values mean "whole domain". Condition only
+    // this proposal copy so shifted/negative raw charts retain the local window.
+    NurbsSurface proposal = surface;
+    if (!proposal.set_domain(0, 1, 2) || !proposal.set_domain(1, 1, 2))
+        throw std::runtime_error("Analytic pullback could not condition a projection proposal");
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        for (int end = 0; end < 2; ++end)
+            window[2 * d + end] =
+                std::clamp(1 + (window[2 * d + end] - domain.first) / (domain.second - domain.first), 1., 2.);
+    }
+    const auto [u, v, gap] = Closest::surface_point(proposal, world.point_at(parameter), window[0], window[1],
+                                                    window[2], window[3]);
+    if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(gap))
+        throw std::runtime_error("Analytic pullback projection proposal is nonfinite");
+    Point result;
+    const std::array<double, 2> normalized = {u, v};
+    for (int d = 0; d < 2; ++d) {
+        const auto domain = surface.domain(d);
+        result[d] = normalized[d] == 1 ? domain.first
+                    : normalized[d] == 2
+                        ? domain.second
+                        : domain.first + (normalized[d] - 1) * (domain.second - domain.first);
+    }
+    // A clamped projection window cannot cross a closed chart seam. Try the
+    // opposite window, then unwrap its raw coordinates near the original seed.
+    // This is only a proposal: ORIGINAL surface evaluation chooses improvement,
+    // and the unchanged whole-pair certificate decides agreement.
+    const Point target = world.point_at(parameter);
+    double best_gap = surface.point_at(result[0], result[1]).distance(target);
+    for (int d = 0; d < 2; ++d) {
+        const double width = window[2*d+1] - window[2*d];
+        if (!surface.is_closed(d) || !(width > 0 && width < 1))
+            continue;
+        auto opposite = window;
+        if (window[2*d] == 1) {
+            opposite[2*d] = 2-width; opposite[2*d+1] = 2;
+        } else if (window[2*d+1] == 2) {
+            opposite[2*d] = 1; opposite[2*d+1] = 1+width;
+        } else continue;
+        const auto [cu, cv, unused_gap] = Closest::surface_point(
+            proposal, target, opposite[0], opposite[1], opposite[2], opposite[3]);
+        if (!std::isfinite(cu) || !std::isfinite(cv) ||
+            cu < opposite[0] || cu > opposite[1] || cv < opposite[2] || cv > opposite[3])
+            continue;
+        Point candidate;
+        const std::array<double, 2> coordinates{cu, cv};
+        for (int axis = 0; axis < 2; ++axis) {
+            const auto domain = surface.domain(axis);
+            candidate[axis] = std::lerp(domain.first, domain.second, coordinates[axis]-1);
+            if (surface.is_closed(axis))
+                candidate[axis] = unwrap_period(candidate[axis], seed[axis], domain.second-domain.first);
+        }
+        if (!std::isfinite(candidate[0]) || !std::isfinite(candidate[1])) continue;
+        const double candidate_gap = surface.point_at(candidate[0], candidate[1]).distance(target);
+        if (std::isfinite(candidate_gap) && candidate_gap < best_gap) {
+            result = candidate;
+            best_gap = candidate_gap;
+        }
+    }
+    // Closest's stopping accuracy can leave an inserted sample outside the
+    // requested agreement tolerance. One ORIGINAL-chart Newton proposal also
+    // corrects nonperiodic raw endspan aliases; all bounds and proof gates remain.
+    if (std::isfinite(best_gap)) {
+        const auto derivatives = surface.evaluate(result[0], result[1], 1);
+        if (derivatives.size() >= 3) {
+            const Vector residual = target - surface.point_at(result[0], result[1]);
+            int a = 0, b = 1;
+            double determinant = 0;
+            for (int i = 0; i < 3; ++i)
+                for (int j = i + 1; j < 3; ++j) {
+                    const double value = derivatives[2][i]*derivatives[1][j] - derivatives[2][j]*derivatives[1][i];
+                    if (std::isfinite(value) && std::abs(value) > std::abs(determinant)) {
+                        determinant = value; a = i; b = j;
+                    }
+                }
+            if (determinant != 0) {
+                Point candidate = result;
+                candidate[0] += (residual[a]*derivatives[1][b] - residual[b]*derivatives[1][a])/determinant;
+                candidate[1] += (derivatives[2][a]*residual[b] - derivatives[2][b]*residual[a])/determinant;
+                bool bounded = std::isfinite(candidate[0]) && std::isfinite(candidate[1]);
+                for (int d = 0; d < 2; ++d) {
+                    const auto domain = surface.domain(d);
+                    const double pad = std::max(std::abs(after[d]-before[d])*2, (domain.second-domain.first)*.01);
+                    bounded &= candidate[d] >= seed[d]-pad && candidate[d] <= seed[d]+pad;
+                    if (!surface.is_closed(d))
+                        bounded &= candidate[d] >= domain.first && candidate[d] <= domain.second;
+                }
+                if (bounded) {
+                    const double improved_gap = surface.point_at(candidate[0], candidate[1]).distance(target);
+                    if (std::isfinite(improved_gap) && improved_gap < best_gap)
+                        result = candidate;
+                }
+            }
+        }
+    }
+    return result;
+}
 
-    if (pts.size() < 2)
-        return NurbsCurve();
+struct PullbackObservationContext {
+    const NurbsCurve* source;
+    double lo, hi;
+    int side;
+};
+thread_local const PullbackObservationContext* pullback_observation_context = nullptr;
 
-    return NurbsCurve::create(false, 1, pts);
+// A smooth world locus need not have a C2 raw pullback across either source
+// knot chart. These are proposal partitions, not a replacement for certification.
+static std::vector<double> pullback_breaks(const NurbsSurface& surface, const NurbsCurve& world,
+                                          double tolerance) {
+    std::vector<double> cuts = world.get_span_vector();
+    const auto domain = world.domain();
+    for (int d = 0; d < 2; ++d) {
+        const auto knots = surface.get_span_vector(d);
+        for (size_t k = 1; k + 1 < knots.size(); ++k) {
+            const auto iso = surface.iso_curve(1 - d, knots[k]);
+            if (!iso.is_valid())
+                throw std::runtime_error("Analytic pullback chart boundary is invalid");
+            bool constant = true;
+            for (int i = 1; i < iso.cv_count(); ++i)
+                for (int c = 0; c < iso.dimension(); ++c)
+                    constant = constant && nurbs_coincidence::exact_products_equal(
+                        iso.cv(i)[c], iso.weight(0), iso.cv(0)[c], iso.weight(i));
+            // A collapsed isocurve does not supply a usable curve/curve event.
+            // Omitting a proposal split cannot manufacture a Matched result.
+            if (constant)
+                continue;
+            const auto events = curve_intersection::intersect(world, iso, tolerance);
+            if (!events.complete)
+                throw std::runtime_error("Analytic pullback chart crossings unresolved: " + events.failure);
+            for (const auto& point : events.points)
+                cuts.push_back(point.a);
+            for (const auto& common : events.overlaps) {
+                cuts.push_back(common.a0);
+                cuts.push_back(common.a1);
+            }
+        }
+    }
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    if (cuts.empty() || cuts.front() != domain.first || cuts.back() != domain.second || cuts.size() > 4096)
+        throw std::runtime_error("Analytic pullback chart partition exceeds its existing proof range or budget");
+    return cuts;
+}
+
+static NurbsCurve world_denominator_run_proposal(const std::vector<Point>& local,
+                                                 const std::vector<double>& ts,
+                                                 const std::vector<double>& cuts, const Point& origin,
+                                                 const NurbsSurface& surface, const NurbsCurve& world);
+
+// Endpoint jets are interpolation proposals only. The whole original-pair
+// same_parameter certificate below remains the sole acceptance gate.
+static bool pullback_endpoint_jet(const NurbsSurface& surface, const NurbsCurve& world,
+                                  double t, const Point& uv, Vector& jet) {
+    const auto w = world.evaluate(t, 1);
+    const auto s = surface.evaluate(uv[0], uv[1], 1);
+    if (w.size() < 2 || s.size() < 3) return false;
+    // Select the best-conditioned two-coordinate Jacobian minor, avoiding
+    // squared normal equations. Singular/nonfinite proposals retain the old fit.
+    int a = 0, b = 1;
+    double determinant = 0;
+    for (int i = 0; i < 3; ++i)
+        for (int j = i + 1; j < 3; ++j) {
+            const double det = s[2][i] * s[1][j] - s[2][j] * s[1][i];
+            if (std::isfinite(det) && std::abs(det) > std::abs(determinant)) {
+                determinant = det; a = i; b = j;
+            }
+        }
+    if (determinant == 0) return false;
+    const Vector candidate((w[1][a] * s[1][b] - w[1][b] * s[1][a]) / determinant,
+                 (s[2][a] * w[1][b] - s[2][b] * w[1][a]) / determinant, 0);
+    if (!std::isfinite(candidate[0]) || !std::isfinite(candidate[1])) return false;
+    jet = candidate;
+    return true;
+}
+
+static NurbsCurve endpoint_jet_run_proposal(const std::vector<Point>& local, const std::vector<double>& ts,
+                                            const Point& origin, const NurbsSurface& surface,
+                                            const NurbsCurve& world,
+                                            const NurbsCurve* denominator = nullptr) {
+    std::vector<Point> numerator;
+    if (denominator) {
+        numerator = local;
+        for (size_t i = 0; i < numerator.size(); ++i) {
+            const double weight = denominator->point_at(ts[i])[0];
+            if (!(weight > 0) || !std::isfinite(weight))
+                return {};
+            for (int d = 0; d < 3; ++d) {
+                numerator[i][d] *= weight;
+                if (!std::isfinite(numerator[i][d]))
+                    return {};
+            }
+        }
+    }
+    const auto& data = denominator ? numerator : local;
+    NurbsCurve old = NurbsCurve::create_interpolated(data, ts, false);
+    if (!old.is_valid() || local.size() < 3) return old;
+    Vector first = old.evaluate(ts.front(), 1)[1], last = old.evaluate(ts.back(), 1)[1];
+    const auto endpoint = [&](size_t i, Vector& derivative) {
+        Vector uv;
+        if (!pullback_endpoint_jet(surface, world, ts[i], local[i] + (origin - Point()), uv))
+            return false;
+        if (!denominator) {
+            derivative = uv;
+            return true;
+        }
+        const auto weight = denominator->evaluate(ts[i], 1);
+        if (weight.size() < 2 || !(weight[0][0] > 0) || !std::isfinite(weight[0][0]) ||
+            !std::isfinite(weight[1][0]))
+            return false;
+        derivative = uv * weight[0][0] + Vector(local[i][0], local[i][1], local[i][2]) * weight[1][0];
+        return std::isfinite(derivative[0]) && std::isfinite(derivative[1]) && std::isfinite(derivative[2]);
+    };
+    bool changed = false;
+    // Internal split endpoints retain their existing one-sided proposal.
+    if (ts.front() == world.domain_start())
+        changed |= endpoint(0, first);
+    if (ts.back() == world.domain_end())
+        changed |= endpoint(local.size() - 1, last);
+    if (!changed) return old;
+    NurbsCurve proposed = NurbsCurve::create_interpolated_with_end_derivatives(data, ts, first, last);
+    return proposed.is_valid() && proposed.domain() == old.domain() ? proposed : old;
+}
+
+static NurbsCurve interpolated_run_pieces(const std::vector<Point>& local, const std::vector<double>& ts,
+                                          const std::vector<double>& cuts, const Point& origin,
+                                          const NurbsSurface& surface, const NurbsCurve& world,
+                                          const NurbsCurve* denominator = nullptr) {
+    std::vector<Point> cut_uv;
+    for (double t : cuts) {
+        const auto at = std::lower_bound(ts.begin(), ts.end(), t);
+        if (at != ts.end() && *at == t) {
+            cut_uv.push_back(local[static_cast<size_t>(at - ts.begin())]);
+            continue;
+        }
+        if (at == ts.begin() || at == ts.end())
+            throw std::runtime_error("Analytic pullback chart split lost its raw sample bracket");
+        const size_t i = static_cast<size_t>(at - ts.begin());
+        const double fraction = (t - ts[i - 1]) / (ts[i] - ts[i - 1]);
+        const Point before = local[i - 1] + (origin - Point());
+        const Point after = local[i] + (origin - Point());
+        const Point seed = before + (after - before) * fraction;
+        const Point projected = pullback_proposal(surface, world, t, seed, before, after);
+        cut_uv.push_back(projected - (origin - Point()));
+    }
+    std::vector<Point> controls;
+    std::vector<double> knots;
+    for (size_t k = 1; k < cuts.size(); ++k) {
+        std::vector<double> parameters{cuts[k - 1]};
+        std::vector<Point> points{cut_uv[k - 1]};
+        // Keep both exact chart endpoints. Interior samples are proposals,
+        // and a nearly coincident sample must not invalidate the raw-parameter
+        // interpolator's unchanged spacing condition.
+        const double minimum_step = (cuts[k] - cuts[k - 1]) * 1.490116119385e-8;
+        for (size_t i = 0; i < ts.size(); ++i)
+            if (ts[i] > cuts[k - 1] && ts[i] < cuts[k] &&
+                ts[i] - parameters.back() > minimum_step && cuts[k] - ts[i] > minimum_step) {
+                parameters.push_back(ts[i]);
+                points.push_back(local[i]);
+            }
+        parameters.push_back(cuts[k]);
+        points.push_back(cut_uv[k]);
+        NurbsCurve piece = endpoint_jet_run_proposal(points, parameters, origin, surface, world, denominator);
+        if (!piece.is_valid())
+            if (const char* path = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE"); path && *path)
+                try {
+                    auto uv = nlohmann::ordered_json::array();
+                    for (const auto& point : points) uv.push_back({point[0], point[1], point[2]});
+                    double minimum = std::numeric_limits<double>::infinity(), maximum = 0;
+                    for (size_t i = 1; i < parameters.size(); ++i) {
+                        minimum = std::min(minimum, parameters[i] - parameters[i - 1]);
+                        maximum = std::max(maximum, parameters[i] - parameters[i - 1]);
+                    }
+                    const nlohmann::ordered_json row = {
+                        {"schema", "native_analytic_pullback_short_piece_failure_v1"},
+                        {"stage", "interpolated_run_pieces_constructor_invalid"},
+                        {"piece_index", k - 1}, {"piece_range", {cuts[k - 1], cuts[k]}},
+                        {"parameters", parameters}, {"local_uv", uv}, {"chart_cuts", cuts},
+                        {"origin", {origin[0], origin[1], origin[2]}},
+                        {"minimum_parameter_step", minimum}, {"maximum_parameter_step", maximum},
+                        {"constructor_step_factor", 1.490116119385e-8},
+                        {"constructor_scaled_maximum_step", maximum * 1.490116119385e-8},
+                        {"returned_order", piece.order()}, {"returned_cv_count", piece.cv_count()},
+                        {"world", world.jsondump()}, {"surface", surface.jsondump()}};
+                    std::ofstream output(path, std::ios::app | std::ios::binary);
+                    if (!output || !(output << row.dump() << '\n'))
+                        throw std::runtime_error("Cannot append analytic short-piece failure observation");
+                    output.flush();
+                    if (!output) throw std::runtime_error("Cannot flush analytic short-piece failure observation");
+                    output.close();
+                    if (!output) throw std::runtime_error("Cannot close analytic short-piece failure observation");
+                } catch (const std::exception& error) {
+                    std::cerr << "Analytic short-piece observation failed: " << error.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "Analytic short-piece observation failed with unknown error" << std::endl;
+                }
+        if (piece.degree() < 3 && !piece.increase_degree(3))
+            throw std::runtime_error("Analytic pullback could not promote a short raw chart piece");
+        if (!piece.is_valid() || piece.domain() != std::pair<double, double>(cuts[k - 1], cuts[k])) {
+            if (const char* path = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE"); path && *path)
+                try {
+                    auto uv = nlohmann::ordered_json::array();
+                    for (const auto& point : points) uv.push_back({point[0],point[1],point[2]});
+                    const nlohmann::ordered_json row = {
+                        {"schema","native_analytic_pullback_piece_domain_failure_v1"},
+                        {"piece_index",k-1}, {"requested_domain",{cuts[k-1],cuts[k]}},
+                        {"parameters",parameters}, {"local_uv",uv}, {"chart_cuts",cuts},
+                        {"origin",{origin[0],origin[1],origin[2]}},
+                        {"piece",piece.jsondump()}, {"world",world.jsondump()}, {"surface",surface.jsondump()}};
+                    std::ofstream output(path,std::ios::app|std::ios::binary);
+                    if (!output || !(output << row.dump() << '\n'))
+                        throw std::runtime_error("Cannot append analytic piece-domain observation");
+                    output.flush();
+                    if (!output) throw std::runtime_error("Cannot flush analytic piece-domain observation");
+                    output.close();
+                    if (!output) throw std::runtime_error("Cannot close analytic piece-domain observation");
+                } catch (const std::exception& error) {
+                    std::cerr << "Analytic piece-domain observation failed: " << error.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "Analytic piece-domain observation failed with unknown error" << std::endl;
+                }
+            throw std::runtime_error("Analytic pullback interpolation changed a raw chart piece");
+        }
+        if (!controls.empty())
+            for (int d = 0; d < 3; ++d)
+                if (controls.back()[d] != piece.get_cv(0)[d])
+                    throw std::runtime_error("Analytic pullback chart pieces lost their exact shared endpoint");
+        const bool first = controls.empty();
+        for (int i = first ? 0 : 1; i < piece.cv_count(); ++i)
+            controls.push_back(piece.get_cv(i));
+        knots.insert(knots.end(), piece.m_nurbsknot.begin() + (first ? 0 : 3), piece.m_nurbsknot.end());
+        if (controls.size() > 32770)
+            throw std::runtime_error("Analytic pullback piece control budget exceeded");
+    }
+    NurbsCurve result(3, false, 4, static_cast<int>(controls.size()));
+    result.m_nurbsknot = std::move(knots);
+    for (size_t i = 0; i < controls.size(); ++i)
+        if (!result.set_cv(static_cast<int>(i), controls[i]))
+            throw std::runtime_error("Analytic pullback could not store its piece controls");
+    return result;
+}
+
+// Batch refinement proposals from the current fit, retaining the whole-pair
+// certificate failure. Every next fit still needs the unchanged whole proof.
+static bool refine_pullback_failure(PullbackRun& samples,
+                                    const curve_surface_intersection::ParameterFailure& failure,
+                                    const NurbsSurface& surface, const NurbsCurve& world,
+                                    const NurbsCurve& candidate, double tolerance) {
+    using Failure = curve_surface_intersection::ParameterFailure;
+    if (!failure.has_interval || samples.ts.size() < 2 ||
+        (failure.kind != Failure::Kind::PointResidual && failure.kind != Failure::Kind::RefinementLimit))
+        return false;
+    const double target = failure.has_point
+                              ? failure.curve_point
+                              : std::midpoint(failure.curve_interval.first, failure.curve_interval.second);
+    if (!std::isfinite(target) || target < samples.ts.front() || target > samples.ts.back())
+        return false;
+    const size_t bracket =
+        std::clamp(static_cast<size_t>(std::upper_bound(samples.ts.begin(), samples.ts.end(), target) -
+                                       samples.ts.begin()),
+                   size_t{1}, samples.ts.size() - 1);
+    std::vector<bool> selected(samples.ts.size(), false);
+    // A certificate reports its FIRST failure, not every region needing a better
+    // proposal. Scan the whole current fit before spending another proof attempt.
+    // These floating point probes select refinements; they NEVER accept geometry.
+    for (size_t i = 1; i < samples.ts.size(); ++i) {
+        const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+        const double probes[] = {std::midpoint(samples.ts[i - 1], middle), middle,
+                                 std::midpoint(middle, samples.ts[i])};
+        for (double t : probes) {
+            if (!(t > samples.ts[i - 1] && t < samples.ts[i]))
+                continue;
+            const Point uv = candidate.point_at(t);
+            const double gap = world.point_at(t).distance(surface.point_at(uv[0], uv[1]));
+            if (!std::isfinite(gap) || gap > tolerance * .25) {
+                selected[i] = true;
+                break;
+            }
+        }
+    }
+    // Retain the certified failure and neighbors even when a narrow error escaped
+    // the proposal probes. All unselected intervals are checked again next time.
+    for (size_t i = bracket > 1 ? bracket - 1 : 1; i <= std::min(bracket + 1, samples.ts.size() - 1); ++i)
+        selected[i] = true;
+    const size_t count = static_cast<size_t>(std::count(selected.begin(), selected.end(), true));
+    if (samples.ts.size() + count > 32768)
+        return false;
+    for (size_t i = 1; i < samples.ts.size(); ++i) {
+        if (!selected[i])
+            continue;
+        const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+        if (!(middle > samples.ts[i - 1] && middle < samples.ts[i]))
+            return false;
+    }
+    PullbackRun refined;
+    refined.ts.reserve(samples.ts.size() + count);
+    refined.uv.reserve(samples.uv.size() + count);
+    refined.ts.push_back(samples.ts.front());
+    refined.uv.push_back(samples.uv.front());
+    for (size_t i = 1; i < samples.ts.size(); ++i) {
+        if (selected[i]) {
+            const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+            const Point seed = samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * .5;
+            refined.ts.push_back(middle);
+            refined.uv.push_back(
+                pullback_proposal(surface, world, middle, seed, samples.uv[i - 1], samples.uv[i]));
+        }
+        refined.ts.push_back(samples.ts[i]);
+        refined.uv.push_back(samples.uv[i]);
+    }
+    samples = std::move(refined);
+    return true;
+}
+
+// Local higher-order proposals preserve every raw chart/world join. Derivatives
+// are one-sided proposals only; the original whole same_parameter is mandatory.
+static NurbsCurve quintic_run_proposal(const PullbackRun& samples, const std::vector<double>& cuts,
+                                       const NurbsSurface& surface, const NurbsCurve& world) {
+    std::vector<double> parameters = samples.ts;
+    const double first = parameters.front(), last = parameters.back();
+    for (double t : cuts)
+        if (t > first && t < last)
+            parameters.push_back(t);
+    for (double t : world.m_nurbsknot)
+        if (t > first && t < last)
+            parameters.push_back(t);
+    std::sort(parameters.begin(), parameters.end());
+    parameters.erase(std::unique(parameters.begin(), parameters.end()), parameters.end());
+    if (parameters.size() < 2 || parameters.size() - 1 > 4096)
+        return {};
+    std::vector<Point> values;
+    values.reserve(parameters.size());
+    for (double t : parameters) {
+        const auto at = std::lower_bound(samples.ts.begin(), samples.ts.end(), t);
+        const size_t i = static_cast<size_t>(at - samples.ts.begin());
+        if (at != samples.ts.end() && *at == t)
+            values.push_back(samples.uv[i]);
+        else {
+            if (i == 0 || i == samples.ts.size())
+                return {};
+            const double f = (t - samples.ts[i - 1]) / (samples.ts[i] - samples.ts[i - 1]);
+            const Point seed = samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * f;
+            values.push_back(pullback_proposal(surface, world, t, seed, samples.uv[i - 1], samples.uv[i]));
+        }
+    }
+    const auto jets = [&](size_t i, size_t toward, Vector& first, Vector& second) {
+        const double t = std::nextafter(parameters[i], parameters[toward]);
+        const double u = std::nextafter(values[i][0], values[toward][0]);
+        const double v = std::nextafter(values[i][1], values[toward][1]);
+        const auto w = world.evaluate(t, 2), s = surface.evaluate(u, v, 2);
+        if (w.size() < 3 || s.size() < 6)
+            return false;
+        // evaluate(...,2) order is S,Sv,Svv,Su,Suv,Suu.
+        const Vector& su = s[3];
+        const Vector& sv = s[1];
+        int a = 0, b = 1;
+        double determinant = 0;
+        for (int x = 0; x < 3; ++x)
+            for (int y = x + 1; y < 3; ++y) {
+                const double det = su[x] * sv[y] - su[y] * sv[x];
+                if (std::isfinite(det) && std::abs(det) > std::abs(determinant)) {
+                    determinant = det;
+                    a = x;
+                    b = y;
+                }
+            }
+        if (determinant == 0)
+            return false;
+        const auto solve = [&](const Vector& rhs) {
+            return Vector((rhs[a] * sv[b] - rhs[b] * sv[a]) / determinant,
+                          (su[a] * rhs[b] - su[b] * rhs[a]) / determinant, 0);
+        };
+        first = solve(w[1]);
+        second = solve(w[2] - s[5] * (first[0] * first[0]) - s[4] * (2 * first[0] * first[1]) -
+                       s[2] * (first[1] * first[1]));
+        for (int d = 0; d < 3; ++d)
+            if (!std::isfinite(first[d]) || !std::isfinite(second[d]))
+                return false;
+        return true;
+    };
+    std::vector<nurbs_hermite::QuinticSpan> spans;
+    spans.reserve(parameters.size() - 1);
+    for (size_t i = 1; i < parameters.size(); ++i) {
+        Vector da, db, dda, ddb;
+        if (!jets(i - 1, i, da, dda) || !jets(i, i - 1, db, ddb))
+            return {};
+        spans.push_back({parameters[i - 1], parameters[i], values[i - 1], values[i], da, db, dda, ddb});
+    }
+    return nurbs_hermite::quintic(spans);
+}
+
+// Scores rank proposals only, never certify an unprobed interval or return a fit.
+static double pullback_proposal_score(const NurbsCurve& candidate, const PullbackRun& samples,
+                                      const NurbsSurface& surface, const NurbsCurve& world) {
+    double score = 0;
+    for (size_t i = 1; i < samples.ts.size(); ++i) {
+        const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+        for (double t :
+             {std::midpoint(samples.ts[i - 1], middle), middle, std::midpoint(middle, samples.ts[i])}) {
+            const Point uv = candidate.point_at(t);
+            const double gap = world.point_at(t).distance(surface.point_at(uv[0], uv[1]));
+            if (!std::isfinite(gap))
+                return std::numeric_limits<double>::infinity();
+            score = std::max(score, gap);
+        }
+    }
+    return score;
+}
+
+// A collapsed original support boundary admits many UV endpoint aliases.
+// Select the adjacent one-sided chart only as a proposal; the whole-pair gate remains mandatory.
+static void collapsed_boundary_endpoint_proposal(const NurbsSurface& surface, const NurbsCurve& world,
+                                                 PullbackRun& samples, double tolerance) {
+    if (samples.ts.size() < 2 || samples.ts.size() != samples.uv.size())
+        return;
+    for (const bool last : {false, true}) {
+        const size_t index = last ? samples.ts.size() - 1 : 0;
+        const Point endpoint = world.point_at(samples.ts[index]);
+        for (int varying = 0; varying < 2; ++varying) {
+            const int fixed = 1 - varying;
+            const auto fixed_domain = surface.domain(fixed), variable_domain = surface.domain(varying);
+            const double boundary = samples.uv[index][fixed];
+            size_t neighbor = index;
+            while (last ? neighbor > 0 : neighbor + 1 < samples.ts.size()) {
+                neighbor = last ? neighbor - 1 : neighbor + 1;
+                if (samples.uv[neighbor][fixed] != boundary)
+                    break; // A second sample on the same collapsed row has no preferred alias either.
+            }
+            if ((boundary != fixed_domain.first && boundary != fixed_domain.second) ||
+                samples.uv[neighbor][fixed] == boundary ||
+                !std::isfinite(samples.uv[neighbor][fixed]) ||
+                samples.uv[neighbor][fixed] < fixed_domain.first ||
+                samples.uv[neighbor][fixed] > fixed_domain.second ||
+                !std::isfinite(samples.uv[neighbor][varying]) ||
+                samples.uv[neighbor][varying] < variable_domain.first ||
+                samples.uv[neighbor][varying] > variable_domain.second)
+                continue;
+            std::array<double,4> rectangle{variable_domain.first,variable_domain.second,boundary,boundary};
+            if (varying == 1)
+                rectangle = {boundary,boundary,variable_domain.first,variable_domain.second};
+            nurbs_interval::SurfaceBounds bounds;
+            if (!nurbs_interval::surface_bounds(surface,rectangle,
+                    {endpoint[0],endpoint[1],endpoint[2]},bounds,false))
+                continue;
+            nurbs_interval::Interval squared;
+            bool finite = true;
+            for (const auto coordinate : bounds.point) {
+                finite = finite && nurbs_interval::finite(coordinate);
+                const nurbs_interval::Interval magnitude(nurbs_interval::magnitude(coordinate));
+                squared = squared + magnitude * magnitude;
+            }
+            const nurbs_interval::Interval radius(tolerance * .25);
+            const auto allowed = radius * radius;
+            if (finite && nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) &&
+                squared.hi <= allowed.lo)
+                samples.uv[index][varying] = samples.uv[neighbor][varying];
+        }
+    }
+}
+
+static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCurve& world,
+                                      PullbackRun samples, double tolerance) {
+    if (samples.ts.size() > 32768)
+        throw std::runtime_error("Analytic pullback initial sample budget exceeded");
+    if (samples.ts.size() < 2 || samples.ts.size() != samples.uv.size() ||
+        samples.ts.front() != world.domain_start() || samples.ts.back() != world.domain_end())
+        throw std::runtime_error("Analytic pullback samples lost their original world parameter range");
+    for (size_t i = 0; i < samples.ts.size(); ++i)
+        if (!std::isfinite(samples.ts[i]) || (i && samples.ts[i] <= samples.ts[i - 1]))
+            throw std::runtime_error("Analytic pullback raw parameters are not strictly ordered");
+    collapsed_boundary_endpoint_proposal(surface,world,samples,tolerance);
+    // Preserve a valid analytic parameter law, including collapsed chart aliases
+    // and original endspan extensions, before Closest can replace its proposals.
+    NurbsCurve affine_seed(3, false, 2, 2);
+    affine_seed.m_nurbsknot = {world.domain_start(), world.domain_end()};
+    affine_seed.set_cv(0, samples.uv.front());
+    affine_seed.set_cv(1, samples.uv.back());
+    std::string affine_diagnostic;
+    const auto affine_match = curve_surface_intersection::same_parameter(
+        world, affine_seed, surface, tolerance, &affine_diagnostic);
+    if (affine_match == curve_surface_intersection::ParameterMatch::Matched)
+        return affine_seed;
+    const int prefix_attempts = 1; // Consumes one of the existing 20 proof attempts.
+    const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
+    const bool observing = capture && *capture;
+    const PullbackRun original_samples = observing ? samples : PullbackRun{};
+    for (size_t i = 0; i < samples.ts.size(); ++i) {
+        const auto before = samples.uv[i ? i - 1 : i],
+                   after = samples.uv[std::min(i + 1, samples.uv.size() - 1)];
+        samples.uv[i] = pullback_proposal(surface, world, samples.ts[i], samples.uv[i], before, after);
+    }
+    const PullbackRun projected_samples = observing ? samples : PullbackRun{};
+    NurbsCurve first_fit, final_fit;
+    bool has_first_fit = false;
+    std::vector<nlohmann::ordered_json> history;
+    std::vector<double> chart_cuts; // Recover only after an actual certificate failure.
+    std::string diagnostic;
+    for (int iteration = 0; iteration < 20 && samples.ts.size() <= 32768; ++iteration) {
+        if (iteration + prefix_attempts >= 20)
+            break;
+        const Point origin = samples.uv.front();
+        std::vector<Point> local = samples.uv;
+        for (auto& point : local)
+            for (int d = 0; d < 3; ++d)
+                point[d] -= origin[d];
+        NurbsCurve result;
+        if (iteration > 0)
+            result = world_denominator_run_proposal(local, samples.ts, chart_cuts, origin, surface, world);
+        if (!result.is_valid())
+            result = chart_cuts.empty()
+                         ? endpoint_jet_run_proposal(local, samples.ts, origin, surface, world)
+                         : interpolated_run_pieces(local, samples.ts, chart_cuts, origin, surface, world);
+        // Independent local Hermite spans do not solve an ill-conditioned
+        // global interpolation system. Preserve ALL raw nodes, even tiny spans;
+        // the same whole-pair certificate below still decides acceptance.
+        const bool interpolation_invalid = !result.is_valid() || result.domain() != world.domain();
+        if (interpolation_invalid)
+            result = quintic_run_proposal(samples, chart_cuts, surface, world);
+        if (!result.is_valid() || result.domain() != world.domain()) {
+            observe_analytic_route_failure([&] { return nlohmann::ordered_json{
+                {"schema","analytic_route_failure_v1"},{"stage","constructor_raw_range"},
+                {"world",world.jsondump()},{"surface",surface.jsondump()},{"tolerance",tolerance},
+                {"iteration",iteration},{"samples",raw_run_observation(samples)},{"chart_cuts",chart_cuts},
+                {"local_origin",{origin[0],origin[1],origin[2]}},{"candidate",result.jsondump()}}; });
+            throw std::runtime_error(
+                "Analytic pullback interpolation changed the original raw parameter range");
+        }
+        if (!interpolation_invalid)
+            for (int i = 0; i < result.cv_count(); ++i)
+                for (int d = 0; d < 3; ++d)
+                    result.cv(i)[d] += result.is_rational() ? origin[d] * result.weight(i) : origin[d];
+        if (iteration > 0 && !interpolation_invalid) {
+            NurbsCurve higher = quintic_run_proposal(samples, chart_cuts, surface, world);
+            if (higher.is_valid() && higher.domain() == world.domain() &&
+                pullback_proposal_score(higher, samples, surface, world) <
+                    pullback_proposal_score(result, samples, surface, world))
+                result = std::move(higher);
+        }
+        if (observing && !has_first_fit) {
+            first_fit = result;
+            has_first_fit = true;
+        }
+        if (observing) final_fit = result;
+        curve_surface_intersection::ParameterFailure failure;
+        curve_surface_intersection::parameter_diagnostics::Partition partition;
+        const auto match = [&]() {
+            using namespace curve_surface_intersection::parameter_diagnostics;
+            struct Restore { Partition* previous; ~Restore() { active = previous; } } restore{active};
+            if (observing) active = &partition;
+            return curve_surface_intersection::same_parameter(world, result, surface, tolerance, &diagnostic, &failure);
+        }();
+        if (observing)
+            history.push_back({{"iteration", iteration},
+                               {"samples", samples.ts.size()},
+                               {"pcurve_cv_count", result.cv_count()},
+                               {"rational_pcurve_proposal", result.is_rational()},
+                               {"match", static_cast<int>(match)},
+                               {"diagnostic", diagnostic},
+                               {"failure_kind", static_cast<int>(failure.kind)},
+                               {"has_interval", failure.has_interval},
+                               {"has_point", failure.has_point},
+                               {"raw_curve_interval", failure.curve_interval},
+                               {"raw_pcurve_interval", failure.pcurve_interval},
+                               {"raw_curve_point", failure.curve_point},
+                               {"partition_calls", partition.calls},
+                               {"normalized", partition.normalized},
+                               {"cuts", partition.cuts},
+                               {"world_spans", partition.world_spans},
+                               {"pcurve_spans", partition.pcurve_spans}});
+        if (match == curve_surface_intersection::ParameterMatch::Matched)
+            return result;
+        if (chart_cuts.empty()) {
+            chart_cuts = pullback_breaks(surface, world, tolerance);
+            if (chart_cuts.size() > 2)
+                continue; // Retry the SAME samples at the newly observed chart breaks.
+        }
+        if (refine_pullback_failure(samples, failure, surface, world, result, tolerance))
+            continue; // Same outer attempt budget; the next WHOLE certificate is mandatory.
+        if (samples.ts.size() * 2 - 1 > 32768)
+            break;
+        PullbackRun refined;
+        refined.ts.push_back(samples.ts.front());
+        refined.uv.push_back(samples.uv.front());
+        for (size_t i = 1; i < samples.ts.size(); ++i) {
+            const double middle = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+            if (middle == samples.ts[i - 1] || middle == samples.ts[i])
+                throw std::runtime_error("Analytic pullback refinement is below raw parameter resolution");
+            const Point seed = samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * .5;
+            refined.ts.push_back(middle);
+            refined.uv.push_back(
+                pullback_proposal(surface, world, middle, seed, samples.uv[i - 1], samples.uv[i]));
+            refined.ts.push_back(samples.ts[i]);
+            refined.uv.push_back(samples.uv[i]);
+        }
+        samples = std::move(refined);
+    }
+    if (observing)
+        try {
+            const auto points = [](const std::vector<Point>& values) {
+                auto rows = nlohmann::ordered_json::array();
+                for (const auto& p : values) rows.push_back({p[0], p[1], p[2]});
+                return rows;
+            };
+            auto endpoints = nlohmann::ordered_json::array();
+            if (has_first_fit)
+                for (int end = 0; end < 2; ++end) {
+                    const auto t = end ? world.domain_end() : world.domain_start();
+                    const auto uv = first_fit.point_at(t);
+                    const auto w = world.point_at(t);
+                    const auto lift = surface.point_at(uv[0], uv[1]);
+                    endpoints.push_back({{"parameter", t}, {"world", {w[0], w[1], w[2]}},
+                        {"uv", {uv[0], uv[1]}}, {"lift", {lift[0], lift[1], lift[2]}},
+                        {"sampled_gap_not_certificate", w.distance(lift)}});
+                }
+            const nlohmann::ordered_json row = {{"schema", "native_analytic_pullback_failure_v1"},
+                {"tolerance", tolerance}, {"failure", diagnostic}, {"history", history},
+                {"affine_seed_match", static_cast<int>(affine_match)}, {"affine_seed_diagnostic", affine_diagnostic},
+                {"world", world.jsondump()}, {"surface", surface.jsondump()},
+                {"source_world", pullback_observation_context ? pullback_observation_context->source->jsondump() : nlohmann::ordered_json(nullptr)},
+                {"source_requested", pullback_observation_context ? nlohmann::ordered_json({pullback_observation_context->lo, pullback_observation_context->hi}) : nlohmann::ordered_json(nullptr)},
+                {"source_side", pullback_observation_context ? pullback_observation_context->side : -1},
+                {"first_pcurve", has_first_fit ? first_fit.jsondump() : nlohmann::ordered_json(nullptr)},
+                {"final_pcurve", has_first_fit ? final_fit.jsondump() : nlohmann::ordered_json(nullptr)},
+                {"original_parameters", original_samples.ts}, {"original_uv", points(original_samples.uv)},
+                {"projected_parameters", projected_samples.ts}, {"projected_uv", points(projected_samples.uv)},
+                {"first_endpoints_diagnostic_only", endpoints},
+                {"final_samples", samples.ts.size()}, {"geometry_contract", "FIRST and FINAL fitted PC; intermediate iterations metadata only"}};
+            std::ofstream output(capture, std::ios::app | std::ios::binary);
+            if (!output || !(output << row.dump() << '\n'))
+                throw std::runtime_error("Cannot append analytic pullback failure observation");
+            output.flush();
+            if (!output) throw std::runtime_error("Cannot flush analytic pullback failure observation");
+            output.close();
+            if (!output) throw std::runtime_error("Cannot close analytic pullback failure observation");
+        } catch (const std::exception& capture_error) {
+            std::cerr << "Analytic pullback observation failed: " << capture_error.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Analytic pullback observation failed with unknown error" << std::endl;
+        }
+    throw std::runtime_error("Analytic pullback did not obtain a complete paired-parameter certificate: " +
+                             diagnostic);
+}
+
+// Reuse the original rational world denominator as a proposal basis, rather
+// than forcing its quotient parameter law into a nonrational cubic.
+static NurbsCurve world_denominator_run_proposal(const std::vector<Point>& local,
+                                                 const std::vector<double>& ts,
+                                                 const std::vector<double>& cuts, const Point& origin,
+                                                 const NurbsSurface& surface, const NurbsCurve& world) {
+    if (!world.is_rational() || world.degree() > 3 || world.degree() < 1)
+        return {};
+    try {
+        NurbsCurve weight(3, false, world.order(), world.cv_count());
+        weight.m_nurbsknot = world.m_nurbsknot;
+        for (int i = 0; i < world.cv_count(); ++i) {
+            const double value = world.weight(i);
+            if (!(value > 0) || !std::isfinite(value) || !weight.set_cv(i, {value, 0, 0}))
+                return {};
+        }
+        NurbsCurve numerator =
+            cuts.empty() ? endpoint_jet_run_proposal(local, ts, origin, surface, world, &weight)
+                         : interpolated_run_pieces(local, ts, cuts, origin, surface, world, &weight);
+        if (!numerator.is_valid() || numerator.is_rational() || numerator.degree() > 3 ||
+            numerator.domain() != world.domain())
+            return {};
+        if (numerator.degree() < 3 && !numerator.increase_degree(3))
+            return {};
+        if (weight.degree() < 3 && !weight.increase_degree(3))
+            return {};
+        if (!weight.is_valid() || weight.domain() != world.domain())
+            return {};
+        std::vector<double> knots = numerator.m_nurbsknot;
+        knots.insert(knots.end(), weight.m_nurbsknot.begin(), weight.m_nurbsknot.end());
+        std::sort(knots.begin(), knots.end());
+        knots.erase(std::unique(knots.begin(), knots.end()), knots.end());
+        for (double knot : knots) {
+            const int a = static_cast<int>(
+                std::count(numerator.m_nurbsknot.begin(), numerator.m_nurbsknot.end(), knot));
+            const int b =
+                static_cast<int>(std::count(weight.m_nurbsknot.begin(), weight.m_nurbsknot.end(), knot));
+            const int multiplicity = std::max(a, b);
+            if (a < multiplicity && !numerator.insert_nurbsknot(knot, multiplicity))
+                return {};
+            if (b < multiplicity && !weight.insert_nurbsknot(knot, multiplicity))
+                return {};
+            if (numerator.cv_count() > 32770 || weight.cv_count() > 32770)
+                return {};
+        }
+        if (numerator.m_nurbsknot != weight.m_nurbsknot || numerator.cv_count() != weight.cv_count())
+            return {};
+        NurbsCurve result(3, true, 4, numerator.cv_count());
+        result.m_nurbsknot = numerator.m_nurbsknot;
+        for (int i = 0; i < result.cv_count(); ++i) {
+            const double w = weight.cv(i)[0];
+            const auto point = numerator.get_cv(i);
+            for (int d = 0; d < 3; ++d)
+                if (!std::isfinite(point[d]))
+                    return {};
+            if (!(w > 0) || !std::isfinite(w) || !result.set_cv_4d(i, point[0], point[1], point[2], w))
+                return {};
+        }
+        return result.is_valid() && result.domain() == world.domain() ? result : NurbsCurve{};
+    } catch (const std::exception&) {
+        return {}; // A failed optional proposal cannot manufacture a certificate.
+    }
+}
+
+static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain,
+                           const NurbsSurface& surface, const NurbsCurve& world, double tolerance) {
+    const double lo = world.domain_start(), hi = world.domain_end(), period = domain.second - domain.first;
+    PullbackRun samples = run_span_samples(runs, lo, std::min(hi, domain.second));
+    if (hi > domain.second) {
+        const PullbackRun head = run_span_samples(runs, domain.first, hi - period);
+        if (samples.ts.empty() || head.ts.empty()) {
+            observe_analytic_route_failure([&] {
+                auto all=nlohmann::ordered_json::array();
+                for (const auto& run:runs) all.push_back(raw_run_observation(run));
+                return nlohmann::ordered_json{{"schema","analytic_route_failure_v1"},{"stage","wrapped_raw_range"},
+                    {"world",world.jsondump()},{"surface",surface.jsondump()},{"tolerance",tolerance},
+                    {"source_domain",domain},{"requested",{lo,hi}},{"period",period},{"runs",all},
+                    {"tail",raw_run_observation(samples)},{"head",raw_run_observation(head)}};
+            });
+            throw std::runtime_error("Analytic pullback could not preserve a wrapped raw parameter range");
+        }
+        for (size_t i = 1; i < head.ts.size(); ++i) {
+            samples.ts.push_back(head.ts[i] + period);
+            samples.uv.push_back(head.uv[i]);
+        }
+    }
+    return certified_run_curve(surface, world, std::move(samples), tolerance);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6821,12 +8121,8 @@ static void ssi_sphere_sphere(const RecogSurface& ra, const RecogSurface& rb, st
 }
 
 /// Exact sections of a plane with a recognized surface; false when the case is not analytic.
-static bool plane_section_curves(
-    const RecogSurface& plane,
-    const NurbsSurface& srf,
-    const RecogSurface& rs,
-    std::vector<NurbsCurve>& out
-) {
+static bool plane_section_curves(const RecogSurface& plane, const NurbsSurface& srf, const RecogSurface& rs,
+                                 std::vector<NurbsCurve>& out, double tolerance) {
 
     NurbsCurve c3;
 
@@ -6845,7 +8141,7 @@ static bool plane_section_curves(
     }
 
     if (rs.kind == RecogSurface::CONE)
-        return ssi_plane_cone(plane, rs, srf, out);
+        return ssi_plane_cone(plane, rs, srf, out, tolerance);
 
     return ssi_plane_torus(plane, rs, out);
 }
@@ -6914,13 +8210,8 @@ static bool quadric_section_curves(
 }
 
 /// Exact 3D sections of two recognized surfaces; false when the pair is not analytic.
-static bool analytic_curves(
-    const NurbsSurface& a,
-    const RecogSurface& ra,
-    const NurbsSurface& b,
-    const RecogSurface& rb,
-    std::vector<NurbsCurve>& out
-) {
+static bool analytic_curves(const NurbsSurface& a, const RecogSurface& ra, const NurbsSurface& b,
+                            const RecogSurface& rb, std::vector<NurbsCurve>& out, double tolerance) {
 
     if (ra.kind == RecogSurface::PLANE && rb.kind == RecogSurface::PLANE) {
         bool empty = false;
@@ -6932,21 +8223,21 @@ static bool analytic_curves(
     }
 
     if (ra.kind == RecogSurface::PLANE)
-        return plane_section_curves(ra, b, rb, out);
+        return plane_section_curves(ra, b, rb, out, tolerance);
 
     if (rb.kind == RecogSurface::PLANE)
-        return plane_section_curves(rb, a, ra, out);
+        return plane_section_curves(rb, a, ra, out, tolerance);
 
     return quadric_section_curves(a, ra, b, rb, out);
 }
 
 /// Pull-back runs of an exact section on one recognized surface, empty when the analytic pcurve applies.
-static std::vector<PullbackRun> analytic_side_runs(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3) {
+static std::vector<PullbackRun> analytic_side_runs(const NurbsSurface& srf, const RecogSurface& recog, const NurbsCurve& c3, double tolerance) {
 
     if (analytic_pcurve(srf, recog, c3).is_valid())
         return {};
 
-    return analytic_pullback(srf, recog, c3);
+    return analytic_pullback(srf, recog, c3, tolerance);
 }
 
 /// One recognized surface of an exact section with the pull-back runs of the section curve.
@@ -6957,26 +8248,123 @@ struct SectionSide {
 };
 
 /// Pcurve of the piece over [lo, hi] of a section curve with this domain: its pull-back runs, else analytic, then projected.
-static NurbsCurve analytic_side_pcurve(
-    const SectionSide& side,
-    const NurbsCurve& piece,
-    const std::pair<double, double>& domain,
-    double lo,
-    double hi
-) {
-
-    if (!side.runs.empty())
-        return run_span(side.runs, domain, lo, hi);
-
-    NurbsCurve pc = analytic_pcurve(side.srf, side.recog, piece);
-
-    if (!pc.is_valid()) {
-        std::vector<NurbsCurve> v = Closest::surface_curve(side.srf, piece);
-
-        if (!v.empty())
-            pc = v[0];
+// Latitude recognizers provide the constant coordinate, not the section's
+// phase or orientation. Scores choose proposals only; the whole-pair gate below
+// certifies every returned chart trace, including both sides of UV seam jumps.
+static NurbsCurve latitude_raw_proposal(const NurbsCurve& pc, const NurbsCurve& source,
+    const NurbsSurface& surface, double lo, double hi) {
+    if (!pc.is_valid() || pc.is_rational() || pc.degree()!=1 || pc.cv_count()!=2)
+        return {};
+    const Point a=pc.get_cv(0), b=pc.get_cv(1);
+    const int varying=a[0]!=b[0] && a[1]==b[1] ? 0 : a[1]!=b[1] && a[0]==b[0] ? 1 : -1;
+    if (varying<0 || !surface.is_closed(varying)) return {};
+    const auto domain=surface.domain(varying);
+    if (a[varying]!=domain.first || b[varying]!=domain.second) return {};
+    const double width=domain.second-domain.first;
+    const double period=source.domain_end()-source.domain_start();
+    if (!(width>0 && period>0)) return {};
+    const auto wrapped=[&](double value) {
+        return value-width*std::floor((value-domain.first)/width);
+    };
+    double best=std::numeric_limits<double>::infinity(), phase=0, rate=0;
+    for (double corner : surface.get_span_vector(varying))
+        for (int direction : {-1,1}) {
+            double score=0;
+            for (int i=0;i<4;++i) {
+                const double fraction=i/4.;
+                Point uv=a;
+                uv[varying]=wrapped(corner+direction*width*fraction);
+                const double gap=source.point_at(std::lerp(source.domain_start(),source.domain_end(),fraction)).distance(
+                    surface.point_at(uv[0],uv[1]));
+                if (!std::isfinite(gap)) { score=std::numeric_limits<double>::infinity(); break; }
+                score=std::max(score,gap);
+            }
+            if (score<best) { best=score; phase=corner; rate=direction*width/period; }
+        }
+    if (!std::isfinite(best) || !std::isfinite(rate) || rate==0) return {};
+    std::vector<double> cuts{lo,hi};
+    const double seam=source.domain_start()+((rate>0?domain.second:domain.first)-phase)/rate;
+    for (double t : {seam,seam+period}) if (t>lo && t<hi) cuts.push_back(t);
+    std::sort(cuts.begin(),cuts.end());
+    cuts.erase(std::unique(cuts.begin(),cuts.end()),cuts.end());
+    NurbsCurve result(3,false,2,static_cast<int>(2*(cuts.size()-1)));
+    result.m_nurbsknot.clear();
+    for (size_t k=1;k<cuts.size();++k) {
+        const double middle=std::midpoint(cuts[k-1],cuts[k]);
+        const double shift=width*std::floor((phase+rate*(middle-source.domain_start())-domain.first)/width);
+        for (int end=0;end<2;++end) {
+            const double t=cuts[k-1+end];
+            Point uv=a;
+            uv[varying]=phase+rate*(t-source.domain_start())-shift;
+            if (!std::isfinite(uv[varying]) || !result.set_cv(static_cast<int>(2*(k-1)+end),uv)) return {};
+            result.m_nurbsknot.push_back(t);
+        }
     }
+    return result.is_valid() && result.domain()==std::pair<double,double>(lo,hi) ? result : NurbsCurve{};
+}
 
+static NurbsCurve analytic_side_pcurve(const SectionSide& side, const NurbsCurve& source,
+                                       const NurbsCurve& piece,
+                                       const std::pair<double, double>& domain, double lo, double hi,
+                                       double tolerance) {
+    if (!side.runs.empty())
+        return run_span(side.runs, domain, side.srf, piece, tolerance);
+    NurbsCurve pc=analytic_pcurve(side.srf,side.recog,piece);
+    if (!pc.is_valid()) {
+        const auto projected=Closest::surface_curve(side.srf,piece);
+        if (!projected.empty()) pc=projected.front();
+    }
+    NurbsCurve latitude=latitude_raw_proposal(pc,source,side.srf,lo,hi);
+    if (latitude.is_valid() && latitude.domain()==piece.domain() &&
+        curve_surface_intersection::same_parameter(piece,latitude,side.srf,tolerance)==
+            curve_surface_intersection::ParameterMatch::Matched)
+        return latitude;
+    // An arbitrary nonlinear PC cannot be relabeled as a valid raw law.
+    // Reparameterization is only another proposal, with the same whole gate.
+    const bool aligned=pc.is_valid() && pc.set_domain(piece.domain_start(),piece.domain_end()) &&
+        pc.domain()==piece.domain();
+    std::string raw_diagnostic;
+    curve_surface_intersection::ParameterFailure raw_failure;
+    const auto raw_match=aligned ? curve_surface_intersection::same_parameter(
+        piece,pc,side.srf,tolerance,&raw_diagnostic,&raw_failure) :
+        curve_surface_intersection::ParameterMatch::Unresolved;
+    if (aligned && raw_match!=curve_surface_intersection::ParameterMatch::Matched &&
+        side.recog.kind==RecogSurface::PLANE && !pc.is_rational() && pc.degree()==1) {
+        PullbackRun samples;
+        for (int i=0;i<pc.cv_count();++i) {
+            samples.ts.push_back(pc.m_nurbsknot[i]);
+            samples.uv.push_back(pc.get_cv(i));
+        }
+        // The polyline is a raw-parameter proposal, not a certified final fit.
+        // Reuse the existing bounded worker and its WHOLE original-pair gate.
+        return certified_run_curve(side.srf,piece,std::move(samples),tolerance);
+    }
+    if (!aligned || raw_match!=curve_surface_intersection::ParameterMatch::Matched) {
+        if (const char* path=std::getenv("SESSION_SECTION_PARAMETER_FAILURE"); path && *path)
+            try {
+                const nlohmann::ordered_json row={
+                    {"stage","analytic_side_raw_law_failure"},{"aligned",aligned},
+                    {"match",static_cast<int>(raw_match)},{"diagnostic",raw_diagnostic},
+                    {"failure_kind",static_cast<int>(raw_failure.kind)},
+                    {"has_point",raw_failure.has_point},{"raw_point",raw_failure.curve_point},
+                    {"raw_interval",raw_failure.curve_interval},{"tolerance",tolerance},
+                    {"kind",static_cast<int>(side.recog.kind)},{"requested",{lo,hi}},
+                    {"source_world",source.jsondump()},{"world",piece.jsondump()},
+                    {"pcurve",pc.jsondump()},{"support",side.srf.jsondump()}};
+                std::ofstream output(path,std::ios::binary|std::ios::app);
+                if (!output || !(output<<row.dump()<<'\n'))
+                    throw std::runtime_error("Cannot append analytic raw-law observation");
+                output.flush();
+                if (!output) throw std::runtime_error("Cannot flush analytic raw-law observation");
+                output.close();
+                if (!output) throw std::runtime_error("Cannot close analytic raw-law observation");
+            } catch(const std::exception& error) {
+                std::cerr<<"Analytic raw-law observation failed: "<<error.what()<<std::endl;
+            } catch(...) {
+                std::cerr<<"Analytic raw-law observation failed with unknown error"<<std::endl;
+            }
+        throw std::runtime_error("Analytic section pcurve has no certified original raw parameter law");
+    }
     return pc;
 }
 
@@ -6984,7 +8372,6 @@ static NurbsCurve analytic_side_pcurve(
 static std::vector<double> seam_cuts(const NurbsCurve& c3, const std::vector<PullbackRun>& runs_a, const std::vector<PullbackRun>& runs_b) {
 
     const std::pair<double, double> domain = c3.domain();
-    const double eps = (domain.second - domain.first) * 1e-9;
     std::vector<double> ts{domain.first, domain.second};
 
     for (const std::vector<PullbackRun>* runs : {&runs_a, &runs_b})
@@ -6992,15 +8379,8 @@ static std::vector<double> seam_cuts(const NurbsCurve& c3, const std::vector<Pul
             ts.push_back((*runs)[k].ts.front());
 
     std::sort(ts.begin(), ts.end());
-    std::vector<double> cuts{ts[0]};
-
-    for (size_t i = 1; i < ts.size(); ++i)
-        if (ts[i] - cuts.back() > eps)
-            cuts.push_back(ts[i]);
-
-    cuts.back() = domain.second;
-
-    return cuts;
+    ts.erase(std::unique(ts.begin(),ts.end()),ts.end());
+    return ts;
 }
 
 /// Whether the runs end where they start, so the end piece of a closed curve continues onto its first.
@@ -7009,14 +8389,9 @@ static bool runs_close(const std::vector<PullbackRun>& runs) {
 }
 
 /// Push the piece of c3 over [lo, hi] with both pcurves; hi past the domain end wraps the closed curve onto its start.
-static void push_section_piece(
-    const SectionSide& sa,
-    const SectionSide& sb,
-    const NurbsCurve& c3,
-    double lo,
-    double hi,
-    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples
-) {
+static void push_section_piece(const SectionSide& sa, const SectionSide& sb, const NurbsCurve& c3, double lo,
+                               double hi, double tolerance,
+                               std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples) {
 
     const std::pair<double, double> domain = c3.domain();
     NurbsCurve piece = c3;
@@ -7027,8 +8402,59 @@ static void push_section_piece(
     if (!piece.trim(lo, hi))
         return;
 
-    NurbsCurve pa = analytic_side_pcurve(sa, piece, domain, lo, hi);
-    NurbsCurve pb = analytic_side_pcurve(sb, piece, domain, lo, hi);
+    PullbackObservationContext context{&c3, lo, hi, 0};
+    struct RestorePullbackContext {
+        const PullbackObservationContext* previous;
+        ~RestorePullbackContext() { pullback_observation_context = previous; }
+    } restore_context{pullback_observation_context};
+    const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
+    if (capture && *capture) pullback_observation_context = &context;
+    NurbsCurve pa = analytic_side_pcurve(sa, c3, piece, domain, lo, hi, tolerance);
+    context.side = 1;
+    NurbsCurve pb = analytic_side_pcurve(sb, c3, piece, domain, lo, hi, tolerance);
+
+    if (pa.is_valid() && pb.is_valid()
+        && (piece.domain() != pa.domain() || piece.domain() != pb.domain())) {
+        if (const char* path = std::getenv("SESSION_SECTION_PARAMETER_FAILURE"); path && *path) {
+            try {
+                nlohmann::ordered_json witness = {{"stage", "analytic_push_section_piece"},
+                    {"source_domain", {domain.first, domain.second}}, {"requested", {lo, hi}},
+                    {"world_domain", {piece.domain_start(), piece.domain_end()}},
+                    {"first_domain", {pa.domain_start(), pa.domain_end()}},
+                    {"second_domain", {pb.domain_start(), pb.domain_end()}},
+                    {"first_kind", int(sa.recog.kind)}, {"second_kind", int(sb.recog.kind)},
+                    {"source_world", c3.jsondump()}, {"world", piece.jsondump()},
+                    {"first_pcurve", pa.jsondump()}, {"second_pcurve", pb.jsondump()},
+                    {"first_support", sa.srf.jsondump()}, {"second_support", sb.srf.jsondump()},
+                    {"first_runs", nlohmann::ordered_json::array()},
+                    {"second_runs", nlohmann::ordered_json::array()}};
+                const auto save_run = [](auto& target, const PullbackRun& run) {
+                    auto uv = nlohmann::ordered_json::array();
+                    for (const auto& point : run.uv)
+                        uv.push_back({point[0], point[1], point[2]});
+                    target.push_back({{"parameters", run.ts}, {"uv", std::move(uv)}});
+                };
+                for (const auto& run : sa.runs)
+                    save_run(witness["first_runs"], run);
+                for (const auto& run : sb.runs)
+                    save_run(witness["second_runs"], run);
+                const auto bytes = witness.dump() + "\n";
+                std::ofstream output(path, std::ios::binary | std::ios::app);
+                if (!output || !output.write(bytes.data(), static_cast<std::streamsize>(bytes.size())))
+                    throw std::runtime_error("Cannot write analytic section parameter failure observation");
+                output.flush();
+                if (!output)
+                    throw std::runtime_error("Cannot flush analytic section parameter failure observation");
+                output.close();
+                if (!output)
+                    throw std::runtime_error("Cannot close analytic section parameter failure observation");
+            } catch (const std::exception& error) {
+                std::cerr << "Analytic section parameter observation failed: " << error.what() << '\n';
+            } catch (...) {
+                std::cerr << "Analytic section parameter observation failed: unknown error\n";
+            }
+        }
+    }
 
     if (pa.is_valid() && pb.is_valid())
         triples.push_back(std::make_tuple(piece, pa, pb));
@@ -7038,31 +8464,33 @@ static void push_section_piece(
 static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
 
     AnalyticResult res;
-    double rtol = std::max(tolerance, 1e-7) * 1e4;
-    RecogSurface ra = recognize_surface(a, rtol);
-    RecogSurface rb = recognize_surface(b, rtol);
+    // Recognition may propose an analytic route only at the caller's physical precision.
+    RecogSurface ra = recognize_surface(a, tolerance);
+    RecogSurface rb = recognize_surface(b, tolerance);
 
     if (ra.kind == RecogSurface::NONE || rb.kind == RecogSurface::NONE)
         return res;
 
     std::vector<NurbsCurve> c3_list;
 
-    if (!analytic_curves(a, ra, b, rb, c3_list))
+    if (!analytic_curves(a, ra, b, rb, c3_list, tolerance))
         return res;
 
     for (const NurbsCurve& cc3 : c3_list) {
-        const SectionSide sa{a, ra, analytic_side_runs(a, ra, cc3)};
-        const SectionSide sb{b, rb, analytic_side_runs(b, rb, cc3)};
+        const SectionSide sa{a, ra, analytic_side_runs(a, ra, cc3, tolerance)};
+        const SectionSide sb{b, rb, analytic_side_runs(b, rb, cc3, tolerance)};
         const std::vector<double> cuts = seam_cuts(cc3, sa.runs, sb.runs);
-        const bool wrap = cuts.size() > 2 && cc3.is_closed() && runs_close(sa.runs) && runs_close(sb.runs);
+        const double wrapped_upper = cuts.size()>2 ? cuts[1]+cuts.back()-cuts.front() : cuts.back();
+        const bool wrap = cuts.size() > 2 && cc3.is_closed() && runs_close(sa.runs) && runs_close(sb.runs) &&
+            std::isfinite(wrapped_upper) && wrapped_upper>cuts.back(); // Never lose a positive wrapped head.
         const size_t first = wrap ? 1 : 0;
         const size_t last = cuts.size() - (wrap ? 2 : 1);
 
         for (size_t k = first; k < last; ++k)
-            push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], res.triples);
+            push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], tolerance, res.triples);
 
         if (wrap)
-            push_section_piece(sa, sb, cc3, cuts[last], cuts[first] + cuts.back() - cuts.front(), res.triples);
+            push_section_piece(sa, sb, cc3, cuts[last], wrapped_upper, tolerance, res.triples);
     }
 
     res.status = AnalyticResult::HIT;
@@ -7115,7 +8543,10 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
 
-    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    NurbsSurface normalized = surface;
+    if (!normalized.set_domain(0, 0.0, 1.0) || !normalized.set_domain(1, 0.0, 1.0))
+        throw std::runtime_error("Surface-plane trace could not normalize the support domains");
+    const SurfacePlaneTraceResult traced = surface_plane_traces(normalized, plane, tolerance);
     const double step = traced.step;
     const double uv_to_3d = traced.uv_to_3d;
     const double uv_to_3d_min = traced.uv_to_3d_min;
@@ -7128,7 +8559,7 @@ std::vector<NurbsCurve> Intersection::surface_plane(const NurbsSurface& surface,
         std::vector<Point> all_pts(uv_trace.size());
 
         for (size_t i = 0; i < uv_trace.size(); i++)
-            all_pts[i] = surface.point_at(uv_trace[i].first, uv_trace[i].second);
+            all_pts[i] = normalized.point_at(uv_trace[i].first, uv_trace[i].second);
 
         NurbsCurve crv = surface_plane_fit_3d(all_pts, is_loop, plane, step, uv_to_3d, uv_to_3d_min);
 
@@ -7208,8 +8639,12 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
     if (const auto exact = surface_section::extrusion_plane(surface, plane, tolerance))
         return *exact;
 
-    const SurfacePlaneField field(surface, plane, tolerance);
-    const SurfacePlaneTraceResult traced = surface_plane_traces(surface, plane, tolerance);
+    const auto u = surface.domain(0), v = surface.domain(1);
+    NurbsSurface normalized = surface;
+    if (!normalized.set_domain(0, 0.0, 1.0) || !normalized.set_domain(1, 0.0, 1.0))
+        throw std::runtime_error("Surface-plane trace could not normalize the support domains");
+    const SurfacePlaneField field(normalized, plane, tolerance);
+    const SurfacePlaneTraceResult traced = surface_plane_traces(normalized, plane, tolerance);
     const double dup_tol = traced.step * traced.uv_to_3d * 3.0;
 
     std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
@@ -7238,19 +8673,22 @@ std::vector<std::pair<NurbsCurve, NurbsCurve>> Intersection::surface_plane_uv(
         }
     }
 
+    for (auto& section : result)
+        for (int i = 0; i < section.second.cv_count(); ++i) {
+            double* cv = section.second.cv(i);
+            const double weight = section.second.weight(i);
+            cv[0] = (u.second - u.first) * cv[0] + u.first * weight;
+            cv[1] = (v.second - v.first) * cv[1] + v.first * weight;
+        }
     return result;
 }
 
-/// Drop near-zero-length section curves.
-static void drop_point_sections(std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& trs, double tolerance) {
-
-    const double min_len = std::max(tolerance * 10.0, 1e-9);
+/// Legacy curve-only output omits only proved constant images; contacts need a richer result.
+static void drop_point_sections(std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& trs, double) {
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> kept;
-
-    for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& t : trs)
-        if (std::get<0>(t).length() >= min_len)
-            kept.push_back(std::move(t));
-
+    for (auto& section : trs)
+        if (!nurbs_coincidence::curve_constant_image(std::get<0>(section)))
+            kept.push_back(std::move(section));
     trs = std::move(kept);
 }
 
@@ -7377,6 +8815,9 @@ struct SurfaceSurfaceGraph {
     std::array<std::array<double, 3>, 3> inverse{};
     double contraction = 0.0;
     std::array<nurbs_interval::Interval, 4> image{}, anchor{};
+    bool boundary_anchor_certified = false;
+    double boundary_fixed_width = 0.0;
+    std::array<nurbs_interval::Interval, 3> boundary_derivative{};
 };
 
 /// Grid seed with retained unique parameter-graph certificates.
@@ -7764,9 +9205,12 @@ double parameter_difference(const SurfaceSurfaceField& field, int k, double a, d
 
 bool graph_contains(const SurfaceSurfaceGraph& graph,
     const std::array<nurbs_interval::Interval, 4>& root) {
-    for (int k = 0; k < 4; ++k)
-        if (!nurbs_interval::finite(root[k]) || root[k].lo < graph.lower[k] || root[k].hi > graph.upper[k])
+    for (int k = 0; k < 4; ++k) {
+        if (!nurbs_interval::finite(root[k]))
             return false;
+        if (root[k].lo < graph.lower[k] || root[k].hi > graph.upper[k])
+            return false;
+    }
     return true;
 }
 
@@ -7805,14 +9249,13 @@ bool in_seed_cell(const SurfaceSurfaceField& field, std::array<double, 4>& x,
     for (int k = 0; k < 4; ++k) {
         const std::array<double, 12>& box = k < 2 ? a : b;
         const int d = k % 2;
-        if (field.closed[k])
-            x[k] += std::round((box[6 + d] - x[k]) / field.range[k]) * field.range[k];
         const double speed = std::hypot(derivatives[k][0], derivatives[k][1], derivatives[k][2]);
         const double rounding = 64.0 * std::numeric_limits<double>::epsilon() *
             std::max(std::abs(box[8 + 2 * d]), std::abs(box[9 + 2 * d]));
         const double error = rounding + (speed > 0.0 ? field.conv_tol * 4.0 / speed : 0.0);
         if (x[k] < box[8 + 2 * d] - error || x[k] > box[9 + 2 * d] + error)
             return false;
+        x[k] = std::clamp(x[k], box[8 + 2 * d], box[9 + 2 * d]);
     }
     return true;
 }
@@ -7982,69 +9425,211 @@ bool ssi_continuous(const NurbsSurface& surface, const std::array<double, 4>& re
     return true;
 }
 
-bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::array<double, 4>& root,
-    const std::array<int, 3>& free, const std::array<double, 3>& scale,
-    const std::array<SsiInterval, 3>& image, const SsiInterval matrix[3][3],
-    const std::array<SsiInterval, 3>& forcing, double contraction, const double inverse[3][3],
-    std::string* failure = nullptr) {
-    if (failure)
-        *failure = "invalid_graph_enclosure";
-    std::array<bool, 3> clipped;
-    bool needs_clip = false;
+bool normalized_graph_derivative(const SsiInterval matrix[3][3], const std::array<SsiInterval, 3>& forcing,
+    double contraction, std::array<SsiInterval, 3>& derivative) {
+    if (!std::isfinite(contraction) || contraction < 0.0 || contraction >= 1.0)
+        return false;
     double magnitude = 0.0;
-    for (int c = 0; c < 3; ++c) {
-        const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
-        if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
+    for (const SsiInterval value : forcing) {
+        if (!nurbs_interval::finite(value))
             return false;
-        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
-        needs_clip = needs_clip || clipped[c];
-        magnitude = std::max(magnitude, nurbs_interval::magnitude(forcing[c]));
+        magnitude = std::max(magnitude, nurbs_interval::magnitude(value));
     }
-    if (!needs_clip)
-        return true;
-    if (failure)
-        *failure = "retained_seed_bounds_unproved";
-    const std::array<double, 3> origin = field.point(root);
-    SsiPatchBounds a, b;
-    if (!nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, a, false) ||
-        !nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, b, false))
-        return false;
-    double displacement = 0.0;
-    for (int r = 0; r < 3; ++r) {
-        SsiInterval residual;
-        for (int d = 0; d < 3; ++d)
-            residual = residual - SsiInterval(inverse[r][d]) * (a.point[d] - b.point[d]);
-        displacement = std::max(displacement, nurbs_interval::magnitude(residual));
-    }
-    const SsiInterval seed_radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(contraction));
-    if (!nurbs_interval::finite(seed_radius))
-        return false;
-    if (failure)
-        *failure = "retained_seed_outside_original_domain";
-    for (int c = 0; c < 3; ++c) {
-        const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
-            SsiInterval(-seed_radius.hi, seed_radius.hi);
-        if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
-            return false;
-    }
-    if (failure)
-        *failure = "implicit_derivative_unbounded";
     const SsiInterval radius = SsiInterval(magnitude) / (SsiInterval(1.0) - SsiInterval(contraction));
     if (!nurbs_interval::finite(radius))
         return false;
-    std::array<SsiInterval, 3> derivative;
     derivative.fill(SsiInterval(-radius.hi, radius.hi));
     for (int iteration = 0; iteration < 8; ++iteration) {
         std::array<SsiInterval, 3> next = forcing;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 3; ++c)
                 next[r] = next[r] + matrix[r][c] * derivative[c];
-            next[r] = {std::max(derivative[r].lo, next[r].lo), std::min(derivative[r].hi, next[r].hi)};
+            next[r] = SsiInterval(std::max(derivative[r].lo, next[r].lo), std::min(derivative[r].hi, next[r].hi));
             if (!nurbs_interval::finite(next[r]))
                 return false;
         }
         derivative = next;
     }
+    return true;
+}
+
+bool zero_plane_boundary(const NurbsSurface& surface, int parameter, int end, int coordinate) {
+    const std::vector<double>& knots = surface.m_nurbsknot[parameter];
+    const std::pair<double, double> domain = surface.domain(parameter);
+    const double endpoint = end ? domain.second : domain.first;
+    for (int i = 0; i < surface.degree(parameter); ++i)
+        if (knots[end ? knots.size() - 1 - i : i] != endpoint)
+            return false;
+    const int edge = end ? surface.cv_count(parameter) - 1 : 0;
+    for (int i = 0; i < surface.cv_count(1 - parameter); ++i) {
+        const double* control = parameter ? surface.cv(i, edge) : surface.cv(edge, i);
+        if (control[coordinate] != 0.0)
+            return false;
+    }
+    return true;
+}
+
+bool boundary_graph_anchor(const SurfaceSurfaceField& field, const std::array<double, 4>& proposal,
+    const std::array<double, 4>& lower, const std::array<double, 4>& upper, int fixed,
+    std::array<SsiInterval, 4>& anchor, bool match_fixed_proposal = true) {
+    for (int ka = 0; ka < 2; ++ka)
+        for (int kb = 2; kb < 4; ++kb) {
+            if (fixed != ka && fixed != kb)
+                continue;
+            for (int ea = 0; ea < 2; ++ea)
+                for (int eb = 0; eb < 2; ++eb) {
+                    const double seam_a = ea ? field.hi[ka] : field.lo[ka];
+                    const double seam_b = eb ? field.hi[kb] : field.lo[kb];
+                    if (seam_a < lower[ka] || seam_a > upper[ka] || seam_b < lower[kb] || seam_b > upper[kb] ||
+                        (match_fixed_proposal && ((fixed == ka && proposal[ka] != seam_a) ||
+                            (fixed == kb && proposal[kb] != seam_b))))
+                        continue;
+                    for (int omitted = 0; omitted < 3; ++omitted) {
+                        if (!zero_plane_boundary(field.a, ka, ea, omitted) ||
+                            !zero_plane_boundary(field.b, kb - 2, eb, omitted))
+                            continue;
+                        std::array<double, 4> center = proposal;
+                        center[ka] = seam_a;
+                        center[kb] = seam_b;
+                        const std::array<int, 2> variables = {1 - ka, 5 - kb};
+                        std::array<int, 2> rows;
+                        for (int d = 0, n = 0; d < 3; ++d)
+                            if (d != omitted)
+                                rows[n++] = d;
+                        const std::array<double, 3> origin = field.point(center);
+                        SsiPatchBounds a, b, a0, b0;
+                        if (!nurbs_interval::surface_bounds(field.a, {lower[0], upper[0], lower[1], upper[1]}, origin, a, true, true) ||
+                            !nurbs_interval::surface_bounds(field.b, {lower[2], upper[2], lower[3], upper[3]}, origin, b, true, true) ||
+                            !nurbs_interval::surface_bounds(field.a, {center[0], center[0], center[1], center[1]}, origin, a0, false) ||
+                            !nurbs_interval::surface_bounds(field.b, {center[2], center[2], center[3], center[3]}, origin, b0, false))
+                            continue;
+                        Vector point, au, av, bu, bv;
+                        field.eval_a(center[0], center[1], point, au, av);
+                        field.eval_b(center[2], center[3], point, bu, bv);
+                        const Vector columns[4] = {au, av, -bu, -bv};
+                        std::array<double, 2> scale;
+                        std::array<SsiInterval, 2> domain, interior;
+                        std::vector<std::vector<double>> jac(2, std::vector<double>(2));
+                        bool valid = true;
+                        for (int c = 0; c < 2; ++c) {
+                            const int k = variables[c];
+                            scale[c] = upper[k] - lower[k];
+                            valid = valid && scale[c] > 0.0 && std::isfinite(scale[c]) &&
+                                center[k] >= lower[k] && center[k] <= upper[k];
+                            const SsiInterval first = (SsiInterval(lower[k]) - SsiInterval(center[k])) / SsiInterval(scale[c]);
+                            const SsiInterval last = (SsiInterval(upper[k]) - SsiInterval(center[k])) / SsiInterval(scale[c]);
+                            domain[c] = SsiInterval(first.lo, last.hi);
+                            interior[c] = SsiInterval(first.hi, last.lo);
+                            for (int r = 0; r < 2; ++r)
+                                jac[r][c] = columns[k][rows[r]] * scale[c];
+                        }
+                        double inverse[2][2]{};
+                        for (int c = 0; c < 2 && valid; ++c) {
+                            std::vector<double> rhs(2), solution;
+                            rhs[c] = 1.0;
+                            if (!solve_gauss(jac, rhs, 2, solution)) {
+                                valid = false;
+                                break;
+                            }
+                            for (int r = 0; r < 2; ++r) {
+                                inverse[r][c] = solution[r];
+                                valid = valid && std::isfinite(solution[r]);
+                            }
+                        }
+                        std::array<SsiInterval, 2> image;
+                        for (int r = 0; r < 2 && valid; ++r) {
+                            for (int d = 0; d < 2; ++d)
+                                image[r] = image[r] - SsiInterval(inverse[r][d]) * (a0.point[rows[d]] - b0.point[rows[d]]);
+                            SsiInterval contraction;
+                            for (int c = 0; c < 2; ++c) {
+                                const int k = variables[c];
+                                SsiInterval matrix(r == c ? 1.0 : 0.0);
+                                for (int d = 0; d < 2; ++d) {
+                                    const SsiInterval derivative = k < 2 ? a.derivative[k][rows[d]] :
+                                        SsiInterval(-1.0) * b.derivative[k - 2][rows[d]];
+                                    matrix = matrix - SsiInterval(inverse[r][d]) * derivative * SsiInterval(scale[c]);
+                                }
+                                contraction = contraction + SsiInterval(nurbs_interval::magnitude(matrix));
+                                image[r] = image[r] + matrix * domain[c];
+                            }
+                            valid = valid && contraction.hi < 1.0 && nurbs_interval::finite(image[r]) &&
+                                image[r].lo > interior[r].lo && image[r].hi < interior[r].hi;
+                        }
+                        if (!valid)
+                            continue;
+                        for (int k = 0; k < 4; ++k)
+                            anchor[k] = SsiInterval(center[k]);
+                        for (int c = 0; c < 2; ++c) {
+                            const int k = variables[c];
+                            anchor[k] = SsiInterval(center[k]) + SsiInterval(scale[c]) * image[c];
+                        }
+                        for (int k = 0; k < 4; ++k)
+                            valid = valid && nurbs_interval::finite(anchor[k]) &&
+                                anchor[k].lo >= field.lo[k] && anchor[k].hi <= field.hi[k] &&
+                                anchor[k].lo >= lower[k] && anchor[k].hi <= upper[k];
+                        if (valid)
+                            return true;
+                    }
+                }
+        }
+    return false;
+}
+
+bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::array<double, 4>& root,
+    const std::array<int, 3>& free, const std::array<double, 3>& scale,
+    const std::array<SsiInterval, 3>& image, const SsiInterval matrix[3][3],
+    const std::array<SsiInterval, 3>& forcing, double contraction, const double inverse[3][3],
+    const std::array<SsiInterval, 4>* retained_anchor = nullptr, std::string* failure = nullptr) {
+    if (failure)
+        *failure = "invalid_graph_enclosure";
+    std::array<bool, 3> clipped;
+    bool needs_clip = false;
+    for (int c = 0; c < 3; ++c) {
+        const SsiInterval world = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) * image[c];
+        if (!nurbs_interval::finite(world) || !nurbs_interval::finite(forcing[c]))
+            return false;
+        clipped[c] = world.lo < field.lo[free[c]] || world.hi > field.hi[free[c]];
+        needs_clip = needs_clip || clipped[c];
+    }
+    if (!needs_clip)
+        return true;
+    if (failure)
+        *failure = "retained_seed_bounds_unproved";
+    if (retained_anchor) {
+        for (int k = 0; k < 4; ++k)
+            if (!nurbs_interval::finite((*retained_anchor)[k]) ||
+                (*retained_anchor)[k].lo < field.lo[k] || (*retained_anchor)[k].hi > field.hi[k])
+                return false;
+    } else {
+        const std::array<double, 3> origin = field.point(root);
+        SsiPatchBounds a, b;
+        if (!nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, a, false, true) ||
+            !nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, b, false, true))
+            return false;
+        double displacement = 0.0;
+        for (int r = 0; r < 3; ++r) {
+            SsiInterval residual;
+            for (int d = 0; d < 3; ++d)
+                residual = residual - SsiInterval(inverse[r][d]) * (a.point[d] - b.point[d]);
+            displacement = std::max(displacement, nurbs_interval::magnitude(residual));
+        }
+        const SsiInterval seed_radius = SsiInterval(displacement) / (SsiInterval(1.0) - SsiInterval(contraction));
+        if (!nurbs_interval::finite(seed_radius))
+            return false;
+        if (failure)
+            *failure = "retained_seed_outside_original_domain";
+        for (int c = 0; c < 3; ++c) {
+            const SsiInterval seed = SsiInterval(root[free[c]]) + SsiInterval(scale[c]) *
+                SsiInterval(-seed_radius.hi, seed_radius.hi);
+            if (seed.lo < field.lo[free[c]] || seed.hi > field.hi[free[c]])
+                return false;
+        }
+    }
+    if (failure)
+        *failure = "implicit_derivative_unbounded";
+    std::array<SsiInterval, 3> derivative;
+    if (!normalized_graph_derivative(matrix, forcing, contraction, derivative))
+        return false;
     if (failure)
         *failure = "clipped_coordinate_monotonicity_unproved";
     for (int c = 0; c < 3; ++c)
@@ -8056,8 +9641,15 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
 bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph,
     const std::array<double, 4>& point, std::array<SsiInterval, 4>& box) {
     for (int k = 0; k < 4; ++k)
-        if (!std::isfinite(point[k]) || point[k] < graph.lower[k] || point[k] > graph.upper[k])
+        if (!std::isfinite(point[k]) ||
+            (field.closed[k] && (point[k] < field.lo[k] || point[k] > field.hi[k])) ||
+            point[k] < graph.lower[k] || point[k] > graph.upper[k])
             return false;
+    if (boundary_graph_anchor(field, point, graph.lower, graph.upper, graph.fixed, box)) {
+        for (int k = 0; k < 4; ++k)
+            box[k] = SsiInterval(std::max(box[k].lo, graph.image[k].lo), std::min(box[k].hi, graph.image[k].hi));
+        return graph_contains(graph, box);
+    }
     const std::array<double, 3> origin = field.point(point);
     SsiPatchBounds a, b;
     if (!nurbs_interval::surface_bounds(field.a, {point[0], point[0], point[1], point[1]}, origin, a, false, true) ||
@@ -8083,27 +9675,60 @@ bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph&
         if (!nurbs_interval::finite(box[k]))
             return false;
     }
+    if (graph.boundary_anchor_certified) {
+        const SsiInterval fixed_displacement = (SsiInterval(point[graph.fixed]) - graph.anchor[graph.fixed]) /
+            SsiInterval(graph.boundary_fixed_width);
+        for (int c = 0; c < 3; ++c) {
+            const int k = graph.free[c];
+            const SsiInterval change = SsiInterval(graph.scale[c]) * graph.boundary_derivative[c] * fixed_displacement;
+            SsiInterval propagated = graph.anchor[k] + change;
+            if (graph.anchor[k].lo == graph.anchor[k].hi) {
+                if (change.lo >= 0.0)
+                    propagated.lo = std::max(propagated.lo, graph.anchor[k].lo);
+                if (change.hi <= 0.0)
+                    propagated.hi = std::min(propagated.hi, graph.anchor[k].hi);
+            }
+            box[k] = SsiInterval(std::max(box[k].lo, propagated.lo), std::min(box[k].hi, propagated.hi));
+            if (!nurbs_interval::finite(box[k]))
+                return false;
+        }
+    }
     return graph_contains(graph, box);
 }
 
 /// Every root in this candidate belongs to one continuous, regular parameter graph.
 bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pair,
     const std::array<double, 4>& root, SurfaceSurfaceGraph* provenance = nullptr,
-    nlohmann::ordered_json* diagnostics = nullptr) {
+    nlohmann::ordered_json* diagnostics = nullptr, int required_fixed = -1) {
     ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Coverage);
     if (ssi_diagnostics::active)
         ++ssi_diagnostics::active->coverage_checks;
     const std::array<double, 4> lo = {pair.a[8], pair.a[10], pair.b[8], pair.b[10]};
     const std::array<double, 4> hi = {pair.a[9], pair.a[11], pair.b[9], pair.b[11]};
-    for (int k = 0; k < 4; ++k)
-        if (!std::isfinite(root[k]) || root[k] < field.lo[k] || root[k] > field.hi[k])
+    for (int k = 0; k < 4; ++k) {
+        if (lo[k] < field.lo[k] || hi[k] > field.hi[k]) {
+            if (diagnostics)
+                diagnostics->push_back({{"status", "candidate_outside_original_domain"}, {"lower", lo}, {"upper", hi}});
             return false;
+        }
+        if (!std::isfinite(root[k]) || root[k] < field.lo[k] || root[k] > field.hi[k]) {
+            if (diagnostics)
+                diagnostics->push_back({{"status", "root_outside_original_domain"}, {"root", root}});
+            return false;
+        }
+    }
     const std::array<double, 3> origin = field.point(root);
     Vector point, au, av, bu, bv;
     field.eval_a(root[0], root[1], point, au, av);
     field.eval_b(root[2], root[3], point, bu, bv);
     const Vector columns[4] = {au, av, -bu, -bv};
+    SsiPatchBounds root_a, root_b;
+    const bool root_enclosed =
+        nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, root_a, false) &&
+        nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, root_b, false);
     for (int fixed : seed_isoparameters(field, root)) {
+        if (required_fixed >= 0 && fixed != required_fixed)
+            continue;
         nlohmann::ordered_json* chart = nullptr;
         if (diagnostics) {
             diagnostics->push_back({{"fixed", fixed}, {"status", "fixed_seed_outside_candidate"}});
@@ -8195,10 +9820,26 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         SsiInterval matrix[3][3];
         double contraction_bound = 0.0;
         for (int r = 0; r < 3; ++r) {
+            SsiInterval center_residual, fixed_derivative;
             for (int d = 0; d < 3; ++d) {
                 image[r] = image[r] - SsiInterval(inverse[r][d]) * (a0.point[d] - b0.point[d]);
                 const SsiInterval derivative = fixed < 2 ? a.derivative[fixed][d] : SsiInterval(-1.0) * b.derivative[fixed - 2][d];
                 forcing[r] = forcing[r] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(free_width);
+                if (root_enclosed) {
+                    center_residual = center_residual - SsiInterval(inverse[r][d]) * (root_a.point[d] - root_b.point[d]);
+                    fixed_derivative = fixed_derivative - SsiInterval(inverse[r][d]) * derivative;
+                }
+            }
+            if (root_enclosed) {
+                const SsiInterval displacement = SsiInterval(lo[fixed], hi[fixed]) - SsiInterval(root[fixed]);
+                const SsiInterval centered_image = center_residual + fixed_derivative * displacement;
+                const SsiInterval common(std::max(image[r].lo, centered_image.lo),
+                    std::min(image[r].hi, centered_image.hi));
+                if (!nurbs_interval::finite(common)) {
+                    covered = false;
+                } else {
+                    image[r] = common;
+                }
             }
             SsiInterval contraction;
             for (int c = 0; c < 3; ++c) {
@@ -8222,8 +9863,25 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         }
         if (covered) {
             std::string failure;
+            std::array<SsiInterval, 4> boundary_anchor;
+            bool boundary_certified = boundary_graph_anchor(field, root, lower, upper, fixed, boundary_anchor, false);
+            if (boundary_certified) {
+                for (int c = 0; c < 3; ++c) {
+                    const int k = free[c];
+                    const SsiInterval full_image = SsiInterval(root[k]) + SsiInterval(scale[c]) * image[c];
+                    boundary_anchor[k] = SsiInterval(std::max(boundary_anchor[k].lo, full_image.lo),
+                        std::min(boundary_anchor[k].hi, full_image.hi));
+                    boundary_certified = boundary_certified && nurbs_interval::finite(boundary_anchor[k]);
+                }
+            }
             const bool connected = ssi_graph_domain_connected(field, root, free, scale, image, matrix, forcing,
-                contraction_bound, inverse, chart ? &failure : nullptr);
+                contraction_bound, inverse, boundary_certified ? &boundary_anchor : nullptr, chart ? &failure : nullptr);
+            if (chart && boundary_certified) {
+                (*chart)["anchor_kind"] = "exact_zero_plane_boundary";
+                (*chart)["boundary_anchor"] = nlohmann::ordered_json::array();
+                for (const SsiInterval interval : boundary_anchor)
+                    (*chart)["boundary_anchor"].push_back({interval.lo, interval.hi});
+            }
             if (chart)
                 (*chart)["status"] = connected ? "covered" : failure;
             if (connected) {
@@ -8242,11 +9900,18 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
                     for (int d = 0; d < 3; ++d)
                         graph.inverse[r][d] = inverse[r][d];
                 }
-                if (!graph_root_box(field, graph, root, graph.anchor))
+                if (boundary_certified) {
+                    graph.anchor = boundary_anchor;
+                    graph.boundary_fixed_width = free_width;
+                    graph.boundary_anchor_certified = std::isfinite(free_width) && free_width > 0.0 &&
+                        normalized_graph_derivative(matrix, forcing, contraction_bound, graph.boundary_derivative);
+                } else if (!graph_root_box(field, graph, root, graph.anchor)) {
                     continue;
+                }
                 bool retained = true;
                 for (int k = 0; k < 4; ++k)
-                    retained = retained && graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
+                    retained = retained &&
+                        graph.anchor[k].lo >= field.lo[k] && graph.anchor[k].hi <= field.hi[k];
                 if (!retained)
                     continue;
                 if (provenance)
@@ -8256,6 +9921,133 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         }
     }
     return false;
+}
+
+bool exact_seam_rows(const NurbsSurface& surface, int parameter) {
+    const std::vector<double>& knots = surface.m_nurbsknot[parameter];
+    const std::pair<double, double> domain = surface.domain(parameter);
+    for (int i = 0; i < surface.degree(parameter); ++i)
+        if (knots[i] != domain.first || knots[knots.size() - 1 - i] != domain.second)
+            return false;
+    const int components = surface.dimension() + (surface.is_rational() ? 1 : 0);
+    for (int j = 0; j < surface.cv_count(1 - parameter); ++j) {
+        const double* first = parameter ? surface.cv(j, 0) : surface.cv(0, j);
+        const double* last = parameter ? surface.cv(j, surface.cv_count(parameter) - 1) :
+            surface.cv(surface.cv_count(parameter) - 1, j);
+        for (int d = 0; d < components; ++d)
+            if (!std::isfinite(first[d]) || first[d] != last[d])
+                return false;
+    }
+    return true;
+}
+
+bool certify_joint_seam_side(const SurfaceSurfaceField& field,
+    const std::array<double, 4>& incident_proposal, const std::array<int, 2>& crossed,
+    const std::array<double, 2>& seams, const std::array<double, 4>& joint,
+    const std::array<double, 4>& first_event, const std::array<double, 4>& second_event,
+    SurfaceSurfaceGraph* graphs) {
+    std::array<double, 4> incident = incident_proposal;
+    std::array<double, 4> corner = joint;
+    std::array<double, 4> shifts{};
+    for (int c = 0; c < 2; ++c) {
+        const int k = crossed[c];
+        if (incident[k] < field.lo[k] && seams[c] == field.lo[k]) {
+            shifts[k] = field.range[k];
+            corner[k] = field.hi[k];
+        } else if (incident[k] > field.hi[k] && seams[c] == field.hi[k]) {
+            shifts[k] = -field.range[k];
+            corner[k] = field.lo[k];
+        }
+        incident[k] += shifts[k];
+    }
+    SeedCellPair pair{};
+    for (int k = 0; k < 4; ++k) {
+        if (!std::isfinite(incident[k]) || incident[k] < field.lo[k] || incident[k] > field.hi[k])
+            return false;
+        const double rounding = 128 * std::numeric_limits<double>::epsilon() *
+            std::max({std::abs(incident[k]), std::abs(corner[k]), std::numeric_limits<double>::min()});
+        const bool angular = k == crossed[0] || k == crossed[1];
+        const double padding = std::max(rounding, angular ? std::abs(incident[k] - corner[k]) / 8 :
+            field.parameter_width(k, corner[k]) / 64);
+        std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+        box[8 + 2 * (k % 2)] = std::max(field.lo[k], std::min(incident[k], corner[k]) - padding);
+        box[9 + 2 * (k % 2)] = std::min(field.hi[k], std::max(incident[k], corner[k]) + padding);
+    }
+    for (int c = 0; c < 2; ++c) {
+        SurfaceSurfaceGraph& graph = graphs[c];
+        if (!seed_cell_covered(field, pair, corner, &graph, nullptr, crossed[c]) || !graph.boundary_anchor_certified)
+            return false;
+        for (const int k : crossed)
+            if (graph.anchor[k].lo != corner[k] || graph.anchor[k].hi != corner[k])
+                return false;
+        std::array<SsiInterval, 4> incident_root, corner_root, event_box;
+        if (!graph_root_box(field, graph, incident, incident_root) || !graph_root_box(field, graph, corner, corner_root))
+            return false;
+        const std::array<double, 4>& event = c ? second_event : first_event;
+        for (int k = 0; k < 4; ++k) {
+            if (!nurbs_interval::finite(incident_root[k]) || incident_root[k].lo < field.lo[k] || incident_root[k].hi > field.hi[k] ||
+                !nurbs_interval::finite(corner_root[k]) || corner_root[k].lo < field.lo[k] || corner_root[k].hi > field.hi[k])
+                return false;
+            event_box[k] = SsiInterval(event[k] + shifts[k]);
+        }
+        event_box[crossed[c]] = SsiInterval(corner[crossed[c]]);
+        if (!graph_contains(graph, event_box))
+            return false;
+    }
+    return true;
+}
+
+bool joint_seam_event(const SurfaceSurfaceField& field,
+    const std::array<double, 4>& first, const std::array<double, 4>& last,
+    int first_fixed, double first_seam, int second_fixed, double second_seam,
+    const std::array<double, 4>& first_event, const std::array<double, 4>& second_event,
+    std::array<double, 4>& joint) {
+    if (first_fixed / 2 == second_fixed / 2 || first_event[first_fixed] != first_seam ||
+        second_event[second_fixed] != second_seam)
+        return false;
+    const std::array<int, 2> crossed = {first_fixed, second_fixed};
+    const std::array<double, 2> seams = {first_seam, second_seam};
+    for (int c = 0; c < 2; ++c) {
+        const int k = crossed[c];
+        const NurbsSurface& surface = k < 2 ? field.a : field.b;
+        if (!field.closed[k] || (seams[c] != field.lo[k] && seams[c] != field.hi[k]) ||
+            !exact_seam_rows(surface, k % 2))
+            return false;
+    }
+    joint = first_event;
+    joint[first_fixed] = first_seam;
+    joint[second_fixed] = second_seam;
+    bool corrected = false;
+    for (const int fixed : crossed) {
+        std::array<double, 4> proposal = joint;
+        if (field.correct_on_seam(proposal, fixed) && proposal[first_fixed] == first_seam &&
+            proposal[second_fixed] == second_seam) {
+            joint = proposal;
+            corrected = true;
+            break;
+        }
+    }
+    if (!corrected)
+        return false;
+    for (int k = 0; k < 4; ++k)
+        if (!std::isfinite(joint[k]) || joint[k] < field.lo[k] || joint[k] > field.hi[k])
+            return false;
+    const double gap = field.a.point_at(joint[0], joint[1]).distance(field.b.point_at(joint[2], joint[3]));
+    if (!std::isfinite(gap) || gap > field.conv_tol)
+        return false;
+    std::array<SurfaceSurfaceGraph, 4> graphs;
+    for (int side = 0; side < 2; ++side)
+        if (!certify_joint_seam_side(field, side ? last : first, crossed, seams, joint,
+            first_event, second_event, graphs.data() + side * 2))
+            return false;
+    for (size_t i = 1; i < graphs.size(); ++i) {
+        std::array<SsiInterval, 4> mapped = graphs[i].anchor;
+        for (const int k : crossed)
+            mapped[k] = graphs[0].anchor[k];
+        if (!graph_contains(graphs[0], mapped))
+            return false;
+    }
+    return true;
 }
 
 void seed_cell_pair(
@@ -8644,6 +10436,40 @@ void unwrap_quad(const SurfaceSurfaceField& field, std::vector<std::array<double
     }
 }
 
+bool boundary_trace_start(const SurfaceSurfaceField& field,
+    const std::vector<SurfaceSurfaceGraph>& graphs, std::array<double, 4>& start) {
+    for (const SurfaceSurfaceGraph& graph : graphs) {
+        if (!graph.boundary_anchor_certified || graph.anchor[graph.fixed].lo != graph.anchor[graph.fixed].hi)
+            continue;
+        std::array<double, 4> proposal;
+        std::array<bool, 4> locked{};
+        int surfaces = 0;
+        for (int k = 0; k < 4; ++k) {
+            proposal[k] = std::midpoint(graph.anchor[k].lo, graph.anchor[k].hi);
+            locked[k] = field.closed[k] && graph.anchor[k].lo == graph.anchor[k].hi &&
+                (proposal[k] == field.lo[k] || proposal[k] == field.hi[k]);
+            if (locked[k])
+                surfaces |= 1 << (k / 2);
+        }
+        if (surfaces != 3 || !field.correct_on_seam(proposal, graph.fixed, &graph))
+            continue;
+        bool preserved = true;
+        for (int k = 0; k < 4; ++k)
+            preserved = preserved && (!locked[k] || proposal[k] == graph.anchor[k].lo);
+        std::array<SsiInterval, 4> root;
+        if (!preserved || !graph_root_box(field, graph, proposal, root))
+            continue;
+        for (int k = 0; k < 4; ++k)
+            preserved = preserved && nurbs_interval::finite(root[k]) &&
+                root[k].lo >= field.lo[k] && root[k].hi <= field.hi[k];
+        if (preserved) {
+            start = proposal;
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Trace both directions from a seed into one unwrapped run; false when it is too short.
 bool trace_seed(
     const SurfaceSurfaceField& field,
@@ -8752,8 +10578,22 @@ std::array<double, 4> close_quad(const SurfaceSurfaceField& field, std::vector<s
         if (field.closed[k])
             jump = unwrap_period(jump, 0.0, field.range[k]);
 
-        virt[k] = quad.back()[k] + jump;
-        closure[k] = virt[k] - quad[0][k];
+        const double original_jump = quad[0][k] - quad.back()[k];
+        if (jump == original_jump)
+            continue;
+        const NurbsSurface& surface = k < 2 ? field.a : field.b;
+        if (exact_seam_rows(surface, k % 2) && quad[0][k] == field.hi[k] &&
+            original_jump > field.range[k] * 0.5 && original_jump <= field.range[k] * 1.5) {
+            virt[k] = field.lo[k];
+            closure[k] = -field.range[k];
+        } else if (exact_seam_rows(surface, k % 2) && quad[0][k] == field.lo[k] &&
+            original_jump < -field.range[k] * 0.5 && original_jump >= -field.range[k] * 1.5) {
+            virt[k] = field.hi[k];
+            closure[k] = field.range[k];
+        } else {
+            virt[k] = quad.back()[k] + jump;
+            closure[k] = virt[k] - quad[0][k];
+        }
     }
 
     quad.push_back(virt);
@@ -8817,33 +10657,49 @@ void split_quad_at_seams(
     const SurfaceSurfaceField& field,
     const std::vector<std::array<double, 4>>& quad,
     std::vector<std::array<double, 4>>& out_pts,
-    std::vector<int>& cross_idx
+    std::vector<int>& cross_idx,
+    nlohmann::ordered_json* joint_proofs = nullptr
 ) {
-
     out_pts.push_back(quad[0]);
-
-    for (size_t i = 1; i < quad.size(); i++) {
+    for (int k = 0; k < 4; ++k)
+        if (field.closed[k] && (quad[0][k] == field.lo[k] || quad[0][k] == field.hi[k])) {
+            cross_idx.push_back(0);
+            break;
+        }
+    for (size_t i = 1; i < quad.size(); ++i) {
         const std::array<double, 4>& pa = quad[i - 1];
         const std::array<double, 4>& pb = quad[i];
-
-        for (const std::tuple<double, int, double>& crossing : quad_seam_crossings(field, pa, pb)) {
+        const std::vector<std::tuple<double, int, double>> crossings = quad_seam_crossings(field, pa, pb);
+        std::vector<std::array<double, 4>> corrected;
+        for (const std::tuple<double, int, double>& crossing : crossings) {
             const double t = std::get<0>(crossing);
             std::array<double, 4> cp;
-
-            for (int k = 0; k < 4; k++)
+            for (int k = 0; k < 4; ++k)
                 cp[k] = pa[k] + (pb[k] - pa[k]) * t;
-
             cp[std::get<1>(crossing)] = std::get<2>(crossing);
             if (!field.correct_on_seam(cp, std::get<1>(crossing)))
                 throw std::runtime_error("Native SSI seam crossing could not be refined");
-            out_pts.push_back(cp);
-            cross_idx.push_back((int)out_pts.size() - 1);
+            corrected.push_back(cp);
         }
-
+        std::array<double, 4> joint;
+        const bool certified_joint = crossings.size() == 2 && joint_seam_event(field, pa, pb,
+            std::get<1>(crossings[0]), std::get<2>(crossings[0]),
+            std::get<1>(crossings[1]), std::get<2>(crossings[1]), corrected[0], corrected[1], joint);
+        if (certified_joint) {
+            out_pts.push_back(joint);
+            cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
+            if (joint_proofs)
+                joint_proofs->push_back({{"step", i}, {"fixed", {std::get<1>(crossings[0]), std::get<1>(crossings[1])}},
+                    {"joint", joint}, {"incident_graphs", 4}});
+        } else {
+            for (const std::array<double, 4>& cp : corrected) {
+                out_pts.push_back(cp);
+                cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
+            }
+        }
         out_pts.push_back(pb);
-
         if (i < quad.size() - 1 && snap_quad_to_seam(field, pa, out_pts.back()))
-            cross_idx.push_back((int)out_pts.size() - 1);
+            cross_idx.push_back(static_cast<int>(out_pts.size()) - 1);
     }
 }
 
@@ -8962,6 +10818,7 @@ void refine_quad_piece(const SurfaceSurfaceField& field, std::vector<std::array<
                 double dev = chord_deviation(field.point(piece_pts[i]), field.point(midq), field.point(piece_pts[i + 1]));
 
                 if (dev > refine_tol) {
+
                     new_pp.push_back(midq);
                     refined = true;
                 }
@@ -9013,8 +10870,10 @@ bool refine_surface_fit(
             const Point pa = evaluate_valid_curve(std::get<1>(triple), t);
             const Point pb = evaluate_valid_curve(std::get<2>(triple), t);
             std::array<double, 4> uv = {pa[0], pa[1], pb[0], pb[1]};
+
             if (!field.correct(uv, false, dummy, dummy))
                 throw std::runtime_error("Native SSI paired fit refinement did not converge");
+
             refined.push_back(uv);
         }
         refined.push_back(samples[i]);
@@ -9099,9 +10958,12 @@ bool piece_triple(
 
     SurfaceSurfaceField refined = field;
     const std::array<double, 3> dummy = {0.0, 0.0, 0.0};
-    for (std::array<double, 4>& parameters : piece_pts)
-        if (!refined.correct(parameters, false, dummy, dummy))
+    for (size_t i = 0; i < piece_pts.size(); ++i) {
+
+        if (!refined.correct(piece_pts[i], false, dummy, dummy))
             throw std::runtime_error("Native surface section point could not be refined");
+
+    }
     refine_quad_piece(refined, piece_pts);
     for (int iteration = 0; iteration < 20 && piece_pts.size() <= 32768; ++iteration) {
         piece_pts.erase(std::unique(piece_pts.begin(), piece_pts.end()), piece_pts.end());
@@ -9158,8 +11020,10 @@ bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double,
     arc.failure = "middle_corrector_failed";
     if (diagnostic)
         (*diagnostic)["status"] = arc.failure;
+
     if (!field.correct(middle, false, dummy, dummy))
         return false;
+
     arc.failure = "middle_invalid_or_outside_domain";
     if (diagnostic)
         (*diagnostic)["status"] = arc.failure;
@@ -9199,7 +11063,8 @@ bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double,
 
 bool retained_root(const SurfaceSurfaceField& field, const std::array<SsiInterval, 4>& root) {
     for (int k = 0; k < 4; ++k)
-        if (!nurbs_interval::finite(root[k]) || root[k].lo < field.lo[k] || root[k].hi > field.hi[k])
+        if (!nurbs_interval::finite(root[k]) ||
+            root[k].lo < field.lo[k] || root[k].hi > field.hi[k])
             return false;
     return true;
 }
@@ -9395,6 +11260,63 @@ bool span_contains(SsiInterval interval, double value, double allowance, double 
     return !nurbs_interval::finite(turns) || std::ceil(turns.lo) <= std::floor(turns.hi);
 }
 
+bool boundary_graph_is_point(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph) {
+    if (!graph.boundary_anchor_certified || !(graph.boundary_fixed_width > 0.0) ||
+        !std::isfinite(graph.boundary_fixed_width))
+        return false;
+    const SsiInterval fixed = graph.anchor[graph.fixed];
+    if (!nurbs_interval::finite(fixed) || fixed.lo != fixed.hi)
+        return false;
+    const double lower = std::max(field.lo[graph.fixed], graph.lower[graph.fixed]);
+    const double upper = std::min(field.hi[graph.fixed], graph.upper[graph.fixed]);
+    if (lower > fixed.lo || upper < fixed.hi)
+        return false;
+    if (lower == upper)
+        return true;
+    for (int c = 0; c < 3; ++c) {
+        const int k = graph.free[c];
+        const SsiInterval anchor = graph.anchor[k];
+        const SsiInterval derivative = graph.boundary_derivative[c];
+        if (!nurbs_interval::finite(anchor) || anchor.lo != anchor.hi ||
+            !nurbs_interval::finite(derivative) || !(graph.scale[c] > 0.0) || !std::isfinite(graph.scale[c]))
+            continue;
+        if (anchor.lo == field.lo[k] && ((upper == fixed.lo && derivative.lo > 0.0) ||
+            (lower == fixed.lo && derivative.hi < 0.0)))
+            return true;
+        if (anchor.lo == field.hi[k] && ((upper == fixed.lo && derivative.hi < 0.0) ||
+            (lower == fixed.lo && derivative.lo > 0.0)))
+            return true;
+    }
+    return false;
+}
+
+bool same_boundary_point(const SurfaceSurfaceField& field,
+    const SurfaceSurfaceGraph& source, const SurfaceSurfaceGraph& destination) {
+    if (!boundary_graph_is_point(field, source))
+        return false;
+    std::array<SsiInterval, 4> image = destination.anchor;
+    bool transported = false;
+    for (int k = 0; k < 4; ++k) {
+        if (image[k].lo != image[k].hi || source.anchor[k].lo != source.anchor[k].hi)
+            continue;
+        const double from = image[k].lo, to = source.anchor[k].lo;
+        if (!field.closed[k] || !((from == field.lo[k] && to == field.hi[k]) ||
+            (from == field.hi[k] && to == field.lo[k])))
+            continue;
+        if (!exact_seam_rows(k < 2 ? field.a : field.b, k % 2))
+            return false;
+        image[k] = SsiInterval(to);
+        transported = true;
+    }
+    if (!transported || image[source.fixed].lo != source.anchor[source.fixed].lo ||
+        image[source.fixed].hi != source.anchor[source.fixed].hi)
+        return false;
+    for (int k = 0; k < 4; ++k)
+        if (!nurbs_interval::finite(image[k]) || image[k].lo < field.lo[k] || image[k].hi > field.hi[k])
+            return false;
+    return graph_contains(source, image);
+}
+
 /// Identity is certified in four parameters; the old residual allowances only check fit coverage.
 void consume_section_seeds(const SurfaceSurfaceField& field,
     const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
@@ -9405,7 +11327,8 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
         if (seed.used)
             continue;
         const bool same_branch = std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& graph) {
-            return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph); });
+            return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph) ||
+                same_boundary_point(field, graph, arc.graph); });
         });
         if (!same_branch)
             continue;
@@ -9479,7 +11402,10 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
             ssi_diagnostics::active->trace_starts.push_back(x0);
         }
         ssi_diagnostics::Timer trace(ssi_diagnostics::Stage::Trace);
-        if (!field.correct(x0, false, dummy3, dummy3) || !trace_seed(field, x0, quad, is_loop))
+        if (!field.correct(x0, false, dummy3, dummy3))
+            throw std::runtime_error("Native SSI seed did not produce a resolved section");
+        boundary_trace_start(field, seeds[si].graphs, x0);
+        if (!trace_seed(field, x0, quad, is_loop))
             throw std::runtime_error("Native SSI seed did not produce a resolved section");
         trace.stop();
         ssi_diagnostics::Timer densify(ssi_diagnostics::Stage::DensifyAndSeams);
@@ -9510,6 +11436,94 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
 
 } // namespace
 
+std::string ssi_diagnostics::boundary_point_image_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::array<Parameters, 3>& source, const std::array<Parameters, 3>& destination,
+    const std::array<int, 2>& fixed, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    std::array<SurfaceSurfaceGraph, 2> graphs;
+    std::array<bool, 2> covered{};
+    for (int side = 0; side < 2; ++side) {
+        const std::array<Parameters, 3>& chart = side ? destination : source;
+        SeedCellPair pair{};
+        for (int k = 0; k < 4; ++k) {
+            std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+            box[8 + 2 * (k % 2)] = chart[0][k];
+            box[9 + 2 * (k % 2)] = chart[1][k];
+        }
+        covered[side] = seed_cell_covered(field, pair, chart[2], &graphs[side], nullptr, fixed[side]);
+    }
+    return nlohmann::ordered_json({{"covered", covered},
+        {"source_is_point", covered[0] && boundary_graph_is_point(field, graphs[0])},
+        {"same_boundary_point", covered[0] && covered[1] && same_boundary_point(field, graphs[0], graphs[1])}}).dump();
+}
+
+std::string ssi_diagnostics::loop_seam_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const std::vector<Parameters>& input, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    std::vector<Parameters> closed = input;
+    const Parameters closure = close_quad(field, closed, true);
+    std::vector<Parameters> output;
+    std::vector<int> cuts;
+    split_quad_at_seams(field, closed, output, cuts);
+    const std::vector<std::pair<std::vector<Parameters>, bool>> pieces =
+        quad_pieces(field, output, cuts, true, closure);
+    nlohmann::ordered_json result = {{"closed_quad", closed}, {"closure", closure},
+        {"output", output}, {"cuts", cuts}, {"pieces", nlohmann::ordered_json::array()}};
+    for (const std::pair<std::vector<Parameters>, bool>& piece : pieces)
+        result["pieces"].push_back(piece.first);
+    return result.dump();
+}
+
+std::string ssi_diagnostics::seam_step_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& first, const Parameters& last, double tolerance) {
+    const SurfaceSurfaceField field(a, b, tolerance);
+    const std::vector<std::tuple<double, int, double>> descriptors = quad_seam_crossings(field, first, last);
+    std::vector<Parameters> output;
+    std::vector<int> cuts;
+    nlohmann::ordered_json proofs = nlohmann::ordered_json::array();
+    split_quad_at_seams(field, {first, last}, output, cuts, &proofs);
+    return nlohmann::ordered_json({{"descriptors", descriptors}, {"output", output},
+        {"cuts", cuts}, {"joint_proofs", proofs}}).dump();
+}
+
+bool ssi_diagnostics::raw_graph_contains(const Parameters& lower, const Parameters& upper,
+    const Parameters& root_lower, const Parameters& root_upper) {
+    SurfaceSurfaceGraph graph;
+    graph.lower = lower;
+    graph.upper = upper;
+    std::array<SsiInterval, 4> root;
+    for (int k = 0; k < 4; ++k)
+        root[k] = SsiInterval(root_lower[k], root_upper[k]);
+    return graph_contains(graph, root);
+}
+
+std::string ssi_diagnostics::seed_chart_diagnostic(const NurbsSurface& a, const NurbsSurface& b,
+    const Parameters& lower, const Parameters& upper, const Parameters& root, double tolerance) {
+    SurfaceSurfaceField field(a, b, tolerance);
+    SeedCellPair pair{};
+    for (int k = 0; k < 4; ++k) {
+        std::array<double, 12>& box = k < 2 ? pair.a : pair.b;
+        box[8 + 2 * (k % 2)] = lower[k];
+        box[9 + 2 * (k % 2)] = upper[k];
+    }
+    nlohmann::ordered_json charts = nlohmann::ordered_json::array();
+    SurfaceSurfaceGraph graph;
+    const bool covered = seed_cell_covered(field, pair, root, &graph, &charts);
+    nlohmann::ordered_json result = {{"covered", covered}, {"root", root},
+        {"candidate_lower", lower}, {"candidate_upper", upper}, {"charts", charts}};
+    if (covered) {
+        std::array<double, 4> start = root;
+        result["boundary_start_proved"] = boundary_trace_start(field, {graph}, start);
+        result["boundary_start"] = start;
+        std::array<SsiInterval, 4> box;
+        result["root_box_proved"] = graph_root_box(field, graph, root, box);
+        result["root_box"] = nlohmann::ordered_json::array();
+        for (const SsiInterval interval : box)
+            result["root_box"].push_back({interval.lo, interval.hi});
+    }
+    return result.dump();
+}
+
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
     const NurbsSurface& a,
     const NurbsSurface& b,
@@ -9521,6 +11535,63 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
     if (tolerance <= 0.0)
         tolerance = Tolerance::ZERO_TOLERANCE;
+
+    for (int side = 0; side < 2; ++side) {
+        const NurbsSurface& planar = side == 0 ? a : b;
+        const NurbsSurface& other = side == 0 ? b : a;
+        if (other.is_planar(nullptr, 1e-9))
+            continue;
+        if (planar.degree(0) != 1 || planar.degree(1) != 1 ||
+            planar.cv_count(0) != 2 || planar.cv_count(1) != 2)
+            continue;
+        const double weight = planar.weight(0, 0);
+        if (!(weight > 0.0) || !std::isfinite(weight) ||
+            planar.weight(0, 1) != weight || planar.weight(1, 0) != weight || planar.weight(1, 1) != weight ||
+            !planar.is_planar(nullptr, 1e-9) || !is_parallelogram_face(planar, face_frame(planar)))
+            continue;
+        const std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> exact =
+            surface_section::extrusion_plane(other, surface_mid_plane(planar), tolerance);
+        if (!exact)
+            continue;
+        std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
+        for (const std::pair<NurbsCurve, NurbsCurve>& section : *exact) {
+            const NurbsCurve planar_parameters = plane_pcurve(planar, section.first);
+            if (!planar_parameters.is_valid())
+                throw std::runtime_error("Exact extrusion section has no valid affine plane parameters");
+            std::vector<double> cuts = {section.first.domain_start(), section.first.domain_end()};
+            for (int direction = 0; direction < 2; ++direction)
+                for (double bound : {planar.domain(direction).first, planar.domain(direction).second}) {
+                    Point origin(0, 0, 0);
+                    Vector normal(0, 0, 0);
+                    origin[direction] = bound;
+                    normal[direction] = 1.0;
+                    const double error = 128 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(bound));
+                    const std::vector<double> roots = Intersection::curve_plane(planar_parameters,
+                        Plane::from_point_normal(origin, normal), error);
+                    cuts.insert(cuts.end(), roots.begin(), roots.end());
+                }
+            std::sort(cuts.begin(), cuts.end());
+            cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+            for (size_t i = 1; i < cuts.size(); ++i) {
+                const Point uv = planar_parameters.point_at(std::midpoint(cuts[i - 1], cuts[i]));
+                if (uv[0] < planar.domain(0).first || uv[0] > planar.domain(0).second ||
+                    uv[1] < planar.domain(1).first || uv[1] > planar.domain(1).second)
+                    continue;
+                NurbsCurve world = section.first;
+                NurbsCurve plane_uv = planar_parameters;
+                NurbsCurve other_uv = section.second;
+                if (!world.trim(cuts[i - 1], cuts[i]) || !plane_uv.trim(cuts[i - 1], cuts[i]) ||
+                    !other_uv.trim(cuts[i - 1], cuts[i]))
+                    throw std::runtime_error("Exact extrusion section could not trim shared parameters");
+                if (side == 0)
+                    result.push_back({std::move(world), std::move(plane_uv), std::move(other_uv)});
+                else
+                    result.push_back({std::move(world), std::move(other_uv), std::move(plane_uv)});
+            }
+        }
+        drop_point_sections(result, tolerance);
+        return result;
+    }
 
     AnalyticResult analytic = analytic_ssi(a, b, tolerance);
 
@@ -9535,6 +11606,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
 
     if (b.is_planar(nullptr, 1e-9))
         return planar_section_triples(b, a, false, tolerance);
+
+    if (auto crossing = surface_section::bilinear_crossing(a, b, tolerance))
+        return *crossing;
 
     return marched_section_triples(a, b, tolerance);
 }
@@ -9812,7 +11886,7 @@ std::vector<NurbsCurve> target_pcurves(
         return Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
     }
 
-    std::vector<NurbsCurve> pcs = run_curves(analytic_pullback(target, rt, c3d));
+    std::vector<NurbsCurve> pcs = run_curves(analytic_pullback(target, rt, c3d, tolerance));
 
     if (pcs.empty())
         pcs = Closest::surface_curve(target, c3d, 0.0, 0.0, tolerance);
@@ -9833,7 +11907,7 @@ std::vector<NurbsCurve> Intersection::cut_curves_on_surface(
 
     std::vector<NurbsCurve> out;
     bool cutter_planar = cutter.is_planar(nullptr, 1e-6);
-    RecogSurface rt = recognize_surface(target, std::max(tolerance, 1e-7) * 1e4);
+    RecogSurface rt = recognize_surface(target, tolerance);
 
     for (std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& tr : surface_surface(target, cutter, tolerance)) {
         for (const NurbsCurve& pc : target_pcurves(target, rt, tr, tolerance)) {
@@ -11143,6 +13217,232 @@ bool Intersection::line_line_classified(
     line_line_types(tt0, tt1, above_closer_to_edge, type0, type1, v0, v1);
 
     return true;
+}
+
+namespace {
+struct BezierChart {
+    int p = 0, q = 0, nu = 0, nv = 0;
+    std::vector<double> u, v;
+    explicit BezierChart(const NurbsSurface& s) {
+        p = s.degree(0);
+        q = s.degree(1);
+        if (s.dimension() != 3 || p < 1 || q < 1 || p > 5 || q > 5)
+            return;
+        for (int d = 0; d < 2; ++d) {
+            const auto& knots = s.m_nurbsknot[d];
+            std::vector<double> unique;
+            for (size_t i = 0; i < knots.size();) {
+                size_t j = i + 1;
+                while (j < knots.size() && knots[j] == knots[i])
+                    ++j;
+                if (j - i != static_cast<size_t>(s.degree(d)) || !std::isfinite(knots[i]))
+                    return;
+                unique.push_back(knots[i]);
+                i = j;
+            }
+            if (unique.size() < 2 || s.cv_count(d) != static_cast<int>((unique.size() - 1) * s.degree(d) + 1))
+                return;
+            (d ? v : u) = std::move(unique);
+        }
+        for (int i = 0; i < s.cv_count(0); ++i)
+            for (int j = 0; j < s.cv_count(1); ++j)
+                if (!(s.weight(i, j) > 0) || !std::isfinite(s.weight(i, j)))
+                    return;
+        nu = static_cast<int>(u.size() - 1);
+        nv = static_cast<int>(v.size() - 1);
+    }
+    bool valid() const { return nu > 0 && nv > 0; }
+};
+struct ExactCorner {
+    std::array<double, 3> h;
+    double w;
+};
+ExactCorner projective_corner(const NurbsSurface& s, int i, int j) {
+    const double* c = s.cv(i, j);
+    return {{c[0], c[1], c[2]}, s.weight(i, j)};
+}
+bool same_corner(const ExactCorner& a, const ExactCorner& b) {
+    for (int d = 0; d < 3; ++d)
+        if (!nurbs_coincidence::exact_products_equal(a.h[d], b.w, b.h[d], a.w))
+            return false;
+    return true;
+}
+// Sign is exact zero or a directed, strictly separated product difference.
+int corner_side(const ExactCorner& a, const ExactCorner& p, int d) {
+    if (nurbs_coincidence::exact_products_equal(a.h[d], p.w, p.h[d], a.w))
+        return 0;
+    const auto gap = nurbs_interval::Interval(a.h[d]) * nurbs_interval::Interval(p.w) -
+                     nurbs_interval::Interval(p.h[d]) * nurbs_interval::Interval(a.w);
+    if (!nurbs_interval::finite(gap))
+        return 2;
+    return gap.lo > 0 ? 1 : gap.hi < 0 ? -1 : 2;
+}
+struct SupportSide {
+    bool valid = false, unique = true;
+    std::vector<ExactCorner> zero;
+};
+SupportSide support_side(const NurbsSurface& s, const BezierChart& chart, const ExactCorner& point, int axis,
+                         int side) {
+    SupportSide out;
+    std::vector<int> signs(static_cast<size_t>(s.cv_count(0)) * s.cv_count(1));
+    const auto sign = [&](int i, int j) -> int& { return signs[static_cast<size_t>(i) * s.cv_count(1) + j]; };
+    for (int i = 0; i < s.cv_count(0); ++i)
+        for (int j = 0; j < s.cv_count(1); ++j) {
+            const auto cv = projective_corner(s, i, j);
+            const int raw = corner_side(cv, point, axis);
+            if (raw == 2 || raw * side > 0)
+                return out;
+            sign(i, j) = raw;
+            if (raw == 0)
+                out.zero.push_back(cv);
+        }
+    for (int a = 0; a < chart.nu; ++a)
+        for (int b = 0; b < chart.nv; ++b) {
+            // Positive Bernstein basis on each open stratum: one strict coefficient
+            // excludes contact; an all-zero stratum must map to this ONE point.
+            const auto stratum = [&](int i0, int i1, int j0, int j1) {
+                bool all_zero = true, all_point = true;
+                for (int i = i0; i <= i1; ++i)
+                    for (int j = j0; j <= j1; ++j) {
+                        all_zero = all_zero && sign(a * chart.p + i, b * chart.q + j) == 0;
+                        all_point =
+                            all_point &&
+                            same_corner(projective_corner(s, a * chart.p + i, b * chart.q + j), point);
+                    }
+                if (all_zero && !all_point)
+                    out.unique = false;
+            };
+            stratum(0, chart.p, 0, chart.q);
+            stratum(0, 0, 0, chart.q);
+            stratum(chart.p, chart.p, 0, chart.q);
+            stratum(0, chart.p, 0, 0);
+            stratum(0, chart.p, chart.q, chart.q);
+            stratum(0, 0, 0, 0);
+            stratum(chart.p, chart.p, 0, 0);
+            stratum(0, 0, chart.q, chart.q);
+            stratum(chart.p, chart.p, chart.q, chart.q);
+        }
+    out.valid = !out.zero.empty();
+    return out;
+}
+bool pinned_coordinate(const SupportSide& a, const SupportSide& b, const ExactCorner& point, int d) {
+    const auto all = [&](const auto& cvs, int side) {
+        for (const auto& cv : cvs) {
+            const int sign = corner_side(cv, point, d);
+            if (sign == 2 || sign * side > 0)
+                return false;
+        }
+        return true;
+    };
+    return (all(a.zero, 1) && all(b.zero, -1)) || (all(a.zero, -1) && all(b.zero, 1));
+}
+std::optional<surface_section::PointEvent> isolated_support_corner(const NurbsSurface& a,
+                                                                   const NurbsSurface& b) {
+    const BezierChart ca(a), cb(b);
+    if (!ca.valid() || !cb.valid())
+        return std::nullopt;
+    for (int i = 0; i <= ca.nu; ++i)
+        for (int j = 0; j <= ca.nv; ++j)
+            for (int k = 0; k <= cb.nu; ++k)
+                for (int l = 0; l <= cb.nv; ++l) {
+                    const auto point = projective_corner(a, i * ca.p, j * ca.q);
+                    if (!same_corner(point, projective_corner(b, k * cb.p, l * cb.q)))
+                        continue;
+                    for (int axis = 0; axis < 3; ++axis)
+                        for (int orientation : {-1, 1}) {
+                            const auto first = support_side(a, ca, point, axis, orientation);
+                            const auto second = support_side(b, cb, point, axis, -orientation);
+                            if (!first.valid || !second.valid)
+                                continue;
+                            bool unique = first.unique || second.unique;
+                            if (!unique) {
+                                unique = true;
+                                for (int d = 0; d < 3; ++d)
+                                    if (d != axis)
+                                        unique = unique && pinned_coordinate(first, second, point, d);
+                            }
+                            if (unique)
+                                return surface_section::PointEvent{
+                                    {point.h[0] / point.w, point.h[1] / point.w, point.h[2] / point.w},
+                                    {ca.u[i], ca.v[j], 0},
+                                    {cb.u[k], cb.v[l], 0},
+                                    {point.h[0], point.h[1], point.h[2], point.w}};
+                        }
+                }
+    return std::nullopt;
+}
+} // namespace
+
+surface_section::Result surface_section::intersect(const NurbsSurface& a, const NurbsSurface& b,
+                                                    double tolerance) {
+    Result result;
+    if (a.is_valid() && b.is_valid()) {
+        const auto au=a.domain(0),av=a.domain(1),bu=b.domain(0),bv=b.domain(1);
+        result.unresolved_domains={au.first,au.second,av.first,av.second,bu.first,bu.second,bv.first,bv.second};
+    }
+    try {
+        if (!a.is_valid() || !b.is_valid() || a.dimension()!=3 || b.dimension()!=3 ||
+            !std::isfinite(tolerance) || tolerance <= 0)
+            throw std::runtime_error("Support inventory requires valid surfaces and positive finite tolerance");
+        if (const auto point = isolated_support_corner(a,b)) {
+            for (int side=0;side<2;++side) {
+                const auto& surface=side?b:a;
+                const auto uv=side?point->second:point->first;
+                nurbs_interval::SurfaceBounds bound;
+                if (!nurbs_interval::surface_bounds(surface,{uv[0],uv[0],uv[1],uv[1]},
+                    {point->point[0],point->point[1],point->point[2]},bound,false))
+                    throw std::runtime_error("Support point lacks an original singleton enclosure");
+                nurbs_interval::Interval squared;
+                for (const auto coordinate:bound.point) {
+                    const nurbs_interval::Interval distance(nurbs_interval::magnitude(coordinate));
+                    squared=squared+distance*distance;
+                }
+                const auto allowed=nurbs_interval::Interval(tolerance)*nurbs_interval::Interval(tolerance);
+                if (!nurbs_interval::finite(squared) || !nurbs_interval::finite(allowed) || squared.hi>allowed.lo)
+                    throw std::runtime_error("Support point exceeds its original geometry precision");
+            }
+            auto owned=*point;
+            owned.first_preimages=surface_point_preimages::enumerate(a,owned.exact_witness);
+            owned.second_preimages=surface_point_preimages::enumerate(b,owned.exact_witness);
+            result.points.push_back(std::move(owned));
+            result.coverage=Coverage::GlobalContactPoint;
+        } else {
+            nurbs_coincidence::ParameterMap map;
+            if (nurbs_coincidence::same_parameters(a,b,tolerance) ||
+                nurbs_coincidence::parameter_mapping(a,b,tolerance,map) ||
+                nurbs_coincidence::common_basis_agreement(a,b,tolerance) ||
+                nurbs_coincidence::coplanar(a,b,tolerance)) {
+                result.coincident=true;
+                result.coverage=Coverage::CoincidentUnverified;
+            } else {
+                result.curves=Intersection::surface_surface(a,b,tolerance);
+                for (const auto& section:result.curves)
+                    if (curve_surface_intersection::same_parameter(std::get<0>(section),std::get<1>(section),a,tolerance)
+                            !=curve_surface_intersection::ParameterMatch::Matched ||
+                        curve_surface_intersection::same_parameter(std::get<0>(section),std::get<2>(section),b,tolerance)
+                            !=curve_surface_intersection::ParameterMatch::Matched)
+                        throw std::runtime_error("Support inventory curve lacks original paired agreement");
+                if (!result.curves.empty()) {
+                    // Do not pretend returned-locus agreement proves every original branch.
+                    result.coverage=Coverage::LegacyLocusOnly;
+                } else {
+                    const SurfaceSurfaceField original(a,b,tolerance);
+                    if (!surface_surface_seeds(original).empty())
+                        throw std::runtime_error("Empty support inventory has unowned original root graphs");
+                    result.coverage=Coverage::OriginalDomainExcluded;
+                }
+            }
+        }
+        result.complete=true;
+    } catch (const std::runtime_error& error) {
+        result.coverage=Coverage::Unresolved;
+        result.failure=error.what();
+        if (a.is_valid() && b.is_valid()) {
+            const auto au=a.domain(0),av=a.domain(1),bu=b.domain(0),bv=b.domain(1);
+            result.unresolved_domains={au.first,au.second,av.first,av.second,bu.first,bu.second,bv.first,bv.second};
+        }
+    }
+    return result;
 }
 
 } // namespace session_cpp

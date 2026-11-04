@@ -87,6 +87,12 @@ public:
         CurveInterpStyle end_condition = CurveInterpStyle::Occt
     );
 
+    /// Open cubic interpolation with endpoint derivatives in the supplied raw parameters.
+    /// Invalid data returns an invalid curve; existing interpolation factories are unchanged.
+    static NurbsCurve create_interpolated_with_end_derivatives(
+        const std::vector<Point>& points, const std::vector<double>& parameters,
+        const Vector& start_derivative, const Vector& end_derivative);
+
     /// Construct from poles, weights, distinct knots and multiplicities (OCCT convention).
     static NurbsCurve create_from_parameters(const std::vector<Point>& points, const std::vector<double>& weights, const std::vector<double>& knots, const std::vector<int>& mults, int degree, bool periodic = false);
 
@@ -546,7 +552,14 @@ private:
     static bool solve_dense(std::vector<std::vector<double>>& matrix, std::vector<double>& rhs, int n, int dim);
 
     /// Integrate analytic speed on intervals split at every distinct knot.
-    void arc_length_table(int samples, std::vector<double>& parameters, std::vector<double>& lengths) const;
+    void arc_length_table(std::vector<double>& parameters, std::vector<double>& lengths) const;
+
+    /// Append [ta, tb] to the table, halved until its two halves agree with the Gauss value of the whole.
+    void arc_length_interval(double ta, double tb, double whole, int depth, std::vector<double>& parameters,
+        std::vector<double>& lengths) const;
+
+    /// Array sizes an evaluation reads, in constant time: unlike is_valid() it leaves the values to the caller.
+    bool has_evaluation_tables() const;
 
     /// Return the arc length of [ta, tb] by 5-point Gauss-Legendre.
     double arc_length_gauss(double ta, double tb) const;

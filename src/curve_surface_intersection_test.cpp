@@ -1,3 +1,5 @@
+#include "nurbs_coincidence.h"
+#include "nurbs_interval.h"
 #include "curve_surface_intersection.h"
 #include "brep.h"
 #include "mini_test.h"
@@ -522,3 +524,366 @@ MINI_TEST("Curve Surface Native", "Degenerate And Invalid Inputs") {
     const curve_surface_intersection::Result uncertain = curve_surface_intersection::intersect(translated, shifted, 1e-9);
     MINI_CHECK(!uncertain.complete && !uncertain.failure.empty());
 }
+
+MINI_TEST("Curve Surface Native", "Same Parameter Trimmed Focal Support") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_thicken_trimmed_focal_parameter_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const NurbsCurve curve = NurbsCurve::jsonload(fixture.at("curve"));
+    const NurbsCurve pcurve = NurbsCurve::jsonload(fixture.at("pcurve"));
+    const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+    const double tolerance = fixture.at("tolerance");
+    MINI_CHECK(tolerance == 1e-5);
+    MINI_CHECK(curve.cv_count() == 20 && pcurve.cv_count() == 2);
+    MINI_CHECK(surface.cv_count(0) == 62 && surface.cv_count(1) == 7);
+    MINI_CHECK(curve.domain_start() == -4 && curve.domain_end() == 2);
+    MINI_CHECK(curve.domain() == pcurve.domain());
+    std::string diagnostic;
+    const auto match = curve_surface_intersection::same_parameter(curve, pcurve, surface, tolerance, &diagnostic);
+    if (match != curve_surface_intersection::ParameterMatch::Matched)
+        throw std::runtime_error(diagnostic);
+    const NurbsCurve displaced = curve.transformed(Xform::translation(0, 4 * tolerance, 0));
+    MINI_CHECK(curve_surface_intersection::same_parameter(displaced, pcurve, surface, tolerance)
+        == curve_surface_intersection::ParameterMatch::Mismatched);
+    MINI_CHECK(curve.domain_start() == -4 && curve.domain_end() == 2);
+    MINI_CHECK(pcurve.domain() == curve.domain());
+}
+
+MINI_TEST("Curve Surface Native", "Interval Surface Adjacent Float Span") {
+    NurbsSurface surface = NurbsSurface::create(false, false, 1, 1, 3, 2,
+        {{0, 0, 0}, {0, 1, 0}, {.5, 0, 1}, {.5, 1, 1}, {1, 0, 0}, {1, 1, 0}});
+    surface.m_nurbsknot[0] = {0, .5, 1};
+    MINI_CHECK(surface.is_valid());
+    const double knot = surface.m_nurbsknot[0][1];
+    const double left = std::nextafter(knot, -std::numeric_limits<double>::infinity());
+    MINI_CHECK(std::midpoint(left, knot) == knot);
+    nurbs_interval::SurfaceBounds bounds;
+    MINI_CHECK(nurbs_interval::surface_bounds(surface, {left, knot, 0, 1}, {0, 0, 0}, bounds, false));
+    MINI_CHECK(bounds.point[0].lo <= left && bounds.point[0].hi >= knot);
+    MINI_CHECK(bounds.point[2].lo <= 1 && bounds.point[2].hi >= 1);
+    MINI_CHECK(!nurbs_interval::surface_controls(surface, {knot, knot, 0, 1}, {0, 0, 0}).empty());
+    MINI_CHECK(nurbs_interval::surface_controls(surface, {.25, .75, 0, 1}, {0, 0, 0}).empty());
+}
+
+
+MINI_TEST("Curve Surface Native", "Certified Focal Endpoint Negative Witness") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_thicken_trimmed_focal_parameter_failure.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::ordered_json::parse(input);
+    const NurbsCurve original = NurbsCurve::jsonload(fixture.at("curve"));
+    const NurbsSurface surface = NurbsSurface::jsonload(fixture.at("surface"));
+    const double tolerance = fixture.at("tolerance");
+    // Independent geometry: this entire source boundary and its world curve have y=0.
+    // Every translated endpoint therefore has exact y separation 4*tolerance.
+    MINI_CHECK(!surface.is_rational());
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        MINI_CHECK(surface.cv(i, 0)[1] == 0);
+    for (int i = 0; i < original.cv_count(); ++i)
+        MINI_CHECK(original.cv(i)[1] == 0);
+    for (int variant = 0; variant < 4; ++variant) {
+        NurbsCurve pcurve = NurbsCurve::jsonload(fixture.at("pcurve"));
+        MINI_CHECK(pcurve.set_domain(32, 35)); // Corresponding endpoints; unequal raw domains.
+        NurbsCurve displaced = original.transformed(Xform::translation(0,
+            (variant & 1 ? -4 : 4)*tolerance, 0));
+        if (variant & 2) {
+            MINI_CHECK(displaced.reverse());
+            MINI_CHECK(pcurve.reverse());
+            MINI_CHECK(pcurve.to_rational());
+            for (int i = 0; i < pcurve.cv_count(); ++i) {
+                const Point point = pcurve.get_cv(i);
+                MINI_CHECK(pcurve.set_cv_4d(i, 2*point[0], 2*point[1], 2*point[2], 2));
+            }
+        }
+        MINI_CHECK(curve_surface_intersection::same_parameter(displaced, pcurve, surface, tolerance)
+            == curve_surface_intersection::ParameterMatch::Mismatched);
+    }
+}
+
+namespace {
+session_cpp::NurbsSurface exact_chart_test_plane() {
+    using namespace session_cpp;
+    const Point origin(1048576, -524288, 262144);
+    return NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {origin, origin + Vector(0,1,0), origin + Vector(1,0,0), origin + Vector(1,1,0)});
+}
+session_cpp::NurbsCurve exact_chart_test_pc() {
+    auto pc = session_cpp::NurbsCurve::create(false, 1, {{0,.5,0},{1,.5,0}});
+    MINI_CHECK(pc.set_domain(-7,13));
+    return pc;
+}
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Shifted Polynomial Certificate") {
+    using namespace session_cpp;
+    const auto surface = exact_chart_test_plane();
+    auto curve = NurbsCurve::create(false, 1, {{1048576,-524287.5,262144},{1048577,-524287.5,262144}});
+    MINI_CHECK(curve.set_domain(-7,13));
+    const auto pc = exact_chart_test_pc();
+    const auto c = curve.jsondump(), p = pc.jsondump(), s = surface.jsondump();
+    std::string diagnostic;
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7,&diagnostic)
+        == curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(diagnostic.empty());
+    MINI_CHECK(curve.jsondump()==c && pc.jsondump()==p && surface.jsondump()==s);
+    MINI_CHECK(curve.domain_start()==-7 && curve.domain_end()==13);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Rational Homogeneous Certificate") {
+    using namespace session_cpp;
+    auto surface = exact_chart_test_plane();
+    MINI_CHECK(surface.to_rational());
+    for (int i=0;i<2;++i)
+        for (int j=0;j<2;++j) {
+            const Point point = surface.get_cv(i,j);
+            const double w = i ? 2 : 1;
+            MINI_CHECK(surface.set_cv_4d(i,j,w*point[0],w*point[1],w*point[2],w));
+        }
+    NurbsCurve curve(3,true,2,2);
+    curve.m_nurbsknot={-7,13};
+    MINI_CHECK(curve.set_cv_4d(0,1048576,-524287.5,262144,1));
+    MINI_CHECK(curve.set_cv_4d(1,2*1048577.,2*-524287.5,2*262144.,2));
+    const auto pc = exact_chart_test_pc();
+    const auto c=curve.jsondump(), s=surface.jsondump(), p=pc.jsondump();
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7)
+        == curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(curve.jsondump()==c && surface.jsondump()==s && pc.jsondump()==p);
+    MINI_CHECK(surface.weight(0,0)==1 && surface.weight(1,1)==2);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Interior Negative Certificate") {
+    using namespace session_cpp;
+    const auto surface = exact_chart_test_plane();
+    auto curve = NurbsCurve::create(false, 2,
+        {{1048576,-524287.5,262144},{1048576.5,-524287.5,262144.0009765625},
+         {1048577,-524287.5,262144}});
+    MINI_CHECK(curve.set_domain(-7,13));
+    const auto pc=exact_chart_test_pc();
+    MINI_CHECK(curve.point_at_start().distance(surface.point_at(0,.5))==0);
+    MINI_CHECK(curve.point_at_end().distance(surface.point_at(1,.5))==0);
+    MINI_CHECK(curve.point_at(3)[2]-262144 > 1000e-7);
+    const auto original=curve.jsondump();
+    std::string diagnostic = "stale sentinel";
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7,&diagnostic)
+        == curve_surface_intersection::ParameterMatch::Mismatched);
+    MINI_CHECK(diagnostic.starts_with("Certified common-interval point residual exceeds tolerance"));
+    MINI_CHECK(diagnostic.find("Common parameter partition failed") == std::string::npos);
+    MINI_CHECK(curve.jsondump()==original);
+}
+
+MINI_TEST("Curve Surface Native", "Exact World Chart Inexact Rational Original Fallback") {
+    using namespace session_cpp;
+    const double origin=1000000.1, w=1.1, product=origin*w;
+    MINI_CHECK(!nurbs_coincidence::exact_products_equal(origin,w,product,1));
+    NurbsCurve curve(3,true,2,2);
+    curve.m_nurbsknot={-7,13};
+    MINI_CHECK(curve.set_cv_4d(0,origin,0,0,1));
+    MINI_CHECK(curve.set_cv_4d(1,(origin+1)*w,0,0,w));
+    const auto surface=exact_chart_test_plane();
+    const auto pc=exact_chart_test_pc();
+    const auto c=curve.jsondump(),s=surface.jsondump(),p=pc.jsondump();
+    std::string diagnostic="untouched sentinel";
+    MINI_CHECK(curve_surface_intersection::same_parameter(curve,pc,surface,1e-7,&diagnostic)
+        == curve_surface_intersection::ParameterMatch::Unresolved);
+    MINI_CHECK(diagnostic=="Input or coordinate-resolution validation failed");
+    MINI_CHECK(curve.jsondump()==c && surface.jsondump()==s && pc.jsondump()==p);
+}
+
+namespace session_cpp {
+MINI_TEST("Curve Surface Native", "Same Parameter Closed C1 Chart Upper Endpoint") {
+    // Independently specified S(u,v)=(u,v,0) for u<=1 and
+    // S(u,v)=(u,v,4*(u-1)^2) for u>=1. The patches are C1, not C2.
+    NurbsSurface surface = NurbsSurface::create(false, false, 2, 1, 5, 2,
+        {{0,0,0},{0,1,0},{0.5,0,0},{0.5,1,0},{1,0,0},{1,1,0},
+         {1.5,0,0},{1.5,1,0},{2,0,4},{2,1,4}});
+    surface.m_nurbsknot[0] = {0,0,1,1,2,2};
+    MINI_CHECK(surface.is_valid());
+    const NurbsCurve world = NurbsCurve::create(false,1,{{0,0.5,0},{1,0.5,0}});
+    const NurbsCurve pc = world;
+    MINI_CHECK(curve_surface_intersection::same_parameter(world,pc,surface,1e-12)
+        == curve_surface_intersection::ParameterMatch::Matched);
+    const NurbsCurve displaced = world.transformed(Xform::translation(0,0,1e-8));
+    MINI_CHECK(curve_surface_intersection::same_parameter(displaced,pc,surface,1e-12)
+        == curve_surface_intersection::ParameterMatch::Mismatched);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Curve Surface Native", "Structured Parameter Failure Preserves Raw Locations") {
+    const auto surface=NurbsSurface::create(false,false,1,1,2,2,
+        {{0,0,0},{0,1,0},{1,0,0},{1,1,0}});
+    NurbsCurve world=NurbsCurve::create(false,1,{{0,.5,0},{1,.5,0}});
+    world.m_nurbsknot={-3,2};
+    NurbsCurve pc=NurbsCurve::create(false,2,{{0,.5,0},{1,.5,0},{1,.5,0}});
+    pc.m_nurbsknot={7,7,11,11};
+    curve_surface_intersection::ParameterFailure failure;
+    const auto match=curve_surface_intersection::same_parameter(world,pc,surface,1e-10,nullptr,&failure);
+    MINI_CHECK(match==curve_surface_intersection::ParameterMatch::Mismatched);
+    MINI_CHECK(failure.kind==curve_surface_intersection::ParameterFailure::Kind::PointResidual);
+    MINI_CHECK(failure.has_interval && failure.has_point);
+    MINI_CHECK(failure.curve_point>-3 && failure.curve_point<2);
+    MINI_CHECK(failure.pcurve_point>7 && failure.pcurve_point<11);
+    MINI_CHECK(std::abs((failure.curve_point+3)/5-(failure.pcurve_point-7)/4)<1e-14);
+    MINI_CHECK(curve_surface_intersection::same_parameter(world,world,surface,1e-10,nullptr,&failure)==
+        curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(failure.kind==curve_surface_intersection::ParameterFailure::Kind::None && !failure.has_interval);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Curve Surface Native", "Directed Bilinear Agreement Preserves Actual Critical Witnesses") {
+    const auto root = std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root / "tests/fixtures/native_critical_bilinear_agreement.json");
+    MINI_CHECK(input.good());
+    const auto fixture = nlohmann::json::parse(input);
+    MINI_CHECK(fixture["records"].size() == 2);
+    for (const auto& record : fixture["records"]) {
+        const auto world = NurbsCurve::jsonload(record["world"]);
+        const double tolerance = record["accuracy"];
+        for (bool second : {false, true}) {
+            const auto pc = NurbsCurve::jsonload(record[second ? "second_pcurve" : "first_pcurve"]);
+            const auto support = NurbsSurface::jsonload(record[second ? "second" : "first"]);
+            const auto before_world = world.jsondump(), before_pc = pc.jsondump(),
+                       before_surface = support.jsondump();
+            std::string diagnostic = "previous failure";
+            curve_surface_intersection::ParameterFailure failure;
+            failure.kind = curve_surface_intersection::ParameterFailure::Kind::Bound;
+            failure.has_interval = true;
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pc, support, tolerance, &diagnostic,
+                                                                  &failure) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(diagnostic.empty() &&
+                       failure.kind == curve_surface_intersection::ParameterFailure::Kind::None);
+            MINI_CHECK(!failure.has_interval && !failure.has_point);
+            MINI_CHECK(world.jsondump() == before_world && pc.jsondump() == before_pc &&
+                       support.jsondump() == before_surface);
+        }
+    }
+}
+
+MINI_TEST("Curve Surface Native", "Directed Bilinear Agreement Uses Original Homogeneous Raw Laws") {
+    for (bool translated : {false, true})
+        for (int pc_dimension : {2, 3}) {
+            const Point origin =
+                translated ? Point(std::ldexp(1., 20), -std::ldexp(1., 19), std::ldexp(1., 18)) : Point();
+            NurbsSurface surface(3, true, 2, 2, 2, 2);
+            for (int i = 0; i < 2; ++i)
+                for (int j = 0; j < 2; ++j) {
+                    const Point p(origin[0] + i, origin[1] + j, origin[2] + .5 * i * j);
+                    MINI_CHECK(surface.set_cv_4d(i, j, p[0] * 5, p[1] * 5, p[2] * 5, 5));
+                }
+            MINI_CHECK(surface.set_domain(0, -7, 13) && surface.set_domain(1, 32, 35));
+            NurbsCurve world(3, true, 2, 2), pc(pc_dimension, true, 2, 2);
+            world.m_nurbsknot = {-3, 2};
+            pc.m_nurbsknot = {11, 17};
+            for (int i = 0; i < 2; ++i) {
+                const Point p(origin[0] + .25, origin[1] + i, origin[2] + .125 * i);
+                MINI_CHECK(world.set_cv_4d(i, p[0] * 2, p[1] * 2, p[2] * 2, 2));
+                MINI_CHECK(pc.set_cv_4d(i, -2 * 3, (32 + 3 * i) * 3, 0, 3));
+            }
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pc, surface, 2.5e-13) ==
+                       curve_surface_intersection::ParameterMatch::Matched);
+        }
+}
+
+MINI_TEST("Curve Surface Native", "Directed Bilinear Agreement Rejects Interior And Weight Excursions") {
+    for (bool translated : {false, true}) {
+        const Point origin =
+            translated ? Point(std::ldexp(1., 20), -std::ldexp(1., 19), std::ldexp(1., 18)) : Point();
+        for (bool variable_weight : {false, true}) {
+            NurbsSurface surface(3, false, 2, 2, 2, 2);
+            for (int i = 0; i < 2; ++i)
+                for (int j = 0; j < 2; ++j)
+                    MINI_CHECK(surface.set_cv(
+                        i, j, {origin[0] + i, origin[1] + j, origin[2] + (variable_weight ? 0. : i * j)}));
+            MINI_CHECK(surface.set_domain(0, -7, 13) && surface.set_domain(1, 32, 35));
+            NurbsCurve world(3, variable_weight, 2, 2), pc(3, false, 2, 2);
+            world.m_nurbsknot = {-3, 2};
+            pc.m_nurbsknot = {11, 17};
+            MINI_CHECK(pc.set_cv(0, {-7, 32, 0}) && pc.set_cv(1, {13, 35, 0}));
+            for (int i = 0; i < 2; ++i) {
+                const Point p(origin[0] + i, origin[1] + i, origin[2] + (variable_weight ? 0. : i));
+                if (variable_weight) {
+                    const double weight = 2 + i;
+                    MINI_CHECK(world.set_cv_4d(i, p[0] * weight, p[1] * weight, p[2] * weight, weight));
+                } else
+                    MINI_CHECK(world.set_cv(i, p));
+            }
+            const auto middle = pc.point_at(pc.domain_middle());
+            MINI_CHECK(
+                world.point_at(world.domain_middle()).distance(surface.point_at(middle[0], middle[1])) > .09);
+            MINI_CHECK(curve_surface_intersection::same_parameter(world, pc, surface, 1e-12) !=
+                       curve_surface_intersection::ParameterMatch::Matched);
+        }
+    }
+}
+
+MINI_TEST("Curve Surface Native",
+          "Directed Bilinear Agreement Does Not Assume PC Or Support Weights Constant") {
+    const Point origin(std::ldexp(1., 20), -std::ldexp(1., 19), std::ldexp(1., 18));
+    for (bool variable_support : {false, true}) {
+        NurbsSurface surface(3, true, 2, 2, 2, 2);
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j) {
+                const double weight = variable_support ? 2. + i : 1.;
+                MINI_CHECK(surface.set_cv_4d(i, j, (origin[0] + i) * weight, (origin[1] + j) * weight,
+                                             origin[2] * weight, weight));
+            }
+        MINI_CHECK(surface.set_domain(0, -7, 13) && surface.set_domain(1, 32, 35));
+        NurbsCurve world(3, false, 2, 2), pc(2, true, 2, 2);
+        world.m_nurbsknot = {-3, 2};
+        pc.m_nurbsknot = {11, 17};
+        for (int i = 0; i < 2; ++i) {
+            MINI_CHECK(world.set_cv(i, {origin[0] + i, origin[1] + i, origin[2]}));
+            const double weight = variable_support ? 1. : 2. + i;
+            MINI_CHECK(pc.set_cv_4d(i, (-7 + 20 * i) * weight, (32 + 3 * i) * weight, 0, weight));
+        }
+        const auto middle = pc.point_at(pc.domain_middle());
+        MINI_CHECK(world.point_at(world.domain_middle()).distance(surface.point_at(middle[0], middle[1])) >
+                   .09);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, pc, surface, 1e-12) !=
+                   curve_surface_intersection::ParameterMatch::Matched);
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Curve Surface Native", "Whole Constant Image Uses Exact Homogeneous Proportions") {
+    NurbsCurve point(3,true,3,3);
+    point.m_nurbsknot={-7,-7,13,13};
+    for (int i=0;i<3;++i) {
+        const double factor=std::ldexp(1.,i);
+        // The exact image is (1/3,-2/3,4/3), even though 1/3 is not a double.
+        MINI_CHECK(point.set_cv_4d(i,factor,-2*factor,4*factor,3*factor));
+    }
+    const auto before=point.jsondump();
+    MINI_CHECK(nurbs_coincidence::curve_constant_image(point));
+    for (double t : {-7.,3.,13.})
+        MINI_CHECK(point.point_at(t).distance(Point(1./3,-2./3,4./3))<1e-15);
+    MINI_CHECK(point.jsondump()==before);
+    MINI_CHECK(point.reverse());
+    MINI_CHECK(nurbs_coincidence::curve_constant_image(point));
+    point.m_cv[point.m_cv_stride+1]=std::nextafter(point.m_cv[point.m_cv_stride+1],0.);
+    // A one-ULP change in an interior homogeneous coefficient is not exact point identity.
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(point));
+
+    NurbsCurve feature(3,true,3,3);
+    feature.m_nurbsknot={0,0,1,1};
+    const double epsilon=std::ldexp(1.,-30);
+    const double weights[3]={2,3,5};
+    for(int i=0;i<3;++i) {
+        const double y=i==1?epsilon:0;
+        MINI_CHECK(feature.set_cv_4d(i,0,y*weights[i],0,weights[i]));
+    }
+    // Independently, rational quadratic y(.5)=(6/13)*epsilon >0 while both ends are0.
+    MINI_CHECK(std::abs(feature.point_at(.5)[1]-(6./13)*epsilon)<1e-24);
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(feature));
+    MINI_CHECK(feature.point_at_start().distance(Point())==0 && feature.point_at_end().distance(Point())==0);
+    feature.m_cv[3]=0;
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(feature));
+    feature.m_cv[3]=2;
+    feature.m_cv[0]=std::numeric_limits<double>::infinity();
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(feature));
+}
+} // namespace session_cpp

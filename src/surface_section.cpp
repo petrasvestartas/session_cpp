@@ -1,7 +1,13 @@
 #include "surface_section.h"
 #include "intersection.h"
+#include "curve_surface_intersection.h"
+#include "nurbs_coincidence.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -204,4 +210,310 @@ std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> extrusion_plane(
     return result;
 }
 
+namespace {
+
+bool polynomial_bilinear(const NurbsSurface& surface, std::array<Point, 4>& points) {
+    if (!surface.is_valid() || surface.dimension() != 3 || surface.degree(0) != 1 || surface.degree(1) != 1 ||
+        surface.cv_count(0) != 2 || surface.cv_count(1) != 2)
+        return false;
+    const double weight = surface.weight(0, 0);
+    if (!(weight > 0) || !std::isfinite(weight))
+        return false;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            if (surface.weight(i, j) != weight)
+                return false;
+            const Point point = surface.get_cv(i, j);
+            for (int d = 0; d < 3; ++d)
+                if (!nurbs_coincidence::exact_products_equal(point[d], weight, surface.cv(i, j)[d], 1))
+                    return false;
+            points[i + 2 * j] = point;
+        }
+    return true;
 }
+
+bool exact_vector(const Point& a, const Point& b, Vector& result) {
+    for (int d = 0; d < 3; ++d)
+        if (!nurbs_coincidence::exact_difference(a[d], b[d], result[d]))
+            return false;
+    return true;
+}
+
+bool parallel(const Vector& value, const Vector& normal, int axis) {
+    for (int d = 0; d < 3; ++d)
+        if (!nurbs_coincidence::exact_products_equal(value[d], normal[axis], value[axis], normal[d]))
+            return false;
+    return true;
+}
+
+bool projection_rank(const Vector& u, const Vector& v, const Vector& normal) {
+    const nurbs_interval::Interval determinant =
+        nurbs_interval::Interval(u[0]) *
+            (nurbs_interval::Interval(v[1]) * nurbs_interval::Interval(normal[2]) -
+             nurbs_interval::Interval(v[2]) * nurbs_interval::Interval(normal[1])) -
+        nurbs_interval::Interval(u[1]) *
+            (nurbs_interval::Interval(v[0]) * nurbs_interval::Interval(normal[2]) -
+             nurbs_interval::Interval(v[2]) * nurbs_interval::Interval(normal[0])) +
+        nurbs_interval::Interval(u[2]) *
+            (nurbs_interval::Interval(v[0]) * nurbs_interval::Interval(normal[1]) -
+             nurbs_interval::Interval(v[1]) * nurbs_interval::Interval(normal[0]));
+    return nurbs_interval::finite(determinant) && (determinant.lo > 0 || determinant.hi < 0);
+}
+
+bool root_inside(double numerator, double denominator) {
+    return denominator > 0 ? numerator > 0 && numerator < denominator
+                           : numerator < 0 && numerator > denominator;
+}
+
+bool root_coverage(const std::array<Point, 4>& points, int fixed, nurbs_interval::Interval root, double raw,
+                   const std::pair<double, double>& domain, double accuracy) {
+    const nurbs_interval::Interval represented =
+        (nurbs_interval::Interval(raw) - nurbs_interval::Interval(domain.first)) /
+        (nurbs_interval::Interval(domain.second) - nurbs_interval::Interval(domain.first));
+    const nurbs_interval::Interval gap = root - represented;
+    if (!nurbs_interval::finite(gap))
+        return false;
+    const double delta = nurbs_interval::magnitude(gap);
+    nurbs_interval::Interval squared;
+    for (int d = 0; d < 3; ++d) {
+        const nurbs_interval::Interval first =
+            nurbs_interval::Interval(points[fixed == 0 ? 1 : 2][d]) - nurbs_interval::Interval(points[0][d]);
+        const nurbs_interval::Interval last =
+            nurbs_interval::Interval(points[3][d]) - nurbs_interval::Interval(points[fixed == 0 ? 2 : 1][d]);
+        const double speed = std::max(nurbs_interval::magnitude(first), nurbs_interval::magnitude(last));
+        const nurbs_interval::Interval error =
+            nurbs_interval::Interval(delta) * nurbs_interval::Interval(speed);
+        squared = squared + error * error;
+    }
+    const nurbs_interval::Interval limit =
+        nurbs_interval::Interval(accuracy) * nurbs_interval::Interval(accuracy);
+    return nurbs_interval::finite(squared) && squared.hi <= limit.lo;
+}
+
+NurbsCurve raw_line(const Point& start, const Point& end, const std::pair<double, double>& domain) {
+    NurbsCurve curve(3, false, 2, 2);
+    curve.m_nurbsknot = {domain.first, domain.second};
+    if (!curve.set_cv(0, start) || !curve.set_cv(1, end) || !curve.is_valid())
+        return {};
+    return curve;
+}
+
+struct BilinearFactor {
+    double numerators[2];
+    double denominator;
+};
+
+bool bilinear_differences(const std::array<Point, 4>& a, const std::array<Point, 4>& b, int variant,
+                          std::array<Vector, 4>& difference, Vector& normal) {
+    const int axes[2] = {(variant & 4) ? 1 : 0, (variant & 4) ? 0 : 1};
+    double largest = 0;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            int target[2];
+            target[axes[0]] = (variant & 1) ? 1 - i : i;
+            target[axes[1]] = (variant & 2) ? 1 - j : j;
+            if (!exact_vector(a[i + 2 * j], b[target[0] + 2 * target[1]], difference[i + 2 * j]))
+                return false;
+            for (int d = 0; d < 3; ++d)
+                if (std::abs(difference[i + 2 * j][d]) > largest) {
+                    largest = std::abs(difference[i + 2 * j][d]);
+                    normal = difference[i + 2 * j];
+                }
+        }
+    return largest > 0;
+}
+
+std::optional<BilinearFactor> crossing_factor(const std::array<Point, 4>& a, const std::array<Point, 4>& b,
+                                              const Vector& u, const Vector& v, const Vector& mixed,
+                                              int variant) {
+    std::array<Vector, 4> difference;
+    Vector normal;
+    if (!bilinear_differences(a, b, variant, difference, normal))
+        return std::nullopt;
+    int component = 0;
+    for (int d = 1; d < 3; ++d)
+        if (std::abs(normal[d]) > std::abs(normal[component]))
+            component = d;
+    for (const auto& value : difference)
+        if (!parallel(value, normal, component))
+            return std::nullopt;
+    if (!parallel(mixed, normal, component) || !projection_rank(u, v, normal))
+        return std::nullopt;
+    const double constant = difference[0][component];
+    double linear_u, linear_v, product, edge;
+    if (!nurbs_coincidence::exact_difference(difference[1][component], constant, linear_u) ||
+        !nurbs_coincidence::exact_difference(difference[2][component], constant, linear_v) ||
+        !nurbs_coincidence::exact_difference(difference[3][component], difference[1][component], edge) ||
+        !nurbs_coincidence::exact_difference(edge, linear_v, product) || product == 0 ||
+        !nurbs_coincidence::exact_products_equal(constant, product, linear_u, linear_v))
+        return std::nullopt;
+    // Exact comparisons locate the rational roots; a near-factorable hyperbola
+    // must fall through even when its perturbation is below modeling tolerance.
+    BilinearFactor factor{{-linear_v, -linear_u}, product};
+    if (!root_inside(factor.numerators[0], product) || !root_inside(factor.numerators[1], product))
+        return std::nullopt;
+    return factor;
+}
+
+bool mapped_raw_endpoints(const NurbsSurface& second, int variant, int fixed, double parameter, Point& start,
+                          Point& end) {
+    const int axes[2] = {(variant & 4) ? 1 : 0, (variant & 4) ? 0 : 1};
+    for (int axis = 0; axis < 2; ++axis) {
+        const auto domain = second.domain(axes[axis]);
+        const double low = axis == fixed ? parameter : 0., high = axis == fixed ? parameter : 1.;
+        const double p = (variant & (1 << axis)) ? 1 - low : low;
+        const double q = (variant & (1 << axis)) ? 1 - high : high;
+        start[axes[axis]] = std::lerp(domain.first, domain.second, p);
+        end[axes[axis]] = std::lerp(domain.first, domain.second, q);
+        if (axis == fixed && !(start[axes[axis]] > domain.first && start[axes[axis]] < domain.second))
+            return false;
+    }
+    return true;
+}
+
+void observe_critical_failure(const NurbsSurface& first, const NurbsSurface& second, const char* stage,
+                              nlohmann::ordered_json details, const NurbsCurve* world = nullptr,
+                              const NurbsCurve* pa = nullptr, const NurbsCurve* pb = nullptr) {
+    const char* path = std::getenv("SESSION_BILINEAR_CRITICAL_FAILURE");
+    if (!path || !*path)
+        return;
+    try {
+        details["stage"] = stage;
+        details["first"] = first.jsondump();
+        details["second"] = second.jsondump();
+        if (world)
+            details["world"] = world->jsondump();
+        if (pa)
+            details["first_pcurve"] = pa->jsondump();
+        if (pb)
+            details["second_pcurve"] = pb->jsondump();
+        std::ofstream output(path, std::ios::binary | std::ios::app);
+        if (!output || !(output << details.dump() << '\n'))
+            throw std::runtime_error("Cannot append critical proof observation");
+        output.flush();
+        if (!output)
+            throw std::runtime_error("Cannot flush critical proof observation");
+        output.close();
+        if (!output)
+            throw std::runtime_error("Cannot close critical proof observation");
+    } catch (const std::exception& error) {
+        std::cerr << "Critical proof observation failed: " << error.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Critical proof observation failed with unknown error" << std::endl;
+    }
+}
+
+std::optional<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>
+crossing_branch(const NurbsSurface& first, const NurbsSurface& second, const std::array<Point, 4>& points,
+                int variant, int fixed, const BilinearFactor& factor, double tolerance) {
+    const int varying = 1 - fixed;
+    const nurbs_interval::Interval root =
+        nurbs_interval::Interval(factor.numerators[fixed]) / nurbs_interval::Interval(factor.denominator);
+    const double parameter = factor.numerators[fixed] / factor.denominator;
+    const auto fixed_domain = first.domain(fixed), varying_domain = first.domain(varying);
+    const double raw = std::lerp(fixed_domain.first, fixed_domain.second, parameter);
+    const double accuracy = tolerance * .25;
+    if (!std::isfinite(parameter) || !(raw > fixed_domain.first && raw < fixed_domain.second) ||
+        !(accuracy > 0) || !root_coverage(points, fixed, root, raw, fixed_domain, accuracy)) {
+        observe_critical_failure(first, second, "root_or_range",
+                                 {{"variant", variant},
+                                  {"fixed", fixed},
+                                  {"parameter", parameter},
+                                  {"raw", raw},
+                                  {"root", {root.lo, root.hi}},
+                                  {"accuracy", accuracy}});
+        return std::nullopt;
+    }
+    Point start, end, target_start, target_end;
+    start[fixed] = end[fixed] = raw;
+    start[varying] = varying_domain.first;
+    end[varying] = varying_domain.second;
+    if (!mapped_raw_endpoints(second, variant, fixed, parameter, target_start, target_end)) {
+        observe_critical_failure(
+            first, second, "mapped_raw_endpoints",
+            {{"variant", variant}, {"fixed", fixed}, {"parameter", parameter}, {"accuracy", accuracy}});
+        return std::nullopt;
+    }
+    NurbsCurve world = first.iso_curve(varying, raw);
+    NurbsCurve pa = raw_line(start, end, varying_domain),
+               pb = raw_line(target_start, target_end, varying_domain);
+    if (!world.is_valid() || world.domain() != varying_domain || !pa.is_valid() || !pb.is_valid()) {
+        observe_critical_failure(
+            first, second, "raw_curves",
+            {{"variant", variant}, {"fixed", fixed}, {"parameter", parameter}, {"accuracy", accuracy}},
+            &world, &pa, &pb);
+        return std::nullopt;
+    }
+    const char* capture = std::getenv("SESSION_BILINEAR_CRITICAL_FAILURE");
+    const bool observing = capture && *capture;
+    std::string diagnostic;
+    const auto match_a = curve_surface_intersection::same_parameter(world, pa, first, accuracy,
+                                                                    observing ? &diagnostic : nullptr);
+    if (match_a != curve_surface_intersection::ParameterMatch::Matched) {
+        observe_critical_failure(first, second, "first_certificate",
+                                 {{"variant", variant},
+                                  {"fixed", fixed},
+                                  {"parameter", parameter},
+                                  {"accuracy", accuracy},
+                                  {"match", static_cast<int>(match_a)},
+                                  {"diagnostic", diagnostic}},
+                                 &world, &pa, &pb);
+        return std::nullopt;
+    }
+    const auto match_b = curve_surface_intersection::same_parameter(world, pb, second, accuracy,
+                                                                    observing ? &diagnostic : nullptr);
+    if (match_b != curve_surface_intersection::ParameterMatch::Matched) {
+        observe_critical_failure(first, second, "second_certificate",
+                                 {{"variant", variant},
+                                  {"fixed", fixed},
+                                  {"parameter", parameter},
+                                  {"accuracy", accuracy},
+                                  {"match", static_cast<int>(match_b)},
+                                  {"diagnostic", diagnostic}},
+                                 &world, &pa, &pb);
+        return std::nullopt;
+    }
+    return std::make_tuple(std::move(world), std::move(pa), std::move(pb));
+}
+} // namespace
+
+std::optional<std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>>
+bilinear_crossing(const NurbsSurface& first, const NurbsSurface& second, double tolerance) {
+    if (!std::isfinite(tolerance) || !(tolerance > 0))
+        return std::nullopt;
+    std::array<Point, 4> a, b;
+    if (!polynomial_bilinear(first, a) || !polynomial_bilinear(second, b)) {
+        observe_critical_failure(first, second, "polynomial_bilinear", {{"tolerance", tolerance}});
+        return std::nullopt;
+    }
+    Vector u, v, mixed;
+    if (!exact_vector(a[1], a[0], u) || !exact_vector(a[2], a[0], v)) {
+        observe_critical_failure(first, second, "affine_frame", {{"tolerance", tolerance}});
+        return std::nullopt;
+    }
+    for (int d = 0; d < 3; ++d) {
+        double edge;
+        if (!nurbs_coincidence::exact_difference(a[3][d], a[1][d], edge) ||
+            !nurbs_coincidence::exact_difference(edge, v[d], mixed[d])) {
+            observe_critical_failure(first, second, "mixed_exact",
+                                     {{"tolerance", tolerance}, {"coordinate", d}});
+            return std::nullopt;
+        }
+    }
+    for (int variant = 0; variant < 8; ++variant) {
+        const auto factor = crossing_factor(a, b, u, v, mixed, variant);
+        if (!factor)
+            continue;
+        auto first_branch = crossing_branch(first, second, a, variant, 0, *factor, tolerance);
+        if (!first_branch)
+            continue;
+        auto second_branch = crossing_branch(first, second, a, variant, 1, *factor, tolerance);
+        if (second_branch)
+            return std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>{std::move(*first_branch),
+                                                                               std::move(*second_branch)};
+    }
+    observe_critical_failure(first, second, "no_proved_correspondence", {{"tolerance", tolerance}});
+    return std::nullopt;
+}
+
+} // namespace session_cpp::surface_section
