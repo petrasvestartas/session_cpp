@@ -96,6 +96,50 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
     cuts.push_back(std::move(cut));
 }
 
+/// Ends of two cuts within the model tolerance are one node: sections meeting on a third face's edge end a march step apart, and the conservative uv tolerance would leave the chain open and drop the whole cut as dangling. Ends a seam apart are one point in space but stay two.
+void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, double tolerance) {
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    // Below this the arrangement merges the ends itself, and exact coordinates are better left alone.
+    const double merged = 4.0 * uv_tolerance(surface, tolerance);
+    const double reach = 64.0 * uv_tolerance(surface, tolerance);
+    const auto cv = [](const split::FaceCut& cut, int end) { return end ? cut.pcurve.cv_count() - 1 : 0; };
+    const auto world = [](const split::FaceCut& cut, int end) {
+        return end ? cut.world.point_at_end() : cut.world.point_at_start();
+    };
+    for (size_t i = 0; i < cuts.size(); ++i)
+        for (size_t j = i + 1; j < cuts.size(); ++j)
+            for (int a = 0; a < 2; ++a)
+                for (int b = 0; b < 2; ++b) {
+                    if (cuts[i].pcurve.is_rational() || cuts[j].pcurve.is_rational() ||
+                        !cuts[i].pcurve.is_clamped() || !cuts[j].pcurve.is_clamped())
+                        continue;
+                    const Point first = cuts[i].pcurve.get_cv(cv(cuts[i], a));
+                    const Point second = cuts[j].pcurve.get_cv(cv(cuts[j], b));
+                    const double gap = first.distance(second);
+                    if (gap <= merged || gap > reach || world(cuts[i], a).distance(world(cuts[j], b)) > tolerance)
+                        continue;
+                    const Point middle((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5, (first[2] + second[2]) * 0.5);
+                    cuts[i].pcurve.set_cv(cv(cuts[i], a), middle);
+                    cuts[j].pcurve.set_cv(cv(cuts[j], b), middle);
+                }
+    // The same for an end at a trim vertex: left a hair off it, the cut would re-split the edge beside the vertex.
+    for (split::FaceCut& cut : cuts)
+        for (int end = 0; end < 2 && !cut.pcurve.is_rational() && cut.pcurve.is_clamped(); ++end)
+            for (const BRepRef& wire : brep.m_faces[face].wires)
+                for (const BRepRef& edge : brep.wire_edges(wire)) {
+                    const int index = brep.pcurve_index(edge.index, face, edge.orientation);
+                    if (index < 0)
+                        continue;
+                    const NurbsCurve& trim = brep.m_curves_2d[index];
+                    for (const Point& corner : {trim.point_at_start(), trim.point_at_end()}) {
+                        const double gap = cut.pcurve.get_cv(cv(cut, end)).distance(corner);
+                        if (gap > merged && gap <= reach &&
+                            world(cut, end).distance(surface.point_at(corner[0], corner[1])) <= tolerance)
+                            cut.pcurve.set_cv(cv(cut, end), corner);
+                    }
+                }
+}
+
 void mapped_parameter_cuts(
     std::vector<split::FaceCut>& cuts,
     const BRep& target,
@@ -197,6 +241,7 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
                            bool second,double tolerance) {
     const auto component=brep_section::detail::active_components(partition.brep,active_faces(partition.brep));
     const auto root=[&](int vertex) { return component[vertex]; };
+    const int original_vertices=static_cast<int>(partition.brep.m_vertices.size());
     std::vector<split::EdgeEvent> events;
     for (const auto& node:inventory.nodes) {
         struct LocalNode {
@@ -234,6 +279,26 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
                 events.push_back({event->edge,event->hit.t,local.vertex});
         }
     }
+    // Two nodes on one edge within the model tolerance are one event: sections ending a march step apart would otherwise cut a piece the other operand has no partner for.
+    std::sort(events.begin(),events.end(),[](const split::EdgeEvent& x,const split::EdgeEvent& y) {
+        return x.edge!=y.edge ? x.edge<y.edge : x.parameter<y.parameter;
+    });
+    std::vector<split::EdgeEvent> joined;
+    for (const auto& event:events) {
+        if (!joined.empty() && joined.back().edge==event.edge && !partition.brep.m_edges[event.edge].degenerated) {
+            const NurbsCurve& curve=partition.brep.m_curves_3d[partition.brep.m_edges[event.edge].curve_3d_index];
+            if (curve.point_at(joined.back().parameter).distance(curve.point_at(event.parameter))<=tolerance) {
+                split::EdgeEvent& kept=joined.back();
+                if (event.vertex<original_vertices && kept.vertex>=original_vertices)
+                    kept=event;
+                else if (event.vertex>=original_vertices && kept.vertex>=original_vertices)
+                    kept.parameter=(kept.parameter+event.parameter)*0.5;
+                continue;
+            }
+        }
+        joined.push_back(event);
+    }
+    events=std::move(joined);
     if (!events.empty()) {
         auto partitioned=split::split_brep_edges_at_events(partition.brep,events,tolerance);
         for (const auto& event:events)
@@ -305,6 +370,7 @@ Partition partition(
                     second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)}, tolerance);
         }
         coincident_cuts(cuts, result.brep, face, other, sections, second, tolerance);
+        join_cut_ends(cuts, result.brep, face, tolerance);
         if (!cuts.empty()) {
             const char* observation = std::getenv("SESSION_DODECA_PARTITION_OBSERVATION");
             if (observation && *observation && !second && face == 5

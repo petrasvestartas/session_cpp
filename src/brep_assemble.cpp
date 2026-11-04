@@ -600,6 +600,43 @@ void copy_face(Assembly& assembly, const FaceUse& face) {
     assembly.result.m_faces[index].facecolor = original.facecolor;
 }
 
+/// Remove each closed edge that stays inside its vertex's ball and that two faces use in opposite directions: it bounds nothing, and at the vertex its loop breaks the link cycle. One use only stays, to surface as the open edge it is.
+void drop_point_edges(Assembly& assembly, const std::vector<BRepOrientation>& orientations) {
+    BRep& brep = assembly.result;
+    for (int edge = brep.edge_count() - 1; edge >= 0; --edge) {
+        const BRepEdge& candidate = brep.m_edges[edge];
+        if (candidate.degenerated || candidate.start_vertex != candidate.end_vertex)
+            continue;
+        const NurbsCurve& curve = brep.m_curves_3d[candidate.curve_3d_index];
+        if (!within_vertex(curve, curve.domain_start(), curve.domain_end(), assembly.tolerance))
+            continue;
+        int uses = 0;
+        int balance = 0;
+        std::set<int> wires;
+        for (int face = 0; face < brep.face_count(); ++face)
+            for (const BRepRef& wire : brep.m_faces[face].wires)
+                for (const BRepRef& use : brep.wire_edges(wire))
+                    if (use.index == edge) {
+                        ++uses;
+                        balance += brep_compose(orientations[face], use.orientation) == forward ? 1 : -1;
+                        wires.insert(wire.index);
+                    }
+        if (uses != 2 || balance != 0 || std::any_of(wires.begin(), wires.end(), [&](int wire) { return brep.m_wires[wire].edges.size() < 2; }))
+            continue;
+        for (BRepWire& wire : brep.m_wires) {
+            wire.edges.erase(std::remove_if(wire.edges.begin(), wire.edges.end(), [edge](const BRepRef& use) { return use.index == edge; }), wire.edges.end());
+            for (BRepRef& use : wire.edges)
+                if (use.index > edge)
+                    --use.index;
+        }
+        brep.m_edges.erase(brep.m_edges.begin() + edge);
+        for (Source& source : assembly.sources)
+            for (Piece& piece : source.pieces)
+                if (piece.edge > edge)
+                    --piece.edge;
+    }
+}
+
 std::vector<std::vector<BRepRef>> edge_uses(const BRep& brep, const std::vector<BRepOrientation>& orientations) {
     std::vector<std::vector<BRepRef>> uses(brep.edge_count());
     for (int face = 0; face < brep.face_count(); ++face)
@@ -1307,6 +1344,7 @@ BRep assemble(const std::vector<FaceUse>& faces, double tolerance) {
         require(orientation == forward || orientation == reversed, "non-boundary face use");
         orientations.push_back(orientation);
     }
+    drop_point_edges(assembly, orientations);
     require(assembly.result.is_valid(), "reconstructed face topology is invalid");
     const char* observation = std::getenv("SESSION_BOOLEAN_FAILURE_OBSERVATION");
     std::vector<OrientationAttempt> attempts;
