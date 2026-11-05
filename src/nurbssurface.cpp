@@ -1590,9 +1590,6 @@ nlohmann::ordered_json NurbsSurface::jsondump() const {
     j["is_rational"] = m_is_rat != 0;
     j["linecolors"] = colors_to_json(linecolors);
 
-    if (m_mesh.number_of_vertices() > 0)
-        j["mesh"] = m_mesh.jsondump();
-
     j["is_locked"] = is_locked;
     j["is_visible"] = is_visible;
     j["name"] = name;
@@ -1632,9 +1629,6 @@ NurbsSurface NurbsSurface::jsonload(const nlohmann::json& data) {
     surface.pointcolors = colors_from_json(data, "pointcolors");
     surface.facecolors = colors_from_json(data, "facecolors");
     surface.linecolors = colors_from_json(data, "linecolors");
-
-    if (data.contains("mesh") && !data["mesh"].is_null())
-        surface.m_mesh = Mesh::jsonload(data["mesh"]);
 
     if (!created)
         return surface;
@@ -1720,9 +1714,6 @@ session_proto::NurbsSurface NurbsSurface::to_proto() const {
     colors_to_proto(facecolors, proto.mutable_facecolors());
     colors_to_proto(linecolors, proto.mutable_linecolors());
 
-    if (m_mesh.number_of_vertices() > 0)
-        *proto.mutable_cached_mesh() = m_mesh.to_proto();
-
     return proto;
 }
 
@@ -1748,9 +1739,6 @@ NurbsSurface NurbsSurface::from_proto(const session_proto::NurbsSurface& proto) 
     surface.pointcolors = colors_from_proto(proto.pointcolors());
     surface.facecolors = colors_from_proto(proto.facecolors());
     surface.linecolors = colors_from_proto(proto.linecolors());
-
-    if (proto.has_cached_mesh() && proto.cached_mesh().vertices_size() > 0)
-        surface.m_mesh = Mesh::from_proto(proto.cached_mesh());
 
     if (!created)
         return surface;

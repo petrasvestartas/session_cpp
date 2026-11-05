@@ -1383,6 +1383,21 @@ MINI_TEST("NurbsSurface", "Protobuf Roundtrip") {
     MINI_CHECK(converted.guid() == guid);
 }
 
+MINI_TEST("NurbsSurface", "Mesh Not Serialized") {
+    // using session_cpp::Mesh;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+
+    const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 2.0);
+    const std::string json_before = sphere.file_json_dumps();
+    const std::string proto_before = sphere.pb_dumps();
+    const Mesh mesh = sphere.mesh();
+
+    MINI_CHECK(mesh.number_of_vertices() > 0);
+    MINI_CHECK(sphere.file_json_dumps() == json_before);
+    MINI_CHECK(sphere.pb_dumps() == proto_before);
+}
+
 MINI_TEST("NurbsSurface", "Closest Point") {
     // using session_cpp::Primitives;
     // using session_cpp::Point;

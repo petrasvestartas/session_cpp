@@ -526,11 +526,15 @@ namespace session_cpp {
         // using session_cpp::BRep;
 
         const BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string json_before = brep.file_json_dumps();
+        const std::string proto_before = brep.pb_dumps();
         const std::string guid = brep.mesh().guid();
         const BRep loaded_proto = BRep::pb_loads(brep.pb_dumps());
         const BRep loaded_json = BRep::file_json_loads(brep.file_json_dumps());
 
         MINI_CHECK(brep.has_mesh());
+        MINI_CHECK(brep.file_json_dumps() == json_before);
+        MINI_CHECK(brep.pb_dumps() == proto_before);
         MINI_CHECK(!loaded_proto.has_mesh());
         MINI_CHECK(!loaded_json.has_mesh());
         MINI_CHECK(loaded_proto.mesh().guid() != guid);
