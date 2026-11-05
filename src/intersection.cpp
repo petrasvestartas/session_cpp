@@ -7244,8 +7244,23 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
         }
         // The parameters are only as smooth as the surface's knots, so the spans end where the curve crosses them.
         const std::vector<double> knots = pullback_breaks(surface, world, tolerance);
+        // The fit breaks at the samples and at the world's knots: a sample a hair from a knot leaves a span of no length.
+        std::vector<double> breaks = knots;
+        breaks.insert(breaks.end(), world.m_nurbsknot.begin(), world.m_nurbsknot.end());
+        const double hair = 1e-9 * (world.domain_end() - world.domain_start());
         for (int pass = 0; pass < 7 && run.ts.size() <= 129; ++pass) {
-            const NurbsCurve proposal = quintic_run_proposal(run, knots, surface, world);
+            PullbackRun apart;
+            for (size_t i = 0; i < run.ts.size(); ++i) {
+                const bool end = i == 0 || i + 1 == run.ts.size();
+                const bool near = std::any_of(breaks.begin(), breaks.end(), [&](double knot) {
+                    return knot != run.ts[i] && std::abs(knot - run.ts[i]) <= hair;
+                });
+                if (end || !near) {
+                    apart.ts.push_back(run.ts[i]);
+                    apart.uv.push_back(run.uv[i]);
+                }
+            }
+            const NurbsCurve proposal = quintic_run_proposal(apart, knots, surface, world);
             if (proposal.is_valid() && proposal.domain() == world.domain() && gap(proposal) <= tight &&
                 curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
                     curve_surface_intersection::ParameterMatch::Matched)
@@ -10863,8 +10878,31 @@ void split_quad_at_creases(const SurfaceSurfaceField& field, std::vector<std::ar
             cuts.push_back(static_cast<int>(result.size()) - 1);
         }
     }
-    pts = std::move(result);
-    cross_idx = std::move(cuts);
+    // Crossings of two creases, or of a crease and a seam, at one point leave points a rounding apart:
+    // keep one of them, with its cut, or the fit gets spans of no length.
+    std::vector<std::array<double, 4>> kept;
+    std::vector<int> kept_cuts;
+    for (size_t i = 0; i < result.size(); ++i) {
+        const bool cut = std::find(cuts.begin(), cuts.end(), static_cast<int>(i)) != cuts.end();
+        if (!kept.empty()) {
+            const std::array<double, 3> here = field.point(result[i]), last = field.point(kept.back());
+            double gap = 0.0, size = 1.0;
+            for (int d = 0; d < 3; ++d) {
+                gap = std::max(gap, std::abs(here[d] - last[d]));
+                size = std::max(size, std::abs(here[d]));
+            }
+            if (gap <= 64.0 * std::numeric_limits<double>::epsilon() * size) {
+                if (cut && (kept_cuts.empty() || kept_cuts.back() != static_cast<int>(kept.size()) - 1))
+                    kept_cuts.push_back(static_cast<int>(kept.size()) - 1);
+                continue;
+            }
+        }
+        kept.push_back(result[i]);
+        if (cut)
+            kept_cuts.push_back(static_cast<int>(kept.size()) - 1);
+    }
+    pts = std::move(kept);
+    cross_idx = std::move(kept_cuts);
 }
 
 /// Seam-free pieces of a split run, the last loop piece wrapped past the start by the closure shift.
