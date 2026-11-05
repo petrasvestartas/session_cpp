@@ -164,8 +164,14 @@ struct Primitive {
     }
 
     Interval at(double first, double second) const {
-        if (cells.empty() || !std::isfinite(first) || !std::isfinite(second) || first < u.front() || first > u.back() || second < v.front() || second > v.back())
+        // A boundary curve can end a rounding outside the grid it bounds: that point is the grid's edge.
+        const double slack_u = (u.back() - u.front()) * 1e-12;
+        const double slack_v = (v.back() - v.front()) * 1e-12;
+        if (cells.empty() || !std::isfinite(first) || !std::isfinite(second) || first < u.front() - slack_u ||
+            first > u.back() + slack_u || second < v.front() - slack_v || second > v.back() + slack_v)
             return {-std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+        first = std::clamp(first, u.front(), u.back());
+        second = std::clamp(second, v.front(), v.back());
         const size_t i = std::min(static_cast<size_t>(std::upper_bound(u.begin(), u.end(), first) - u.begin()), u.size() - 1) - 1;
         const size_t j = std::min(static_cast<size_t>(std::upper_bound(v.begin(), v.end(), second) - v.begin()), v.size() - 1) - 1;
         const Interval x = (Interval(first) - Interval(u[i])) / (Interval(u[i + 1]) - Interval(u[i]));

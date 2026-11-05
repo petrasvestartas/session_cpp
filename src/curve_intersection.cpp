@@ -617,15 +617,15 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
     const double proof = std::max(tolerance * 1e-5, epsilon * 32.0 * std::max(a.magnitude(), b.magnitude()));
     Overlap shared{};
     if (!overlap(pair, proof, shared)) {
+        // Certified within tolerance along their whole length, two curves overlap however curved they are.
+        for (bool reverse : {false, true})
+            if (certified_parameter_range(pair, tolerance, reverse)) {
+                result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
+                    reverse ? pair.b.domain_end() : pair.b.domain_start(),
+                    reverse ? pair.b.domain_start() : pair.b.domain_end()});
+                return true;
+            }
         const bool flat = flatness(pair.a) <= tolerance * 0.05 && flatness(pair.b) <= tolerance * 0.05;
-        if (flat)
-            for (bool reverse : {false, true})
-                if (certified_parameter_range(pair, tolerance, reverse)) {
-                    result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
-                        reverse ? pair.b.domain_end() : pair.b.domain_start(),
-                        reverse ? pair.b.domain_start() : pair.b.domain_end()});
-                    return true;
-                }
         if (!flat || !certified_clipped_range(pair, tolerance, shared))
             return isolated(pair, tolerance, budget, result);
     }

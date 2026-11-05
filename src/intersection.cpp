@@ -6587,18 +6587,22 @@ static Point run_point(const PullbackRun& run, double t) {
 /// Initial samples retain the original world parameter, including wrapped pieces.
 static PullbackRun run_span_samples(const std::vector<PullbackRun>& runs, double lo, double hi) {
     for (const PullbackRun& run : runs) {
-        if (run.ts.empty() || run.ts.size() != run.uv.size() || lo < run.ts.front() || hi > run.ts.back())
+        if (run.ts.empty() || run.ts.size() != run.uv.size())
+            continue;
+        // A range meeting the run's end within rounding, as a wrapped range does, is the run's own end.
+        const double slack = (run.ts.back() - run.ts.front()) * 1e-12;
+        if (lo < run.ts.front() - slack || hi > run.ts.back() + slack)
             continue;
         PullbackRun result;
         result.ts.push_back(lo);
-        result.uv.push_back(run_point(run, lo));
+        result.uv.push_back(run_point(run, std::max(lo, run.ts.front())));
         for (size_t i = 0; i < run.ts.size(); ++i)
             if (run.ts[i] > lo && run.ts[i] < hi) {
                 result.ts.push_back(run.ts[i]);
                 result.uv.push_back(run.uv[i]);
             }
         result.ts.push_back(hi);
-        result.uv.push_back(run_point(run, hi));
+        result.uv.push_back(run_point(run, std::min(hi, run.ts.back())));
         return result;
     }
     return {};
@@ -7439,8 +7443,13 @@ static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair
             });
             throw std::runtime_error("Analytic pullback could not preserve a wrapped raw parameter range");
         }
+        // Shifted by the period a sample can round onto its neighbour or the end, and the end must stay exactly hi.
         for (size_t i = 1; i < head.ts.size(); ++i) {
-            samples.ts.push_back(head.ts[i] + period);
+            const bool last = i + 1 == head.ts.size();
+            const double t = last ? hi : head.ts[i] + period;
+            if (t <= samples.ts.back() || (!last && t >= hi))
+                continue;
+            samples.ts.push_back(t);
             samples.uv.push_back(head.uv[i]);
         }
     }

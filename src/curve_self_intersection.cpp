@@ -501,7 +501,20 @@ AppendState append(
         result.failure = "Self intersection could not restrict original curve intervals";
         return AppendState::Failed;
     }
-    const auto events = curve_intersection::intersect(a, b, tolerance);
+    auto events = curve_intersection::intersect(a, b, tolerance);
+    // An overlap no longer than the tolerance is a point: rounding can present a closed curve's closing point as one.
+    for (size_t i = events.overlaps.size(); i-- > 0;) {
+        const curve_intersection::Overlap& shared = events.overlaps[i];
+        if (curve.point_at(shared.a0).distance(curve.point_at(shared.a1)) > tolerance ||
+            curve.point_at(shared.b0).distance(curve.point_at(shared.b1)) > tolerance)
+            continue;
+        curve_intersection::Hit contact{};
+        contact.a = std::min(shared.a0, shared.a1);
+        contact.b = std::max(shared.b0, shared.b1);
+        contact.point = curve.point_at(contact.a);
+        events.points.push_back(contact);
+        events.overlaps.erase(events.overlaps.begin() + static_cast<std::ptrdiff_t>(i));
+    }
     if (events.complete && events.overlaps.empty())
         for (const auto& hit : events.points)
             if (hit.a < hit.b && injective(curve, {hit.a, hit.b}, knots))
