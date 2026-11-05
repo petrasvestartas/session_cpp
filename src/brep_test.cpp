@@ -450,6 +450,109 @@ namespace session_cpp {
         MINI_CHECK(!fm[0].is_empty());
     }
 
+    MINI_TEST("BRep", "Mesh Cache Fresh") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
+
+        const BRep cylinder = BRep::create_cylinder(1.0, 2.0);
+        const BRep fresh = BRep::create_cylinder(1.0, 2.0);
+        const bool before = cylinder.has_mesh();
+        const std::string guid = cylinder.mesh().guid();
+        const Mesh& cached = cylinder.mesh();
+        const Mesh& rebuilt = fresh.mesh();
+
+        MINI_CHECK(!before);
+        MINI_CHECK(cylinder.has_mesh());
+        MINI_CHECK(cached.guid() == guid);
+        MINI_CHECK(cached.number_of_vertices() == rebuilt.number_of_vertices());
+        MINI_CHECK(cached.number_of_faces() == rebuilt.number_of_faces());
+        MINI_CHECK(std::abs(cached.area() - rebuilt.area()) < 1e-12);
+        MINI_CHECK(std::abs(cached.volume() - rebuilt.volume()) < 1e-12);
+    }
+
+    MINI_TEST("BRep", "Mesh Cache Reuse") {
+        // using session_cpp::BRep;
+
+        const BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const BRep other = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string first = brep.mesh().guid();
+        const std::string second = brep.mesh().guid();
+        const std::string third = other.mesh().guid();
+
+        MINI_CHECK(brep.has_mesh());
+        MINI_CHECK(first == second);
+        MINI_CHECK(first != third);
+    }
+
+    MINI_TEST("BRep", "Mesh Cache Mutation") {
+        // using session_cpp::BRep;
+
+        BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string first = brep.mesh().guid();
+        brep.add_vertex({5.0, 5.0, 5.0});
+        const bool added = brep.has_mesh();
+        const std::string second = brep.mesh().guid();
+        brep.m_vertices[0].tolerance = 0.5;
+        const bool written = brep.has_mesh();
+        const std::string third = brep.mesh().guid();
+
+        MINI_CHECK(!added);
+        MINI_CHECK(!written);
+        MINI_CHECK(first != second);
+        MINI_CHECK(second != third);
+        MINI_CHECK(brep.has_mesh());
+    }
+
+    MINI_TEST("BRep", "Mesh Cache Transform") {
+        // using session_cpp::BRep;
+        // using session_cpp::Point;
+        // using session_cpp::Xform;
+
+        BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string first = brep.mesh().guid();
+        brep.transform(Xform::translation(10.0, 0.0, 0.0));
+        const bool moved = brep.has_mesh();
+        const std::string second = brep.mesh().guid();
+        const Point centroid = brep.mesh().centroid();
+
+        MINI_CHECK(!moved);
+        MINI_CHECK(first != second);
+        MINI_CHECK(std::abs(centroid[0] - 10.0) < 1e-9);
+        MINI_CHECK(std::abs(centroid[1]) < 1e-9);
+        MINI_CHECK(std::abs(centroid[2]) < 1e-9);
+    }
+
+    MINI_TEST("BRep", "Mesh Cache Serialization") {
+        // using session_cpp::BRep;
+
+        const BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string guid = brep.mesh().guid();
+        const BRep loaded_proto = BRep::pb_loads(brep.pb_dumps());
+        const BRep loaded_json = BRep::file_json_loads(brep.file_json_dumps());
+
+        MINI_CHECK(brep.has_mesh());
+        MINI_CHECK(!loaded_proto.has_mesh());
+        MINI_CHECK(!loaded_json.has_mesh());
+        MINI_CHECK(loaded_proto.mesh().guid() != guid);
+        MINI_CHECK(loaded_json.mesh().guid() != guid);
+    }
+
+    MINI_TEST("BRep", "Mesh Cache Copy") {
+        // using session_cpp::BRep;
+        // using session_cpp::Xform;
+
+        const BRep brep = BRep::create_box(2.0, 3.0, 4.0);
+        const std::string guid = brep.mesh().guid();
+        BRep copy = brep;
+        const bool carried = copy.has_mesh();
+        copy.transform(Xform::translation(1.0, 0.0, 0.0));
+
+        MINI_CHECK(carried);
+        MINI_CHECK(!copy.has_mesh());
+        MINI_CHECK(brep.has_mesh());
+        MINI_CHECK(brep.mesh().guid() == guid);
+    }
+
     MINI_TEST("BRep", "Point At") {
         // using session_cpp::BRep;
         // using session_cpp::Point;

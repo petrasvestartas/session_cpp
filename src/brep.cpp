@@ -2956,6 +2956,8 @@ BRep& BRep::operator=(const BRep& other) {
     m_faces = other.m_faces;
     m_shells = other.m_shells;
     m_solids = other.m_solids;
+    _mesh = other._mesh;
+    _mesh_key = other._mesh_key;
 
     return *this;
 }
@@ -3726,11 +3728,125 @@ int BRep::add_solid(const std::vector<BRepRef>& shells) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
-Mesh BRep::mesh() const {
+namespace {
+
+/// Append an oriented reference list to a mesh key.
+void mesh_key_refs(std::vector<double>& key, const std::vector<BRepRef>& refs) {
+
+    key.push_back((double)refs.size());
+
+    for (const BRepRef& ref : refs) {
+        key.push_back(ref.index);
+        key.push_back((double)ref.orientation);
+    }
+}
+
+/// Append a curve's layout, knots and control points to a mesh key.
+void mesh_key_curve(std::vector<double>& key, const NurbsCurve& curve) {
+
+    key.push_back(curve.m_dim);
+    key.push_back(curve.m_is_rat);
+    key.push_back(curve.m_order);
+    key.push_back(curve.m_cv_count);
+    key.push_back(curve.m_cv_stride);
+    key.push_back((double)curve.m_nurbsknot.size());
+    key.insert(key.end(), curve.m_nurbsknot.begin(), curve.m_nurbsknot.end());
+    key.push_back((double)curve.m_cv.size());
+    key.insert(key.end(), curve.m_cv.begin(), curve.m_cv.end());
+}
+
+/// Append a surface's layout, knots and control points to a mesh key.
+void mesh_key_surface(std::vector<double>& key, const NurbsSurface& surface) {
+
+    key.push_back(surface.m_dim);
+    key.push_back(surface.m_is_rat);
+
+    for (int dir = 0; dir < 2; ++dir) {
+        key.push_back(surface.m_order[dir]);
+        key.push_back(surface.m_cv_count[dir]);
+        key.push_back(surface.m_cv_stride[dir]);
+        key.push_back((double)surface.m_nurbsknot[dir].size());
+        key.insert(key.end(), surface.m_nurbsknot[dir].begin(), surface.m_nurbsknot[dir].end());
+    }
+
+    key.push_back((double)surface.m_cv.size());
+    key.insert(key.end(), surface.m_cv.begin(), surface.m_cv.end());
+}
+
+/// Append an edge's curve, vertices, tolerance and pcurves to a mesh key.
+void mesh_key_edge(std::vector<double>& key, const BRepEdge& edge) {
+
+    key.push_back(edge.curve_3d_index);
+    key.push_back(edge.start_vertex);
+    key.push_back(edge.end_vertex);
+    key.push_back(edge.tolerance);
+    key.push_back(edge.degenerated);
+    key.push_back((double)edge.pcurves.size());
+
+    for (const BRepCurveOnSurface& pcurve : edge.pcurves) {
+        key.push_back(pcurve.surface_index);
+        key.push_back(pcurve.curve_2d_index);
+        key.push_back(pcurve.curve_2d_index_2);
+    }
+}
+
+/// Every number the tessellation reads, in table order.
+std::vector<double> mesh_key(const BRep& brep) {
+
+    std::vector<double> key;
+
+    key.push_back((double)brep.m_surfaces.size());
+    for (const NurbsSurface& surface : brep.m_surfaces)
+        mesh_key_surface(key, surface);
+
+    key.push_back((double)brep.m_curves_3d.size());
+    for (const NurbsCurve& curve : brep.m_curves_3d)
+        mesh_key_curve(key, curve);
+
+    key.push_back((double)brep.m_curves_2d.size());
+    for (const NurbsCurve& curve : brep.m_curves_2d)
+        mesh_key_curve(key, curve);
+
+    key.push_back((double)brep.m_vertices.size());
+    for (const BRepVertex& vertex : brep.m_vertices) {
+        key.push_back(vertex.point[0]);
+        key.push_back(vertex.point[1]);
+        key.push_back(vertex.point[2]);
+        key.push_back(vertex.tolerance);
+    }
+
+    key.push_back((double)brep.m_edges.size());
+    for (const BRepEdge& edge : brep.m_edges)
+        mesh_key_edge(key, edge);
+
+    key.push_back((double)brep.m_wires.size());
+    for (const BRepWire& wire : brep.m_wires)
+        mesh_key_refs(key, wire.edges);
+
+    key.push_back((double)brep.m_faces.size());
+    for (const BRepFace& face : brep.m_faces) {
+        key.push_back(face.surface_index);
+        key.push_back(face.tolerance);
+        mesh_key_refs(key, face.wires);
+    }
+
+    key.push_back((double)brep.m_shells.size());
+    for (const BRepShell& shell : brep.m_shells)
+        mesh_key_refs(key, shell.faces);
+
+    key.push_back((double)brep.m_solids.size());
+    for (const BRepSolid& solid : brep.m_solids)
+        mesh_key_refs(key, solid.shells);
+
+    return key;
+}
+
+/// One welded triangle mesh of every face, wound to the face's outward orientation.
+Mesh weld_face_meshes(const BRep& brep) {
 
     std::vector<std::vector<Point>> polygons;
 
-    for (const Mesh& fm : face_meshes())
+    for (const Mesh& fm : brep.face_meshes())
         for (const std::pair<const size_t, std::vector<size_t>>& entry : fm.face) {
             std::vector<Point> poly;
 
@@ -3741,6 +3857,27 @@ Mesh BRep::mesh() const {
         }
 
     return Mesh::from_polylines(polygons, 1e-6);
+}
+
+} // namespace
+
+const Mesh& BRep::mesh() const {
+
+    std::vector<double> key = mesh_key(*this);
+
+    if (key == _mesh_key)
+        return _mesh;
+
+    _mesh = weld_face_meshes(*this);
+    _mesh.guid() = ::guid();
+    _mesh_key = std::move(key);
+
+    return _mesh;
+}
+
+bool BRep::has_mesh() const {
+
+    return mesh_key(*this) == _mesh_key;
 }
 
 std::vector<Mesh> BRep::face_meshes() const {

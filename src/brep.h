@@ -95,6 +95,8 @@ struct BRepSolid {
 class BRep {
 private:
     mutable std::string _guid; // Lazily minted GUID.
+    mutable Mesh _mesh; // Cached trimmed mesh, never serialized.
+    mutable std::vector<double> _mesh_key; // Geometry the cached mesh was built from.
 
 public:
     std::string name = "my_brep"; // BRep name.
@@ -298,8 +300,11 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // Meshing
     // ═══════════════════════════════════════════════════════════════════════════
-    /// One welded triangle mesh of every face, wound to the face's outward orientation
-    Mesh mesh() const;
+    /// Return the cached welded mesh of every trimmed face, rebuilt with a new guid when the geometry changes.
+    const Mesh& mesh() const;
+
+    /// Return whether the cached mesh matches the current geometry.
+    bool has_mesh() const;
 
     /// Tessellate trimmed faces with absolute chord deflection and angular deflection in radians.
     Mesh tessellate(double deflection, double angle = 0.35) const;
