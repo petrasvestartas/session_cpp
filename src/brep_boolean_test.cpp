@@ -2196,7 +2196,6 @@ MINI_TEST("BRep Curved Cuts", "Bent Beam Cut Through Its Axis") {
 
 MINI_TEST("BRep Curved Cuts", "Bent Beam And Plate Cut By Oblique Planes") {
     // Volumes on the normal side from tests/fixtures/curved_cuts/bent_beam.py, cylindrical integrals sharing nothing with the kernel.
-    // The allowance is the measured section pcurve fit on these rational patches: it falls with tolerance, at 641 control points by 1e-9.
     struct Case { double r, width, height, a0, a1; Point origin; Vector normal; double exact; };
     const std::vector<Case> cases = {
         {2000, 120, 240, 0.2, 1.2, Point(1400, 0, 0), Vector(1, 0, 0), 36988071.6212525},
@@ -2211,7 +2210,7 @@ MINI_TEST("BRep Curved Cuts", "Bent Beam And Plate Cut By Oblique Planes") {
         const double whole = 0.5 * ((c.r + c.width) * (c.r + c.width) - c.r * c.r) * c.height * (c.a1 - c.a0);
         const std::string label = "radius " + std::to_string(c.r) + " to " + std::to_string(c.exact);
         const double kept = check_side(bent_solid(c.r, c.width, c.height, c.a0, c.a1, 0), c.origin, c.normal, whole, label, failures);
-        if (std::abs(kept - c.exact) > 2e-4)
+        if (std::abs(kept - c.exact) > (c.r == 3000 ? 4e-6 : 1e-6)) // The plate through its axis stays 2.5e-6 high, at any placement and measuring tolerance.
             failures += "\n" + label + ": volume " + std::to_string(kept);
     }
     if (!failures.empty())
@@ -2260,4 +2259,135 @@ MINI_TEST("BRep Curved Cuts", "Cut Past A Curved Solid Is Whole Or Empty") {
     const BRep kept = beam.cut_by_plane(Plane::from_point_normal(Point(0, 0, -100), Vector(0, 0, 1)));
     MINI_CHECK(kept.face_count() == 6 && kept.is_solid() && std::abs(kept.volume_exact() - whole) < 1e-6);
     MINI_CHECK(beam.cut_by_plane(Plane::from_point_normal(Point(0, 0, 1000), Vector(0, 0, 1))).face_count() == 0);
+}
+
+/// The vault strip of the curved face examples: quarter arcs in xz at radius 2000 and 1880, y 0 to 600, exact or through seven points.
+static BRep vault_strip(bool exact) {
+    const auto arc = [exact](double r, double y) {
+        if (exact) {
+            const double middle = 0.25 * Tolerance::PI;
+            return Primitives::arc(Point(r, y, 0), Point(r * std::cos(middle), y, r * std::sin(middle)), Point(0, y, r));
+        }
+        std::vector<Point> points;
+        for (int k = 0; k <= 6; ++k) {
+            const double angle = 0.5 * Tolerance::PI * k / 6.0;
+            points.push_back(Point(r * std::cos(angle), y, r * std::sin(angle)));
+        }
+        return NurbsCurve::create_interpolated(points);
+    };
+    return ruled_solid({arc(1880, 0), arc(1880, 600), arc(2000, 600), arc(2000, 0)});
+}
+
+/// The arch of the curved edge examples: the parabola through nine points, 140 wide and 240 deep, corner cubics through 33 frames.
+static BRep glulam_arch() {
+    std::vector<Point> points;
+    for (int i = 0; i <= 8; ++i) {
+        const double u = i / 8.0;
+        points.push_back(Point(2400 * u, 0, 2800 * u * (1 - u)));
+    }
+    const NurbsCurve axis = NurbsCurve::create_interpolated(points);
+    std::array<std::vector<Point>, 4> rows;
+    for (int i = 0; i <= 32; ++i) {
+        const std::vector<Vector> jet = axis.evaluate(axis.domain_start() + (axis.domain_end() - axis.domain_start()) * i / 32.0, 1);
+        Vector tangent = jet[1];
+        tangent.normalize_self();
+        const Vector side(0, 70, 0);
+        const Vector up = tangent.cross(Vector(0, -120, 0));
+        const Point centre(jet[0][0], jet[0][1], jet[0][2]);
+        rows[0].push_back(centre - side - up);
+        rows[1].push_back(centre + side - up);
+        rows[2].push_back(centre + side + up);
+        rows[3].push_back(centre - side + up);
+    }
+    std::array<NurbsCurve, 4> corners;
+    for (size_t k = 0; k < 4; ++k)
+        corners[k] = NurbsCurve::create_interpolated(rows[k], CurveNurbsKnotStyle::Uniform, CurveInterpStyle::Occt);
+    return ruled_solid(corners);
+}
+
+/// A box on half sizes a and b round origin along the frame, from low to high along z.
+static BRep frame_box(const Point& origin, const Vector& x, const Vector& y, const Vector& z, double a, double b, double low, double high) {
+    const auto at = [&](double i, double j, double k) { return origin + x * i + y * j + z * k; };
+    const std::array<Point, 4> bottom = {at(-a, -b, low), at(a, -b, low), at(a, b, low), at(-a, b, low)};
+    const std::array<Point, 4> top = {at(-a, -b, high), at(a, -b, high), at(a, b, high), at(-a, b, high)};
+    std::vector<Polyline> faces = {Polyline({bottom[0], bottom[1], bottom[2], bottom[3], bottom[0]}), Polyline({top[0], top[1], top[2], top[3], top[0]})};
+    for (size_t i = 0; i < 4; ++i)
+        faces.emplace_back(std::vector<Point>{bottom[i], bottom[(i + 1) % 4], top[(i + 1) % 4], top[i], bottom[i]});
+    return BRep::from_polylines(faces);
+}
+
+/// The kernel cylinder laid from a to b.
+static BRep drill_along(const Point& a, const Point& b, double radius) {
+    BRep drill = BRep::create_cylinder(radius, a.distance(b));
+    Vector z = b - a;
+    z.normalize_self();
+    drill.transform(Xform::rotation_y(std::acos(std::clamp(z[2], -1.0, 1.0))));
+    drill.transform(Xform::rotation_z(std::atan2(z[1], z[0])));
+    drill.transform(Xform::translation(a[0], a[1], a[2]));
+    return drill;
+}
+
+/// Cutting a tool from a solid: exact sewn solids on both sides of the cut, the kept and the removed parts adding up to the whole.
+static void check_feature(const BRep& solid, const BRep& tool, double removed, int faces, const std::string& label, std::string& failures, double allowed = 1e-6) {
+    try {
+        const double whole = solid.volume_exact();
+        const BRep kept = solid.boolean_difference(tool);
+        const BRep common = solid.boolean_intersection(tool);
+        const double a = kept.volume_exact(), b = common.volume_exact();
+        int round_faces = 0;
+        for (const BRepFace& face : kept.m_faces)
+            round_faces += kept.m_surfaces[face.surface_index].degree(0) > 1 || kept.m_surfaces[face.surface_index].degree(1) > 1 ? 1 : 0;
+        if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > 1e-6
+            || kept.face_count() != faces || round_faces < 4 || (removed > 0.0 && std::abs(b - removed) > allowed))
+            throw std::runtime_error("faces " + std::to_string(kept.face_count()) + ", round " + std::to_string(round_faces) + ", kept "
+                + std::to_string(a) + ", removed " + std::to_string(b) + " of " + std::to_string(removed) + ", whole " + std::to_string(whole));
+    } catch (const std::exception& error) {
+        failures += "\n" + label + ": " + error.what();
+    }
+}
+
+MINI_TEST("BRep Curved Cuts", "Vault Strip Drilled And Mortised") {
+    // Removed volumes from tests/fixtures/curved_cuts/vault_strip.py, which integrates the shell along radial lines; zero for the cubics, held by their sum.
+    const double turn = 0.4 * Tolerance::PI;
+    const Vector out(std::cos(turn), 0, std::sin(turn)), along(-std::sin(turn), 0, std::cos(turn)), y(0, 1, 0);
+    const Point foot(0, 300, 0), middle = foot + out * 1940.0;
+    std::string failures;
+    for (bool exact : {true, false}) {
+        const BRep strip = vault_strip(exact);
+        const std::string label = exact ? "arcs " : "cubics ";
+        // The drill through the rational walls measures 1.4e-6 low, the one case here above 1e-6.
+        check_feature(strip, drill_along(foot + out * 2060.0, foot + out * 1820.0, 30), exact ? 339302.159189224 : 0.0, 7, label + "drill", failures, 2e-6);
+        check_feature(strip, frame_box(middle, along, y, out, 60, 40, -100, 100), exact ? 1152183.909136945 : 0.0, 10, label + "mortise", failures);
+        check_feature(strip, frame_box(middle, along, y, out, 60, 40, 0, 100), exact ? 573119.611074974 : 0.0, 11, label + "blind mortise", failures);
+        check_feature(strip, frame_box(Point(0, 600, 0) + out * 1940.0, along, y, out, 50, 60, -100, 100), exact ? 720079.811146517 : 0.0, 10, label + "notch", failures);
+        check_feature(strip, drill_along(Point(0, 650, 0) + out * 1940.0, Point(0, 550, 0) + out * 1940.0, 8), 100.0 * Tolerance::PI * 0.64 * 50.0, 8, label + "pin", failures);
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Glulam Arch Drilled And Mortised") {
+    const BRep arch = glulam_arch();
+    const Vector x(1, 0, 0), y(0, 1, 0), z(0, 0, 1);
+    const Point crown(1200, 0, 700);
+    std::string failures;
+    check_feature(arch, drill_along(Point(1200, 120, 700), Point(1200, -120, 700), 30), Tolerance::PI * 900 * 140, 7, "drill", failures);
+    check_feature(arch, frame_box(crown, x, z, y, 40, 60, -120, 120), 80.0 * 120 * 140, 10, "mortise", failures);
+    check_feature(arch, frame_box(crown, x, z, y, 40, 60, 0, 120), 80.0 * 120 * 70, 11, "blind mortise", failures);
+    check_feature(arch, frame_box(Point(1200, 0, 820), x, y, z, 60, 100, -50, 100), 0.0, 10, "notch", failures);
+    check_feature(arch, drill_along(Point(1100, 0, 700), Point(1300, 0, 700), 8), Tolerance::PI * 64 * 200, 9, "pin", failures);
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Vault Strip And Arch Cut At The Element Planes") {
+    std::string failures;
+    for (bool exact : {true, false}) {
+        const BRep strip = vault_strip(exact);
+        check_side(strip, Point(1400, 0, 1400), Vector(-1, 0, -0.4), strip.volume_exact(), exact ? "strip arcs" : "strip cubics", failures);
+    }
+    const BRep arch = glulam_arch();
+    check_side(arch, Point(1800, 0, 300), Vector(-1, 0, -0.3), arch.volume_exact(), "arch", failures);
+    if (!failures.empty())
+        throw std::runtime_error(failures);
 }

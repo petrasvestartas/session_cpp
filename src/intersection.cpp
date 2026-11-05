@@ -7211,6 +7211,62 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
         samples.uv[i] = pullback_proposal(surface, world, samples.ts[i], samples.uv[i], before, after);
     }
     const PullbackRun projected_samples = observing ? samples : PullbackRun{};
+    // A volume moves with a trim's error times its reach, so a trim within the model tolerance is not yet a measured one.
+    {
+        double reach = 0.0;
+        for (int i = 0; i < world.cv_count(); ++i) {
+            const Point point = world.get_cv(i);
+            reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
+        }
+        const double tight = std::min(tolerance, std::max(tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon()));
+        // The certificate proves the model tolerance and stays mandatory; the measured gap only chooses how many spans are enough.
+        const auto gap = [&surface, &world](const NurbsCurve& candidate) {
+            double worst = 0.0;
+            const std::vector<double> spans = candidate.get_span_vector();
+            for (size_t i = 1; i < spans.size(); ++i)
+                for (int k = 0; k < 8; ++k) {
+                    const double t = spans[i - 1] + (spans[i] - spans[i - 1]) * (k + 0.5) / 8.0;
+                    const Point uv = candidate.point_at(t);
+                    worst = std::max(worst, surface.point_at(uv[0], uv[1]).distance(world.point_at(t)));
+                }
+            return worst;
+        };
+        // From a few given samples, so that the measured gap and not the marching step sets the size of the curve.
+        PullbackRun run;
+        const size_t stride = std::max<size_t>((samples.ts.size() - 1) / 2, 1);
+        for (size_t i = 0; i < samples.ts.size(); i += stride) {
+            run.ts.push_back(samples.ts[i]);
+            run.uv.push_back(samples.uv[i]);
+        }
+        if (run.ts.back() != samples.ts.back()) {
+            run.ts.push_back(samples.ts.back());
+            run.uv.push_back(samples.uv.back());
+        }
+        // The parameters are only as smooth as the surface's knots, so the spans end where the curve crosses them.
+        const std::vector<double> knots = pullback_breaks(surface, world, tolerance);
+        for (int pass = 0; pass < 7 && run.ts.size() <= 129; ++pass) {
+            const NurbsCurve proposal = quintic_run_proposal(run, knots, surface, world);
+            if (proposal.is_valid() && proposal.domain() == world.domain() && gap(proposal) <= tight &&
+                curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
+                    curve_surface_intersection::ParameterMatch::Matched)
+                return proposal;
+            PullbackRun finer;
+            finer.ts.push_back(run.ts.front());
+            finer.uv.push_back(run.uv.front());
+            for (size_t i = 1; i < run.ts.size(); ++i) {
+                const double middle = std::midpoint(run.ts[i - 1], run.ts[i]);
+                if (middle == run.ts[i - 1] || middle == run.ts[i])
+                    break;
+                finer.ts.push_back(middle);
+                finer.uv.push_back(pullback_proposal(surface, world, middle, run.uv[i - 1] + (run.uv[i] - run.uv[i - 1]) * .5, run.uv[i - 1], run.uv[i]));
+                finer.ts.push_back(run.ts[i]);
+                finer.uv.push_back(run.uv[i]);
+            }
+            if (finer.ts.size() != 2 * run.ts.size() - 1)
+                break;
+            run = std::move(finer);
+        }
+    }
     NurbsCurve first_fit, final_fit;
     bool has_first_fit = false;
     std::vector<nlohmann::ordered_json> history;

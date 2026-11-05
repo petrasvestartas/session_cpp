@@ -696,18 +696,17 @@ bool pcurve_inside_support(const NurbsCurve& curve, const NurbsSurface& surface)
 
 // Reuse original owning laws before rediscovering an on-support intersection.
 // Surface correspondence only proposes coordinates; both original whole laws must certify.
-bool original_boundary_overlap(curve_surface_intersection::Result& result, const BRep& owner,
-    int face, const NurbsCurve& world, const std::vector<EdgeUse>& uses,
-    const NurbsSurface& target, double tolerance) {
-    const auto& source = owner.m_surfaces[owner.m_faces[face].surface_index];
-    nurbs_coincidence::ParameterMap mapping;
-    const bool mapped = nurbs_coincidence::parameter_mapping(source,target,tolerance,mapping);
-    if (!mapped && !nurbs_coincidence::common_basis_agreement(source,target,tolerance))
+bool append_original_boundary_aliases(curve_surface_intersection::Result& result, const BRep& owner,
+    const BRepCurveOnSurface& association, const NurbsCurve& world, const NurbsSurface& source,
+    const NurbsSurface& target, const nurbs_coincidence::ParameterMap& mapping, bool mapped, double tolerance) {
+    if (association.curve_2d_index < 0)
         return false;
-    for (const auto& use : uses) {
-        if (use.pcurve < 0 || use.pcurve >= static_cast<int>(owner.m_curves_2d.size()))
+    for (int index : {association.curve_2d_index,association.curve_2d_index_2}) {
+        if (index < 0)
+            continue; // An absent secondary seam alias is optional.
+        if (index >= static_cast<int>(owner.m_curves_2d.size()))
             return false;
-        auto original = owner.m_curves_2d[use.pcurve];
+        auto original = owner.m_curves_2d[index];
         if (!original.set_domain(world.domain_start(),world.domain_end()) ||
             curve_surface_intersection::same_parameter(world,original,source,tolerance) !=
                 curve_surface_intersection::ParameterMatch::Matched)
@@ -730,8 +729,26 @@ bool original_boundary_overlap(curve_surface_intersection::Result& result, const
                 curve_surface_intersection::ParameterMatch::Matched) {
             result.overlaps.push_back({world.domain_start(),world.domain_end(),std::move(proposed)});
         } else {
-            return false; // Never accept only a subset of original selected aliases.
+            return false; // Never accept only a subset of a matching association's aliases.
         }
+    }
+    return !result.overlaps.empty();
+}
+
+// An edge can belong to the target through an adjacent original face, not the
+// currently selected source face. Preserve every matching support's seam aliases.
+bool original_boundary_overlap(curve_surface_intersection::Result& result, const BRep& owner,
+    const BRepEdge& edge, const NurbsCurve& world, const NurbsSurface& target, double tolerance) {
+    for (const auto& association : edge.pcurves) {
+        if (association.surface_index < 0 || association.surface_index >= static_cast<int>(owner.m_surfaces.size()))
+            return false;
+        const auto& source = owner.m_surfaces[association.surface_index];
+        nurbs_coincidence::ParameterMap mapping;
+        const bool mapped = nurbs_coincidence::parameter_mapping(source,target,tolerance,mapping);
+        if (!mapped && !nurbs_coincidence::common_basis_agreement(source,target,tolerance))
+            continue;
+        if (!append_original_boundary_aliases(result,owner,association,world,source,target,mapping,mapped,tolerance))
+            return false;
     }
     return !result.overlaps.empty();
 }
@@ -748,7 +765,7 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
         const auto& edge=source.m_edges[edge_index];
         const auto& world=source.m_curves_3d[edge.curve_3d_index];
         curve_surface_intersection::Result events;
-        if (!original_boundary_overlap(events,source,own_face,world,uses,surface,tolerance))
+        if (!original_boundary_overlap(events,source,edge,world,surface,tolerance))
             events=curve_surface_intersection::intersect(world,surface,tolerance);
         if (!events.complete) {
             observe_boundary_failure(source,surface,a,b,operand,edge_index,uses,tolerance,events.failure);

@@ -999,3 +999,98 @@ MINI_TEST("BRep Native Section", "Original Trim Receipts Preserve Both Raw Param
     }
 }
 } // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Adjacent Original Supports Preserve Refined Boundary Aliases") {
+    const auto original = BRep::create_cylinder(1,2);
+    auto refined = original;
+    for (auto& world : refined.m_curves_3d) {
+        MINI_CHECK(world.increase_degree(world.degree()+1));
+        MINI_CHECK(world.insert_nurbsknot(world.domain_start()+.375*(world.domain_end()-world.domain_start())));
+    }
+    for (auto& pc : refined.m_curves_2d) {
+        MINI_CHECK(pc.increase_degree(pc.degree()+2));
+        MINI_CHECK(pc.insert_nurbsknot(pc.domain_start()+.625*(pc.domain_end()-pc.domain_start())));
+    }
+    const auto frozen_original = original.jsondump(), frozen_refined = refined.jsondump();
+    for (bool swap : {false,true}) {
+        const auto& a = swap ? refined : original;
+        const auto& b = swap ? original : refined;
+        const auto result = brep_section::interferences(a,b,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(!result.curves.empty() && !result.boundary_events.empty());
+        bool adjacent = false;
+        for (const auto& curve : result.curves) {
+            adjacent = adjacent || curve.first_face != curve.second_face;
+            MINI_CHECK(curve.world.domain() == curve.first_pcurve.domain());
+            MINI_CHECK(curve.world.domain() == curve.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.first_pcurve,
+                a.m_surfaces[a.m_faces[curve.first_face].surface_index],1e-7) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.second_pcurve,
+                b.m_surfaces[b.m_faces[curve.second_face].surface_index],1e-7) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+        }
+        MINI_CHECK(adjacent); // Cap/cylinder incidences need the edge's other original support law.
+    }
+    MINI_CHECK(original.jsondump() == frozen_original && refined.jsondump() == frozen_refined);
+}
+} // namespace session_cpp
+
+MINI_TEST("BRep Native Section", "Positive Short Section Is Not An Isolated Contact") {
+    const double tol=std::ldexp(1.,-10), h=tol/8;
+    const auto a=inventory_exact_face({Point(-1,-h,0),Point(1,-h,0),Point(1,h,0),Point(-1,h,0)});
+    const auto b=inventory_exact_face({Point(0,-1,-1),Point(0,1,-1),Point(0,1,1),Point(0,-1,1)});
+    const auto before_a=a.jsondump(),before_b=b.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=brep_section::interferences(swap?b:a,swap?a:b,tol);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        bool positive=false;
+        for (const auto& section:result.curves) {
+            MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
+            MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=section.world.point_at_start(),q=section.world.point_at_end();
+            positive=positive || (std::abs(p[1]-q[1])>=h && std::abs(p[1]-q[1])<=4*h);
+        }
+        MINI_CHECK(positive);
+    }
+    MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
+}
+
+MINI_TEST("BRep Native Section", "Tangential Line Remains In Shared Inventory") {
+    // Exact polynomial supports z=x*x and z=0 meet along x=z=0, -1<=y<=1.
+    // A contact need not bound retained material, but is still a section locus.
+    const double tol=1e-7;
+    NurbsSurface curved(3,false,3,2,3,2);
+    curved.m_nurbsknot[0]={0,0,1,1};curved.m_nurbsknot[1]={0,1};
+    for (int i=0;i<3;++i) for (int j=0;j<2;++j)
+        MINI_CHECK(curved.set_cv(i,j,{double(i-1),double(2*j-1),i==1?-1.:1.}));
+    const auto a=inventory_uv_rectangle(curved,0,1,0,1);
+    const auto b=inventory_exact_face({Point(-1,-1,0),Point(1,-1,0),Point(1,1,0),Point(-1,1,0)});
+    const auto before_a=a.jsondump(),before_b=b.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=brep_section::interferences(swap?b:a,swap?a:b,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        bool line=false;
+        for (const auto& section:result.curves) {
+            MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
+            MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=section.world.point_at_start(),q=section.world.point_at_end();
+            line=line || (std::abs(p[1]-q[1])>1 && std::abs(p[0])<1e-7 && std::abs(q[0])<1e-7 && std::abs(p[2])<1e-7 && std::abs(q[2])<1e-7);
+        }
+        MINI_CHECK(line);
+    }
+    MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
+}
