@@ -37,23 +37,56 @@ inline bool closed_endpoint_pair(const EventSource& source,double a,double b) {
         ((a==source.uv->domain_start() && b==source.uv->domain_end()) ||
          (b==source.uv->domain_start() && a==source.uv->domain_end()));
 }
-// A positive-weight rational linear span is injective in any coordinate whose
-// endpoint Cartesian enclosures are separated. Do not alias reentrant occurrences.
-inline bool injective_linear_span(const NurbsCurve& curve) {
-    if (!curve.is_valid() || curve.dimension()<2 || curve.dimension()>3 || curve.degree()!=1 || curve.cv_count()!=2)
+// A positive-weight rational span crosses a coordinate line no more often than its control polygon,
+// so it is injective when that polygon is strictly monotone in one coordinate. Do not alias reentrant occurrences.
+inline bool injective_span(const NurbsCurve& curve) {
+    if (!curve.is_valid() || curve.dimension()<2 || curve.dimension()>3)
         return false;
     const auto controls=nurbs_interval::curve_controls(curve,{curve.domain_start(),curve.domain_end()},{0,0,0});
-    if (controls.size()!=2 || !(controls[0][3].lo>0) || !(controls[1][3].lo>0))
+    if (controls.size()<2)
         return false;
+    for (const auto& control:controls)
+        if (!(control[3].lo>0))
+            return false;
     for (int d=0;d<2;++d) {
-        const auto a=controls[0][d]/controls[0][3],b=controls[1][d]/controls[1][3];
-        if (nurbs_interval::finite(a) && nurbs_interval::finite(b) && (a.hi<b.lo || b.hi<a.lo))
+        bool rising=true,falling=true;
+        for (size_t i=1;i<controls.size();++i) {
+            const auto a=controls[i-1][d]/controls[i-1][3],b=controls[i][d]/controls[i][3];
+            const bool finite=nurbs_interval::finite(a) && nurbs_interval::finite(b);
+            rising=rising && finite && a.hi<b.lo;
+            falling=falling && finite && b.hi<a.lo;
+        }
+        if (rising || falling)
             return true;
     }
     return false;
 }
 
 using BoundaryPointKey=std::pair<size_t,double>;
+// One point where two boundary sources meet: the same topological vertex at the same UV,
+// so a seam vertex visited at two UV places keeps two keys.
+inline std::optional<BoundaryPointKey> shared_vertex_key(const std::vector<EventSource>& sources,size_t index,double parameter) {
+    const EventSource& source=sources[index];
+    if (!source.boundary || !source.uv)
+        return std::nullopt;
+    const int vertex=parameter==source.uv->domain_start()?source.first_vertex:
+        parameter==source.uv->domain_end()?source.last_vertex:-1;
+    if (vertex<0)
+        return std::nullopt;
+    const Point point=source.uv->point_at(parameter);
+    for (size_t i=0;i<sources.size();++i) {
+        if (!sources[i].boundary || !sources[i].uv)
+            continue;
+        for (const double end:{sources[i].uv->domain_start(),sources[i].uv->domain_end()}) {
+            const int visited=end==sources[i].uv->domain_start()?sources[i].first_vertex:sources[i].last_vertex;
+            const Point at=sources[i].uv->point_at(end);
+            if (visited==vertex && at[0]==point[0] && at[1]==point[1])
+                return BoundaryPointKey{i,end};
+        }
+    }
+    return std::nullopt;
+}
+
 inline std::optional<BoundaryPointKey> boundary_point_key(
     const ArrangementPointIncidence& incidence,const std::vector<EventSource>& sources) {
     if (incidence.source>=sources.size() || incidence.other_source>=sources.size() ||
@@ -64,12 +97,19 @@ inline std::optional<BoundaryPointKey> boundary_point_key(
         if (incidence.source==incidence.other_source &&
             closed_endpoint_pair(sources[incidence.source],incidence.parameter,incidence.other_parameter))
             return BoundaryPointKey{incidence.source,sources[incidence.source].uv->domain_start()};
+        if (first && incidence.source!=incidence.other_source) {
+            const auto key=shared_vertex_key(sources,incidence.source,incidence.parameter);
+            if (key && key==shared_vertex_key(sources,incidence.other_source,incidence.other_parameter))
+                return key;
+        }
         return std::nullopt;
     }
     const size_t index=first?incidence.source:incidence.other_source;
     double parameter=first?incidence.parameter:incidence.other_parameter;
     if (closed_boundary_endpoints(sources[index]) && parameter==sources[index].uv->domain_end())
         parameter=sources[index].uv->domain_start();
+    if (const auto shared=shared_vertex_key(sources,index,parameter))
+        return shared;
     return BoundaryPointKey{index,parameter};
 }
 
@@ -81,7 +121,7 @@ std::optional<BoundaryPointKey> boundary_vertex_key(
     const std::vector<ArrangementPointIncidence>& incidence,const std::vector<double>& required,
     bool nonpoint,double lo,double hi,const Point& vertex,double tolerance,size_t& budget,Contains contains) {
     if (source>=sources.size() || !sources[source].uv || sources[source].boundary || nonpoint ||
-        !std::isfinite(lo) || !std::isfinite(hi) || !std::isfinite(tolerance) || !(tolerance>0) || !(lo<hi) || !injective_linear_span(original_span) || incidence.empty())
+        !std::isfinite(lo) || !std::isfinite(hi) || !std::isfinite(tolerance) || !(tolerance>0) || !(lo<hi) || !injective_span(original_span) || incidence.empty())
         return std::nullopt;
     for (int d=0;d<3;++d)
         if (!std::isfinite(vertex[d]))

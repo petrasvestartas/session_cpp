@@ -502,6 +502,83 @@ bool point_sized(const NurbsCurve& world,double first,double last,double toleran
         start.distance(world.point_at(last))<=tolerance;
 }
 
+// A section ending on a patch side comes back through an inverse and can land an ulp outside it: the side is where it ends.
+void end_on_surface(NurbsCurve& pcurve,const NurbsSurface& surface) {
+    for (const int i:{0,pcurve.cv_count()-1}) {
+        Point uv=pcurve.get_cv(i);
+        bool moved=false;
+        for (int direction=0;direction<2;++direction) {
+            const auto domain=surface.domain(direction);
+            const double roundoff=16.*std::numeric_limits<double>::epsilon()*std::max(std::abs(domain.first),std::abs(domain.second));
+            for (const double side:{domain.first,domain.second})
+                if (uv[direction]!=side && std::abs(uv[direction]-side)<=roundoff &&
+                    (uv[direction]<domain.first || uv[direction]>domain.second)) {
+                    uv[direction]=side;
+                    moved=true;
+                }
+        }
+        if (moved) {
+            const double weight=pcurve.weight(i);
+            pcurve.set_cv_4d(i,uv[0]*weight,uv[1]*weight,uv[2]*weight,weight);
+        }
+    }
+}
+
+// Signed offsets from one surface of the two points a step either side of a curve on the other.
+bool side_offsets(const NurbsSurface& along,const Point& uv,const Vector& across,double step,
+                  const NurbsSurface& from,std::array<double,2>& offsets) {
+    const std::vector<Vector> frame=along.evaluate(uv[0],uv[1],1);
+    const Vector& su=frame[2];
+    const Vector& sv=frame[1];
+    const double uu=su.dot(su),uv_dot=su.dot(sv),vv=sv.dot(sv);
+    const double determinant=uu*vv-uv_dot*uv_dot;
+    if (!(determinant>0))
+        return false;
+    const Vector offset=across*step;
+    const double a=offset.dot(su),b=offset.dot(sv);
+    const double du=(a*vv-b*uv_dot)/determinant,dv=(b*uu-a*uv_dot)/determinant;
+    for (int side=0;side<2;++side) {
+        const double sign=side?-1.:1.;
+        double u=uv[0]+sign*du,v=uv[1]+sign*dv;
+        const auto dx=along.domain(0),dy=along.domain(1);
+        if (u<dx.first || u>dx.second) {
+            if (!along.is_closed(0))
+                return false;
+            u+=(u<dx.first?1.:-1.)*(dx.second-dx.first);
+        }
+        if (v<dy.first || v>dy.second) {
+            if (!along.is_closed(1))
+                return false;
+            v+=(v<dy.first?1.:-1.)*(dy.second-dy.first);
+        }
+        const Point point=along.point_at(u,v);
+        const auto nearest=from.closest_parameters(point);
+        offsets[side]=(point-from.point_at(nearest.first,nearest.second)).dot(from.normal_at(nearest.first,nearest.second));
+    }
+    return true;
+}
+
+// Two surfaces that meet along a curve and part again on both sides of it: neither crosses the other, so the curve bounds nothing.
+bool touching_only(const FaceCurve& curve,const NurbsSurface& first,const NurbsSurface& second,double tolerance) {
+    const double middle=std::midpoint(curve.world.domain_start(),curve.world.domain_end());
+    const Point ua=curve.first_pcurve.point_at(middle),ub=curve.second_pcurve.point_at(middle);
+    const Vector na=first.normal_at(ua[0],ua[1]),nb=second.normal_at(ub[0],ub[1]);
+    if (na.cross(nb).magnitude()>1e-6*na.magnitude()*nb.magnitude())
+        return false;
+    Vector across=curve.world.evaluate(middle,1)[1].cross(na);
+    if (!across.normalize_self())
+        return false;
+    const auto size=[](const NurbsSurface& surface) {
+        const Point a=surface.get_cv(0,0),b=surface.get_cv(surface.cv_count(0)-1,surface.cv_count(1)-1);
+        return a.distance(b);
+    };
+    std::array<double,2> offsets{};
+    if (!side_offsets(second,ub,across,size(second)*1e-3,first,offsets) &&
+        !side_offsets(first,ua,across,size(first)*1e-3,second,offsets))
+        return false;
+    return std::min(std::abs(offsets[0]),std::abs(offsets[1]))>tolerance*8. && offsets[0]*offsets[1]>0;
+}
+
 void paired(const FaceCurve& curve,const BRep& a,const BRep& b,double tolerance) {
     for (int side=0;side<2;++side) {
         const auto& owner=side?b:a;
@@ -528,17 +605,23 @@ void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep&
         trim_parameters(second,b,ub,tb,cuts,&law.events,1);
         result.original_trim_laws.push_back(std::move(law));
         exact_cuts(cuts,{&world,&ua,&ub});
+        // A sliver between two cuts of a longer section is a point; a section that short as a whole is still a section.
+        const bool whole_short=point_sized(world,world.domain_start(),world.domain_end(),tolerance);
         for (size_t i=1;i<cuts.size();++i) {
             const double mid=std::midpoint(cuts[i-1],cuts[i]);
             if (!(cuts[i-1]<mid && mid<cuts[i]))
                 throw std::runtime_error("Interference trim interval has no interior representative");
-            if (point_sized(world,cuts[i-1],cuts[i],tolerance))
+            if (!whole_short && point_sized(world,cuts[i-1],cuts[i],tolerance))
                 continue;
             if (!retained(first,a,ua,mid,ta) || !retained(second,b,ub,mid,tb))
                 continue;
             FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
                 exact_trim(ua,cuts[i-1],cuts[i]),exact_trim(ub,cuts[i-1],cuts[i])};
+            end_on_surface(curve.first_pcurve,first.m_surfaces[first.m_faces[a].surface_index]);
+            end_on_surface(curve.second_pcurve,second.m_surfaces[second.m_faces[b].surface_index]);
             paired(curve,first,second,tolerance);
+            curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index],
+                                         second.m_surfaces[second.m_faces[b].surface_index],tolerance);
             result.curves.push_back(std::move(curve));
         }
     }
@@ -722,6 +805,8 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
                     FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
                         operand?other_piece:own_piece,operand?own_piece:other_piece};
                     paired(curve,first,second,tolerance);
+                    curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index],
+                                                 second.m_surfaces[second.m_faces[b].surface_index],tolerance);
                     result.curves.push_back(std::move(curve));
                 }
             }

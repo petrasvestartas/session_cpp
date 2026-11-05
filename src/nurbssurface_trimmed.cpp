@@ -3695,10 +3695,21 @@ std::vector<Point> NurbsSurfaceTrimmed::discretize_loop(const NurbsCurve& crv, d
     return out;
 }
 
-Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
+Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& given, double max_angle_deg, double chord_factor) const {
 
-    if (loops.uv.empty() || loops.uv[0].size() < 3)
+    if (given.uv.empty() || given.uv[0].size() < 3)
         return m_surface.mesh();
+
+    // a trim along a crease knot is on it exactly: a sample a bit off would lie beside the crease's own constraint
+    TrimLoops loops = given;
+    const std::array<std::vector<double>, 2> creases = find_crease_knots(m_surface);
+
+    for (std::vector<Point>& loop : loops.uv)
+        for (Point& point : loop)
+            for (int dir = 0; dir < 2; ++dir)
+                for (double knot : creases[dir])
+                    if (std::abs(point[dir] - knot) <= 1e-9 * (m_surface.domain(dir).second - m_surface.domain(dir).first))
+                        point[dir] = knot;
 
     const double bbox_diag = bbox_diagonal();
     const double deflection = bbox_diag * chord_factor;

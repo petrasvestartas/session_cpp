@@ -11,6 +11,13 @@
 
 namespace session_cpp::surface_section {
 
+/// The rulings where a plane holding the extrusion direction meets a surface, on the surface by construction; nullopt when it is no such extrusion.
+std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> ruling_plane(
+    const NurbsSurface& surface,
+    const Plane& plane,
+    double tolerance
+);
+
 /// Return exact paired extrusion/plane sections; nullopt denotes unsupported geometry or numerical conditioning.
 std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> extrusion_plane(
     const NurbsSurface& surface,

@@ -262,11 +262,12 @@ public:
         double tolerance = Tolerance::ZERO_TOLERANCE
     );
 
-    /// Surface-surface section curves with their UV pcurves on both surfaces.
+    /// Surface-surface section curves with their UV pcurves on both surfaces; chart_pieces also cuts them at crease knots and fits each piece from exact jets, for trims a volume is measured on.
     static std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> surface_surface(
         const NurbsSurface& a,
         const NurbsSurface& b,
-        double tolerance = Tolerance::ZERO_TOLERANCE
+        double tolerance = Tolerance::ZERO_TOLERANCE,
+        bool chart_pieces = false
     );
 
     /// UV pcurves of the cutter's section on the target, clipped to the cutter footprint.

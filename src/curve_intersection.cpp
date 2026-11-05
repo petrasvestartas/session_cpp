@@ -440,6 +440,22 @@ bool add_hit(const Pair& pair, const Pair& leaf, double tolerance, Result& resul
         ta = tangent.first;
         tb = tangent.second;
     }
+    // Curves that run on through a shared end stay within tolerance a little before it: the hit is that end.
+    for (const double ea : {pair.a.domain_start(), pair.a.domain_end()})
+        for (const double eb : {pair.b.domain_start(), pair.b.domain_end()})
+            if (pair.a.point_at(ea).distance(pair.b.point_at(eb)) <= tolerance &&
+                pair.a.point_at(ta).distance(pair.a.point_at(ea)) <= tolerance * 4.0 &&
+                pair.b.point_at(tb).distance(pair.b.point_at(eb)) <= tolerance * 4.0) {
+                ta = ea;
+                tb = eb;
+            }
+    // A hit at a curve's own end to roundoff is that end: vertices are told apart by exact parameter.
+    for (const double end : {pair.a.domain_start(), pair.a.domain_end()})
+        if (pair.a.point_at(ta).distance(pair.a.point_at(end)) <= roundoff)
+            ta = end;
+    for (const double end : {pair.b.domain_start(), pair.b.domain_end()})
+        if (pair.b.point_at(tb).distance(pair.b.point_at(end)) <= roundoff)
+            tb = end;
     const Point a = pair.a.point_at(ta);
     const Point b = pair.b.point_at(tb);
     const double gap = a.distance(b);

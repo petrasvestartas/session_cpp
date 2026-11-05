@@ -1503,6 +1503,49 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
     return refine_surface_boundary(srf, crv, samples, scale, angle, chord);
 }
 
+/// A sample where the edge crosses a crease of the surface across it, or that face's mesh would have a vertex this one lacks.
+void add_other_face_creases(const BRep& b, int fi, const BRepEdge& edge, const NurbsCurve& crv,
+                            std::vector<std::tuple<double, Point, Point>>& samples) {
+
+    const NurbsSurface& own = b.m_surfaces[b.m_faces[fi].surface_index];
+
+    for (const BRepCurveOnSurface& use : edge.pcurves) {
+        if (use.surface_index == b.m_faces[fi].surface_index)
+            continue;
+
+        const NurbsCurve& other = b.m_curves_2d[use.curve_2d_index];
+        const std::array<std::vector<double>, 2> creases = parametric_crease_knots(b.m_surfaces[use.surface_index]);
+        const auto mapped = [&](double t) {
+            const double share = (t - crv.domain().first) / (crv.domain().second - crv.domain().first);
+            return other.point_at(other.domain().first + share * (other.domain().second - other.domain().first));
+        };
+
+        for (int dir = 0; dir < 2; ++dir)
+            for (double knot : creases[dir])
+                for (size_t k = 1; k < samples.size(); ++k) {
+                    double low = std::get<0>(samples[k - 1]);
+                    double high = std::get<0>(samples[k]);
+                    const double start = mapped(low)[dir] - knot;
+
+                    if (start == 0.0 || start * (mapped(high)[dir] - knot) >= 0.0)
+                        continue;
+
+                    for (int step = 0; step < 64; ++step) {
+                        const double middle = 0.5 * (low + high);
+
+                        if ((mapped(middle)[dir] - knot) * start > 0.0)
+                            low = middle;
+                        else
+                            high = middle;
+                    }
+
+                    const Point uv = crv.point_at(low);
+                    samples.insert(samples.begin() + k, {low, uv, own.point_at(uv[0], uv[1])});
+                    break;
+                }
+    }
+}
+
 /// Phase 3: samples of one edge use of a CDT face in traversal direction, a closed edge repeating its first point at the end; false when the edge has no pcurve
 bool edge_use_samples(
     const BRep& b,
@@ -1533,6 +1576,7 @@ bool edge_use_samples(
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
         samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), scale, angle, chord);
+        add_other_face_creases(b, fi, edge, crv, samples);
         std::vector<Point> positions;
 
         for (const std::tuple<double, Point, Point>& sample : samples)
@@ -2059,6 +2103,7 @@ std::vector<std::tuple<double, Point, Point>> strip_samples(const NurbsSurface& 
         fractions.push_back((double)k / count);
 
     const std::array<std::vector<double>, 2> crease_knots = parametric_crease_knots(srf);
+
     for (double knot : crease_knots[0]) {
         const bool rising = strip_uv(crv, 0.0)[0] < strip_uv(crv, 1.0)[0];
         double low = 0.0;
@@ -4089,14 +4134,42 @@ BRep BRep::offset(double distance, double tolerance) const {
     return brep_offset::shape(*this, distance, tolerance);
 }
 
+/// A box on the side of the plane its normal points away from, past everything the surfaces of the shape reach.
+static BRep half_space(const BRep& shape, const Plane& plane) {
+
+    double reach = 1.0;
+
+    for (const NurbsSurface& surface : shape.m_surfaces)
+        for (int i = 0; i < surface.cv_count(0); ++i)
+            for (int j = 0; j < surface.cv_count(1); ++j)
+                reach = std::max(reach, 2.0 * surface.get_cv(i, j).distance(plane.origin()));
+
+    const auto at = [&](double x, double y, double z) {
+        return plane.origin() + plane.x_axis() * x + plane.y_axis() * y + plane.z_axis() * z;
+    };
+    const std::array<Point, 4> top = {at(-reach, -reach, 0), at(reach, -reach, 0), at(reach, reach, 0), at(-reach, reach, 0)};
+    const std::array<Point, 4> low = {at(-reach, -reach, -reach), at(reach, -reach, -reach), at(reach, reach, -reach), at(-reach, reach, -reach)};
+    std::vector<Polyline> faces = {Polyline({top[0], top[1], top[2], top[3], top[0]}), Polyline({low[0], low[1], low[2], low[3], low[0]})};
+
+    for (size_t i = 0; i < 4; ++i) {
+        const size_t next = (i + 1) % 4;
+        faces.emplace_back(std::vector<Point>{top[i], top[next], low[next], low[i], top[i]});
+    }
+
+    return BRep::from_polylines(faces);
+}
+
 BRep BRep::cut_by_plane(const Plane& plane) const {
 
     Mesh rings;
 
     if (!face_rings(*this, rings)) {
-        const Mesh tessellation = mesh();
+        BRep result = boolean_difference(half_space(*this, plane));
+        result.name = name;
+        result.width = width;
+        result.surfacecolor = surfacecolor;
 
-        return tessellation.cut_by_plane(plane) == tessellation ? *this : BRep();
+        return result;
     }
 
     const Mesh cut = rings.cut_by_plane(plane);

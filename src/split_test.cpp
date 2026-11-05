@@ -1471,7 +1471,7 @@ MINI_TEST("Split", "Event Vertex Ownership Preserves Other Original Source Occur
         MINI_CHECK(original.is_valid());
         auto first_span=original;
         MINI_CHECK(first_span.trim(0,1));
-        MINI_CHECK(split::detail::injective_linear_span(first_span));
+        MINI_CHECK(split::detail::injective_span(first_span));
         MINI_CHECK(circular_contains(original,0,1,vertex,tolerance));
         const double other=closed?3:4;
         MINI_CHECK(circular_contains(original,other,other,vertex,tolerance));

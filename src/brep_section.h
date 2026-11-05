@@ -40,6 +40,7 @@ struct FaceCurve {
     NurbsCurve world;
     NurbsCurve first_pcurve;
     NurbsCurve second_pcurve;
+    bool touching = false; // The surfaces part again either side: a section locus that bounds no material.
 };
 
 /// Legacy coincidence candidate; whole-domain qualification and trim-area handling are separate.

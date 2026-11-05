@@ -37,7 +37,7 @@ double control_weight(const NurbsSurface& surface, int direction, int row, int c
     return direction == 0 ? surface.weight(row, column) : surface.weight(column, row);
 }
 
-bool extrusion(const NurbsSurface& surface, const Plane& plane, double tolerance, Extrusion& result) {
+bool extrusion(const NurbsSurface& surface, const Plane& plane, double tolerance, Extrusion& result, bool along_plane = false) {
     for (int direction = 0; direction < 2; ++direction) {
         if (surface.degree(direction) != 1 || surface.cv_count(direction) != 2)
             continue;
@@ -57,7 +57,8 @@ bool extrusion(const NurbsSurface& surface, const Plane& plane, double tolerance
         if (!normal.normalize_self())
             return false;
         const double denominator = displacement.dot(normal);
-        if (!std::isfinite(denominator) || std::abs(denominator) <= 64.0 * std::numeric_limits<double>::epsilon() * displacement.magnitude())
+        const bool parallel = std::abs(denominator) <= 64.0 * std::numeric_limits<double>::epsilon() * displacement.magnitude();
+        if (!std::isfinite(denominator) || parallel != along_plane)
             continue;
         const std::pair<double, double> domain = surface.domain(direction);
         result = {direction, displacement, normal, plane.origin(), denominator, domain.first, domain.second - domain.first};
@@ -136,6 +137,34 @@ std::vector<double> clip_parameters(const NurbsCurve& pcurve, const Extrusion& e
     return cuts;
 }
 
+/// A plane holding the extrusion direction meets the surface in the rulings over the base curve's roots on it.
+std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> plane_rulings(
+    const NurbsCurve& base,
+    const Extrusion& extrusion,
+    const Plane& plane,
+    double tolerance
+) {
+    double reach = 0.0;
+    for (int i = 0; i < base.cv_count(); ++i)
+        reach = std::max(reach, std::abs((base.get_cv(i) - extrusion.origin).dot(extrusion.normal)));
+    if (reach <= tolerance)
+        return std::nullopt; // The whole surface lies in the plane.
+    std::vector<std::pair<NurbsCurve, NurbsCurve>> result;
+    for (double root : Intersection::curve_plane(base, plane, tolerance)) {
+        const Point foot = base.point_at(root);
+        NurbsCurve world = NurbsCurve::create(false, 1, {foot, foot + extrusion.displacement});
+        Point first, last;
+        first[1 - extrusion.direction] = last[1 - extrusion.direction] = root;
+        first[extrusion.direction] = extrusion.start;
+        last[extrusion.direction] = extrusion.start + extrusion.length;
+        NurbsCurve parameters = NurbsCurve::create(false, 1, {first, last});
+        if (!world.is_valid() || !parameters.is_valid())
+            return std::nullopt;
+        result.push_back({std::move(world), std::move(parameters)});
+    }
+    return result;
+}
+
 bool append_section(
     std::vector<std::pair<NurbsCurve, NurbsCurve>>& sections,
     NurbsCurve world,
@@ -208,6 +237,25 @@ std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> extrusion_plane(
         if (!section.first.set_domain(0.0, 1.0) || !section.second.set_domain(0.0, 1.0))
             return std::nullopt;
     return result;
+}
+
+std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> ruling_plane(
+    const NurbsSurface& surface,
+    const Plane& plane,
+    double tolerance
+) {
+    if (!surface.is_valid() || !std::isfinite(tolerance) || tolerance <= 0.0 || !finite(plane.origin()))
+        throw std::invalid_argument("Ruling section requires valid geometry and a finite positive tolerance");
+    Extrusion detected;
+    if (!extrusion(surface, plane, tolerance, detected, true))
+        return std::nullopt;
+    std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> rulings =
+        plane_rulings(surface.iso_curve(1 - detected.direction, detected.start), detected, plane, tolerance);
+    if (rulings)
+        for (std::pair<NurbsCurve, NurbsCurve>& section : *rulings)
+            if (!section.first.set_domain(0.0, 1.0) || !section.second.set_domain(0.0, 1.0))
+                return std::nullopt;
+    return rulings;
 }
 
 namespace {

@@ -1101,7 +1101,39 @@ bool sector_ambiguous(const Vector& a, const Vector& b) {
         return true;
     const auto cross = sector_cross(a, b);
     const auto dot = SectorInterval(a[0]) * SectorInterval(b[0]) + SectorInterval(a[1]) * SectorInterval(b[1]);
-    return cross.lo <= 0 && cross.hi >= 0 && dot.lo > 0;
+    // A tangency found to tolerance leaves two tangents apart by about the square root of it, never exactly equal.
+    const double size = std::hypot(a[0], a[1]) * std::hypot(b[0], b[1]);
+    return dot.lo > 0 && ((cross.lo <= 0 && cross.hi >= 0) || std::abs(cross.lo) <= 1e-5 * size);
+}
+
+/// A tangent cluster counter-clockwise by the chords of its runs a short way out: curves that leave a corner together part there.
+bool sector_chords(const std::vector<Source>& sources, const Graph& graph, std::vector<size_t>& cluster, const Vector& direction) {
+    const auto at = [&](size_t edge, double fraction) {
+        const Run& run = graph.edges[edge].run;
+        return sources[run.source].uv.point_at(run.a + (run.b - run.a) * fraction);
+    };
+    double reach = std::numeric_limits<double>::infinity();
+    for (size_t edge : cluster)
+        reach = std::min(reach, at(edge, 0.5).distance(at(edge, 0.0)) * 0.5);
+    const double scale = std::hypot(direction[0], direction[1]);
+    if (!(reach > 0) || !(scale > 0))
+        return false;
+    std::vector<std::pair<double, size_t>> sides;
+    for (size_t edge : cluster) {
+        const Point start = at(edge, 0.0);
+        double fraction = 0.5;
+        while (fraction > 1e-12 && at(edge, fraction).distance(start) > reach)
+            fraction *= 0.5;
+        const Vector chord = at(edge, fraction) - start;
+        sides.push_back({(direction[0] * chord[1] - direction[1] * chord[0]) / (scale * chord.magnitude()), edge});
+    }
+    std::sort(sides.begin(), sides.end());
+    for (size_t i = 1; i < sides.size(); ++i)
+        if (sides[i].first - sides[i - 1].first <= 1e-12)
+            return false;
+    for (size_t i = 0; i < sides.size(); ++i)
+        cluster[i] = sides[i].second;
+    return true;
 }
 
 bool sector_cones(const std::vector<SectorCone>& cones, size_t& budget, std::vector<size_t>& order) {
@@ -1204,14 +1236,21 @@ void order_sector_fan(
         cones.push_back({tangent, tangent - offset, tangent + offset});
     }
     std::vector<size_t> order;
-    require(sector_cones(cones, budget, order), "Tangent fan candidate cones are not proved disjoint");
     std::vector<size_t> result;
-    for (size_t index : order) {
+    bool proved = sector_cones(cones, budget, order);
+    for (size_t i = 0; proved && i < order.size(); ++i) {
         std::vector<size_t> cluster;
-        const auto& cone = cones[index];
-        require(sector_sides(sources, graph, clusters[index], origin, cone.tangent, cone.left, cone.right, budget, cluster),
-            "Tangent fan has unresolved prefix order or endpoint identity");
+        const auto& cone = cones[order[i]];
+        proved = sector_sides(sources, graph, clusters[order[i]], origin, cone.tangent, cone.left, cone.right, budget, cluster);
         result.insert(result.end(), cluster.begin(), cluster.end());
+    }
+    if (!proved) {
+        result.clear();
+        for (std::vector<size_t>& cluster : clusters) {
+            require(cluster.size() == 1 || sector_chords(sources, graph, cluster, directions[cluster.front()]),
+                "Tangent fan has unresolved prefix order or endpoint identity");
+            result.insert(result.end(), cluster.begin(), cluster.end());
+        }
     }
     choices = std::move(result);
 }

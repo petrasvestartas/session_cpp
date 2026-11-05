@@ -365,7 +365,7 @@ Partition partition(
         std::vector<split::FaceCut> cuts;
         for (size_t i = 0; i < sections.curves.size(); ++i) {
             const brep_section::FaceCurve& section = sections.curves[i];
-            if ((second ? section.second_face : section.first_face) == face)
+            if (!section.touching && (second ? section.second_face : section.first_face) == face)
                 append_cut(cuts, result.brep, face, {section.world,
                     second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)}, tolerance);
         }

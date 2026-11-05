@@ -1691,6 +1691,18 @@ void rhino_public_fixture_matrix(const std::string& family, bool union_only = fa
         const double vd = difference["reference"]["signed_volume"].get<double>();
         MINI_CHECK(std::abs(vd - expected[order == "ab" ? 2 : 3]) <= 1e-6 * vd);
     }
+    // Rhino's curved outputs miss the true volume by more than this gate; exact-volumes.json says why and how it was found.
+    double gate = 1e-6;
+    std::ifstream exact_stream(root / "exact-volumes.json");
+    MINI_CHECK(exact_stream.good());
+    nlohmann::json exact_volumes;
+    exact_stream >> exact_volumes;
+    if (exact_volumes["families"].contains(family)) {
+        const auto& exact = exact_volumes["families"][family];
+        const double vi = exact["exact_intersection"].get<double>();
+        expected = {va + vb - vi, vi, va - vi, vb - vi, va + vb - 2 * vi};
+        gate = exact["gate"].get<double>();
+    }
     const std::array<std::string, 5> labels = {"union", "intersection", "difference_ab", "difference_ba", "xor"};
     for (int operation = 0; operation < (union_only ? 1 : 5); ++operation) {
         const BRep result = public_boolean_operation(a, b, operation, tolerance);
@@ -1701,7 +1713,7 @@ void rhino_public_fixture_matrix(const std::string& family, bool union_only = fa
         rhino_flat_result_pcurves(result, tolerance);
         const double volume = brep_measure::volume(result, 1e-8);
         MINI_CHECK(std::isfinite(volume) && volume > 0);
-        MINI_CHECK(std::abs(volume - expected[operation]) <= 1e-6 * expected[operation]);
+        MINI_CHECK(std::abs(volume - expected[operation]) <= gate * expected[operation]);
         for (const auto& probe : oracle["compact_probes"]) {
             const bool in_a = probe["states"][0].get<int>() == 1;
             const bool in_b = probe["states"][1].get<int>() == 1;
@@ -1817,24 +1829,40 @@ CutPlan column_slot(double width, double reach) {
     return plan;
 }
 
-/// A cylinder turned about its axis less a prism down from its top: an exact sewn solid of one round face.
-void check_cylinder_cut(double radius, double height, double depth, double turn, const CutPlan& plan, double exact) {
-    BRep cylinder = BRep::create_cylinder(radius, height);
-    cylinder.transform(Xform::rotation_z(turn));
-    const BRep result = cylinder.boolean_difference(plan_prism(plan, height - depth, height + 10.0));
+/// An exact sewn solid of ordinary trimmed faces: the volume to a millionth of a cubic millimetre, the given number of round faces, the mesh closed.
+void check_cut_result(const BRep& result, double exact, int round_expected, double mesh_share = 0.02) {
     int round_faces = 0;
     for (const BRepFace& face : result.m_faces)
         round_faces += result.m_surfaces[face.surface_index].degree(0) > 1 ? 1 : 0;
     const double volume = result.volume_exact();
     const Mesh mesh = result.mesh();
-    const std::string measured = "turn " + std::to_string(turn) + ": volume " + std::to_string(volume) + " of "
-        + std::to_string(exact) + " mm3, mesh " + std::to_string(mesh.volume()) + ", round faces "
+    const std::string measured = "volume " + std::to_string(volume) + " of " + std::to_string(exact) + " mm3, off "
+        + std::to_string(volume - exact) + ", mesh " + std::to_string(mesh.volume()) + ", round faces "
         + std::to_string(round_faces) + ", solid " + std::to_string(result.is_solid()) + ", mesh closed "
         + std::to_string(mesh.is_closed());
-    if (!result.is_solid() || std::abs(volume - exact) > 1e-6 || round_faces != 1 || !mesh.is_closed()
-        || std::abs(mesh.volume() - exact) > 0.02 * exact)
+    if (!result.is_solid() || std::abs(volume - exact) > 1e-6 || round_faces != round_expected || !mesh.is_closed()
+        || std::abs(mesh.volume() - exact) > mesh_share * exact)
         throw std::runtime_error(measured);
     MINI_CHECK(result.is_solid());
+}
+
+/// A cylinder turned about its axis less a prism down from its top.
+void check_cylinder_cut(double radius, double height, double depth, double turn, const CutPlan& plan, double exact) {
+    BRep cylinder = BRep::create_cylinder(radius, height);
+    cylinder.transform(Xform::rotation_z(turn));
+    check_cut_result(cylinder.boolean_difference(plan_prism(plan, height - depth, height + 10.0)), exact, 1);
+}
+
+/// The same cut with cylinder and tool turned together: the wall stays where it is on the cylinder and only the world numbers change.
+void check_held_wall(double radius, double height, double depth, double turn, const CutPlan& plan, std::string& failures) {
+    const double exact = Tolerance::PI * radius * radius * height - plan_area_in_circle(plan, radius) * depth;
+    const Xform hold = Xform::rotation_z(turn);
+    try {
+        check_cut_result(BRep::create_cylinder(radius, height).transformed(hold)
+            .boolean_difference(plan_prism(plan, height - depth, height + 10.0).transformed(hold)), exact, 1);
+    } catch (const std::exception& error) {
+        failures += "\nradius " + std::to_string(radius) + " turn " + std::to_string(turn) + ": " + error.what();
+    }
 }
 
 }
@@ -1920,4 +1948,316 @@ MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     }
     if (!failures.empty())
         throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Wall Exactly Through The Cylinder Seam") {
+    std::string failures;
+    for (const std::array<double, 3>& size : std::vector<std::array<double, 3>>{{100, 425, 185}, {60, 300, 120}, {150, 500, 200}})
+        for (double turn : {0.0, 0.3, 1.0, 2.2}) {
+            const double r = size[0];
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, 0}, {1.1 * r, 0}, {1.1 * r, 0.4 * r}, {-1.1 * r, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, -0.4 * r}, {1.1 * r, -0.4 * r}, {1.1 * r, 0}, {-1.1 * r, 0}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{0, 0}, {1.1 * r, 0}, {1.1 * r, 0.4 * r}, {0, 0.4 * r}}, failures);
+        }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Wall Tangent To The Cylinder") {
+    std::string failures;
+    for (const std::array<double, 3>& size : std::vector<std::array<double, 3>>{{100, 425, 185}, {60, 300, 120}, {150, 500, 200}})
+        for (double turn : {0.0, 0.3, 1.0, 2.2}) {
+            const double r = size[0];
+            check_held_wall(r, size[1], size[2], turn, {{-r, -0.4 * r}, {r, -0.4 * r}, {r, 0.4 * r}, {-r, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{0, -0.4 * r}, {r, -0.4 * r}, {r, 0.4 * r}, {0, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, -r}, {1.1 * r, -r}, {1.1 * r, 0}, {-1.1 * r, 0}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{r, -0.5 * r}, {1.5 * r, -0.5 * r}, {1.5 * r, 0.5 * r}, {r, 0.5 * r}}, failures);
+        }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Cross Drill Through A Cylinder") {
+    std::string failures;
+    for (const std::array<double, 5>& hole : std::vector<std::array<double, 5>>{{100, 425, 10, 0, 0}, {100, 425, 15, 20, 0.4},
+        {60, 300, 6, 0, 1.1}, {150, 500, 12, 40, 2.0}, {100, 425, 40, 0, 0}, {100, 425, 40, 25, 0.7}}) {
+        const double r = hole[0], height = hole[1], a = hole[2], offset = hole[3];
+        double removed = 0.0;
+        const int steps = 4000;
+        for (int i = 0; i < steps; ++i) {
+            const double t = -0.5 * Tolerance::PI + Tolerance::PI * (i + 0.5) / steps;
+            const double x = a * std::sin(t) + offset;
+            removed += 4.0 * a * a * std::cos(t) * std::cos(t) * std::sqrt(r * r - x * x) * Tolerance::PI / steps;
+        }
+        BRep drill = BRep::create_cylinder(a, 3 * r);
+        drill.transform(Xform::rotation_x(0.5 * Tolerance::PI));
+        drill.transform(Xform::translation(offset, 1.5 * r, 0.5 * height));
+        const Xform hold = Xform::rotation_z(hole[4]);
+        try {
+            check_cut_result(BRep::create_cylinder(r, height).transformed(hold).boolean_difference(drill.transformed(hold)),
+                Tolerance::PI * r * r * height - removed, 2, 0.03);
+        } catch (const std::exception& error) {
+            failures += "\nradius " + std::to_string(r) + " drill " + std::to_string(a) + " offset " + std::to_string(offset) + ": " + error.what();
+        }
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+/// Two solids sharing a line and perhaps an overlap: the exact volume of every operation, each in closed shells.
+static void check_touching(const BRep& a, const BRep& b, double va, double vb, double vi, int shells, const std::string& label, std::string& failures) {
+    const std::array<double, 4> exact = {va + vb - vi, vi, va - vi, vb - vi};
+    const std::array<std::string, 4> names = {"union", "intersection", "difference", "reversed difference"};
+    for (size_t operation = 0; operation < exact.size(); ++operation)
+        try {
+            const BRep result = operation == 0 ? a.boolean_union(b) : operation == 1 ? a.boolean_intersection(b)
+                : operation == 2 ? a.boolean_difference(b) : b.boolean_difference(a);
+            if (exact[operation] == 0.0) {
+                if (result.face_count() != 0)
+                    throw std::runtime_error("faces in an empty result");
+                continue;
+            }
+            const double volume = result.volume_exact();
+            const Mesh mesh = result.mesh();
+            if (result.shell_count() != (operation == 0 ? shells : 1) || std::abs(volume - exact[operation]) > 1e-6 || !mesh.is_closed())
+                throw std::runtime_error("volume " + std::to_string(volume) + " of " + std::to_string(exact[operation]) + ", shells "
+                    + std::to_string(result.shell_count()) + ", mesh closed " + std::to_string(mesh.is_closed()));
+        } catch (const std::exception& error) {
+            failures += "\n" + label + " " + names[operation] + ": " + error.what();
+        }
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Solids Touching Along A Line") {
+    std::string failures;
+    for (const std::array<double, 2>& size : std::vector<std::array<double, 2>>{{100, 425}, {60, 300}})
+        for (double turn : {1.0, 2.2})
+            for (double around : {0.0, 1.0}) {
+                const double r = size[0], h = size[1];
+                const Xform tool = Xform::rotation_z(turn + around);
+                const BRep cylinder = BRep::create_cylinder(r, h).transformed(Xform::rotation_z(turn));
+                const double round = Tolerance::PI * r * r * h;
+                const std::string label = "radius " + std::to_string(r) + " turn " + std::to_string(turn) + " around " + std::to_string(around);
+                const CutPlan wall = {{r, -0.5 * r}, {1.5 * r, -0.5 * r}, {1.5 * r, 0.5 * r}, {r, 0.5 * r}};
+                check_touching(cylinder, plan_prism(wall, 0, h).transformed(tool), round, 0.5 * r * r * h, 0, 2, label + " flush", failures);
+                check_touching(cylinder, plan_prism(wall, -10, h + 10).transformed(tool), round, 0.5 * r * r * (h + 20), 0, 2, label + " long", failures);
+                check_touching(cylinder, plan_prism(wall, 0.25 * h, 0.75 * h).transformed(tool), round, 0.25 * r * r * h, 0, 2, label + " short", failures);
+                check_touching(cylinder, BRep::create_cylinder(r, h).transformed(Xform::translation(2 * r, 0, 0)).transformed(tool), round, round, 0, 2, label + " two round", failures);
+                // Touches at x = r and overlaps above y = 0.8 r, so the union is one body with the contact line inside it.
+                const CutPlan hook = {{r, -1.5 * r}, {1.5 * r, -1.5 * r}, {1.5 * r, 1.5 * r}, {0, 1.5 * r}, {0, 0.8 * r}, {r, 0.8 * r}};
+                const double hook_area = 3.0 * r * 0.5 * r + 0.7 * r * r;
+                check_touching(cylinder, plan_prism(hook, -10, h + 10).transformed(tool), round, hook_area * (h + 20), plan_area_in_circle(hook, r) * h, 1, label + " hook", failures);
+            }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+static NurbsCurve unit_line(const Point& a, const Point& b) {
+    NurbsCurve line = NurbsCurve::create(false, 1, {a, b});
+    line.set_domain(0.0, 1.0);
+    return line;
+}
+
+/// The closed solid of six ruled patches a curved timber element is built from, between four corner curves.
+static BRep ruled_solid(const std::array<NurbsCurve, 4>& corners) {
+    const NurbsCurve& outer_a = corners[3];
+    const NurbsCurve& outer_b = corners[2];
+    const NurbsCurve& inner_a = corners[0];
+    const NurbsCurve& inner_b = corners[1];
+    const auto first = [](const NurbsCurve& curve) { return curve.point_at(curve.domain_start()); };
+    const auto last = [](const NurbsCurve& curve) { return curve.point_at(curve.domain_end()); };
+    const std::array<NurbsSurface, 6> patches = {
+        Primitives::create_ruled(outer_a, outer_b), Primitives::create_ruled(inner_a, inner_b),
+        Primitives::create_ruled(outer_a, inner_a), Primitives::create_ruled(outer_b, inner_b),
+        Primitives::create_ruled(unit_line(first(outer_a), first(outer_b)), unit_line(first(inner_a), first(inner_b))),
+        Primitives::create_ruled(unit_line(last(outer_a), last(outer_b)), unit_line(last(inner_a), last(inner_b)))};
+    BRep solid;
+    const std::array<NurbsCurve, 4> meridians = {outer_a, outer_b, inner_a, inner_b};
+    for (const NurbsCurve& meridian : meridians) {
+        solid.add_vertex(first(meridian));
+        solid.add_vertex(last(meridian));
+    }
+    std::map<std::pair<int, int>, int> edges;
+    for (int k = 0; k < 4; ++k) {
+        NurbsCurve unit = meridians[k];
+        unit.set_domain(0.0, 1.0);
+        edges[{2 * k, 2 * k + 1}] = solid.add_edge(solid.add_curve_3d(unit), 2 * k, 2 * k + 1);
+    }
+    for (int end = 0; end < 2; ++end)
+        for (const std::pair<int, int>& ruling : std::array<std::pair<int, int>, 4>{{{0, 2}, {4, 6}, {0, 4}, {2, 6}}}) {
+            const int a = ruling.first + end, b = ruling.second + end;
+            edges[{a, b}] = solid.add_edge(solid.add_curve_3d(unit_line(solid.m_vertices[a].point, solid.m_vertices[b].point)), a, b);
+        }
+    const auto corner = [&solid](const Point& point) {
+        int nearest = 0;
+        for (int i = 1; i < static_cast<int>(solid.m_vertices.size()); ++i)
+            if (solid.m_vertices[i].point.distance(point) < solid.m_vertices[nearest].point.distance(point))
+                nearest = i;
+        return nearest;
+    };
+    std::array<int, 6> faces;
+    for (size_t i = 0; i < 6; ++i) {
+        const NurbsSurface& patch = patches[i];
+        const auto du = patch.domain(0), dv = patch.domain(1);
+        const std::array<Point, 4> uv = {Point(du.first, dv.first, 0), Point(du.second, dv.first, 0), Point(du.second, dv.second, 0), Point(du.first, dv.second, 0)};
+        const std::array<int, 4> ring = {corner(patch.point_at_corner(0, 0)), corner(patch.point_at_corner(1, 0)),
+            corner(patch.point_at_corner(1, 1)), corner(patch.point_at_corner(0, 1))};
+        const int surface = solid.add_surface(patch);
+        std::vector<BRepRef> wire;
+        for (size_t k = 0; k < 4; ++k) {
+            const size_t next = (k + 1) % 4;
+            const int edge = edges.at({std::min(ring[k], ring[next]), std::max(ring[k], ring[next])});
+            const bool forward = solid.m_edges[edge].start_vertex == ring[k];
+            solid.add_pcurve(edge, surface, solid.add_curve_2d(forward ? unit_line(uv[k], uv[next]) : unit_line(uv[next], uv[k])));
+            wire.push_back({edge, forward ? BRepOrientation::Forward : BRepOrientation::Reversed});
+        }
+        faces[i] = solid.add_face(surface, {{solid.add_wire(wire), BRepOrientation::Forward}});
+    }
+    const auto middle = [](const NurbsSurface& patch) {
+        return std::make_pair(0.5 * (patch.domain(0).first + patch.domain(0).second), 0.5 * (patch.domain(1).first + patch.domain(1).second));
+    };
+    std::vector<BRepRef> shell;
+    for (size_t i = 0; i < 6; ++i) {
+        const auto own = middle(patches[i]);
+        const auto opposite = middle(patches[i ^ 1]);
+        const Vector away = patches[i].point_at(own.first, own.second) - patches[i ^ 1].point_at(opposite.first, opposite.second);
+        shell.push_back({faces[i], patches[i].normal_at(own.first, own.second).dot(away) > 0.0 ? BRepOrientation::Forward : BRepOrientation::Reversed});
+    }
+    solid.add_solid({{solid.add_shell(shell), BRepOrientation::Forward}});
+    return solid;
+}
+
+/// A rectangular section r to r + width by 0 to height bent round the z axis: exact arcs, or cubics through stations as a glulam is built.
+static BRep bent_solid(double r, double width, double height, double a0, double a1, int stations) {
+    std::array<NurbsCurve, 4> corners;
+    const std::array<std::array<double, 2>, 4> section = {{{r, 0}, {r + width, 0}, {r + width, height}, {r, height}}};
+    for (size_t k = 0; k < 4; ++k) {
+        const auto at = [&](double angle) { return Point(section[k][0] * std::cos(angle), section[k][0] * std::sin(angle), section[k][1]); };
+        if (stations == 0) {
+            corners[k] = Primitives::arc(at(a0), at(0.5 * (a0 + a1)), at(a1));
+        } else {
+            std::vector<Point> points;
+            for (int i = 0; i <= stations; ++i)
+                points.push_back(at(a0 + (a1 - a0) * i / stations));
+            corners[k] = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform, CurveInterpStyle::Occt);
+        }
+    }
+    return ruled_solid(corners);
+}
+
+/// One side of a plane through a closed solid: sewn, closed in the mesh, and the two sides together are the whole.
+static double check_side(const BRep& solid, const Point& origin, const Vector& normal, double whole, const std::string& label, std::string& failures) {
+    double kept = 0.0;
+    try {
+        const BRep side = solid.cut_by_plane(Plane::from_point_normal(origin, normal));
+        const BRep rest = solid.cut_by_plane(Plane::from_point_normal(origin, normal * -1.0));
+        kept = side.volume_exact();
+        const double other = rest.volume_exact();
+        if (side.face_count() == 0 || !side.is_solid() || !rest.is_solid() || !side.mesh().is_closed() || !rest.mesh().is_closed()
+            || std::abs(kept + other - whole) > 4e-6)
+            throw std::runtime_error("faces " + std::to_string(side.face_count()) + " and " + std::to_string(rest.face_count()) + ", volumes "
+                + std::to_string(kept) + " and " + std::to_string(other) + " of " + std::to_string(whole));
+    } catch (const std::exception& error) {
+        failures += "\n" + label + ": " + error.what();
+    }
+    return kept;
+}
+
+MINI_TEST("BRep Curved Cuts", "Bent Beam Cut Through Its Axis") {
+    std::string failures;
+    for (const std::array<double, 5>& size : std::vector<std::array<double, 5>>{{2000, 120, 240, 0.2, 1.2}, {3500, 140, 320, 0.1, 0.8}, {800, 100, 200, 0.5, 2.1}})
+        for (double share : {0.3, 0.45, 0.7}) {
+            const double r = size[0], width = size[1], height = size[2], a0 = size[3], a1 = size[4];
+            const double angle = a0 + share * (a1 - a0);
+            const double area = 0.5 * ((r + width) * (r + width) - r * r) * height;
+            const BRep solid = bent_solid(r, width, height, a0, a1, 0);
+            const std::string label = "radius " + std::to_string(r) + " angle " + std::to_string(angle);
+            const double kept = check_side(solid, Point(0, 0, 0), Vector(-std::sin(angle), std::cos(angle), 0), area * (a1 - a0), label, failures);
+            if (std::abs(kept - area * (a1 - angle)) > 1e-6)
+                failures += "\n" + label + ": volume " + std::to_string(kept) + " of " + std::to_string(area * (a1 - angle));
+            try {
+                const CutPlan past = {{-1e4 * std::cos(angle), -1e4 * std::sin(angle)}, {1e4 * std::cos(angle), 1e4 * std::sin(angle)},
+                    {1e4 * std::cos(angle) - 1e4 * std::sin(angle), 1e4 * std::sin(angle) + 1e4 * std::cos(angle)},
+                    {-1e4 * std::cos(angle) - 1e4 * std::sin(angle), -1e4 * std::sin(angle) + 1e4 * std::cos(angle)}};
+                const BRep result = solid.boolean_difference(plan_prism(past, -500, height + 500));
+                int round_faces = 0;
+                for (const BRepFace& face : result.m_faces)
+                    round_faces += result.m_surfaces[face.surface_index].degree(0) > 1 ? 1 : 0;
+                if (!result.is_solid() || !result.mesh().is_closed() || result.face_count() != 6 || round_faces != 4
+                    || std::abs(result.volume_exact() - area * (angle - a0)) > 1e-6)
+                    throw std::runtime_error("faces " + std::to_string(result.face_count()) + ", round " + std::to_string(round_faces)
+                        + ", volume " + std::to_string(result.volume_exact()) + " of " + std::to_string(area * (angle - a0)));
+            } catch (const std::exception& error) {
+                failures += "\n" + label + " half space: " + error.what();
+            }
+        }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Bent Beam And Plate Cut By Oblique Planes") {
+    // Volumes on the normal side from tests/fixtures/curved_cuts/bent_beam.py, cylindrical integrals sharing nothing with the kernel.
+    // The allowance is the measured section pcurve fit on these rational patches: it falls with tolerance, at 641 control points by 1e-9.
+    struct Case { double r, width, height, a0, a1; Point origin; Vector normal; double exact; };
+    const std::vector<Case> cases = {
+        {2000, 120, 240, 0.2, 1.2, Point(1400, 0, 0), Vector(1, 0, 0), 36988071.6212525},
+        {2000, 120, 240, 0.2, 1.2, Point(1400, 1400, 120), Vector(0.5, 0.7, 0.25), 33325430.8680800},
+        {2000, 120, 240, 0.2, 1.2, Point(1500, 1200, 120), Vector(0.1, 0.2, 1.0), 33541305.1630877},
+        {2000, 120, 240, 0.2, 1.2, Point(1500, 1300, 100), Vector(1, 1, 0.3), 33121783.6647558},
+        {3000, 40, 1000, 0.3, 1.1, Point(0, 0, 0), Vector(-std::sin(0.7), std::cos(0.7), 0), 48320000.0},
+        {3000, 40, 1000, 0.3, 1.1, Point(0, 0, 400), Vector(0, 0, 1), 57984000.0},
+        {3000, 40, 1000, 0.3, 1.1, Point(2200, 1800, 500), Vector(1, -0.4, 0.5), 50405279.0815020}};
+    std::string failures;
+    for (const Case& c : cases) {
+        const double whole = 0.5 * ((c.r + c.width) * (c.r + c.width) - c.r * c.r) * c.height * (c.a1 - c.a0);
+        const std::string label = "radius " + std::to_string(c.r) + " to " + std::to_string(c.exact);
+        const double kept = check_side(bent_solid(c.r, c.width, c.height, c.a0, c.a1, 0), c.origin, c.normal, whole, label, failures);
+        if (std::abs(kept - c.exact) > 2e-4)
+            failures += "\n" + label + ": volume " + std::to_string(kept);
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Glulam Cubics And A Double Curved Shell Cut By Planes") {
+    std::string failures;
+    const std::vector<std::pair<Point, Vector>> beam_planes = {{Point(0, 0, 0), Vector(-std::sin(0.7), std::cos(0.7), 0)}, {Point(1400, 0, 0), Vector(1, 0, 0)},
+        {Point(1400, 1400, 120), Vector(0.5, 0.7, 0.25)}, {Point(1500, 1300, 100), Vector(1, 1, 0.3)}};
+    for (int stations : {6, 24}) {
+        const BRep beam = bent_solid(2000, 120, 240, 0.2, 1.2, stations);
+        const double whole = beam.volume_exact();
+        for (size_t i = 0; i < beam_planes.size(); ++i) {
+            const std::string label = "stations " + std::to_string(stations) + " plane " + std::to_string(i);
+            const double kept = check_side(beam, beam_planes[i].first, beam_planes[i].second, whole, label, failures);
+            // Uniform stations are symmetric about the middle angle, so that plane halves the beam.
+            if (i == 0 && std::abs(kept - 0.5 * whole) > 1e-5)
+                failures += "\n" + label + ": half " + std::to_string(kept) + " of " + std::to_string(whole);
+        }
+    }
+    // The sections of a dome, so that no wall is an extrusion and no face is planar: 60 thick, 1000 wide, 3000 long.
+    std::array<NurbsCurve, 4> corners;
+    const std::array<std::array<double, 2>, 4> section = {{{-500, 0}, {500, 0}, {500, 60}, {-500, 60}}};
+    for (size_t k = 0; k < 4; ++k) {
+        std::vector<Point> points;
+        for (int i = 0; i <= 8; ++i) {
+            const double t = -1.0 + 0.25 * i, y = section[k][0];
+            points.push_back(Point(1500.0 * t, y, section[k][1] + 300.0 * (1.0 - t * t) - 0.00008 * y * y));
+        }
+        corners[k] = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform, CurveInterpStyle::Occt);
+    }
+    const BRep shell = ruled_solid(corners);
+    const double whole = shell.volume_exact();
+    MINI_CHECK(std::abs(whole - 1.8e8) < 1e-6);
+    MINI_CHECK(std::abs(check_side(shell, Point(0, 0, 0), Vector(1, 0, 0), whole, "shell middle", failures) - 0.5 * whole) < 1e-6);
+    check_side(shell, Point(300, 0, 0), Vector(1, 0.3, 0.1), whole, "shell oblique", failures);
+    check_side(shell, Point(0, 0, 150), Vector(0.1, 0.1, 1), whole, "shell across", failures);
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Cut Past A Curved Solid Is Whole Or Empty") {
+    const BRep beam = bent_solid(2000, 120, 240, 0.2, 1.2, 6);
+    const double whole = beam.volume_exact();
+    const BRep kept = beam.cut_by_plane(Plane::from_point_normal(Point(0, 0, -100), Vector(0, 0, 1)));
+    MINI_CHECK(kept.face_count() == 6 && kept.is_solid() && std::abs(kept.volume_exact() - whole) < 1e-6);
+    MINI_CHECK(beam.cut_by_plane(Plane::from_point_normal(Point(0, 0, 1000), Vector(0, 0, 1))).face_count() == 0);
 }
