@@ -1403,9 +1403,15 @@ void lift_canonical(
     const bool planar = is_planar_patch(srf);
     std::vector<double> lifted;
 
+    // A closed edge's seam vertex sits at both ends of the pcurve: it seeds nothing, and takes the end on the next point's side.
+    const bool closed = edge.start_vertex == edge.end_vertex;
+    const std::pair<double, double> ends = crv.domain();
+    const auto at_end = [&ends](double t) { return t == ends.first || t == ends.second; };
+
     for (size_t index = 0; index < points.size(); ++index) {
         const Point& p = points[index];
-        const bool seeded = !lifted.empty();
+        const bool seam_seed = closed && lifted.size() == 1 && at_end(lifted[0]);
+        const bool seeded = !lifted.empty() && !seam_seed;
         const double seed = lifted.size() < 2 ? (seeded ? lifted[0] : 0.0) : 2.0 * lifted[lifted.size() - 1] - lifted[lifted.size() - 2];
         double t = 0.0;
         Point q;
@@ -1424,6 +1430,13 @@ void lift_canonical(
         if (srf.point_at(q[0], q[1]).distance(p) > tolerance) {
             t = boundary_parameter(srf, crv, p);
             q = crv.point_at(t);
+        }
+
+        if (seam_seed && !cached) {
+            const double side = std::abs(t - ends.first) <= std::abs(t - ends.second) ? ends.first : ends.second;
+            lifted[0] = side;
+            std::get<0>(samples[0]) = side;
+            std::get<1>(samples[0]) = crv.point_at(side);
         }
 
         lifted.push_back(t);
@@ -1449,7 +1462,7 @@ std::array<std::vector<double>, 2> parametric_crease_knots(const NurbsSurface& s
 }
 
 /// Phase 3: fresh samples of a pcurve nobody has sampled yet, its ends on the edge's vertices, refined to the face's angle and chord
-std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const std::pair<Point, Point>& ends, double scale, double angle, double chord) {
+std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& srf, const NurbsCurve& crv, const NurbsCurve& world, const std::pair<Point, Point>& ends, double scale, double angle, double chord) {
 
     std::vector<Point> points;
     std::vector<double> parameters;
@@ -1460,7 +1473,10 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
             parameters.push_back(crv.greville_abcissa(k));
         }
     } else {
-        const int count = std::min(std::max(crv.cv_count() * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
+        // A pcurve fitted through a curved patch can carry far more control points than the edge has turns: the simpler
+        // of the two sets the start, and the chord refinement below adds what the surface needs.
+        const int shape = std::min(crv.cv_count(), std::max(world.cv_count(), 2));
+        const int count = std::min(std::max(shape * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
         std::tie(points, parameters) = crv.divide_by_count(count, true);
     }
 
@@ -1575,7 +1591,7 @@ bool edge_use_samples(
     if (boundary.points.count(ei)) {
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
-        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), scale, angle, chord);
+        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, b.m_curves_3d[edge.curve_3d_index], edge_ends(b, ei), scale, angle, chord);
         add_other_face_creases(b, fi, edge, crv, samples);
         std::vector<Point> positions;
 

@@ -602,6 +602,16 @@ Result intersect(const NurbsCurve& curve, double tolerance, const Options& optio
         if (pair.a.hi < pair.b.lo) {
             if (separated(curve, pair, tolerance))
                 continue;
+            // The whole stretch from one piece to the other inside the tolerance is a single point at this resolution:
+            // it cannot cross itself, and its pieces are too small to intersect.
+            Bounds stretch;
+            if (bounds(curve, {pair.a.lo, pair.b.hi}, stretch)) {
+                double extent = 0.0;
+                for (int d = 0; d < 3; ++d)
+                    extent = std::max(extent, stretch.hi[d] - stretch.lo[d]);
+                if (extent <= tolerance)
+                    continue;
+            }
             const auto state = append(curve, pair, knots, tolerance, result);
             if (state == AppendState::Complete)
                 continue;

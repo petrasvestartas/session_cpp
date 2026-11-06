@@ -2391,3 +2391,98 @@ MINI_TEST("BRep Curved Cuts", "Vault Strip And Arch Cut At The Element Planes") 
     if (!failures.empty())
         throw std::runtime_error(failures);
 }
+
+MINI_TEST("BRep Curved Cuts", "Vault Strips Pinned Across Their Joint") {
+    // element_face_curved_joints: two strips meet at y = 600; four pins of radius 8, 160 long with 10 overshoot,
+    // stand 50 in from the joint face's outline, at radius 1930 and 1950 near both straight ends.
+    const BRep first = vault_strip(false);
+    const BRep second = first.transformed(Xform::translation(0, 600, 0));
+    std::vector<std::array<double, 2>> stations;
+    for (double r : {1930.0, 1950.0}) {
+        const double along = std::sqrt(r * r - 50.0 * 50.0);
+        stations.push_back({along, 50.0});
+        stations.push_back({50.0, along});
+    }
+    std::string failures;
+    for (const auto& [strip, label] : {std::pair<const BRep&, std::string>{first, "first"}, std::pair<const BRep&, std::string>{second, "second"}}) {
+        BRep drilled = strip;
+        const double whole = strip.volume_exact();
+        try {
+            for (const std::array<double, 2>& station : stations)
+                drilled = drilled.boolean_difference(drill_along(Point(station[0], 510, station[1]), Point(station[0], 690, station[1]), 8));
+            const double removed = whole - drilled.volume_exact();
+            if (!drilled.is_solid() || !drilled.mesh().is_closed() || drilled.face_count() != 14
+                || std::abs(removed - 4.0 * Tolerance::PI * 64.0 * 90.0) > 1e-6)
+                throw std::runtime_error("faces " + std::to_string(drilled.face_count()) + ", removed " + std::to_string(removed)
+                    + " of " + std::to_string(4.0 * Tolerance::PI * 64.0 * 90.0) + ", solid " + std::to_string(drilled.is_solid())
+                    + ", mesh closed " + std::to_string(drilled.mesh().is_closed()));
+        } catch (const std::exception& error) {
+            failures += "\n" + label + ": " + error.what();
+        }
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Curved Cuts", "Drilled Vault Strip Meshes Clean Along Its Hole") {
+    // element_face_curved_holes: a drill of radius 30 through the strip along the radius at 0.4 pi. Along each rim the
+    // mesh edges are of one size: none shorter than a tenth of their median, so the rim reads round and not serrated.
+    const double turn = 0.4 * Tolerance::PI;
+    const Vector out(std::cos(turn), 0, std::sin(turn));
+    const Point foot(0, 300, 0);
+    for (bool exact : {true, false}) {
+        const BRep drilled = vault_strip(exact).boolean_difference(drill_along(foot + out * 2060.0, foot + out * 1820.0, 30));
+        MINI_CHECK(drilled.is_solid() && drilled.face_count() == 7);
+        const Mesh mesh = drilled.mesh();
+        MINI_CHECK(mesh.is_closed());
+        std::set<std::pair<size_t, size_t>> directed;
+        for (const auto& face : mesh.face)
+            for (size_t i = 0; i < face.second.size(); ++i)
+                directed.emplace(face.second[i], face.second[(i + 1) % face.second.size()]);
+        int unpaired = 0;
+        for (const auto& edge : directed)
+            unpaired += directed.count({edge.second, edge.first}) ? 0 : 1;
+        MINI_CHECK(unpaired == 0); // Every edge used once each way: the faces agree in orientation.
+        std::vector<double> rim;
+        for (const auto& edge : directed) {
+            if (edge.first > edge.second)
+                continue;
+            const Point a = mesh.vertex.at(edge.first).position(), b = mesh.vertex.at(edge.second).position();
+            const auto off_axis = [&](const Point& p) {
+                const Vector d = p - foot;
+                return (d - out * d.dot(out)).magnitude();
+            };
+            const auto on_shell = [&](const Point& p) {
+                const double r = std::sqrt(p[0] * p[0] + p[2] * p[2]);
+                return std::abs(r - 1880.0) < 1.0 || std::abs(r - 2000.0) < 1.0;
+            };
+            if (std::abs(off_axis(a) - 30.0) < 1e-3 && std::abs(off_axis(b) - 30.0) < 1e-3 && on_shell(a) && on_shell(b))
+                rim.push_back(a.distance(b));
+        }
+        MINI_CHECK(rim.size() >= 16);
+        std::vector<double> sorted = rim;
+        std::sort(sorted.begin(), sorted.end());
+        const double median = sorted[sorted.size() / 2];
+        MINI_CHECK(sorted.front() >= 0.1 * median);
+    }
+}
+
+MINI_TEST("BRep Curved Cuts", "Vault Strip Pinned Where Wood Lays The Pin") {
+    // element_face_curved_joints, as wood builds it: four pins of radius 8 on the joint face's faceted outline, through y 520
+    // to 690 for the first strip and 510 to 680 for the second, each drill a kernel cylinder in the frame of the plane
+    // through its start normal to its axis. Plain GCC once split this scene into pieces too small to intersect.
+    const std::array<std::array<double, 2>, 4> stations = {{{1378.8553025526362, 1378.8553025526362},
+        {1929.1433025526362, 50.000302552636128}, {1949.1353025526362, 50.000302552636128}, {50.000302552636178, 1949.1353025526362}}};
+    for (const auto& [shift, low] : std::vector<std::pair<double, double>>{{0.0, 520.0}, {600.0, 510.0}}) {
+        const BRep strip = vault_strip(false).transformed(Xform::translation(0, shift, 0));
+        BRep drilled = strip;
+        for (const std::array<double, 2>& station : stations) {
+            const Point start(station[0], low, station[1]), end(station[0], low + 170.0, station[1]);
+            const Plane frame = Plane::from_point_normal(start, end - start);
+            drilled = drilled.boolean_difference(BRep::create_cylinder(8, start.distance(end)).transformed(
+                Xform::frame_to_world(start, frame.x_axis(), frame.y_axis(), frame.z_axis())));
+        }
+        MINI_CHECK(drilled.is_solid() && drilled.face_count() == 14 && drilled.mesh().is_closed());
+        MINI_CHECK(std::abs(strip.volume_exact() - drilled.volume_exact() - 4.0 * Tolerance::PI * 64.0 * 80.0) < 1e-6);
+    }
+}

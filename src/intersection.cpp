@@ -7244,10 +7244,24 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
         }
         // The parameters are only as smooth as the surface's knots, so the spans end where the curve crosses them.
         const std::vector<double> knots = pullback_breaks(surface, world, tolerance);
-        // The fit breaks at the samples and at the world's knots: a sample a hair from a knot leaves a span of no length.
-        std::vector<double> breaks = knots;
-        breaks.insert(breaks.end(), world.m_nurbsknot.begin(), world.m_nurbsknot.end());
+        // The fit breaks at the samples, the world's knots and the crossings: any two a hair apart are one,
+        // the world's own knot kept, or the fit gets a span of no length.
         const double hair = 1e-9 * (world.domain_end() - world.domain_start());
+        const std::vector<double>& world_knots = world.m_nurbsknot;
+        std::vector<double> candidates = knots;
+        candidates.insert(candidates.end(), world_knots.begin(), world_knots.end());
+        std::sort(candidates.begin(), candidates.end());
+        std::vector<double> breaks;
+        for (double t : candidates) {
+            if (std::abs(t - world.domain_start()) <= hair || std::abs(t - world.domain_end()) <= hair)
+                continue; // The ends are breaks already.
+            if (!breaks.empty() && t - breaks.back() <= hair) {
+                if (std::find(world_knots.begin(), world_knots.end(), t) != world_knots.end())
+                    breaks.back() = t;
+                continue;
+            }
+            breaks.push_back(t);
+        }
         for (int pass = 0; pass < 7 && run.ts.size() <= 129; ++pass) {
             PullbackRun apart;
             for (size_t i = 0; i < run.ts.size(); ++i) {
@@ -7260,7 +7274,7 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
                     apart.uv.push_back(run.uv[i]);
                 }
             }
-            const NurbsCurve proposal = quintic_run_proposal(apart, knots, surface, world);
+            const NurbsCurve proposal = quintic_run_proposal(apart, breaks, surface, world);
             if (proposal.is_valid() && proposal.domain() == world.domain() && gap(proposal) <= tight &&
                 curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
                     curve_surface_intersection::ParameterMatch::Matched)
