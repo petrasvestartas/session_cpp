@@ -2,7 +2,7 @@ name: Build C++
 
 on:
   push:
-    branches: [main]
+    branches: ['**'] # every branch: kernel work is gated on the runners before it reaches main
   pull_request:
     branches: [main]
 
