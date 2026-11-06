@@ -1535,6 +1535,27 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_brep(const BRep& brep, d
 // ═══════════════════════════════════════════════════════════════════════════
 // Meshing
 // ═══════════════════════════════════════════════════════════════════════════
+namespace {
+
+/// Layout, knots and control points the tessellation reads.
+std::vector<double> mesh_key(const NurbsSurface& surface) {
+
+    std::vector<double> key = surface.m_cv;
+    key.push_back(surface.m_dim);
+    key.push_back(surface.m_is_rat);
+
+    for (int dir = 0; dir < 2; ++dir) {
+        key.push_back(surface.m_order[dir]);
+        key.push_back(surface.m_cv_count[dir]);
+        key.push_back(surface.m_cv_stride[dir]);
+        key.insert(key.end(), surface.m_nurbsknot[dir].begin(), surface.m_nurbsknot[dir].end());
+    }
+
+    return key;
+}
+
+} // namespace
+
 Mesh NurbsSurface::mesh_adaptive(
     double max_angle,
     double max_edge_length,
@@ -1542,7 +1563,9 @@ Mesh NurbsSurface::mesh_adaptive(
     double max_chord_height
 ) const {
 
-    if (m_mesh.number_of_vertices() == 0 && is_valid()) {
+    std::vector<double> key = mesh_key(*this);
+
+    if ((m_mesh.number_of_vertices() == 0 || key != m_mesh_key) && is_valid()) {
         RemeshNurbsSurfaceAdaptive mesher(*this);
         mesher.set_max_angle(max_angle)
             .set_max_edge_length(max_edge_length)
@@ -1550,6 +1573,7 @@ Mesh NurbsSurface::mesh_adaptive(
             .set_max_chord_height(max_chord_height);
 
         m_mesh = mesher.mesh();
+        m_mesh_key = std::move(key);
     }
 
     return m_mesh;
@@ -1557,9 +1581,12 @@ Mesh NurbsSurface::mesh_adaptive(
 
 Mesh NurbsSurface::mesh() const {
 
-    if (m_mesh.number_of_vertices() == 0 && is_valid()) {
+    std::vector<double> key = mesh_key(*this);
+
+    if ((m_mesh.number_of_vertices() == 0 || key != m_mesh_key) && is_valid()) {
         const bool bilinear = degree(0) == 1 && degree(1) == 1 && cv_count(0) == 2 && cv_count(1) == 2;
         m_mesh = bilinear && is_planar(nullptr, 1e-6) ? mesh_planar() : RemeshNurbsSurfaceGrid::from_u_v(*this, 0, 0);
+        m_mesh_key = std::move(key);
     }
 
     return m_mesh;
@@ -1864,6 +1891,7 @@ void NurbsSurface::deep_copy_from(const NurbsSurface& src) {
     m_nurbsknot[1] = src.m_nurbsknot[1];
     m_cv = src.m_cv;
     m_mesh = src.m_mesh;
+    m_mesh_key = src.m_mesh_key;
 }
 
 bool NurbsSurface::zero_cvs() {

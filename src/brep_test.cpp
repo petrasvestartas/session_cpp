@@ -557,6 +557,32 @@ namespace session_cpp {
         MINI_CHECK(brep.mesh().guid() == guid);
     }
 
+    MINI_TEST("BRep", "Face Meshes Direct Write") {
+        // using session_cpp::BRep;
+        // using session_cpp::NurbsSurface;
+        // using session_cpp::Point;
+
+        BRep sphere = BRep::create_sphere(1.0);
+        BRep fresh = BRep::create_sphere(1.0);
+        const Point before = sphere.face_meshes()[0].centroid();
+        NurbsSurface& surface = sphere.m_surfaces[0];
+        NurbsSurface& reference = fresh.m_surfaces[0];
+        const size_t stride = surface.cv_size();
+
+        for (size_t k = 0; k < surface.m_cv.size(); k += stride) {
+            surface.m_cv[k] *= 2.0;
+            reference.m_cv[k] *= 2.0;
+        }
+
+        const Point after = sphere.face_meshes()[0].centroid();
+        const Point expected = fresh.face_meshes()[0].centroid();
+
+        MINI_CHECK(std::abs(after[0] - before[0]) > 1e-3);
+        MINI_CHECK(std::abs(after[0] - expected[0]) < 1e-12);
+        MINI_CHECK(std::abs(after[1] - expected[1]) < 1e-12);
+        MINI_CHECK(std::abs(after[2] - expected[2]) < 1e-12);
+    }
+
     MINI_TEST("BRep", "Point At") {
         // using session_cpp::BRep;
         // using session_cpp::Point;

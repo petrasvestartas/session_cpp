@@ -46,6 +46,7 @@ public:
     std::vector<double> m_nurbsknot[2]; // NurbsKnot vector per direction, order + cv_count - 2 values.
     std::vector<double> m_cv; // Flat CV array, homogeneous when rational.
     mutable Mesh m_mesh; // Cached mesh from mesh() or mesh_adaptive().
+    mutable std::vector<double> m_mesh_key; // Layout, knots and control points the cached mesh was built from.
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Constructors
