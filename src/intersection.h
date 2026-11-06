@@ -73,7 +73,7 @@ public:
     /// Intersection point of two segments, the midpoint of closest approach within tolerance.
     static bool line_line(const Line& line0, const Line& line1, Point& output, double tolerance);
 
-    /// Parameters of closest approach of two lines, clamped to the segments when requested.
+    /// Parameters of closest approach of two lines, or of the two segments when intersect_segments is set.
     static bool line_line_parameters(
         const Line& line0,
         const Line& line1,

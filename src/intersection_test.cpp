@@ -426,6 +426,93 @@ MINI_TEST("Intersection", "Line Line Parameters Infinite") {
     MINI_CHECK(TOLERANCE.is_close(t0, 2.0));
 }
 
+MINI_TEST("Intersection", "Line Line Parameters Skewed") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+
+    Line beam0(0.0, 0.0, 0.0, 3000.0, 0.0, 0.0);
+    Line beam1(3200.0, -1500.0, 100.0, 3600.0, 1500.0, 100.0);
+
+    double t0;
+    double t1;
+    bool result = Intersection::line_line_parameters(beam0, beam1, t0, t1, 0.0, true, true);
+    double gap = beam0.point_at(t0).distance(beam1.point_at(t1));
+    double clamped_gap = beam0.point_at(1.0).distance(beam1.point_at(0.5));
+    double shift = (0.5 - t1) * beam1.length();
+
+    MINI_CHECK(result);
+    MINI_CHECK(TOLERANCE.is_close(t0, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(t1, 221.0 / 458.0));
+    MINI_CHECK(std::abs(gap - 408.9074) < 1e-3);
+    MINI_CHECK(std::abs(clamped_gap - gap - 3.4032) < 1e-3);
+    MINI_CHECK(std::abs(shift - 52.8655) < 1e-3);
+}
+
+MINI_TEST("Intersection", "Line Line Parameters Parallel") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+
+    Line line0(0.0, 0.0, 0.0, 10.0, 0.0, 0.0);
+    Line line1(3.0, 1.0, 0.0, 8.0, 1.0, 0.0);
+
+    double s0;
+    double s1;
+    bool rejected = !Intersection::line_line_parameters(line0, line1, s0, s1, 0.0, true, false);
+    double t0;
+    double t1;
+    bool result = Intersection::line_line_parameters(line0, line1, t0, t1, 0.0, true, true);
+    double gap = line0.point_at(t0).distance(line1.point_at(t1));
+
+    MINI_CHECK(rejected);
+    MINI_CHECK(result);
+    MINI_CHECK(TOLERANCE.is_close(t0, 0.3));
+    MINI_CHECK(TOLERANCE.is_close(t1, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(gap, 1.0));
+}
+
+MINI_TEST("Intersection", "Line Line Parameters Collinear") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+
+    Line line0(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    Line line1(2.0, 0.0, 0.0, 3.0, 0.0, 0.0);
+
+    double t0;
+    double t1;
+    bool result = Intersection::line_line_parameters(line0, line1, t0, t1, 0.0, true, true);
+    double gap = line0.point_at(t0).distance(line1.point_at(t1));
+
+    MINI_CHECK(result);
+    MINI_CHECK(TOLERANCE.is_close(t0, 1.0));
+    MINI_CHECK(TOLERANCE.is_close(t1, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(gap, 1.0));
+}
+
+MINI_TEST("Intersection", "Line Line Parameters Degenerate") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Line;
+
+    Line point0(0.5, 2.0, 0.0, 0.5, 2.0, 0.0);
+    Line point1(2.0, 1.0, 1.0, 2.0, 1.0, 1.0);
+    Line line1(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+
+    double t0;
+    double t1;
+    bool result = Intersection::line_line_parameters(point0, line1, t0, t1, 0.0, true, true);
+    double gap = point0.point_at(t0).distance(line1.point_at(t1));
+    double u0;
+    double u1;
+    bool points = Intersection::line_line_parameters(point0, point1, u0, u1, 0.0, true, true);
+    double points_gap = point0.point_at(u0).distance(point1.point_at(u1));
+
+    MINI_CHECK(result);
+    MINI_CHECK(TOLERANCE.is_close(t0, 0.0));
+    MINI_CHECK(TOLERANCE.is_close(t1, 0.5));
+    MINI_CHECK(TOLERANCE.is_close(gap, 2.0));
+    MINI_CHECK(points);
+    MINI_CHECK(TOLERANCE.is_close(points_gap, std::sqrt(4.25)));
+}
+
 MINI_TEST("Intersection", "Plane Plane") {
     // using session_cpp::Intersection;
     // using session_cpp::Plane;

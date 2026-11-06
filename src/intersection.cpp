@@ -377,23 +377,30 @@ bool Intersection::line_line_parameters(
 
     const double det = AA * BB - AB * AB;
     const double zero_tol = std::max(AA, BB) * std::numeric_limits<double>::epsilon();
-    const bool parallel = std::fabs(det) < zero_tol;
+    const bool parallel = std::fabs(det) <= zero_tol;
 
     if (parallel && !near_parallel_as_closest)
         return false;
 
     if (parallel) {
         t0 = (AA > 0.0) ? (AC / AA) : 0.0;
-        t1 = (BB > 0.0) ? ((BC + t0 * AB) / BB) : 0.0;
+        t1 = (BB > 0.0) ? ((t0 * AB - BC) / BB) : 0.0;
     } else {
         const double inv_det = 1.0 / det;
         t0 = (BB * AC - AB * BC) * inv_det;
         t1 = (AB * AC - AA * BC) * inv_det;
     }
 
+    // segments: clamp t0, solve t1 for it, and if t1 leaves its segment clamp it and solve t0 again (Ericson, Real-Time
+    // Collision Detection 5.1.9, as in Coal's capsule_capsule.cpp, BSD-2)
     if (intersect_segments) {
         t0 = clamp_unit(t0);
-        t1 = clamp_unit(t1);
+        t1 = (BB > 0.0) ? ((t0 * AB - BC) / BB) : 0.0;
+
+        if (t1 < 0.0 || t1 > 1.0) {
+            t1 = clamp_unit(t1);
+            t0 = (AA > 0.0) ? clamp_unit((t1 * AB + AC) / AA) : 0.0;
+        }
     }
 
     if (tolerance > 0.0)
