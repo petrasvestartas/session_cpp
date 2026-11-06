@@ -2979,6 +2979,33 @@ MINI_TEST("Intersection", "Line Line Classified") {
     MINI_CHECK(!type1);
 }
 
+MINI_TEST("Intersection", "Line Line Classified Skewed") {
+    // using session_cpp::Line;
+    // using session_cpp::Intersection::line_line_classified;
+    // using session_cpp::Point;
+    // using session_cpp::Vector;
+
+    Line beam0(0.0, 0.0, 0.0, 3000.0, 0.0, 0.0);
+    Line beam1(3200.0, -1500.0, 100.0, 3600.0, 1500.0, 100.0);
+    Point p0;
+    Point p1;
+    Vector v0;
+    Vector v1;
+    Vector normal;
+    bool type0 = false;
+    bool type1 = false;
+    bool is_parallel = false;
+    bool ok = Intersection::line_line_classified(
+        beam0, beam1, 1, 1, 0, 0, 0.5, p0, p1, v0, v1, normal, type0, type1, is_parallel
+    );
+
+    MINI_CHECK(ok);
+    MINI_CHECK(!is_parallel);
+    MINI_CHECK(std::abs(p0[0] - 3000.0) < 1e-6);
+    MINI_CHECK(std::abs(p1[1] - (-1500.0 + 3000.0 * 221.0 / 458.0)) < 1e-6);
+    MINI_CHECK(std::abs(p0.distance(p1) - 408.9074) < 1e-3);
+}
+
 MINI_TEST("Intersection", "Plane Plane Optional") {
     // using session_cpp::Intersection;
     // using session_cpp::Line;

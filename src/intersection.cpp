@@ -13575,14 +13575,12 @@ bool Intersection::line_line_classified(
         return true;
     }
 
-    double t0_v;
-    double t1_v;
+    double t0c;
+    double t1c;
 
-    if (!line_line_parameters(s0, s1, t0_v, t1_v, 0.0, false, true))
+    if (!line_line_parameters(s0, s1, t0c, t1c, 0.0, true, true))
         return false;
 
-    const double t0c = std::max(0.0, std::min(1.0, t0_v));
-    const double t1c = std::max(0.0, std::min(1.0, t1_v));
     p0 = s0.point_at(t0c);
     p1 = s1.point_at(t1c);
     const double tt0 = (t0c + (double)cur_seg_0) / (double)n_segs_0;
