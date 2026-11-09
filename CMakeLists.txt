@@ -443,6 +443,7 @@ set(MINITEST_SOURCES
     # src/elementfeature_test.cpp  # removed: source file does not exist (stale reference)
     src/instance_ref_test.cpp
     src/interaction_test.cpp
+    src/text_test.cpp
 )
 add_executable(point_minitest src/mini_test.cpp ${MINITEST_SOURCES})
 # A plain build of this project makes the tests; a consumer that adds it as a subdirectory does not.
