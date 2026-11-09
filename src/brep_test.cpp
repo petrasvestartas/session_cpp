@@ -1,3 +1,5 @@
+#include "brep_curve_use.h"
+#include <google/protobuf/unknown_field_set.h>
 #include <iostream>
 #include "brep_assemble.h"
 #include "mini_test.h"
@@ -2108,4 +2110,114 @@ namespace session_cpp {
         MINI_CHECK(std::abs(brep.volume_exact() - 500.0) < 1e-3);
     }
 
+} // namespace session_cpp
+
+namespace session_cpp {
+namespace {
+BRep range_foundation_metadata_fixture() {
+    auto owner=BRep::create_cylinder(1,2);
+    int selected=-1;
+    for (int i=0;i<owner.edge_count();++i) for (const auto& image:owner.m_edges[i].pcurves)
+        if (image.curve_2d_index_2>=0) selected=i;
+    MINI_CHECK(selected>=0);auto& edge=owner.m_edges[selected];
+    MINI_CHECK(owner.m_curves_3d[edge.curve_3d_index].set_domain(-7,13));
+    edge.world_range=BRepCurveUseRange{-2,8};
+    for (auto& image:edge.pcurves) {
+        MINI_CHECK(owner.m_curves_2d[image.curve_2d_index].set_domain(32,35));
+        image.primary_range=BRepCurveUseRange{32.75,34.25};
+        if (image.curve_2d_index_2>=0) {
+            MINI_CHECK(owner.m_curves_2d[image.curve_2d_index_2].set_domain(32,35));
+            image.secondary_range=BRepCurveUseRange{32.75,34.25};
+        }
+    }
+    // Metadata/roundtrip diagnostic only: this is not a producer or solid-acceptance fixture.
+    MINI_CHECK(owner.is_valid());return owner;
+}
+}
+MINI_TEST("BRep", "Original Curve Use Ranges Preserve Source Aliases And Json") {
+    const auto owner=range_foundation_metadata_fixture();const auto frozen=owner.jsondump();
+    MINI_CHECK(owner.has_curve_use_ranges() && owner.has_restricted_curve_uses() &&
+        brep_curve_use::has_restricted_uses(owner) && frozen.at("curve_use_ranges_version")==1);
+    const auto restored=BRep::jsonload(frozen);
+    MINI_CHECK(restored.is_valid() && restored.jsondump()==frozen);
+    int edge=-1,face=-1;
+    for (int i=0;i<restored.edge_count();++i) if (restored.m_edges[i].world_range) edge=i;
+    for (int i=0;i<restored.face_count();++i)
+        if (restored.m_faces[i].surface_index==restored.m_edges[edge].pcurves[0].surface_index) face=i;
+    MINI_CHECK(edge>=0 && face>=0);
+    const auto world=brep_curve_use::world(restored,edge);
+    const auto forward=brep_curve_use::pcurve(restored,edge,face,BRepOrientation::Forward);
+    const auto reversed=brep_curve_use::pcurve(restored,edge,face,BRepOrientation::Reversed);
+    MINI_CHECK((world.domain()==std::pair<double,double>{-2,8}));
+    MINI_CHECK((forward.domain()==std::pair<double,double>{32.75,34.25}));
+    MINI_CHECK(reversed.domain()==forward.domain());
+    MINI_CHECK(&forward.original_curve()!=&reversed.original_curve());
+    MINI_CHECK((world.original_curve().domain()==std::pair<double,double>{-7,13}));
+    MINI_CHECK((forward.original_curve().domain()==std::pair<double,double>{32,35}));
+    MINI_CHECK(brep_curve_use::exact_correspondence(world.original_curve(),world.domain(),
+        forward.original_curve(),forward.domain()));
+    bool rejected=false;
+    try { world.point_at(-7); } catch(const std::out_of_range&) { rejected=true; }
+    MINI_CHECK(rejected && owner.jsondump()==frozen);
+}
+MINI_TEST("BRep", "Original Curve Use Ranges Reject Invalid Or Inexact Mapping") {
+    const auto source=range_foundation_metadata_fixture();int selected=-1;
+    for (int i=0;i<source.edge_count();++i) if (source.m_edges[i].world_range) selected=i;
+    MINI_CHECK(selected>=0);
+    for (int variant=0;variant<6;++variant) {
+        auto owner=source;auto& edge=owner.m_edges[selected];
+        if (variant==0) edge.world_range=BRepCurveUseRange{3,3};
+        if (variant==1) edge.world_range=BRepCurveUseRange{-8,8};
+        if (variant==2) edge.pcurves[0].primary_range->first=std::nextafter(32.75,35.);
+        if (variant==3) edge.pcurves[0].secondary_range.reset();
+        if (variant==4) edge.world_range->last=std::numeric_limits<double>::infinity();
+        if (variant==5) edge.degenerated=true;
+        MINI_CHECK(!owner.is_valid());
+    }
+    auto json=source.jsondump();json["edges"][selected]["world_range"]={3,3};bool rejected=false;
+    try { BRep::jsonload(json); } catch(const std::invalid_argument&) { rejected=true; }
+    MINI_CHECK(rejected);
+    json=source.jsondump();json.erase("curve_use_ranges_version");rejected=false;
+    try { BRep::jsonload(json); } catch(const std::invalid_argument&) { rejected=true; }
+    MINI_CHECK(rejected);
+}
+MINI_TEST("BRep", "Curve Use Range Protobuf Fails Closed Until Codec Supports It") {
+    const auto ranged=range_foundation_metadata_fixture();bool rejected=false;
+    try { ranged.to_proto(); } catch(const std::invalid_argument&) { rejected=true; }
+    MINI_CHECK(rejected);
+    const auto legacy=BRep::create_box(2,2,2);
+    MINI_CHECK(!legacy.has_curve_use_ranges() && !legacy.has_restricted_curve_uses());
+    auto full=legacy;auto& full_edge=full.m_edges[0];const auto full_world=full.m_curves_3d[full_edge.curve_3d_index].domain();
+    full_edge.world_range=BRepCurveUseRange{full_world.first,full_world.second};
+    for (auto& pc:full_edge.pcurves) {
+        const auto primary=full.m_curves_2d[pc.curve_2d_index].domain();
+        pc.primary_range=BRepCurveUseRange{primary.first,primary.second};
+        if (pc.curve_2d_index_2>=0) {
+            const auto secondary=full.m_curves_2d[pc.curve_2d_index_2].domain();
+            pc.secondary_range=BRepCurveUseRange{secondary.first,secondary.second};
+        }
+    }
+    MINI_CHECK(full.is_valid() && full.has_curve_use_ranges() && !full.has_restricted_curve_uses());
+    const auto restored=BRep::from_proto(legacy.to_proto());MINI_CHECK(restored.is_valid());
+    auto proto=legacy.to_proto();auto* edge=proto.mutable_edges(0);
+    edge->GetReflection()->MutableUnknownFields(edge)->AddLengthDelimited(7,"range");
+    rejected=false;try { BRep::from_proto(proto); } catch(const std::invalid_argument&) { rejected=true; }
+    MINI_CHECK(rejected);
+    proto=legacy.to_proto();auto* image=proto.mutable_edges(0)->mutable_pcurves(0);
+    image->GetReflection()->MutableUnknownFields(image)->AddLengthDelimited(4,"range");
+    rejected=false;try { BRep::from_proto(proto); } catch(const std::invalid_argument&) { rejected=true; }
+    MINI_CHECK(rejected);
+}
+MINI_TEST("BRep", "Original Use View Retains Positive Tiny Span Without Narrowed Poles") {
+    NurbsCurve curve(3,false,2,2);curve.m_nurbsknot={3,11};
+    MINI_CHECK(curve.set_cv(0,{0,0,0}) && curve.set_cv(1,{8*std::ldexp(1.,46),0,0}));
+    const auto frozen=curve.jsondump();const double end=std::nextafter(3.,11.);
+    const brep_curve_use::CurveUse view(curve,{3,end});
+    MINI_CHECK(view.point_at_start()[0]==0 && view.point_at_end()[0]==.03125);
+    MINI_CHECK(view.evaluate(end,1)[1][0]==std::ldexp(1.,46));
+    nurbs_interval::CurveBounds bound;
+    MINI_CHECK(view.bounds({0,0,0},bound) && bound.point[0].lo<=0 && bound.point[0].hi>=.03125);
+    MINI_CHECK(!view.bounds({3,11},{0,0,0},bound));
+    MINI_CHECK(curve.jsondump()==frozen && &view.original_curve()==&curve);
+}
 } // namespace session_cpp

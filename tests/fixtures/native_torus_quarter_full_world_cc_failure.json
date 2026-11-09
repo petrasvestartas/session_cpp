@@ -1,0 +1,137 @@
+{
+  "schema": "native_original_world_curve_pair_v1",
+  "stage": "group_curves",
+  "first_index": 2,
+  "second_index": 0,
+  "tolerance": 1e-07,
+  "first": {
+    "control_points": [
+      [
+        2.1,
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        1.48492424049175,
+        1.48492424049175,
+        0.0,
+        0.7071067811865476
+      ],
+      [
+        0.0,
+        2.1,
+        0.0,
+        1.0
+      ]
+    ],
+    "cv_count": 3,
+    "cv_stride": 4,
+    "dimension": 3,
+    "guid": "37714069-418f-4698-839b-9fbfc48957e6",
+    "is_rational": true,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbscurve",
+    "nurbsknots": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "order": 3,
+    "pointcolors": [],
+    "type": "NurbsCurve",
+    "width": 1.0
+  },
+  "second": {
+    "control_points": [
+      [
+        2.0999999999984564,
+        -7.28583859910259e-17,
+        -1.595771908438068e-18,
+        1.0
+      ],
+      [
+        1.4849242404906584,
+        1.4849242404906584,
+        -1.6119730538336518e-18,
+        0.7071067811865476
+      ],
+      [
+        4.85722573273506e-17,
+        2.0999999999984564,
+        -6.839022464734575e-19,
+        1.0
+      ],
+      [
+        -1.4849242404906584,
+        1.4849242404906584,
+        6.447892215334608e-19,
+        0.7071067811865476
+      ],
+      [
+        -2.0999999999984564,
+        -7.28583859910259e-17,
+        1.595771908438068e-18,
+        1.0
+      ],
+      [
+        -1.4849242404906584,
+        -1.4849242404906584,
+        1.6119730538336518e-18,
+        0.7071067811865476
+      ],
+      [
+        4.85722573273506e-17,
+        -2.0999999999984564,
+        6.839022464734575e-19,
+        1.0
+      ],
+      [
+        1.4849242404906584,
+        -1.4849242404906584,
+        -6.447892215334608e-19,
+        0.7071067811865476
+      ],
+      [
+        2.0999999999984564,
+        -7.28583859910259e-17,
+        -1.595771908438068e-18,
+        1.0
+      ]
+    ],
+    "cv_count": 9,
+    "cv_stride": 4,
+    "dimension": 3,
+    "guid": "b8e24578-0743-47f6-a1c2-8c5647620ddd",
+    "is_rational": true,
+    "linecolors": [],
+    "is_locked": false,
+    "is_visible": true,
+    "name": "my_nurbscurve",
+    "nurbsknots": [
+      0.0,
+      0.0,
+      0.25,
+      0.25,
+      0.5,
+      0.5,
+      0.75,
+      0.75,
+      1.0,
+      1.0
+    ],
+    "order": 3,
+    "pointcolors": [],
+    "type": "NurbsCurve",
+    "width": 1.0
+  },
+  "provenance": {
+    "capture_path": "C:\\pc\\tmp\\session-migration-20261028\\native-event-ownership-tests-20261106-v1\\9-SESSION_SECTION_CC_FAILURE.jsonl",
+    "capture_first_row_sha256": "d49affe7e69b7d7a4954e0df1c2cd785ffc6ecb236d1910901546c0da1d0d8b3",
+    "capture_file_sha256": "1bd1f218b0a8500166e5c855c6cb90d88ff575cda4241de4b7d721712491a945",
+    "failure": "Curve intersection exceeded its subdivision or floating-point resolution limit"
+  }
+}

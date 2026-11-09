@@ -1,5 +1,7 @@
 #include "brep_classify.h"
 #include "brep_face_boundary.h"
+#include "nurbs_interval.h"
+#include "brep_curve_use.h"
 #include "closest.h"
 #include "surface_ray.h"
 #include <algorithm>
@@ -92,12 +94,66 @@ State curve_winding(const NurbsCurve& curve, const Point& query, double height, 
     return work.empty() ? State::Outside : State::Unknown;
 }
 
+State ranged_winding(const NurbsCurve& curve, std::pair<double,double> range,
+    const Point& query, double height, double tolerance, int& winding) {
+    struct Part { double first, last; int depth; };
+    std::vector<Part> work{{range.first,range.second,0}};
+    for (size_t iteration=0; !work.empty() && iteration<100000; ++iteration) {
+        const auto part=work.back();
+        work.pop_back();
+        nurbs_interval::CurveBounds bounds;
+        if (!nurbs_interval::curve_bounds(curve,{part.first,part.last},{0,0,0},bounds))
+            return State::Unknown;
+        const auto x=bounds.point[0], y=bounds.point[1];
+        const Point a=curve.point_at(part.first), b=curve.point_at(part.last);
+        if (!finite(a) || !finite(b))
+            return State::Unknown;
+        if (x.hi<query[0]-tolerance || y.hi<query[1]-tolerance || y.lo>query[1]+tolerance)
+            continue;
+        if (x.lo>query[0]+tolerance) {
+            winding+=crossing(a,b,{query[0],height,0});
+            continue;
+        }
+        double error=0;
+        for (double u : {x.lo,x.hi})
+            for (double v : {y.lo,y.hi})
+                error=std::max(error,segment_distance({u,v,0},a,b));
+        if (error<=tolerance*.125) {
+            if (segment_distance(query,a,b)<=tolerance+error)
+                return State::Boundary;
+            winding+=crossing(a,b,{query[0],height,0});
+            continue;
+        }
+        const double middle=std::midpoint(part.first,part.last);
+        if (part.depth>=64 || !(middle>part.first && middle<part.last))
+            return State::Unknown;
+        work.push_back({middle,part.last,part.depth+1});
+        work.push_back({part.first,middle,part.depth+1});
+    }
+    return work.empty()?State::Outside:State::Unknown;
+}
+
+double use_ray_height(const BRep& brep, const brep_face_boundary::Wire& wire,
+    double height, double tolerance) {
+    for (double share : {0.0, .25, -.25, .125, -.125, .1875, -.1875, .0625, -.0625}) {
+        const double candidate=height+share*tolerance;
+        const double margin=64*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(candidate));
+        bool clear=true;
+        for (const auto& use : wire.uses) {
+            if (use.pcurve<0 || use.pcurve>=static_cast<int>(brep.m_curves_2d.size()))
+                continue;
+            const auto& curve=brep.m_curves_2d[use.pcurve];
+            for (double t : {use.pcurve_domain.first,use.pcurve_domain.second})
+                clear=clear && std::abs(curve.point_at(t)[1]-candidate)>margin;
+        }
+        if (clear)
+            return candidate;
+    }
+    return height;
+}
+
 State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const Point& uv, double tolerance) {
-    std::vector<const NurbsCurve*> loop;
-    for (const auto& use : wire.uses)
-        if (use.pcurve >= 0 && use.pcurve < static_cast<int>(brep.m_curves_2d.size()))
-            loop.push_back(&brep.m_curves_2d[use.pcurve]);
-    const double height = clear_ray_height(loop, uv[1], tolerance);
+    const double height = use_ray_height(brep, wire, uv[1], tolerance);
     int winding = 0;
     for (const auto& use : wire.uses) {
         const auto& edge = use.edge;
@@ -107,7 +163,10 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const P
         if (ci < 0 || ci >= static_cast<int>(brep.m_curves_2d.size()))
             return State::Unknown;
         int contribution = 0;
-        const State state = curve_winding(brep.m_curves_2d[ci], uv, height, tolerance, contribution);
+        const auto& curve=brep.m_curves_2d[ci];
+        const State state = use.pcurve_domain==curve.domain()
+            ? curve_winding(curve,uv,height,tolerance,contribution)
+            : ranged_winding(curve,use.pcurve_domain,uv,height,tolerance,contribution);
         if (state == State::Boundary || state == State::Unknown)
             return state;
         winding += edge.orientation == BRepOrientation::Reversed ? -contribution : contribution;
@@ -214,7 +273,38 @@ bool near_surface_bounds(const NurbsSurface& surface, const Point& query, double
     return true;
 }
 
-bool near_edge(const BRep& brep, int face, const Point& query, double tolerance) {
+State ranged_near_edge(const NurbsCurve& curve, std::pair<double,double> range,
+    const Point& query, double tolerance) {
+    struct Part { double first, last; int depth; };
+    std::vector<Part> work{{range.first,range.second,0}};
+    const auto limit=nurbs_interval::Interval(tolerance)*nurbs_interval::Interval(tolerance);
+    for (size_t iteration=0; !work.empty() && iteration<100000; ++iteration) {
+        const auto part=work.back();
+        work.pop_back();
+        nurbs_interval::CurveBounds bounds;
+        if (!nurbs_interval::curve_bounds(curve,{part.first,part.last},
+                {query[0],query[1],query[2]},bounds))
+            return State::Unknown;
+        nurbs_interval::Interval squared;
+        for (const auto& coordinate : bounds.point) {
+            const double distance=coordinate.lo>0?coordinate.lo:coordinate.hi<0?-coordinate.hi:0;
+            squared=squared+nurbs_interval::Interval(distance)*nurbs_interval::Interval(distance);
+        }
+        if (squared.lo>limit.hi)
+            continue;
+        for (double t : {part.first,part.last})
+            if (curve.point_at(t).distance(query)<=tolerance)
+                return State::Boundary;
+        const double middle=std::midpoint(part.first,part.last);
+        if (part.depth>=64 || !(middle>part.first && middle<part.last))
+            return State::Unknown;
+        work.push_back({middle,part.last,part.depth+1});
+        work.push_back({part.first,middle,part.depth+1});
+    }
+    return work.empty()?State::Outside:State::Unknown;
+}
+
+bool near_edge(const BRep& brep, int face, const Point& query, double tolerance, bool& unresolved) {
     for (const BRepRef& wire : brep.m_faces[face].wires)
         for (const BRepRef& use : brep.wire_edges(wire)) {
             const BRepEdge& edge = brep.m_edges[use.index];
@@ -223,6 +313,14 @@ bool near_edge(const BRep& brep, int face, const Point& query, double tolerance)
             if (edge.degenerated)
                 continue;
             const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index];
+            const auto range=brep.edge_domain(use.index);
+            if (range!=curve.domain()) {
+                const State state=ranged_near_edge(curve,range,query,tolerance);
+                if (state==State::Boundary)
+                    return true;
+                unresolved=unresolved || state==State::Unknown;
+                continue;
+            }
             const double parameter = Closest::curve_point(curve, query).first;
             if (curve.point_at(parameter).distance(query) <= tolerance)
                 return true;
@@ -243,12 +341,13 @@ State boundary_state(const BRep& brep, const Point& query, double tolerance) {
             continue;
         const std::vector<Vector> values = surface.evaluate(u, v, 1);
         const double speed = std::max(values[1].magnitude(), values[2].magnitude());
+        bool edge_unresolved=false;
         if (!(speed > 0.0))
-            return near_edge(brep, face, query, tolerance) ? State::Boundary : State::Unknown;
+            return near_edge(brep, face, query, tolerance,edge_unresolved) ? State::Boundary : State::Unknown;
         const State trim = face_uv(brep, face, {u, v, 0.0}, tolerance / speed);
-        if (trim == State::Inside || near_edge(brep, face, query, tolerance))
+        if (trim == State::Inside || near_edge(brep, face, query, tolerance,edge_unresolved))
             return State::Boundary;
-        if (trim == State::Unknown)
+        if (trim == State::Unknown || edge_unresolved)
             return State::Unknown;
     }
     return State::Outside;

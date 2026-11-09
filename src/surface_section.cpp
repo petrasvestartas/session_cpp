@@ -475,6 +475,94 @@ crossing_branch(const NurbsSurface& first, const NurbsSurface& second, const std
     }
     return std::make_tuple(std::move(world), std::move(pa), std::move(pb));
 }
+
+struct CoveragePlaneLaw {
+    Point origin;
+    Vector u,v;
+    std::array<std::pair<double,double>,2> domain;
+    std::array<double,2> width;
+};
+bool coverage_plane_law(const NurbsSurface& surface,CoveragePlaneLaw& law) {
+    std::array<Point,4> corners;
+    Vector opposite;
+    if (!polynomial_bilinear(surface,corners) || !exact_vector(corners[1],corners[0],law.u) ||
+        !exact_vector(corners[2],corners[0],law.v) || !exact_vector(corners[3],corners[1],opposite))
+        return false;
+    for (int d=0;d<3;++d) if (opposite[d]!=law.v[d]) return false;
+    law.origin=corners[0];
+    for (int d=0;d<2;++d) {
+        law.domain[d]=surface.domain(d);
+        if (!nurbs_coincidence::exact_difference(law.domain[d].second,law.domain[d].first,law.width[d]) ||
+            !(law.width[d]>0)) return false;
+    }
+    return true;
+}
+std::array<nurbs_interval::Interval,3> coverage_cross(
+    const std::array<nurbs_interval::Interval,3>& a,const std::array<nurbs_interval::Interval,3>& b) {
+    std::array<nurbs_interval::Interval,3> result;
+    for (int d=0;d<3;++d) result[d]=a[(d+1)%3]*b[(d+2)%3]-a[(d+2)%3]*b[(d+1)%3];
+    return result;
+}
+bool coverage_transverse(const CoveragePlaneLaw& a,const CoveragePlaneLaw& b) {
+    const auto vector=[](const Vector& value) {
+        return std::array<nurbs_interval::Interval,3>{nurbs_interval::Interval(value[0]),
+            nurbs_interval::Interval(value[1]),nurbs_interval::Interval(value[2])};
+    };
+    const auto cross=coverage_cross(coverage_cross(vector(a.u),vector(a.v)),
+                                    coverage_cross(vector(b.u),vector(b.v)));
+    bool nonzero=false;
+    for (const auto coordinate:cross) {
+        if (!nurbs_interval::finite(coordinate)) return false;
+        nonzero=nonzero || coordinate.lo>0 || coordinate.hi<0;
+    }
+    return nonzero; // Two injective original affine charts meet in one infinite line.
+}
+bool coverage_linear_law(const NurbsCurve& curve,int dimension,std::array<Point,2>& endpoints) {
+    if (!curve.is_valid() || curve.dimension()<dimension || curve.dimension()>3 ||
+        curve.degree()!=1 || curve.cv_count()!=2 || !(curve.domain_start()<curve.domain_end()) ||
+        !std::isfinite(curve.domain_end()-curve.domain_start())) return false;
+    const double weight=curve.weight(0);
+    if (!std::isfinite(weight) || !(weight>0) || curve.weight(1)!=weight) return false;
+    for (int i=0;i<2;++i) for (int d=0;d<dimension;++d) {
+        const double value=curve.cv(i)[d]/weight;
+        if (!std::isfinite(value) || !nurbs_coincidence::exact_products_equal(value,weight,curve.cv(i)[d],1))
+            return false;
+        endpoints[i][d]=value;
+    }
+    return true;
+}
+bool coverage_exact_point(const CoveragePlaneLaw& law,const Point& uv,const Point& world) {
+    std::array<double,2> fraction;
+    for (int d=0;d<2;++d) {
+        double numerator;
+        if (uv[d]<law.domain[d].first || uv[d]>law.domain[d].second ||
+            !nurbs_coincidence::exact_difference(uv[d],law.domain[d].first,numerator)) return false;
+        fraction[d]=numerator/law.width[d];
+        if (!std::isfinite(fraction[d]) ||
+            !nurbs_coincidence::exact_products_equal(fraction[d],law.width[d],numerator,1)) return false;
+    }
+    for (int d=0;d<3;++d) {
+        const double u=law.u[d]*fraction[0],v=law.v[d]*fraction[1];
+        double sum,value;
+        if (!std::isfinite(u) || !std::isfinite(v) ||
+            !nurbs_coincidence::exact_products_equal(law.u[d],fraction[0],u,1) ||
+            !nurbs_coincidence::exact_products_equal(law.v[d],fraction[1],v,1) ||
+            !nurbs_coincidence::exact_difference(law.origin[d],-u,sum) ||
+            !nurbs_coincidence::exact_difference(sum,-v,value) || value!=world[d]) return false;
+    }
+    return true;
+}
+void coverage_domain_ends(const CoveragePlaneLaw& law,const std::array<Point,2>& uv,
+                          bool& first,bool& last) {
+    for (int d=0;d<2;++d) {
+        const bool increasing=uv[1][d]>uv[0][d],decreasing=uv[1][d]<uv[0][d];
+        first=first || (increasing && uv[0][d]==law.domain[d].first) ||
+                       (decreasing && uv[0][d]==law.domain[d].second);
+        last=last || (increasing && uv[1][d]==law.domain[d].second) ||
+                     (decreasing && uv[1][d]==law.domain[d].first);
+    }
+}
+
 } // namespace
 
 std::optional<std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>>
@@ -514,6 +602,24 @@ bilinear_crossing(const NurbsSurface& first, const NurbsSurface& second, double 
     }
     observe_critical_failure(first, second, "no_proved_correspondence", {{"tolerance", tolerance}});
     return std::nullopt;
+}
+
+bool affine_plane_curve_coverage(const NurbsSurface& first,const NurbsSurface& second,
+    const std::vector<std::tuple<NurbsCurve,NurbsCurve,NurbsCurve>>& sections) {
+    if (sections.size()!=1) return false;
+    CoveragePlaneLaw a,b;
+    std::array<Point,2> world,ua,ub;
+    const auto& [curve,pa,pb]=sections.front();
+    if (!coverage_plane_law(first,a) || !coverage_plane_law(second,b) || !coverage_transverse(a,b) ||
+        curve.domain()!=pa.domain() || curve.domain()!=pb.domain() ||
+        !coverage_linear_law(curve,3,world) || !coverage_linear_law(pa,2,ua) ||
+        !coverage_linear_law(pb,2,ub)) return false;
+    if (world[0][0]==world[1][0] && world[0][1]==world[1][1] && world[0][2]==world[1][2]) return false;
+    for (int i=0;i<2;++i)
+        if (!coverage_exact_point(a,ua[i],world[i]) || !coverage_exact_point(b,ub[i],world[i])) return false;
+    bool start=false,end=false;
+    coverage_domain_ends(a,ua,start,end);coverage_domain_ends(b,ub,start,end);
+    return start && end; // Convex rectangle clips the unique line to exactly this segment.
 }
 
 } // namespace session_cpp::surface_section

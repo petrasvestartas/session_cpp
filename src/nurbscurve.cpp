@@ -1,5 +1,6 @@
 #include "nurbscurve.h"
 #include "nurbs_offset.h"
+#include "nurbs_coincidence.h"
 #include "closest.h"
 #include "nurbscurve.pb.h"
 #include <cstring>
@@ -18,6 +19,50 @@ constexpr double SQRT_EPSILON = 1.490116119385e-8;
 
 static double curve_parameter_tolerance(double a, double b) {
     return std::max({std::abs(a), std::abs(b), std::abs(b - a)}) * 4.0 * std::numeric_limits<double>::epsilon();
+}
+
+// Positive rational Bezier maps are analytic: a nonconstant one is nonconstant
+// on every positive parameter interval. This small-source guard needs no length floor.
+static bool positive_nonconstant_bezier(const NurbsCurve& curve) {
+    if (!curve.is_valid() || curve.dimension()<1 || curve.dimension()>3 ||
+        curve.cv_count()!=curve.order() || !curve.is_clamped())
+        return false;
+    for (int i=0;i<curve.cv_count();++i)
+        if (!(curve.weight(i)>0) || !std::isfinite(curve.weight(i)))
+            return false;
+    return !nurbs_coincidence::curve_constant_image(curve);
+}
+
+// Restrict the ORIGINAL homogeneous linear law once, avoiding sequential inserted-pole rounding.
+static bool exact_original_linear_controls(const NurbsCurve& curve,double first,double last,
+    std::vector<double>& controls) {
+    if (curve.degree()!=1 || curve.cv_count()!=2 || curve.dimension()<1 || curve.dimension()>3 ||
+        curve.m_nurbsknot.size()!=2 || !(curve.weight(0)>0) || !(curve.weight(1)>0) ||
+        !std::isfinite(curve.weight(0)) || !std::isfinite(curve.weight(1))) return false;
+    double width;
+    if (!nurbs_coincidence::exact_difference(curve.domain_end(),curve.domain_start(),width) ||
+        !std::isfinite(width) || !(width>0)) return false;
+    controls=curve.m_cv;
+    for (int endpoint=0;endpoint<2;++endpoint) {
+        const double t=endpoint?last:first;
+        double left,right;
+        if (!nurbs_coincidence::exact_difference(curve.domain_end(),t,left) ||
+            !nurbs_coincidence::exact_difference(t,curve.domain_start(),right) ||
+            !std::isfinite(left) || !std::isfinite(right) || left<0 || right<0) return false;
+        for (int d=0;d<curve.cv_size();++d) {
+            const double a=left*curve.cv(0)[d],b=right*curve.cv(1)[d];
+            double numerator;
+            if (!std::isfinite(a) || !std::isfinite(b) ||
+                !nurbs_coincidence::exact_products_equal(left,curve.cv(0)[d],a,1.) ||
+                !nurbs_coincidence::exact_products_equal(right,curve.cv(1)[d],b,1.) ||
+                !nurbs_coincidence::exact_difference(a,-b,numerator)) return false;
+            const double value=numerator/width;
+            if (!std::isfinite(value) ||
+                !nurbs_coincidence::exact_products_equal(value,width,numerator,1.)) return false;
+            controls[endpoint*curve.m_cv_stride+d]=value;
+        }
+    }
+    return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1040,7 +1085,7 @@ bool NurbsCurve::insert_nurbsknot(double nurbsknot_value, int nurbsknot_multipli
         int mult = 0;
 
         for (double knot : U)
-            if (std::abs(knot - nurbsknot_value) <= tol)
+            if (knot == nurbsknot_value)
                 ++mult;
 
         if (mult >= nurbsknot_multiplicity)
@@ -1899,41 +1944,59 @@ bool NurbsCurve::trim(double t0, double t1) {
 
     t0 = std::max(t0, d0);
     t1 = std::min(t1, d1);
+    if (t0>=t1)
+        return false;
 
     if (t0 == d0 && t1 == d1)
         return true;
+
+    const bool protect_positive_image=positive_nonconstant_bezier(*this);
+    std::vector<double> exact_controls;
+    if (exact_original_linear_controls(*this,t0,t1,exact_controls)) {
+        NurbsCurve proposal=*this;
+        proposal.m_cv=std::move(exact_controls);
+        proposal.m_nurbsknot={t0,t1};
+        if (proposal.is_valid() && (!protect_positive_image || !nurbs_coincidence::curve_constant_image(proposal))) {
+            m_cv=std::move(proposal.m_cv);
+            m_nurbsknot=std::move(proposal.m_nurbsknot);
+            return true;
+        }
+    }
 
     const int p = degree();
     const bool trim_start = t0 > d0;
     const bool trim_end = t1 < d1;
 
-    const double stol = parameter_tolerance;
-    // Exact knot identity takes precedence over a nearby coordinate proposal.
-    // Otherwise an existing bound can walk through the next distinct tiny span.
-    const bool exact_start = std::find(m_nurbsknot.begin(), m_nurbsknot.end(), t0) != m_nurbsknot.end();
-    const bool exact_end = std::find(m_nurbsknot.begin(), m_nurbsknot.end(), t1) != m_nurbsknot.end();
-
-    for (double k : m_nurbsknot) {
-        if (trim_start && !exact_start && std::abs(k - t0) <= stol && std::abs(k - t0) > 0.0)
-            t0 = k;
-
-        if (trim_end && !exact_end && std::abs(k - t1) <= stol && std::abs(k - t1) > 0.0)
-            t1 = k;
-    }
-
-    if (t0 >= t1)
+    // Valid in-domain bounds are exact raw identities, not nearby-knot proposals.
+    const int original_count=m_cv_count;
+    auto original_cv=protect_positive_image?m_cv:std::vector<double>{};
+    auto original_knots=protect_positive_image?m_nurbsknot:std::vector<double>{};
+    const auto unsupported=[&]() {
+        if (protect_positive_image) {
+            m_cv_count=original_count;
+            m_cv=std::move(original_cv);
+            m_nurbsknot=std::move(original_knots);
+        }
         return false;
+    };
 
     if ((t0 == d0 && !clamp_end(0)) || (t1 == d1 && !clamp_end(1)))
-        return false;
+        return unsupported();
 
     if (trim_start && !insert_nurbsknot(t0, p))
-        return false;
+        return unsupported();
 
     if (trim_end && !insert_nurbsknot(t1, p))
-        return false;
+        return unsupported();
 
-    return keep_span_range(t0, t1);
+    if (!keep_span_range(t0,t1))
+        return unsupported();
+    if (protect_positive_image && (!is_valid() || nurbs_coincidence::curve_constant_image(*this))) {
+        // Binary64 may not represent the variation of a genuine positive interval.
+        // Retain the original geometry/raw scope and report unsupported materialization.
+        return unsupported();
+    }
+    return true;
 }
 
 bool NurbsCurve::split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve) const {

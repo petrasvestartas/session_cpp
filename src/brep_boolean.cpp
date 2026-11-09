@@ -1,4 +1,7 @@
 #include "brep_boolean.h"
+#include "brep_boolean_cut_endpoint.h"
+#include "brep_boolean_cut_coverage.h"
+#include "brep_boolean_original_events.h"
 #include "brep_assemble.h"
 #include "brep_classify.h"
 #include "brep_section.h"
@@ -69,15 +72,7 @@ bool covers(const NurbsCurve& candidate, const NurbsCurve& boundary, double tole
     const curve_intersection::Result events = curve_intersection::intersect(candidate, boundary, tolerance);
     if (!events.complete)
         throw std::runtime_error(events.failure);
-    double last = candidate.domain_start();
-    const double epsilon = 64 * std::numeric_limits<double>::epsilon() *
-        std::max({std::abs(last), std::abs(candidate.domain_end()), candidate.domain_end() - last});
-    for (const curve_intersection::Overlap& overlap : events.overlaps) {
-        if (overlap.a0 > last + epsilon)
-            return false;
-        last = std::max(last, overlap.a1);
-    }
-    return last >= candidate.domain_end() - epsilon;
+    return detail::whole_raw_cut_coverage(candidate.domain(), events);
 }
 
 void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, split::FaceCut cut, double tolerance) {
@@ -94,50 +89,6 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
         if (covers(cut.pcurve, previous.pcurve, uv_tol))
             return;
     cuts.push_back(std::move(cut));
-}
-
-/// Ends of two cuts within the model tolerance are one node: sections meeting on a third face's edge end a march step apart, and the conservative uv tolerance would leave the chain open and drop the whole cut as dangling. Ends a seam apart are one point in space but stay two.
-void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, double tolerance) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    // Below this the arrangement merges the ends itself, and exact coordinates are better left alone.
-    const double merged = 4.0 * uv_tolerance(surface, tolerance);
-    const double reach = 64.0 * uv_tolerance(surface, tolerance);
-    const auto cv = [](const split::FaceCut& cut, int end) { return end ? cut.pcurve.cv_count() - 1 : 0; };
-    const auto world = [](const split::FaceCut& cut, int end) {
-        return end ? cut.world.point_at_end() : cut.world.point_at_start();
-    };
-    for (size_t i = 0; i < cuts.size(); ++i)
-        for (size_t j = i + 1; j < cuts.size(); ++j)
-            for (int a = 0; a < 2; ++a)
-                for (int b = 0; b < 2; ++b) {
-                    if (cuts[i].pcurve.is_rational() || cuts[j].pcurve.is_rational() ||
-                        !cuts[i].pcurve.is_clamped() || !cuts[j].pcurve.is_clamped())
-                        continue;
-                    const Point first = cuts[i].pcurve.get_cv(cv(cuts[i], a));
-                    const Point second = cuts[j].pcurve.get_cv(cv(cuts[j], b));
-                    const double gap = first.distance(second);
-                    if (gap <= merged || gap > reach || world(cuts[i], a).distance(world(cuts[j], b)) > tolerance)
-                        continue;
-                    const Point middle((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5, (first[2] + second[2]) * 0.5);
-                    cuts[i].pcurve.set_cv(cv(cuts[i], a), middle);
-                    cuts[j].pcurve.set_cv(cv(cuts[j], b), middle);
-                }
-    // The same for an end at a trim vertex: left a hair off it, the cut would re-split the edge beside the vertex.
-    for (split::FaceCut& cut : cuts)
-        for (int end = 0; end < 2 && !cut.pcurve.is_rational() && cut.pcurve.is_clamped(); ++end)
-            for (const BRepRef& wire : brep.m_faces[face].wires)
-                for (const BRepRef& edge : brep.wire_edges(wire)) {
-                    const int index = brep.pcurve_index(edge.index, face, edge.orientation);
-                    if (index < 0)
-                        continue;
-                    const NurbsCurve& trim = brep.m_curves_2d[index];
-                    for (const Point& corner : {trim.point_at_start(), trim.point_at_end()}) {
-                        const double gap = cut.pcurve.get_cv(cv(cut, end)).distance(corner);
-                        if (gap > merged && gap <= reach &&
-                            world(cut, end).distance(surface.point_at(corner[0], corner[1])) <= tolerance)
-                            cut.pcurve.set_cv(cv(cut, end), corner);
-                    }
-                }
 }
 
 void mapped_parameter_cuts(
@@ -241,7 +192,6 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
                            bool second,double tolerance) {
     const auto component=brep_section::detail::active_components(partition.brep,active_faces(partition.brep));
     const auto root=[&](int vertex) { return component[vertex]; };
-    const int original_vertices=static_cast<int>(partition.brep.m_vertices.size());
     std::vector<split::EdgeEvent> events;
     for (const auto& node:inventory.nodes) {
         struct LocalNode {
@@ -279,35 +229,9 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
                 events.push_back({event->edge,event->hit.t,local.vertex});
         }
     }
-    // Two nodes on one edge within the model tolerance are one event: sections ending a march step apart would otherwise cut a piece the other operand has no partner for.
-    std::sort(events.begin(),events.end(),[](const split::EdgeEvent& x,const split::EdgeEvent& y) {
-        return x.edge!=y.edge ? x.edge<y.edge : x.parameter<y.parameter;
-    });
-    std::vector<split::EdgeEvent> joined;
-    for (const auto& event:events) {
-        if (!joined.empty() && joined.back().edge==event.edge && !partition.brep.m_edges[event.edge].degenerated) {
-            const NurbsCurve& curve=partition.brep.m_curves_3d[partition.brep.m_edges[event.edge].curve_3d_index];
-            if (curve.point_at(joined.back().parameter).distance(curve.point_at(event.parameter))<=tolerance) {
-                split::EdgeEvent& kept=joined.back();
-                if (event.vertex<original_vertices && kept.vertex>=original_vertices)
-                    kept=event;
-                else if (event.vertex>=original_vertices && kept.vertex>=original_vertices)
-                    kept.parameter=(kept.parameter+event.parameter)*0.5;
-                continue;
-            }
-        }
-        joined.push_back(event);
-    }
-    events=std::move(joined);
-    if (!events.empty()) {
-        auto partitioned=split::split_brep_edges_at_events(partition.brep,events,tolerance);
-        for (const auto& event:events)
-            if (std::none_of(partitioned.edge_events.begin(),partitioned.edge_events.end(),[&](const auto& receipt) {
-                    return receipt.edge==event.edge && receipt.parameter==event.parameter && receipt.vertex==event.vertex;
-                }))
-                throw std::runtime_error("Original edge event receipt lost its canonical owner-local vertex");
-        retain_lineage(partition,std::move(partitioned));
-    }
+    if (!events.empty())
+        retain_lineage(partition, detail::split_preserved_original_events(
+            partition.brep,std::move(events),tolerance));
 }
 
 void observe_partition(const char* path, const BRep& source, const std::vector<split::FaceCut>& cuts,
@@ -346,6 +270,56 @@ void observe_partition(const char* path, const BRep& source, const std::vector<s
         throw std::runtime_error(std::string("Cannot write dodecahedron partition observation: ") + path);
 }
 
+void observe_cut_node_conflict(const detail::CutJoinError& error,const split::FaceCut& cut,
+    const BRep& original,const BRep& other,const BRep& current,const brep_section::FaceResult& inventory,
+    int operand,int face,double tolerance) {
+    const char* path=std::getenv("SESSION_BOOLEAN_FAILURE_OBSERVATION");
+    if (!path || !*path) return;
+    try {
+        nlohmann::ordered_json row={{"stage","canonical_cut_endpoint"},{"failure",error.what()},
+            {"operand",operand},{"face",face},{"tolerance",tolerance},{"section",cut.section},
+            {"end",error.first.end},{"world_parameter",error.first.world_parameter},
+            {"first_node",error.first.node},{"first_events",error.first.boundary_events},
+            {"world",cut.world.jsondump()},{"pcurve",cut.pcurve.jsondump()},
+            {"original_operand",original.jsondump()},{"other_operand",other.jsondump()},
+            {"current_operand",current.jsondump()},{"nodes",nlohmann::ordered_json::array()},
+            {"events",nlohmann::ordered_json::array()},{"curves",nlohmann::ordered_json::array()},
+            {"support_points",nlohmann::ordered_json::array()}};
+        for (const auto& node:inventory.nodes)
+            row["nodes"].push_back({{"point",{node.point[0],node.point[1],node.point[2]}},
+                {"boundary_events",node.boundary_events},{"support_points",node.support_points},
+                {"uv_only_incidences",node.uv_only_incidences},{"isolated",node.isolated}});
+        for (const auto& event:inventory.boundary_events) {
+            nlohmann::ordered_json saved={{"operand",event.operand},{"edge",event.edge},{"vertex",event.vertex},
+                {"retained",event.retained},{"source_parameters",event.source_parameters},
+                {"hit_face",event.hit.face},{"raw",event.hit.t},{"uv",{event.hit.u,event.hit.v}},
+                {"point",{event.hit.point[0],event.hit.point[1],event.hit.point[2]}},
+                {"uses",nlohmann::ordered_json::array()},{"owners",nlohmann::ordered_json::array()}};
+            for (const auto& use:event.uses)
+                saved["uses"].push_back({{"face",use.face},{"wire",use.wire},{"occurrence",use.occurrence},
+                    {"pcurve",use.pcurve},{"orientation",static_cast<int>(use.orientation)},
+                    {"wire_orientation",static_cast<int>(use.wire_orientation)}});
+            for (const auto& owner:event.owners)
+                saved["owners"].push_back({{"curve",owner.curve},{"source_parameter",owner.source_parameter},
+                    {"target_parameter",owner.target_parameter}});
+            row["events"].push_back(std::move(saved));
+        }
+        for (const auto& curve:inventory.curves)
+            row["curves"].push_back({{"first_face",curve.first_face},{"second_face",curve.second_face},
+                {"world",curve.world.jsondump()},{"first_pcurve",curve.first_pcurve.jsondump()},
+                {"second_pcurve",curve.second_pcurve.jsondump()}});
+        for (const auto& point:inventory.support_points)
+            row["support_points"].push_back({{"first_face",point.first_face},{"second_face",point.second_face},
+                {"exact_witness",point.event.exact_witness},{"retained",point.retained}});
+        std::ofstream output;
+        output.exceptions(std::ios::failbit|std::ios::badbit);
+        output.open(path,std::ios::app);output<<row.dump()<<'\n';output.flush();output.close();
+    } catch (const std::exception& capture) {
+        std::fprintf(stderr,"Canonical cut-node observation failed: %s\n",capture.what());
+        std::fflush(stderr);
+    }
+}
+
 Partition partition(
     const BRep& source,
     const BRep& other,
@@ -370,7 +344,15 @@ Partition partition(
                     second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)}, tolerance);
         }
         coincident_cuts(cuts, result.brep, face, other, sections, second, tolerance);
-        join_cut_ends(cuts, result.brep, face, tolerance);
+        for (auto& cut:cuts) {
+            try {
+                detail::bind_cut_endpoints(cut,second?1:0,face,sections,
+                    result.brep.m_surfaces[result.brep.m_faces[face].surface_index],tolerance);
+            } catch (const detail::CutJoinError& error) {
+                observe_cut_node_conflict(error,cut,source,other,result.brep,sections,second?1:0,face,tolerance);
+                throw;
+            }
+        }
         if (!cuts.empty()) {
             const char* observation = std::getenv("SESSION_DODECA_PARTITION_OBSERVATION");
             if (observation && *observation && !second && face == 5

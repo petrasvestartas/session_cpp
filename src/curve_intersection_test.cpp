@@ -725,3 +725,67 @@ MINI_TEST("CurveIntersection", "Copies Of A Section Overlap On Every Span") {
     MINI_CHECK(events.overlaps[0].a0 == section.domain_start() && events.overlaps[0].a1 == section.domain_end());
 }
 }
+
+namespace session_cpp {
+MINI_TEST("CurveIntersection", "Original Torus Quarter And Fitted Circle Keep Certified Common Range") {
+    const auto root=std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root/"tests/fixtures/native_torus_quarter_full_world_cc_failure.json");
+    MINI_CHECK(input.good());const auto fixture=nlohmann::json::parse(input);
+    const auto first=NurbsCurve::jsonload(fixture.at("first"));
+    const auto second=NurbsCurve::jsonload(fixture.at("second"));
+    const double tolerance=fixture.at("tolerance");
+    MINI_CHECK(first.degree()==2 && first.cv_count()==3 && second.degree()==2 && second.cv_count()==9);
+    const auto frozen_a=first.jsondump(),frozen_b=second.jsondump();
+    for (bool shifted:{false,true}) for (bool reverse:{false,true}) for (bool swap:{false,true}) {
+        auto a=first,b=second;
+        if (shifted) MINI_CHECK(a.set_domain(-7,13) && b.set_domain(32,35));
+        if (reverse) MINI_CHECK(b.reverse());
+        const double bs=reverse?b.domain_end():b.domain_start();
+        const double be=reverse?b.domain_end()-(b.domain_end()-b.domain_start())*.25:
+                                b.domain_start()+(b.domain_end()-b.domain_start())*.25;
+        const auto result=swap?curve_intersection::intersect(b,a,tolerance):curve_intersection::intersect(a,b,tolerance);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        check_events(swap?b:a,swap?a:b,result,tolerance);
+        bool common=false;
+        for (const auto& overlap:result.overlaps) {
+            if (!swap) common=common || (overlap.a0==a.domain_start() && overlap.a1==a.domain_end() &&
+                                        overlap.b0==bs && overlap.b1==be);
+            else common=common || (overlap.a0==std::min(bs,be) && overlap.a1==std::max(bs,be) &&
+                overlap.b0==(reverse?a.domain_end():a.domain_start()) &&
+                overlap.b1==(reverse?a.domain_start():a.domain_end()));
+        }
+        MINI_CHECK(common);
+    }
+    MINI_CHECK(first.jsondump()==frozen_a && second.jsondump()==frozen_b);
+}
+MINI_TEST("CurveIntersection", "Curved Common Range Requires Whole Interior Agreement") {
+    const double tolerance=1e-7,w=.7071067811865476;
+    NurbsCurve a(3,true,3,3);a.m_nurbsknot={0,0,1,1};
+    MINI_CHECK(a.set_cv_4d(0,1,0,0,1) && a.set_cv_4d(1,w,w,0,w) && a.set_cv_4d(2,0,1,0,1));
+    auto b=a;
+    MINI_CHECK(b.set_cv_4d(1,w,w,.01*w,w));
+    MINI_CHECK(a.point_at_start().distance(b.point_at_start())==0 && a.point_at_end().distance(b.point_at_end())==0);
+    MINI_CHECK(a.point_at(.5).distance(b.point_at(.5))>1000*tolerance);
+    const auto result=curve_intersection::intersect(a,b,tolerance);
+    check_events(a,b,result,tolerance);
+    MINI_CHECK(result.overlaps.empty() && result.points.size()>=2);
+}
+MINI_TEST("CurveIntersection", "Nonflat Proof Preserves Small Crossings Tangency And Near Miss") {
+    const double h=std::ldexp(1.,-12),tolerance=std::ldexp(1.,-30);
+    const auto parabola=curve_from_points({Point(-1,h,0),Point(0,-h,0),Point(1,h,0)},2);
+    for (int kind:{0,1,2}) {
+        const double y=kind==0?h*.25:kind==1?0:-8*tolerance;
+        const auto line=curve_from_points({Point(-1,y,0),Point(1,y,0)});
+        const auto result=curve_intersection::intersect(parabola,line,tolerance);
+        check_events(parabola,line,result,tolerance);
+        MINI_CHECK(result.overlaps.empty());
+        if (kind==0) {
+            MINI_CHECK(result.points.size()==2);
+            MINI_CHECK(std::abs(result.points[0].a-.25)<1e-6 && std::abs(result.points[1].a-.75)<1e-6);
+        } else if (kind==1) {
+            MINI_CHECK(result.points.size()==1 && result.points[0].tangent);
+            MINI_CHECK(std::abs(result.points[0].a-.5)<1e-6);
+        } else MINI_CHECK(result.points.empty());
+    }
+}
+} // namespace session_cpp

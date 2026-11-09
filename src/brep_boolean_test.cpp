@@ -1,5 +1,8 @@
 #include <iostream>
 #include "brep_boolean.h"
+#include "brep_boolean_cut_endpoint.h"
+#include "brep_boolean_original_events.h"
+#include "brep_boolean_cut_coverage.h"
 #include "file_step.h"
 #include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
@@ -1691,6 +1694,19 @@ void rhino_public_fixture_matrix(const std::string& family, bool union_only = fa
         const double vd = difference["reference"]["signed_volume"].get<double>();
         MINI_CHECK(std::abs(vd - expected[order == "ab" ? 2 : 3]) <= 1e-6 * vd);
     }
+    const std::array<double,5> published_expected = expected;
+    // Rhino's curved outputs miss the true volume by more than this gate; exact-volumes.json says why and how it was found.
+    double gate = 1e-6;
+    std::ifstream exact_stream(root / "exact-volumes.json");
+    MINI_CHECK(exact_stream.good());
+    nlohmann::json exact_volumes;
+    exact_stream >> exact_volumes;
+    if (exact_volumes["families"].contains(family)) {
+        const auto& exact = exact_volumes["families"][family];
+        const double vi = exact["exact_intersection"].get<double>();
+        expected = {va + vb - vi, vi, va - vi, vb - vi, va + vb - 2 * vi};
+        gate = exact["gate"].get<double>();
+    }
     const std::array<std::string, 5> labels = {"union", "intersection", "difference_ab", "difference_ba", "xor"};
     for (int operation = 0; operation < (union_only ? 1 : 5); ++operation) {
         const BRep result = public_boolean_operation(a, b, operation, tolerance);
@@ -1701,7 +1717,39 @@ void rhino_public_fixture_matrix(const std::string& family, bool union_only = fa
         rhino_flat_result_pcurves(result, tolerance);
         const double volume = brep_measure::volume(result, 1e-8);
         MINI_CHECK(std::isfinite(volume) && volume > 0);
-        MINI_CHECK(std::abs(volume - expected[operation]) <= 1e-6 * expected[operation]);
+        if (const char* path=std::getenv("SESSION_RHINO_VOLUME_FAILURE"); path && *path) {
+            try {
+                const double original_allowance=1e-6*published_expected[operation];
+                const double original_delta=std::abs(volume-published_expected[operation]);
+                const nlohmann::ordered_json observation={
+                    {"schema","native_rhino_original_volume_observation_v2"},
+                    {"published_oracle_head","0a113afcd4a5ae591e31a91010e7346ae1be2345"},
+                    {"family",family},{"operation",labels[operation]},{"operation_index",operation},
+                    {"actual_volume",volume},{"original_expected_volume",published_expected[operation]},
+                    {"original_absolute_delta",original_delta},{"original_relative_gate",1e-6},
+                    {"original_absolute_allowance",original_allowance},
+                    {"original_gate_pass",original_delta<=original_allowance},
+                    {"current_expected_volume",expected[operation]},{"current_relative_gate",gate},
+                    {"current_absolute_allowance",gate*expected[operation]},
+                    {"current_gate_pass",std::abs(volume-expected[operation])<=gate*expected[operation]},
+                    {"model_tolerance",tolerance},{"measure_tolerance",1e-8},
+                    {"original_expected_all",published_expected},{"current_expected_all",expected},
+                    {"rhino_input_volumes",{va,vb}},{"rhino_union",vu},{"oracle",oracle},
+                    {"first",original_a},{"second",original_b},{"result",result.jsondump()}};
+                std::ofstream output(path,std::ios::binary|std::ios::app);
+                if (!output || !(output<<observation.dump()<<'\n'))
+                    throw std::runtime_error("Cannot append original Rhino volume observation");
+                output.flush();
+                if (!output) throw std::runtime_error("Cannot flush original Rhino volume observation");
+                output.close();
+                if (output.fail()) throw std::runtime_error("Cannot close original Rhino volume observation");
+            } catch (const std::exception& error) {
+                std::cerr<<"Original Rhino volume observation failed: "<<error.what()<<'\n';
+            } catch (...) {
+                std::cerr<<"Original Rhino volume observation failed: unknown error\n";
+            }
+        }
+        MINI_CHECK(std::abs(volume - expected[operation]) <= gate * expected[operation]);
         for (const auto& probe : oracle["compact_probes"]) {
             const bool in_a = probe["states"][0].get<int>() == 1;
             const bool in_b = probe["states"][1].get<int>() == 1;
@@ -1817,24 +1865,40 @@ CutPlan column_slot(double width, double reach) {
     return plan;
 }
 
-/// A cylinder turned about its axis less a prism down from its top: an exact sewn solid of one round face.
-void check_cylinder_cut(double radius, double height, double depth, double turn, const CutPlan& plan, double exact) {
-    BRep cylinder = BRep::create_cylinder(radius, height);
-    cylinder.transform(Xform::rotation_z(turn));
-    const BRep result = cylinder.boolean_difference(plan_prism(plan, height - depth, height + 10.0));
+/// An exact sewn solid of ordinary trimmed faces: the volume to a millionth of a cubic millimetre, the given number of round faces, the mesh closed.
+void check_cut_result(const BRep& result, double exact, int round_expected, double mesh_share = 0.02) {
     int round_faces = 0;
     for (const BRepFace& face : result.m_faces)
         round_faces += result.m_surfaces[face.surface_index].degree(0) > 1 ? 1 : 0;
     const double volume = result.volume_exact();
     const Mesh mesh = result.mesh();
-    const std::string measured = "turn " + std::to_string(turn) + ": volume " + std::to_string(volume) + " of "
-        + std::to_string(exact) + " mm3, mesh " + std::to_string(mesh.volume()) + ", round faces "
+    const std::string measured = "volume " + std::to_string(volume) + " of " + std::to_string(exact) + " mm3, off "
+        + std::to_string(volume - exact) + ", mesh " + std::to_string(mesh.volume()) + ", round faces "
         + std::to_string(round_faces) + ", solid " + std::to_string(result.is_solid()) + ", mesh closed "
         + std::to_string(mesh.is_closed());
-    if (!result.is_solid() || std::abs(volume - exact) > 1e-6 || round_faces != 1 || !mesh.is_closed()
-        || std::abs(mesh.volume() - exact) > 0.02 * exact)
+    if (!result.is_solid() || std::abs(volume - exact) > 1e-6 || round_faces != round_expected || !mesh.is_closed()
+        || std::abs(mesh.volume() - exact) > mesh_share * exact)
         throw std::runtime_error(measured);
     MINI_CHECK(result.is_solid());
+}
+
+/// A cylinder turned about its axis less a prism down from its top.
+void check_cylinder_cut(double radius, double height, double depth, double turn, const CutPlan& plan, double exact) {
+    BRep cylinder = BRep::create_cylinder(radius, height);
+    cylinder.transform(Xform::rotation_z(turn));
+    check_cut_result(cylinder.boolean_difference(plan_prism(plan, height - depth, height + 10.0)), exact, 1);
+}
+
+/// The same cut with cylinder and tool turned together: the wall stays where it is on the cylinder and only the world numbers change.
+void check_held_wall(double radius, double height, double depth, double turn, const CutPlan& plan, std::string& failures) {
+    const double exact = Tolerance::PI * radius * radius * height - plan_area_in_circle(plan, radius) * depth;
+    const Xform hold = Xform::rotation_z(turn);
+    try {
+        check_cut_result(BRep::create_cylinder(radius, height).transformed(hold)
+            .boolean_difference(plan_prism(plan, height - depth, height + 10.0).transformed(hold)), exact, 1);
+    } catch (const std::exception& error) {
+        failures += "\nradius " + std::to_string(radius) + " turn " + std::to_string(turn) + ": " + error.what();
+    }
 }
 
 }
@@ -1920,4 +1984,306 @@ MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     }
     if (!failures.empty())
         throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Wall Exactly Through The Cylinder Seam") {
+    std::string failures;
+    for (const std::array<double, 3>& size : std::vector<std::array<double, 3>>{{100, 425, 185}, {60, 300, 120}, {150, 500, 200}})
+        for (double turn : {0.0, 0.3, 1.0, 2.2}) {
+            const double r = size[0];
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, 0}, {1.1 * r, 0}, {1.1 * r, 0.4 * r}, {-1.1 * r, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, -0.4 * r}, {1.1 * r, -0.4 * r}, {1.1 * r, 0}, {-1.1 * r, 0}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{0, 0}, {1.1 * r, 0}, {1.1 * r, 0.4 * r}, {0, 0.4 * r}}, failures);
+        }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Wall Tangent To The Cylinder") {
+    std::string failures;
+    for (const std::array<double, 3>& size : std::vector<std::array<double, 3>>{{100, 425, 185}, {60, 300, 120}, {150, 500, 200}})
+        for (double turn : {0.0, 0.3, 1.0, 2.2}) {
+            const double r = size[0];
+            check_held_wall(r, size[1], size[2], turn, {{-r, -0.4 * r}, {r, -0.4 * r}, {r, 0.4 * r}, {-r, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{0, -0.4 * r}, {r, -0.4 * r}, {r, 0.4 * r}, {0, 0.4 * r}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{-1.1 * r, -r}, {1.1 * r, -r}, {1.1 * r, 0}, {-1.1 * r, 0}}, failures);
+            check_held_wall(r, size[1], size[2], turn, {{r, -0.5 * r}, {1.5 * r, -0.5 * r}, {1.5 * r, 0.5 * r}, {r, 0.5 * r}}, failures);
+        }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Cross Drill Through A Cylinder") {
+    std::string failures;
+    for (const std::array<double, 5>& hole : std::vector<std::array<double, 5>>{{100, 425, 10, 0, 0}, {100, 425, 15, 20, 0.4},
+        {60, 300, 6, 0, 1.1}, {150, 500, 12, 40, 2.0}, {100, 425, 40, 0, 0}, {100, 425, 40, 25, 0.7}}) {
+        const double r = hole[0], height = hole[1], a = hole[2], offset = hole[3];
+        double removed = 0.0;
+        const int steps = 4000;
+        for (int i = 0; i < steps; ++i) {
+            const double t = -0.5 * Tolerance::PI + Tolerance::PI * (i + 0.5) / steps;
+            const double x = a * std::sin(t) + offset;
+            removed += 4.0 * a * a * std::cos(t) * std::cos(t) * std::sqrt(r * r - x * x) * Tolerance::PI / steps;
+        }
+        BRep drill = BRep::create_cylinder(a, 3 * r);
+        drill.transform(Xform::rotation_x(0.5 * Tolerance::PI));
+        drill.transform(Xform::translation(offset, 1.5 * r, 0.5 * height));
+        const Xform hold = Xform::rotation_z(hole[4]);
+        try {
+            check_cut_result(BRep::create_cylinder(r, height).transformed(hold).boolean_difference(drill.transformed(hold)),
+                Tolerance::PI * r * r * height - removed, 2, 0.03);
+        } catch (const std::exception& error) {
+            failures += "\nradius " + std::to_string(r) + " drill " + std::to_string(a) + " offset " + std::to_string(offset) + ": " + error.what();
+        }
+    }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+/// Two solids sharing a line and perhaps an overlap: the exact volume of every operation, each in closed shells.
+static void check_touching(const BRep& a, const BRep& b, double va, double vb, double vi, int shells, const std::string& label, std::string& failures) {
+    const std::array<double, 4> exact = {va + vb - vi, vi, va - vi, vb - vi};
+    const std::array<std::string, 4> names = {"union", "intersection", "difference", "reversed difference"};
+    for (size_t operation = 0; operation < exact.size(); ++operation)
+        try {
+            const BRep result = operation == 0 ? a.boolean_union(b) : operation == 1 ? a.boolean_intersection(b)
+                : operation == 2 ? a.boolean_difference(b) : b.boolean_difference(a);
+            if (exact[operation] == 0.0) {
+                if (result.face_count() != 0)
+                    throw std::runtime_error("faces in an empty result");
+                continue;
+            }
+            const double volume = result.volume_exact();
+            const Mesh mesh = result.mesh();
+            if (result.shell_count() != (operation == 0 ? shells : 1) || std::abs(volume - exact[operation]) > 1e-6 || !mesh.is_closed())
+                throw std::runtime_error("volume " + std::to_string(volume) + " of " + std::to_string(exact[operation]) + ", shells "
+                    + std::to_string(result.shell_count()) + ", mesh closed " + std::to_string(mesh.is_closed()));
+        } catch (const std::exception& error) {
+            failures += "\n" + label + " " + names[operation] + ": " + error.what();
+        }
+}
+
+MINI_TEST("BRep Cylinder Cuts", "Solids Touching Along A Line") {
+    std::string failures;
+    for (const std::array<double, 2>& size : std::vector<std::array<double, 2>>{{100, 425}, {60, 300}})
+        for (double turn : {1.0, 2.2})
+            for (double around : {0.0, 1.0}) {
+                const double r = size[0], h = size[1];
+                const Xform tool = Xform::rotation_z(turn + around);
+                const BRep cylinder = BRep::create_cylinder(r, h).transformed(Xform::rotation_z(turn));
+                const double round = Tolerance::PI * r * r * h;
+                const std::string label = "radius " + std::to_string(r) + " turn " + std::to_string(turn) + " around " + std::to_string(around);
+                const CutPlan wall = {{r, -0.5 * r}, {1.5 * r, -0.5 * r}, {1.5 * r, 0.5 * r}, {r, 0.5 * r}};
+                check_touching(cylinder, plan_prism(wall, 0, h).transformed(tool), round, 0.5 * r * r * h, 0, 2, label + " flush", failures);
+                check_touching(cylinder, plan_prism(wall, -10, h + 10).transformed(tool), round, 0.5 * r * r * (h + 20), 0, 2, label + " long", failures);
+                check_touching(cylinder, plan_prism(wall, 0.25 * h, 0.75 * h).transformed(tool), round, 0.25 * r * r * h, 0, 2, label + " short", failures);
+                check_touching(cylinder, BRep::create_cylinder(r, h).transformed(Xform::translation(2 * r, 0, 0)).transformed(tool), round, round, 0, 2, label + " two round", failures);
+                // Touches at x = r and overlaps above y = 0.8 r, so the union is one body with the contact line inside it.
+                const CutPlan hook = {{r, -1.5 * r}, {1.5 * r, -1.5 * r}, {1.5 * r, 1.5 * r}, {0, 1.5 * r}, {0, 0.8 * r}, {r, 0.8 * r}};
+                const double hook_area = 3.0 * r * 0.5 * r + 0.7 * r * r;
+                check_touching(cylinder, plan_prism(hook, -10, h + 10).transformed(tool), round, hook_area * (h + 20), plan_area_in_circle(hook, r) * h, 1, label + " hook", failures);
+            }
+    if (!failures.empty())
+        throw std::runtime_error(failures);
+}
+
+namespace session_cpp {
+MINI_TEST("BRep Native Boolean", "Cut Coverage Keeps Physical Prefix Across Tiny Raw Span") {
+    const double tolerance=1e-7,delta=std::ldexp(1.,-12),knot=std::ldexp(1.,-40);
+    NurbsCurve cut(3,false,2,3);cut.m_nurbsknot={0,knot,1};
+    MINI_CHECK(cut.set_cv(0,{0,0,0}) && cut.set_cv(1,{.5,0,0}) && cut.set_cv(2,{1,0,0}));
+    const auto boundary_base=NurbsCurve::create(false,1,{Point(delta,0,0),Point(1,0,0)});
+    const auto frozen_cut=cut.jsondump(),frozen_boundary=boundary_base.jsondump();
+    for (bool shifted_cut:{false,true}) for (bool reversed_boundary:{false,true}) {
+        auto original_cut=cut, boundary=boundary_base;
+        if (shifted_cut) MINI_CHECK(original_cut.set_domain(-7,13));
+        MINI_CHECK(boundary.set_domain(32,35));
+        if (reversed_boundary) MINI_CHECK(boundary.reverse());
+        const auto events=curve_intersection::intersect(original_cut,boundary,tolerance);
+        MINI_CHECK(events.complete && !events.overlaps.empty());
+        double first=original_cut.domain_end();
+        for (const auto& overlap:events.overlaps) {
+            MINI_CHECK(overlap.a0<overlap.a1);
+            MINI_CHECK(reversed_boundary ? overlap.b1<overlap.b0 : overlap.b0<overlap.b1);
+            first=std::min(first,overlap.a0);
+        }
+        const double raw_head=original_cut.domain_start()+std::ldexp(1.,-51)*
+            (original_cut.domain_end()-original_cut.domain_start());
+        const Point physical_head=original_cut.point_at(raw_head);
+        MINI_CHECK(physical_head[0]==delta && physical_head[1]==0 && physical_head[2]==0);
+        MINI_CHECK(first>original_cut.domain_start() && first-original_cut.domain_start()<1e-12);
+        MINI_CHECK(delta>1000*tolerance);
+        MINI_CHECK(!brep_boolean::detail::whole_raw_cut_coverage(original_cut.domain(),events));
+        const auto full=curve_intersection::intersect(original_cut,original_cut,tolerance);
+        MINI_CHECK(full.complete && brep_boolean::detail::whole_raw_cut_coverage(original_cut.domain(),full));
+    }
+    // The missing prefix lies strictly inside this L-face; its covered suffix is original boundary.
+    BRep face;
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,-1,0),Point(0,1,0),Point(1,-1,0),Point(1,1,0)});
+    MINI_CHECK(support.set_domain(0,0,1) && support.set_domain(1,-1,1));
+    const int surface=face.add_surface(support);
+    const std::vector<Point> polygon{{0,-1,0},{1,-1,0},{1,0,0},{delta,0,0},{delta,1,0},{0,1,0}};
+    std::vector<int> vertices;for (const auto& point:polygon) vertices.push_back(face.add_vertex(point));
+    std::vector<BRepRef> wire;
+    for (size_t i=0;i<polygon.size();++i) {
+        const size_t next=(i+1)%polygon.size();
+        const auto curve=NurbsCurve::create(false,1,{polygon[i],polygon[next]});
+        const int edge=face.add_edge(face.add_curve_3d(curve),vertices[i],vertices[next]);
+        face.add_pcurve(edge,surface,face.add_curve_2d(curve));wire.push_back({edge,BRepOrientation::Forward});
+    }
+    face.add_face(surface,{{face.add_wire(wire),BRepOrientation::Forward}});
+    MINI_CHECK(face.is_valid());
+    MINI_CHECK(brep_classify::face_uv(face,0,{delta*.5,0,0},tolerance)==brep_classify::State::Inside);
+    const auto split_result=split::split_brep_face_by_pcurves(face,0,{{cut,cut,271}},tolerance);
+    MINI_CHECK(split_result.brep.is_valid() && split_result.faces.size()==2);
+    MINI_CHECK(cut.jsondump()==frozen_cut && boundary_base.jsondump()==frozen_boundary);
+}
+MINI_TEST("BRep Native Boolean", "Disjoint Cut Is Not Covered On One ULP Raw Domain") {
+    auto cut=NurbsCurve::create(false,1,{Point(0,0,0),Point(1,0,0)});
+    MINI_CHECK(cut.set_domain(3,std::nextafter(3.,4.)));
+    const auto boundary=NurbsCurve::create(false,1,{Point(2,0,0),Point(3,0,0)});
+    const auto events=curve_intersection::intersect(cut,boundary,1e-7);
+    MINI_CHECK(events.complete && events.points.empty() && events.overlaps.empty());
+    const Point start=cut.point_at_start(),end=cut.point_at_end();
+    MINI_CHECK(start[0]==0 && start[1]==0 && start[2]==0);
+    MINI_CHECK(end[0]==1 && end[1]==0 && end[2]==0);
+    MINI_CHECK(!brep_boolean::detail::whole_raw_cut_coverage(cut.domain(),events));
+}
+} // namespace session_cpp
+
+
+MINI_TEST("BRep Native Boolean", "Original Event Consumer Keeps Nearby Distinct Raw Vertex Identities") {
+    const double tolerance=1e-6;
+    auto owner=BRep::create_box(2,2,2);
+    const auto& world=owner.m_curves_3d[owner.m_edges[0].curve_3d_index];
+    const auto domain=world.domain();
+    const double first=std::midpoint(domain.first,domain.second);
+    const double second=first+(domain.second-domain.first)*std::ldexp(1.,-25);
+    const int a=owner.add_vertex(world.point_at(first),tolerance),b=owner.add_vertex(world.point_at(second),tolerance);
+    MINI_CHECK(a!=b && owner.m_vertices[a].point.distance(owner.m_vertices[b].point)<tolerance);
+    const auto frozen=owner.jsondump();
+    const std::vector<split::EdgeEvent> events{{0,second,b},{0,first,a},{0,first,a}};
+    const auto result=brep_boolean::detail::split_preserved_original_events(owner,events,tolerance);
+    for (const auto& wanted:events) {
+        size_t count=0;
+        for (const auto& receipt:result.edge_events)
+            if (receipt.edge==wanted.edge && receipt.parameter==wanted.parameter && receipt.vertex==wanted.vertex) ++count;
+        MINI_CHECK(count==1);
+    }
+    bool tiny=false;
+    for (const auto& piece:result.edges) if (piece.source_edge==0 && piece.first==first && piece.last==second) {
+        const auto& edge=result.brep.m_edges[piece.edge];
+        MINI_CHECK(edge.start_vertex==a && edge.end_vertex==b);tiny=true;
+    }
+    MINI_CHECK(tiny && owner.jsondump()==frozen);
+}
+MINI_TEST("BRep Native Boolean", "Original Event Consumer Rejects Conflicting Ids At Exact Raw Event") {
+    auto owner=BRep::create_box(2,2,2);
+    const auto& world=owner.m_curves_3d[owner.m_edges[0].curve_3d_index];
+    const double raw=std::midpoint(world.domain_start(),world.domain_end());
+    const Point point=world.point_at(raw);
+    const int a=owner.add_vertex(point),b=owner.add_vertex(point);
+    MINI_CHECK(a!=b);
+    const auto frozen=owner.jsondump();bool rejected=false;
+    try { brep_boolean::detail::split_preserved_original_events(owner,{{0,raw,a},{0,raw,b}},1e-7); }
+    catch (const brep_boolean::detail::OriginalEventIdentityError& error) {
+        rejected=true;MINI_CHECK(error.first.edge==0 && error.second.edge==0);
+        MINI_CHECK(error.first.parameter==raw && error.second.parameter==raw);
+        MINI_CHECK(error.first.vertex!=error.second.vertex);
+    }
+    MINI_CHECK(rejected && owner.jsondump()==frozen);
+}
+MINI_TEST("BRep Native Boolean", "Original Event Consumer Keeps Distinct Returning Raw Preimages") {
+    auto owner=BRep::create_box(2,2,2);
+    // One original open face is an edge-occurrence diagnostic, not a regular-solid claim.
+    // The returning edge can have a closed positive loop at one canonical vertex.
+    int selected=-1;
+    for (int face=0;face<owner.face_count() && selected<0;++face)
+        for (const auto& wire:owner.m_faces[face].wires)
+            for (const auto& use:owner.wire_edges(wire))
+                if (use.index==0) selected=face;
+    MINI_CHECK(selected>=0);
+    owner.m_faces={owner.m_faces[selected]};
+    owner.m_shells.clear();owner.m_solids.clear();
+    MINI_CHECK(owner.face_count()==1 && owner.solid_count()==0);
+    const int curve_index=owner.m_edges[0].curve_3d_index;
+    const Point a=owner.m_curves_3d[curve_index].point_at_start(),b=owner.m_curves_3d[curve_index].point_at_end();
+    const std::array<double,5> fractions{0,.5,.75,.5,1};
+    NurbsCurve returning(3,false,2,5);returning.m_nurbsknot={0,1,2,3,4};
+    for (int i=0;i<5;++i) MINI_CHECK(returning.set_cv(i,a+(b-a)*fractions[i]));
+    owner.m_curves_3d[curve_index]=returning;
+    for (const auto& association:owner.m_edges[0].pcurves)
+        for (int index:{association.curve_2d_index,association.curve_2d_index_2}) if (index>=0) {
+            const Point first=owner.m_curves_2d[index].point_at_start(),last=owner.m_curves_2d[index].point_at_end();
+            NurbsCurve pc(3,false,2,5);pc.m_nurbsknot={0,1,2,3,4};
+            for (int i=0;i<5;++i) MINI_CHECK(pc.set_cv(i,first+(last-first)*fractions[i]));
+            owner.m_curves_2d[index]=pc;
+            MINI_CHECK(curve_surface_intersection::same_parameter(returning,pc,
+                owner.m_surfaces[association.surface_index],1e-7)==curve_surface_intersection::ParameterMatch::Matched);
+        }
+    MINI_CHECK(owner.is_valid());
+    const Point point=returning.point_at(1);
+    const Point repeated=returning.point_at(3);
+    for (int d=0;d<3;++d) MINI_CHECK(point[d]==repeated[d]);
+    const int canonical=owner.add_vertex(point);
+    const auto frozen=owner.jsondump();
+    const auto result=brep_boolean::detail::split_preserved_original_events(owner,{{0,1,canonical},{0,3,canonical}},1e-7);
+    for (double raw:{1.,3.}) {
+        bool present=false;
+        for (const auto& receipt:result.edge_events)
+            present=present || (receipt.edge==0 && receipt.parameter==raw && receipt.vertex==canonical);
+        MINI_CHECK(present);
+    }
+    bool loop=false;
+    for (const auto& piece:result.edges) if (piece.source_edge==0 && piece.first==1 && piece.last==3) {
+        const auto& edge=result.brep.m_edges[piece.edge];
+        MINI_CHECK(edge.start_vertex==canonical && edge.end_vertex==canonical);
+        const auto& actual=result.brep.m_curves_3d[edge.curve_3d_index];
+        MINI_CHECK(actual.point_at(2).distance(point)>1e-3);loop=true;
+    }
+    MINI_CHECK(loop && owner.jsondump()==frozen);
+}
+
+MINI_TEST("BRep Native Boolean", "Cut Endpoint Receipt Requires Original Raw Ownership") {
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,0,0),Point(0,1,0),Point(1,0,0),Point(1,1,0)});
+    auto world=NurbsCurve::create(false,1,{Point(.5,.25,0),Point(.5,.75,0)});
+    auto pc=world;
+    MINI_CHECK(world.set_domain(-7,13) && pc.set_domain(32,35));
+    brep_section::FaceResult inventory;
+    inventory.curves.push_back({0,1,world,pc,pc});
+    brep_section::BoundaryEvent event;
+    event.operand=0;event.hit.face=1;event.hit.t=3;
+    event.uses.push_back({0,0,0,0});
+    event.owners.push_back({0,3,-7});
+    inventory.boundary_events.push_back(event);
+    brep_section::PointNode node;
+    node.point=world.point_at_start();node.boundary_events={0};
+    inventory.nodes.push_back(node);
+    split::FaceCut cut{world,pc,0};
+    const auto frozen_world=cut.world.jsondump(),frozen_pc=cut.pcurve.jsondump();
+    for (int target_operand:{0,1})
+        for (int event_operand:{0,1}) {
+            inventory.boundary_events[0].operand=event_operand;
+            inventory.boundary_events[0].hit.face=event_operand?0:1;
+            inventory.boundary_events[0].uses[0].face=event_operand?1:0;
+            split::FaceCut bound{world,pc,0};
+            brep_boolean::detail::bind_cut_endpoints(bound,target_operand,target_operand,inventory,support,1e-7);
+            MINI_CHECK(bound.canonical_endpoints[0].node==0 && bound.canonical_endpoints[0].world_parameter==-7);
+            MINI_CHECK(bound.canonical_endpoints[0].boundary_events==std::vector<size_t>{0});
+            MINI_CHECK(bound.canonical_endpoints[1].node==std::numeric_limits<size_t>::max());
+        }
+    brep_boolean::detail::bind_cut_endpoints(cut,0,0,inventory,support,1e-7);
+    MINI_CHECK(cut.world.jsondump()==frozen_world && cut.pcurve.jsondump()==frozen_pc);
+    inventory.boundary_events[0].owners[0].target_parameter=std::nextafter(-7.,13.);
+    brep_boolean::detail::bind_cut_endpoints(cut,0,0,inventory,support,1e-7);
+    MINI_CHECK(cut.canonical_endpoints[0].node==std::numeric_limits<size_t>::max());
+    split::FaceCut wrong{world,pc,0};
+    brep_boolean::detail::bind_cut_endpoints(wrong,0,0,inventory,support,1e-7);
+    MINI_CHECK(wrong.canonical_endpoints[0].node==std::numeric_limits<size_t>::max());
+    auto interior=world;MINI_CHECK(interior.set_domain(-6,13));
+    split::FaceCut clipped{interior,pc,0};
+    brep_boolean::detail::bind_cut_endpoints(clipped,0,0,inventory,support,1e-7);
+    MINI_CHECK(clipped.canonical_endpoints[0].node==std::numeric_limits<size_t>::max());
 }

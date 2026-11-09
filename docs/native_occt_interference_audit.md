@@ -501,3 +501,51 @@ The standalone self-intersection helper now passes all seven groups, including t
 An initial integration rerun used a stale object: PowerShell `Copy-Item` retained the draft's 00:54:38 timestamp, earlier than the 00:56:06 object. Build16905 therefore omitted `split.cpp`. The failing `native-single-span-self-integrated.log` and `native-two-loops-self-integrated.log` describe the old binary and are retained as build-process evidence, not a new algorithmic regression. The source timestamp is refreshed; the next build must explicitly compile the file before drawing conclusions.
 
 The separate nesting correction is actually compiled and passes its preserved fixture in70.88ms. All four inward shapes now reach a closed one-shell solid after the shared-parameter fix, but retain extra degree-two subdivisions; their strict6/12/8 assertions still fail. No topology threshold was changed.
+
+### Original event and materialized vertex identity — 2026-11-06
+
+The native Boolean consumer averaged nearby original-edge parameters after the
+intersection inventory had already assigned canonical nodes. This discarded raw
+occurrences and could erase a positive edge. The applied correction retains each
+(edge, raw parameter, owner-local vertex) triple; only identical triples deduplicate.
+Conflicting vertex IDs at one exact raw event remain explicit failures. Runtime
+qualification of this correction is pending.
+
+A separate source review found that face materialization searched a world-space
+vertex pool again, discarding the arrangement graph's identities. The reviewed
+replacement carries graph endpoint IDs through tracing and continuation, preserves
+original vertex indices, and prebinds original boundary occurrences before cutters.
+Periodic UV seam nodes share an original-edge raw alias only with exact normalized
+parameter correspondence; rounded equal parameters do not establish identity.
+
+OCCT d3056ef80c9668f395da40f5fd7be186cae4501f, BOPAlgo_PaveFiller_7.cxx,
+MakeSplitEdges (473–490), obtains vertex indices and range from PaveBlock/CommonBlock
+before constructing an edge. Degenerate edges take a separate path:
+BOPAlgo_PaveFiller_8.cxx ProcessDE resolves the original vertex, FillPaves keeps that
+index for UV split parameters, and MakeSplitEdge1 retains it while setting each
+face-pcurve range. Accordingly, our pole rule requires an explicitly degenerate
+original edge, identical original endpoint indices, and its whole constant world
+law. It does not collapse a nonconstant returning curve with equal endpoints.
+
+The graph replacement and positive thin-region, cylinder-seam and sphere-pole
+regressions are source-reviewed drafts at this checkpoint, not runtime results.
+
+Subsequent checkpoint: the graph replacement, pole/seam handling and canonical
+endpoint checks were applied after independent composition review. Eight further
+regressions accompany that seven-file patch; all 91 existing test bodies are
+preserved. Fresh compilation and runtime qualification remain pending.
+
+Runtime update 2026-11-06: that build passed; all eight graph/canonical tests and
+the full Split group (45/45) passed. Native Section remains 32/38 and Native
+Boolean 32/40. Full qualification is not accepted.
+
+Two further native repairs are applied, awaiting their own fresh build:
+exact affine interior preimages for paired tangent contacts, and finite original
+knot preimages for rational boundary point incidences. IntAna_QuadQuadGeo plane/
+sphere Perform (980–1003) and IntPatch_ImpImpIntersection (3352–3410) establish a
+point with coordinates on both supports without requiring two knot corners.
+BOPAlgo_PaveFiller_6 PutPaveOnCurve (2959–3050) retains the vertex index and curve
+parameter for interior incidences. Session uses exact original-support proofs
+for these bounded paths; unsupported cases remain unresolved. No OCCT runtime
+dependency was introduced. Four new regressions include shifted/sheared rational
+planes, sphere meridian knots, returning raw occurrences and negative controls.

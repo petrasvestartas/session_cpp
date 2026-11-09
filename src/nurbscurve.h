@@ -436,7 +436,9 @@ public:
     /// Swap two coordinate axes of every CV.
     bool swap_coordinates(int axis_i, int axis_j);
 
-    /// Keep [t0, t1] by nurbsknot insertion.
+    /// Keep valid in-domain raw bounds without near-knot substitution.
+    /// Nonwrapped knot multiplicity is exact; wrapped insertion retains its policy.
+    /// A positive nonconstant Bezier interval that materializes as constant is declined unchanged.
     bool trim(double t0, double t1);
 
     /// Approximate the signed offset along tangent cross normal with native adaptive residual checks.

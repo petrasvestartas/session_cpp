@@ -2,6 +2,8 @@
 #include "nurbs_interval.h"
 #include "curve_surface_intersection.h"
 #include "brep.h"
+#include "intersection.h"
+#include "xform.h"
 #include "mini_test.h"
 #include "primitives.h"
 #include <array>
@@ -898,6 +900,32 @@ MINI_TEST("Curve Surface Native", "Line Running Past A Surface Along Its Ruling"
     MINI_CHECK(std::abs(line.point_at(events.overlaps[0].t1)[2] - 425) < 1e-9);
     const Point uv = events.overlaps[0].pcurve.point_at_end();
     MINI_CHECK(cylinder.point_at(uv[0], uv[1]).distance(Point(corner[0], corner[1], 425)) < 1e-9);
+}
+
+MINI_TEST("Curve Surface Native", "Line Tangent To A Turned Cylinder Hits Once") {
+    for (double turn : {0.0, 0.3, 1.0, 2.2}) {
+        const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 100, 425).transformed(Xform::rotation_z(turn));
+        const Point start = Point(100, -40, 240).transformed(Xform::rotation_z(turn + 0.7));
+        const Point end = Point(100, 40, 240).transformed(Xform::rotation_z(turn + 0.7));
+        const auto events = curve_surface_intersection::intersect(NurbsCurve::create(false, 1, {start, end}), cylinder, 1e-7);
+        MINI_CHECK(events.complete && events.points.size() == 1 && events.points[0].tangent);
+        MINI_CHECK(std::abs(events.points[0].t - 40.0) < 1e-6);
+    }
+}
+
+MINI_TEST("Curve Surface Native", "Crossing Cylinders Section Stays Small And Certified") {
+    NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150, 10, 300).transformed(Xform::rotation_x(0.5 * Tolerance::PI));
+    drill = drill.transformed(Xform::translation(0, 0, 200));
+    const NurbsSurface body = Primitives::cylinder_surface(0, 0, 0, 100, 425);
+    const auto sections = Intersection::surface_surface(body, drill, 1e-7, true);
+    MINI_CHECK(sections.size() >= 2);
+    for (const auto& section : sections) {
+        MINI_CHECK(std::get<0>(section).cv_count() <= 300);
+        MINI_CHECK(curve_surface_intersection::same_parameter(std::get<0>(section), std::get<1>(section), body, 1e-7)
+            == curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(std::get<0>(section), std::get<2>(section), drill, 1e-7)
+            == curve_surface_intersection::ParameterMatch::Matched);
+    }
 }
 
 } // namespace session_cpp

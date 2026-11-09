@@ -2,6 +2,7 @@
 #include "brep_assemble.h"
 #include "tolerance.h"
 #include "brep_measure.h"
+#include "brep_face_boundary.h"
 #include "brep_measure_polynomial.h"
 #include "brep_measure_plane.h"
 #include "file_step.h"
@@ -12,6 +13,8 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <string>
 
 using namespace session_cpp;
 using namespace session_cpp::mini_test;
@@ -511,4 +514,159 @@ MINI_TEST("BRep Native Measure", "Sphere Xor Shared Support Primitive Reuse") {
     }
     MINI_CHECK(source.jsondump()==before);
 }
+}
+
+MINI_TEST("BRep Native Measure", "Polynomial Cache Keeps Original Endspan Law Outside Support") {
+    NurbsSurface surface(3,false,2,2,2,2);
+    surface.m_nurbsknot[0]={0,1};surface.m_nurbsknot[1]={0,1};
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j)
+        MINI_CHECK(surface.set_cv(i,j,{double(i),double(j),double(2+i+j)}));
+    const auto frozen=surface.jsondump();
+    size_t work=0;
+    const brep_measure::plane::Primitive cache(surface,{0,1,0,1},200000,[&](){++work;});
+    MINI_CHECK(!cache.cells.empty() && work>0 && work<200000);
+    for (const auto uv : {std::pair{.5,-.125},std::pair{-.125,.5},std::pair{1.25,1.5},
+                         std::pair{.5,-1.3104437689524747e-15}}) {
+        const auto actual=cache.at(uv.first,uv.second);
+        // Fz=2+u+v, so its ORIGINAL U primitive is 2u+u²/2+uv, including continuation.
+        const double expected=2*uv.first+.5*uv.first*uv.first+uv.first*uv.second;
+        MINI_CHECK(nurbs_interval::finite(actual));
+        MINI_CHECK(actual.lo<=expected && expected<=actual.hi);
+        const auto original=surface.point_at(uv.first,uv.second);
+        MINI_CHECK(std::abs(original[2]-(2+uv.first+uv.second))<=1e-14);
+    }
+    MINI_CHECK(surface.jsondump()==frozen);
+}
+
+MINI_TEST("BRep Native Measure", "Cropped Primitive Cannot Continue Across Omitted Original Cells") {
+    NurbsSurface surface(3,false,2,2,3,3);
+    surface.m_nurbsknot[0]={0,.5,1};surface.m_nurbsknot[1]={0,.5,1};
+    for (int i=0;i<3;++i) for (int j=0;j<3;++j)
+        MINI_CHECK(surface.set_cv(i,j,{i*.5,j*.5,2+i*.5+j*.5}));
+    const brep_measure::plane::Primitive cache(surface,{.625,.875,.625,.875},200000,[](){});
+    MINI_CHECK(cache.u.front()==.5 && cache.v.front()==.5);
+    MINI_CHECK(nurbs_interval::finite(cache.at(.5,.75)));
+    MINI_CHECK(!nurbs_interval::finite(cache.at(std::nextafter(.5,0.),.75)));
+    MINI_CHECK(!nurbs_interval::finite(cache.at(.75,std::nextafter(.5,0.))));
+    MINI_CHECK(!nurbs_interval::finite(cache.at(-.125,.75)));
+    MINI_CHECK(!nurbs_interval::finite(cache.at(.75,-.125)));
+    MINI_CHECK(nurbs_interval::finite(cache.at(1.125,.75)));
+    MINI_CHECK(!nurbs_interval::finite(cache.at(std::numeric_limits<double>::infinity(),.75)));
+}
+
+MINI_TEST("BRep Native Measure", "Actual MacOS Box Boundary Primitive Remains Finite") {
+    const auto path=std::filesystem::path(__FILE__).parent_path().parent_path()/
+        "tests/fixtures/native_macos_box_boundary_primitive.json";
+    std::ifstream input(path);MINI_CHECK(input.good());
+    const auto witness=nlohmann::ordered_json::parse(input);
+    const auto surface=NurbsSurface::jsonload(witness.at("surface"));
+    const auto curve=NurbsCurve::jsonload(witness.at("curve"));
+    const auto frozen_s=surface.jsondump(),frozen_c=curve.jsondump();
+    const auto u=surface.domain(0),v=surface.domain(1);
+    const brep_measure::plane::Primitive cache(surface,{u.first,u.second,v.first,v.second},200000,[](){});
+    const double t=witness.at("parameter");
+    const auto derivatives=curve.evaluate(t,1);
+    MINI_CHECK(derivatives[0][1]<v.first);
+    const auto primitive=cache.at(derivatives[0][0],derivatives[0][1]);
+    MINI_CHECK(nurbs_interval::finite(primitive));
+    MINI_CHECK(nurbs_interval::finite(primitive*nurbs_interval::Interval(derivatives[1][1])));
+    MINI_CHECK(surface.jsondump()==frozen_s && curve.jsondump()==frozen_c);
+}
+
+
+namespace {
+BRep pooled_range_box(bool quadratic_pcurves) {
+    BRep shape=BRep::create_box(2,3,4);
+    const auto extend=[](NurbsCurve& curve) {
+        MINI_CHECK(curve.degree()==1 && curve.cv_count()==2);
+        const auto a=curve.get_cv(0),b=curve.get_cv(1);
+        MINI_CHECK(curve.set_cv(0,a-(b-a)*.5));
+        MINI_CHECK(curve.set_cv(1,b+(b-a)*.5));
+    };
+    for (auto& curve:shape.m_curves_3d) extend(curve);
+    for (auto& curve:shape.m_curves_2d) extend(curve);
+    for (auto& edge:shape.m_edges) {
+        const auto full=shape.m_curves_3d[edge.curve_3d_index].domain();
+        edge.world_range=BRepCurveUseRange{std::lerp(full.first,full.second,.25),std::lerp(full.first,full.second,.75)};
+        for (auto& pc:edge.pcurves) for (int side=0;side<2;++side) {
+            const int index=side?pc.curve_2d_index_2:pc.curve_2d_index;
+            if (index<0) continue;
+            const auto raw=shape.m_curves_2d[index].domain();
+            (side?pc.secondary_range:pc.primary_range)=BRepCurveUseRange{
+                std::lerp(raw.first,raw.second,.25),std::lerp(raw.first,raw.second,.75)};
+        }
+    }
+    if (quadratic_pcurves)
+        for (auto& pc:shape.m_curves_2d) MINI_CHECK(pc.increase_degree(2));
+    MINI_CHECK(shape.is_valid() && shape.is_solid() && shape.has_restricted_curve_uses());
+    return shape;
+}
+BRep explicit_range_box(const BRep& ranged) {
+    BRep shape=ranged;
+    std::set<int> world_done,pc_done;
+    for (auto& edge:shape.m_edges) {
+        if (world_done.insert(edge.curve_3d_index).second)
+            MINI_CHECK(shape.m_curves_3d[edge.curve_3d_index].trim(edge.world_range->first,edge.world_range->last));
+        edge.world_range.reset();
+        for (auto& pc:edge.pcurves) for (int side=0;side<2;++side) {
+            const int index=side?pc.curve_2d_index_2:pc.curve_2d_index;
+            if (index<0) continue;
+            auto& range=side?pc.secondary_range:pc.primary_range;
+            if (pc_done.insert(index).second) MINI_CHECK(shape.m_curves_2d[index].trim(range->first,range->last));
+            range.reset();
+        }
+    }
+    MINI_CHECK(shape.is_valid() && shape.is_solid() && !shape.has_restricted_curve_uses());
+    return shape;
+}
+}
+MINI_TEST("BRep Native Measure", "Original Curve Use Ranges Match Explicit Box Trims And Signed Volume") {
+    for (bool quadratic:{false,true}) for (bool reverse:{false,true}) {
+        auto ranged=pooled_range_box(quadratic);
+        auto explicit_shape=explicit_range_box(ranged);
+        if (reverse) {
+            ranged.m_solids[0].shells[0].orientation=BRepOrientation::Reversed;
+            explicit_shape.m_solids[0].shells[0].orientation=BRepOrientation::Reversed;
+        }
+        const auto frozen=ranged.jsondump(),explicit_frozen=explicit_shape.jsondump();
+        const double expected=reverse?-24.:24.;
+        const double a=ranged.volume_exact(1e-8),b=explicit_shape.volume_exact(1e-8);
+        MINI_CHECK(std::abs(a-expected)<=24e-8 && std::abs(b-expected)<=24e-8);
+        MINI_CHECK(std::abs(a-b)<=24e-8);
+        MINI_CHECK(ranged.m_curves_3d.size()==12 && ranged.m_edges.size()==12);
+        MINI_CHECK(ranged.jsondump()==frozen && explicit_shape.jsondump()==explicit_frozen);
+    }
+}
+MINI_TEST("BRep Native Measure", "Extracted Boundary Uses Keep Original Active Ranges And Primary Fallback") {
+    const auto owner=pooled_range_box(false);const auto frozen=owner.jsondump();
+    for (int face=0;face<owner.face_count();++face) {
+        const auto boundary=brep_face_boundary::extract(owner,face);
+        MINI_CHECK(boundary.complete);
+        for (const auto& wire:boundary.wires) for (const auto& use:wire.uses) {
+            MINI_CHECK(use.world_domain==owner.edge_domain(use.edge.index));
+            MINI_CHECK(use.pcurve_domain==owner.pcurve_domain(use.edge.index,face,use.edge.orientation));
+            MINI_CHECK(use.world_domain!=owner.m_curves_3d[owner.m_edges[use.edge.index].curve_3d_index].domain());
+            brep_face_boundary::Use reverse;std::string reason;
+            MINI_CHECK(brep_face_boundary::detail::extract_use(owner,face,
+                {use.edge.index,BRepOrientation::Reversed},reverse,reason));
+            MINI_CHECK(reverse.pcurve==owner.pcurve_index(use.edge.index,face,BRepOrientation::Reversed));
+            MINI_CHECK(reverse.pcurve_domain==owner.pcurve_domain(use.edge.index,face,BRepOrientation::Reversed));
+        }
+    }
+    MINI_CHECK(owner.jsondump()==frozen);
+}
+MINI_TEST("BRep Native Measure", "Restricted Curve Uses Reject Tessellation Before Full Pool Fallback") {
+    const auto owner=pooled_range_box(false);const auto frozen=owner.jsondump();
+    for (int entry=0;entry<3;++entry) {
+        bool rejected=false;
+        try {
+            if (entry==0) owner.mesh();
+            else if (entry==1) owner.face_meshes();
+            else owner.tessellate(.01,.2);
+        } catch (const std::runtime_error& error) {
+            rejected=std::string(error.what()).find("restricted original curve uses")!=std::string::npos;
+        }
+        MINI_CHECK(rejected);
+    }
+    MINI_CHECK(owner.jsondump()==frozen);
 }

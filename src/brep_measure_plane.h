@@ -27,6 +27,7 @@ inline bool c1(const NurbsSurface& surface) {
 
 struct Primitive {
     std::vector<double> u, v;
+    std::array<double,4> original_domain{};
     std::vector<Grid> cells;
     using Key = std::tuple<int, int, size_t, size_t>;
     std::map<Key, Interval> derivatives;
@@ -60,6 +61,8 @@ struct Primitive {
         const int p = surface.degree(0), q = surface.degree(1);
         if (surface.is_rational() || p < 1 || q < 1 || p > 3 || q > 3)
             return;
+        original_domain = {surface.domain(0).first,surface.domain(0).second,
+                           surface.domain(1).first,surface.domain(1).second};
         const auto crop = [&](int d, double lo, double hi) {
             const auto all = surface.get_span_vector(d);
             if (all.size() < 2 || !std::isfinite(lo) || !std::isfinite(hi) || lo < all.front() ||
@@ -118,17 +121,19 @@ struct Primitive {
     }
 
     Interval at(double first, double second) const {
-        if (cells.empty() || !std::isfinite(first) || !std::isfinite(second) || first < u.front() ||
-            first > u.back() || second < v.front() || second > v.back())
+        // The original endspan polynomial remains the same law outside its raw
+        // support boundary. A cropped interior boundary cannot cross omitted cells.
+        if (cells.empty() || !std::isfinite(first) || !std::isfinite(second) ||
+            (first < u.front() && u.front() != original_domain[0]) ||
+            (first > u.back() && u.back() != original_domain[1]) ||
+            (second < v.front() && v.front() != original_domain[2]) ||
+            (second > v.back() && v.back() != original_domain[3]))
             return {-std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
-        const size_t i =
-            std::min(static_cast<size_t>(std::upper_bound(u.begin(), u.end(), first) - u.begin()),
-                     u.size() - 1) -
-            1;
-        const size_t j =
-            std::min(static_cast<size_t>(std::upper_bound(v.begin(), v.end(), second) - v.begin()),
-                     v.size() - 1) -
-            1;
+        const auto cell = [](const std::vector<double>& knots, double parameter) {
+            const size_t index = static_cast<size_t>(std::upper_bound(knots.begin(),knots.end(),parameter)-knots.begin());
+            return std::min(std::max(size_t(1),index),knots.size()-1)-1;
+        };
+        const size_t i = cell(u,first), j = cell(v,second);
         return polynomial::evaluate(
             cells[j * (u.size() - 1) + i],
             (Interval(first) - Interval(u[i])) / (Interval(u[i + 1]) - Interval(u[i])),

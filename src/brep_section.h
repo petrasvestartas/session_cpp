@@ -11,6 +11,15 @@
 
 namespace session_cpp::brep_section {
 
+/// Partial original uses require interval-aware Section workers; no pooled-law fallback.
+struct RangedInputError : std::runtime_error {
+    int operand, face, edge, pcurve;
+    std::pair<double,double> range;
+    RangedInputError(int owner,int owner_face,int owner_edge,int image,std::pair<double,double> raw)
+        :std::runtime_error("Native Section does not yet support partial original curve uses"),
+         operand(owner),face(owner_face),edge(owner_edge),pcurve(image),range(raw) {}
+};
+
 struct CurveHit {
     Point point;
     int face;
@@ -40,6 +49,7 @@ struct FaceCurve {
     NurbsCurve world;
     NurbsCurve first_pcurve;
     NurbsCurve second_pcurve;
+    bool touching = false; // The surfaces part again either side: a section locus that bounds no material.
 };
 
 /// Legacy coincidence candidate; whole-domain qualification and trim-area handling are separate.
@@ -84,6 +94,15 @@ struct BoundaryEvent {
     std::vector<EdgeUse> uses;
     std::vector<CurveOwnership> owners;
     bool isolated = true;
+    bool retained = true; // Excluded original uses remain provenance, never contact nodes.
+    std::vector<double> source_parameters; // Actual ORIGINAL selected-PC raw proposals, parallel to uses.
+};
+
+struct BoundarySpanExclusion {
+    int operand=-1,edge=-1,other_face=-1;
+    EdgeUse use;
+    double first=0,last=0; // ORIGINAL source-world raw interval, never erased/merged.
+    bool own_outside=false,target_outside=false;
 };
 
 struct SupportPoint {
@@ -154,16 +173,38 @@ struct OriginalTrimEvent {
 };
 
 /// Original laws and all unmerged raw trim identities before piece materialization.
+/// A positive original raw interval represented by one exact shared boundary event.
+struct OriginalTrimOwnership {
+    double first = 0, last = 0;
+    std::array<double,3> homogeneous{};
+    double weight = 0;
+    Point center;
+    size_t node = static_cast<size_t>(-1);
+    std::vector<size_t> events;
+    std::vector<std::pair<double,double>> boundary_parameters;
+    std::vector<NurbsCurve> boundary_laws;
+};
+
+/// An emitted support piece, bound to its original raw law at the actual push site.
+struct OriginalTrimPiece {
+    double first=0,last=0;
+    size_t curve=0;
+};
 struct OriginalTrimLaw {
     FaceCurve original;
     std::vector<OriginalTrimEvent> events;
+    std::vector<OriginalTrimOwnership> owned_intervals;
+    std::vector<double> partition;
+    std::vector<OriginalTrimPiece> retained_pieces;
+    bool trim_ownership_complete=false;
 };
 
 struct FaceResult {
     std::vector<OriginalTrimLaw> original_trim_laws;
     std::vector<FaceCurve> curves; // Every face-pair incidence is retained.
     std::vector<FaceOverlap> overlaps;
-    std::vector<BoundaryEvent> boundary_events; // Includes curve-owned endpoints.
+    std::vector<BoundaryEvent> boundary_events; // Includes retained and excluded original use receipts.
+    std::vector<BoundarySpanExclusion> excluded_boundary_spans;
     std::vector<SupportPoint> support_points;
     std::vector<UVOnlyIncidence> uv_only_incidences;
     std::vector<UnrepresentedUVIncidence> unrepresented_uv_incidences;

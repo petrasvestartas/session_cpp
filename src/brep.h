@@ -11,6 +11,8 @@
 #include "polyline.h"
 #include "xform.h"
 #include <string>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace session_proto {
@@ -51,11 +53,18 @@ struct BRepVertex {
     double tolerance = 0.0; // Vertex tolerance.
 };
 
+/// Literal ascending ORIGINAL curve-use parameters; absent metadata means full source domain.
+struct BRepCurveUseRange {
+    double first=0,last=0;
+    bool operator==(const BRepCurveUseRange&) const = default;
+};
+
 /// BRep_CurveOnSurface: curve_2d_index_2 is the pcurve of the REVERSED use on a closed surface (seam), -1 otherwise; pcurves run in the edge's own direction
 struct BRepCurveOnSurface {
     int surface_index = -1; // Surface the pcurve lies on.
     int curve_2d_index = -1; // Pcurve of the forward use.
     int curve_2d_index_2 = -1; // Reversed use on a seam, else -1.
+    std::optional<BRepCurveUseRange> primary_range,secondary_range;
 };
 
 /// BRep_TEdge: curve_3d_index is -1 for a degenerated edge (sphere pole, cone apex)
@@ -66,6 +75,7 @@ struct BRepEdge {
     double tolerance = 0.0; // Edge tolerance.
     bool degenerated = false; // True for a pole or apex edge.
     std::vector<BRepCurveOnSurface> pcurves; // One per surface.
+    std::optional<BRepCurveUseRange> world_range;
 };
 
 /// TopoDS_TWire
@@ -237,6 +247,15 @@ public:
 
     /// BRep_Tool::CurveOnSurface(E, F): the pcurve index of an edge on a face's surface for the given use orientation (the REVERSED pcurve on a seam); -1 if none
     int pcurve_index(int edge_index, int face_index, BRepOrientation orientation) const;
+
+    /// Literal intrinsic active use domain; missing range metadata uses the full original source.
+    std::pair<double,double> edge_domain(int edge_index) const;
+    std::pair<double,double> pcurve_domain(int edge_index,int face_index,
+        BRepOrientation orientation=BRepOrientation::Forward) const;
+    /// Presence test for lossless serialization guards; does not certify consumer migration.
+    bool has_curve_use_ranges() const;
+    /// Semantic restriction test; explicit full-domain ranges are false, malformed metadata throws.
+    bool has_restricted_curve_uses() const;
 
     /// The edges of a wire composed with the wire's own orientation (a Reversed wire is traversed backwards with every edge reversed)
     std::vector<BRepRef> wire_edges(const BRepRef& wire) const;

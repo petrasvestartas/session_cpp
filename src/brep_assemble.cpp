@@ -1331,6 +1331,10 @@ BRep assemble(const std::vector<FaceUse>& faces, double tolerance) {
     if (faces.empty())
         return {};
 
+    for (const auto& face : faces)
+        if (face.brep && face.brep->has_restricted_curve_uses())
+            throw std::invalid_argument("BRep assembly does not yet support partial original curve uses");
+
     Assembly assembly{{}, {}, {}, {}, {}, tolerance};
     collect(assembly, faces);
     synchronize(assembly);

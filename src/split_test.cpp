@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "split.h"
+#include "split_material_identity.h"
 #include "split_event_ownership.h"
 #include "nurbs_interval.h"
 #include "brep_classify.h"
@@ -1471,7 +1472,7 @@ MINI_TEST("Split", "Event Vertex Ownership Preserves Other Original Source Occur
         MINI_CHECK(original.is_valid());
         auto first_span=original;
         MINI_CHECK(first_span.trim(0,1));
-        MINI_CHECK(split::detail::injective_linear_span(first_span));
+        MINI_CHECK(split::detail::injective_span(first_span));
         MINI_CHECK(circular_contains(original,0,1,vertex,tolerance));
         const double other=closed?3:4;
         MINI_CHECK(circular_contains(original,other,other,vertex,tolerance));
@@ -1518,5 +1519,329 @@ MINI_TEST("Split", "Closed Boundary Seam Aliases Require Original Endpoint Ident
     sources[0]={&circle,false,9,9};
     MINI_CHECK(!split::detail::boundary_point_key(event,sources));
     MINI_CHECK(circle.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Graph Lineage Preserves Positive Anisotropic Regions And Raw Pieces") {
+    const double tolerance=std::ldexp(1.,-20),height=std::ldexp(1.,-16);
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,0,0),Point(0,height,0),Point(1,0,0),Point(1,height,0)});
+    BRep source;
+    const int surface=source.add_surface(support);
+    const std::vector<Point> polygon{{0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    std::vector<int> vertices;
+    for (const auto& p:polygon)
+        vertices.push_back(source.add_vertex(support.point_at(p[0],p[1])));
+    std::vector<BRepRef> wire;
+    for (size_t i=0;i<polygon.size();++i) {
+        const size_t j=(i+1)%polygon.size();
+        auto world=NurbsCurve::create(false,1,{support.point_at(polygon[i][0],polygon[i][1]),
+            support.point_at(polygon[j][0],polygon[j][1])});
+        auto pc=NurbsCurve::create(false,1,{polygon[i],polygon[j]});
+        MINI_CHECK(world.set_domain(-7,13) && pc.set_domain(32,35));
+        const int edge=source.add_edge(source.add_curve_3d(world),vertices[i],vertices[j]);
+        source.add_pcurve(edge,surface,source.add_curve_2d(pc));
+        wire.push_back({edge,BRepOrientation::Forward});
+    }
+    source.add_face(surface,{{source.add_wire(wire),BRepOrientation::Forward}});
+    MINI_CHECK(source.is_valid());
+    const std::vector<double> cuts_at{.375,.4375,.5,.5625};
+    std::vector<split::FaceCut> cuts;
+    for (double v:cuts_at) {
+        const auto world=NurbsCurve::create(false,1,{Point(0,height*v,0),Point(1,height*v,0)});
+        const auto pc=NurbsCurve::create(false,1,{Point(0,v,0),Point(1,v,0)});
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pc,support,tolerance)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        cuts.push_back({world,pc,static_cast<int>(cuts.size())});
+    }
+    const auto frozen=source.jsondump();
+    const auto result=split::split_brep_face_by_pcurves(source,0,cuts,tolerance);
+    MINI_CHECK(result.brep.is_valid() && result.faces.size()==5);
+    const std::vector<double> expected{-7,.5,1.75,3,4.25,13};
+    for (size_t i=1;i<expected.size();++i) {
+        const auto found=std::find_if(result.edges.begin(),result.edges.end(),[&](const auto& piece) {
+            return piece.source_edge==1 && piece.first==expected[i-1] && piece.last==expected[i];
+        });
+        MINI_CHECK(found!=result.edges.end());
+        const auto& edge=result.brep.m_edges[found->edge];
+        const auto domain=result.brep.m_curves_3d[edge.curve_3d_index].domain();
+        MINI_CHECK(domain.first==expected[i-1] && domain.second==expected[i]);
+        MINI_CHECK(edge.start_vertex!=edge.end_vertex);
+    }
+    double total_area=0;
+    for (int face_index:result.faces) {
+        const auto& face=result.brep.m_faces[face_index];
+        double twice=0;
+        for (const auto& wire:face.wires)
+            for (const auto& use:result.brep.wire_edges(wire)) {
+                const auto& edge=result.brep.m_edges[use.index];
+                const bool forward=use.orientation==BRepOrientation::Forward;
+                const auto& a=result.brep.m_vertices[forward?edge.start_vertex:edge.end_vertex].point;
+                const auto& b=result.brep.m_vertices[forward?edge.end_vertex:edge.start_vertex].point;
+                twice+=a[0]*b[1]-b[0]*a[1];
+                const int pc=result.brep.pcurve_index(use.index,face_index,use.orientation);
+                MINI_CHECK(pc>=0);
+                MINI_CHECK(curve_surface_intersection::same_parameter(
+                    result.brep.m_curves_3d[edge.curve_3d_index],result.brep.m_curves_2d[pc],
+                    result.brep.m_surfaces[face.surface_index],tolerance)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+            }
+        const double area=std::abs(twice)*.5;
+        MINI_CHECK(area>0);
+        total_area+=area;
+    }
+    MINI_CHECK(total_area==height);
+    MINI_CHECK(source.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Original Boundary Endpoints Keep Indices Before Nearby Orphan Vertices") {
+    const double tolerance=std::ldexp(1.,-20),offset=tolerance/8;
+    BRep source;
+    const int orphan=source.add_vertex({offset,offset,0});
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,0,0),Point(0,1,0),Point(1,0,0),Point(1,1,0)});
+    const int surface=source.add_surface(support);
+    const std::vector<Point> points{{0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    std::vector<int> vertices;
+    for (const auto& p:points)
+        vertices.push_back(source.add_vertex(p));
+    std::vector<BRepRef> wire;
+    for (size_t i=0;i<points.size();++i) {
+        const size_t j=(i+1)%points.size();
+        const auto curve=NurbsCurve::create(false,1,{points[i],points[j]});
+        const int edge=source.add_edge(source.add_curve_3d(curve),vertices[i],vertices[j]);
+        source.add_pcurve(edge,surface,source.add_curve_2d(curve));
+        wire.push_back({edge,BRepOrientation::Forward});
+    }
+    source.add_face(surface,{{source.add_wire(wire),BRepOrientation::Forward}});
+    MINI_CHECK(source.is_valid() && orphan<vertices[0]);
+    MINI_CHECK(source.m_vertices[orphan].point.distance(points[0])<tolerance);
+    const auto cut=NurbsCurve::create(false,1,{Point(.5,0,0),Point(.5,1,0)});
+    const auto frozen=source.jsondump();
+    const auto result=split::split_brep_face_by_pcurves(source,0,{{cut,cut,71}},tolerance);
+    MINI_CHECK(result.brep.is_valid() && result.faces.size()==2);
+    bool checked=false;
+    for (const auto& piece:result.edges) {
+        if (piece.source_edge<0)
+            continue;
+        const auto& original=source.m_edges[piece.source_edge];
+        const auto& curve=source.m_curves_3d[original.curve_3d_index];
+        const auto& output=result.brep.m_edges[piece.edge];
+        if (piece.first==curve.domain_start()) {
+            MINI_CHECK(output.start_vertex==original.start_vertex);
+            checked=true;
+        }
+        if (piece.last==curve.domain_end())
+            MINI_CHECK(output.end_vertex==original.end_vertex);
+    }
+    MINI_CHECK(checked && source.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Graph Lineage Keeps Original Sphere Pole Vertex Across Positive UV Pieces") {
+    const BRep sphere=BRep::create_sphere(2);
+    const auto& support=sphere.m_surfaces[sphere.m_faces[0].surface_index];
+    const auto u=support.domain(0),v=support.domain(1);
+    const double at=u.first+(u.second-u.first)*.25;
+    auto world=support.iso_curve(1,at);
+    auto pc=NurbsCurve::create(false,1,{Point(at,v.first,0),Point(at,v.second,0)});
+    MINI_CHECK(pc.set_domain(world.domain_start(),world.domain_end()));
+    const auto frozen=sphere.jsondump();
+    const auto result=split::split_brep_face_by_pcurves(sphere,0,{{world,pc,91}},1e-6);
+    MINI_CHECK(result.faces.size()==2 && result.brep.is_valid() && result.brep.is_solid());
+    bool checked_interior=false;
+    size_t pole_pieces=0;
+    for (const auto& piece:result.edges) {
+        if (piece.source_edge<0 || !sphere.m_edges[piece.source_edge].degenerated)
+            continue;
+        const auto& original=sphere.m_edges[piece.source_edge];
+        const auto& edge=result.brep.m_edges[piece.edge];
+        MINI_CHECK(original.start_vertex==original.end_vertex);
+        MINI_CHECK(edge.degenerated && edge.curve_3d_index==-1);
+        MINI_CHECK(edge.start_vertex==original.start_vertex && edge.end_vertex==original.end_vertex);
+        for (const auto& association:edge.pcurves)
+            for (int index:{association.curve_2d_index,association.curve_2d_index_2}) {
+                if (index<0) continue;
+                const auto& trim=result.brep.m_curves_2d[index];
+                const auto point=sphere.m_vertices[original.start_vertex].point;
+                auto constant=NurbsCurve::create(false,1,{point,point});
+                MINI_CHECK(constant.set_domain(trim.domain_start(),trim.domain_end()));
+                MINI_CHECK(curve_surface_intersection::same_parameter(constant,trim,
+                    result.brep.m_surfaces[association.surface_index],1e-6)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+                const auto& old=sphere.m_curves_2d[sphere.m_edges[piece.source_edge].pcurves[0].curve_2d_index];
+                checked_interior=checked_interior || piece.first>old.domain_start() || piece.last<old.domain_end();
+            }
+        ++pole_pieces;
+    }
+    MINI_CHECK(pole_pieces>=2 && checked_interior && sphere.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Raw Material Alias Proof Rejects Rounded Interior Correspondence") {
+    MINI_CHECK(split::detail::exact_material_raw_alias({32,35},{-7,13},33.5,3));
+    MINI_CHECK(split::detail::exact_material_raw_alias({32,35},{-7,13},32,-7));
+    MINI_CHECK(split::detail::exact_material_raw_alias({32,35},{-7,13},35,13));
+    MINI_CHECK(!split::detail::exact_material_raw_alias({0,3},{0,1},1,1./3.));
+    MINI_CHECK(!split::detail::exact_material_raw_alias({32,35},{-7,13},33.5,std::nextafter(3.,4.)));
+}
+MINI_TEST("Split", "Periodic Boundary Raw Aliases Prebind Before Circle Materialization") {
+    for (bool reversed_storage:{false,true})
+        for (bool reversed_cut:{false,true}) {
+            auto source=BRep::create_cylinder(2,3);
+            int face=-1;
+            for (int i=0;i<source.face_count();++i)
+                if (source.m_surfaces[source.m_faces[i].surface_index].is_closed(0))
+                    face=i;
+            MINI_CHECK(face>=0);
+            if (reversed_storage) {
+                auto& reference=source.m_faces[face].wires[0];
+                auto& edges=source.m_wires[reference.index].edges;
+                std::rotate(edges.begin(),edges.begin()+1,edges.end());
+                std::reverse(edges.begin(),edges.end());
+                for (auto& edge:edges)
+                    edge.orientation=edge.orientation==BRepOrientation::Forward?
+                        BRepOrientation::Reversed:BRepOrientation::Forward;
+                reference.orientation=BRepOrientation::Reversed;
+            }
+            MINI_CHECK(source.is_valid() && source.is_solid());
+            const auto& support=source.m_surfaces[source.m_faces[face].surface_index];
+            const auto u=support.domain(0),v=support.domain(1);
+            const double at=std::midpoint(v.first,v.second);
+            auto world=support.iso_curve(0,at);
+            auto pc=NurbsCurve::create(false,1,{Point(u.first,at,0),Point(u.second,at,0)});
+            MINI_CHECK(world.set_domain(-7,13) && pc.set_domain(32,35));
+            if (reversed_cut) MINI_CHECK(world.reverse() && pc.reverse());
+            const auto frozen=source.jsondump();
+            const auto result=split::split_brep_face_by_pcurves(source,face,{{world,pc,101}},1e-6);
+            MINI_CHECK(result.faces.size()==2 && result.brep.is_valid() && result.brep.is_solid());
+            bool closed=false;
+            for (const auto& piece:result.edges)
+                if (piece.section==101) {
+                    const auto& edge=result.brep.m_edges[piece.edge];
+                    MINI_CHECK(edge.start_vertex==edge.end_vertex && !edge.degenerated);
+                    closed=true;
+                }
+            MINI_CHECK(closed && source.jsondump()==frozen);
+        }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Actual UV Graph Rejects Distinct Canonical Endpoint Coalescence") {
+    const double tolerance=1e-6;
+    const auto face=BRep::from_polylines({Polyline({{0,0,0},{1,0,0},{1,1,0},{0,1,0},{0,0,0}})});
+    const auto& support=face.m_surfaces[face.m_faces[0].surface_index];
+    std::vector<split::FaceCut> cuts;
+    for (int i=0;i<2;++i) {
+        const double u=.5+i*std::ldexp(1.,-28);
+        auto pc=NurbsCurve::create(false,1,{Point(u,.25,0),Point(u,.75,0)});
+        auto world=NurbsCurve::create(false,1,{support.point_at(u,.25),support.point_at(u,.75)});
+        MINI_CHECK(pc.set_domain(32,35) && world.set_domain(-7,13));
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pc,support,tolerance)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        split::FaceCut cut{world,pc,i};
+        cut.canonical_endpoints[0]={static_cast<size_t>(11+i),-7,{static_cast<size_t>(i)}};
+        cuts.push_back(std::move(cut));
+    }
+    const auto frozen=face.jsondump(),first=cuts[0].pcurve.jsondump(),second=cuts[1].pcurve.jsondump();
+    bool rejected=false;
+    try {
+        split::split_brep_face_by_pcurves(face,0,cuts,tolerance);
+    } catch (const split::CanonicalEndpointError& error) {
+        rejected=true;
+        MINI_CHECK(error.first_source!=error.second_source);
+        MINI_CHECK(error.first.node!=error.second.node);
+        MINI_CHECK(error.first.world_parameter==-7 && error.second.world_parameter==-7);
+    }
+    MINI_CHECK(rejected && face.jsondump()==frozen);
+    MINI_CHECK(cuts[0].pcurve.jsondump()==first && cuts[1].pcurve.jsondump()==second);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Graph Materialization Preserves Distinct Canonical Nodes On Anisotropic Support") {
+    const double tolerance=std::ldexp(1.,-20),height=std::ldexp(1.,-16);
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,0,0),Point(0,height,0),Point(1,0,0),Point(1,height,0)});
+    BRep face;
+    const int surface=face.add_surface(support);
+    const std::vector<Point> uv{{0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+    std::vector<int> vertices;
+    for (const auto& point:uv)
+        vertices.push_back(face.add_vertex(support.point_at(point[0],point[1])));
+    std::vector<BRepRef> wire;
+    for (size_t i=0;i<uv.size();++i) {
+        const size_t j=(i+1)%uv.size();
+        const auto world=NurbsCurve::create(false,1,{support.point_at(uv[i][0],uv[i][1]),
+            support.point_at(uv[j][0],uv[j][1])});
+        const auto pc=NurbsCurve::create(false,1,{uv[i],uv[j]});
+        const int edge=face.add_edge(face.add_curve_3d(world),vertices[i],vertices[j]);
+        face.add_pcurve(edge,surface,face.add_curve_2d(pc));
+        wire.push_back({edge,BRepOrientation::Forward});
+    }
+    face.add_face(surface,{{face.add_wire(wire),BRepOrientation::Forward}});
+    MINI_CHECK(face.is_valid());
+    std::vector<split::FaceCut> cuts;
+    for (int i=0;i<2;++i) {
+        const double v=.5+i*.0625;
+        auto world=NurbsCurve::create(false,1,{Point(0,height*v,0),Point(1,height*v,0)});
+        auto pc=NurbsCurve::create(false,1,{Point(0,v,0),Point(1,v,0)});
+        MINI_CHECK(world.set_domain(-7,13) && pc.set_domain(32,35));
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pc,support,tolerance)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        split::FaceCut cut{world,pc,i};
+        cut.canonical_endpoints[0]={static_cast<size_t>(21+i),-7,{static_cast<size_t>(i)}};
+        cuts.push_back(std::move(cut));
+    }
+    MINI_CHECK(.0625>4*tolerance/nurbs_bounds::surface_metric(support));
+    MINI_CHECK(height*.0625==tolerance);
+    const auto result=split::split_brep_face_by_pcurves(face,0,cuts,tolerance);
+    MINI_CHECK(result.brep.is_valid() && result.faces.size()==3);
+    std::array<int,2> output{-1,-1};
+    for (const auto& piece:result.edges)
+        if (piece.section==0 || piece.section==1) {
+            const auto& edge=result.brep.m_edges[piece.edge];
+            const auto& world=result.brep.m_curves_3d[edge.curve_3d_index];
+            MINI_CHECK(world.domain_start()==-7 && world.domain_end()==13);
+            output[piece.section]=edge.start_vertex;
+            const auto& point=result.brep.m_vertices[edge.start_vertex].point;
+            const double v=.5+piece.section*.0625;
+            MINI_CHECK(point[0]==0 && point[1]==height*v && point[2]==0);
+        }
+    MINI_CHECK(output[0]>=0 && output[1]>=0 && output[0]!=output[1]);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Split", "Restricted Original Uses Refuse Legacy Split Entry Points") {
+    auto owner=BRep::create_box(2,2,2);auto& edge=owner.m_edges[0];
+    const auto wd=owner.m_curves_3d[edge.curve_3d_index].domain();
+    edge.world_range=BRepCurveUseRange{std::lerp(wd.first,wd.second,.25),std::lerp(wd.first,wd.second,.75)};
+    for (auto& image:edge.pcurves) {
+        const auto pd=owner.m_curves_2d[image.curve_2d_index].domain();
+        image.primary_range=BRepCurveUseRange{std::lerp(pd.first,pd.second,.25),std::lerp(pd.first,pd.second,.75)};
+        if (image.curve_2d_index_2>=0) {
+            const auto sd=owner.m_curves_2d[image.curve_2d_index_2].domain();
+            image.secondary_range=BRepCurveUseRange{std::lerp(sd.first,sd.second,.25),std::lerp(sd.first,sd.second,.75)};
+        }
+    }
+    MINI_CHECK(owner.is_valid() && owner.has_restricted_curve_uses());const auto frozen=owner.jsondump();
+    for (int entry=0;entry<3;++entry) {
+        bool rejected=false;
+        try {
+            if (entry==0) split::split_brep_edges_at_events(owner,{},1e-7);
+            if (entry==1) split::split_brep_face_by_curves(owner,0,{},1e-7);
+            if (entry==2) split::split_brep_face_by_pcurves(owner,0,{},1e-7,nullptr);
+        } catch(const std::invalid_argument& error) {
+            rejected=std::string(error.what())=="Split original curve use ranges require the range-aware producer";
+        }
+        MINI_CHECK(rejected && owner.jsondump()==frozen);
+    }
 }
 } // namespace session_cpp

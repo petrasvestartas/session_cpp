@@ -3571,4 +3571,26 @@ MINI_TEST("Session", "Set Node Color Descendants") {
     MINI_CHECK(point->color == Color::red());
 }
 
+MINI_TEST("Session", "Animate Xform") {
+
+    Session session;
+    const Point point(1.0, 2.0, 3.0);
+    const std::string guid = point.guid();
+    const Xform xform = Xform::translation(4.0, 5.0, 6.0);
+    session.add_point(point);
+    session.animate_xform(
+        guid,
+        xform,
+        900.0,
+        150.0
+    );
+    const Session restored = Session::pb_loads(session.pb_dumps());
+    const std::optional<double> duration = restored.graph.vertex_attribute(guid, "xform_ms");
+    const std::optional<double> delay = restored.graph.vertex_attribute(guid, "delay_ms");
+
+    MINI_CHECK(restored.xform(guid) == xform);
+    MINI_CHECK(duration && *duration == 900.0);
+    MINI_CHECK(delay && *delay == 150.0);
+}
+
 } // namespace session_cpp

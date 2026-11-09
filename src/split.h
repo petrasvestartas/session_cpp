@@ -6,6 +6,7 @@
 #include "nurbssurface.h"
 #include "curve_self_intersection.h"
 #include <array>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -58,10 +59,36 @@ struct DomainError : std::invalid_argument {
           world_domain(world), pcurve_domain(pcurve) {}
 };
 
+/// Graph IDs are local to one arrangement; original vertex indices remain a separate namespace.
+struct GraphVertexError : std::invalid_argument {
+    size_t source,node;
+    double uv_parameter,world_parameter;
+    int established_vertex,selected_vertex;
+    GraphVertexError(size_t s,size_t n,double uv,double world,int established,int selected,const char* reason)
+        :std::invalid_argument(reason),source(s),node(n),uv_parameter(uv),world_parameter(world),
+          established_vertex(established),selected_vertex(selected) {}
+};
+
+/// Identity scoped to one inventory/operand split call; never a BRep vertex ID.
+struct CanonicalEndpoint {
+    size_t node=std::numeric_limits<size_t>::max();
+    double world_parameter=0;
+    std::vector<size_t> boundary_events;
+};
+struct CanonicalEndpointError : std::invalid_argument {
+    size_t first_source,second_source;
+    CanonicalEndpoint first,second;
+    int output_vertex=-1;
+    Point output_point;
+    CanonicalEndpointError(size_t a,size_t b,CanonicalEndpoint x,CanonicalEndpoint y,const char* reason)
+        :std::invalid_argument(reason),first_source(a),second_source(b),first(std::move(x)),second(std::move(y)) {}
+};
+
 struct FaceCut {
     NurbsCurve world;
     NurbsCurve pcurve;
     int section = -1;
+    std::array<CanonicalEndpoint,2> canonical_endpoints;
 };
 
 struct CurveError : std::invalid_argument {

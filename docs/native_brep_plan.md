@@ -1,5 +1,70 @@
 # Native session BRep translation
 
+## Current checkpoint — 2026-11-06
+
+Viewer evidence: five current native Rhino box outputs were rendered and inspected
+in Session Viewer (union, intersection, both differences, XOR). Files and hashes:
+`C:/pc/tmp/session-migration-20261028/native-boolean-viewer-20261106-v1/manifest.json`.
+Original reference volume values pass; whole modified oracle worker prevents strict
+oracle acceptance. These images do not qualify chairs or the six failing Booleans.
+
+Remaining order: finish original range storage/consumer foundation and its tests;
+implement bounded original-law intersection and correspondence workers; enable split
+range production; qualify six failing Booleans, original Rhino cases and freeform chairs;
+then CI and only afterward offsets. No completion percentage inferred from test counts.
+
+Latest update: parametric qualification finished with unchanged sources/binaries.
+NurbsCurve52/52, CurveIntersection33/33, Intersection114/114 and public seam/pole
+Booleans pass. Confirmation build and Section **46/46** completed successfully
+at 07:56:33 UTC with unchanged sources/binaries. Booleans remain **34/40**.
+The proposed vertex-owned omitted-edge patch is WITHHELD: independent review
+proved that removing a positive UV boundary can change face classification far
+from the world vertex. Original pcurve ranges must remain consumable by actual
+boundary/classification/tessellation code. The team is implementing explicit original curve-use ranges, lossless JSON,
+classifier and boundary consumers, with unsupported exports rejected explicitly;
+no range-view or omitted-edge draft has been promoted. Older status below is historical.
+
+
+Latest completed run: `native-event-ownership-tests-20261106-v1`, all 12 selections
+executed with unchanged sources and binaries. Native Section **43/46**, Native
+Boolean **34/40**; overall acceptance still fails. Earlier full groups passed
+Split 45/45, Surface Section 6/6, Curve Surface 41/41, Intersection 114/114 and
+Measure 20/20. These counts do not qualify subsequent source changes.
+
+Exercised groundwork includes affine tangent preimages, original knot incidences,
+owning-face trim admission, graph/pole/seam identity and closed-edge endpoint
+aliases. Tangent-sphere and reversed-generator Boolean regressions now pass.
+All original raw occurrences and excluded-use provenance remain recorded.
+
+Running: official job `codex-geometry-parametric-foundations`, exec56592, fresh
+build then 12 selections. Three reviewed follow-ups await runtime qualification:
+closed-endpoint ownership for the reversed tiny interval; direct original
+homogeneous linear trimming; and full-range rational correspondence certification
+for nonflat curves. No tolerance or work-limit increase. Full NurbsCurve,
+CurveIntersection, Section, Intersection and Native Boolean groups are included.
+Builds use 6 GiB; tests use 1 GiB after two sweeps measured about 128 MiB peak.
+Sources remain frozen during jobs; foreign builds/caches are preserved.
+
+Remaining, in priority order:
+
+1. Qualify these repairs and finish shared intersection inventory correctness.
+2. Implement coherent vertex-owned required intervals: the captured positive raw
+   span already has the same resolved vertex at both ends. An external draft
+   preserves its range/events and requires whole-world plus every original
+   pcurve-image cap against that actual vertex. Distinct vertices and returning
+   curves outside the cap must not be collapsed.
+3. Resolve remaining coincident/freeform/column Boolean failures and qualify the
+   original Rhino operations. Cone volumes still disagree with original references;
+   the modified replacement oracle cannot establish acceptance.
+4. Qualify the original doubly curved chairs and save genuine Session Viewer images
+   of native outputs, with input/output and executable provenance.
+5. Pass Windows/Linux/macOS CI; only then resume offsets and Rust/Python ports.
+
+OCCT remains source/oracle guidance only, with no production dependency. No new
+Boolean/chair images or complete-Boolean acceptance are claimed. Compact state and
+runtime evidence: `C:/pc/tmp/session-migration-20261028/boolean-resume-state-20261104.json`
+and the named qualification folders alongside it.
+
 ## Contract
 
 Priority update — 2026-11-01: solid BRep Booleans are the highest priority.
@@ -857,3 +922,120 @@ curves, pcurves, supports and original STEP bytes are retained for replay.
 The affine projector loses original surface domains and assumes orthogonal axes;
 the projected-surface path ignores supplied STEP pcurves and resamples boundaries.
 These importer failures must be repaired before claiming these Boolean cases pass.
+
+## Resume checkpoint — 2026-11-04
+
+The November 1 frozen-source qualification completed: Split 38/38, Intersection
+113/113, Section 20/22. Both refined-support Boolean regressions still failed.
+These results do not qualify newer HEAD b6b34df1 or subsequent working edits.
+
+The adjacent-original-support pcurve fix is now implemented with an independently
+reviewed regression: inspect the original edge's matching support associations,
+including primary/secondary aliases, and require whole original and target
+agreement. Selected source-face incidences remain intact. Two further regressions
+require preservation of genuine short sections and tangential contact lines in
+the shared inventory. None of these new changes has been built or run yet.
+
+Next: finish exact raw trimming and canonical contact ownership, reconcile newer
+sampled section-deletion/raw-cut merging changes with their owner, then build a
+source-frozen checkpoint and run all new regressions plus Section, Split,
+Intersection and the refined Boolean cases. Follow with wider native Boolean,
+Rhino/chair, Viewer and three-platform CI qualification. Offsets remain deferred.
+Generated storage currently exceeds the shared 8 GiB cap; preserve the independent
+Gemini/Wood work and coordinate owner-managed cleanup before compilation.
+
+The exact nonwrapped raw-trim repair is also implemented with six regressions and
+the two original failure records. Distinct in-domain bounds and knot identities
+are preserved. A nonconstant positive-weight Bezier interval that rounds to a
+constant during materialization is rejected with its original data restored.
+Wrapped insertion and general multi-span transactional rollback are outside this
+repair's guarantees. These changes remain unbuilt/unrun while storage is blocked.
+
+Final source review: exact contact adapter V4 is independently approved, including
+mapped raw-event enclosures, opposite-face identity and exact homogeneous
+single-parameter checks on rotated/rational boundary laws. It remains external
+until overlapping independently authored inventory changes are coordinated.
+Source approval is not runtime qualification. Both integrated fixes and all nine
+new regressions still require a fresh guarded build/test run.
+
+
+November 5 continuation: source-reviewed fixes now also preserve the original
+polynomial endspan for finite boundary evaluation and carry original wrapped
+intersection cuts without recovering them through rounded period subtraction.
+Three measurement regressions and one near-tangent sphere regression bring this
+continuation to thirteen new tests. None has fresh native runtime qualification.
+Failure-only observers retain actual wrapped pullback and self-overlap geometry.
+
+Published C++ CI 41927479065 at 0a113afc has four failing tests on Windows/Linux
+and six on macOS. Cone volume and sphere self-overlap still need actual failure
+witnesses; original oracle assertions remain qualification requirements.
+
+Storage is below the hard cap again (8,235,876,931 generated bytes observed), but
+both shared compiler slots are occupied and a foreign compiler remains active.
+Preserve those jobs and acquire a genuinely free slot before a guarded build.
+Next: finish raw-event/canonical-contact reconciliation; freeze sources, build,
+run Section/Split/Intersection/NurbsCurve/Measure and strict Boolean regressions;
+then qualify Rhino and chairs, save Session Viewer images and verify all CI.
+
+November 6: raw-event snapping and sampled interval erasure have been removed.
+The reviewed canonical contact adapter is integrated with two more regressions
+(fifteen new regressions across this continuation), retaining every selected raw
+receipt and binding it to the actual shared node. Boolean partitioning no longer
+skips an inventory curve solely on sampled touching metadata. Point-incidence
+compatibility remains under review for constant and reentrant original curves.
+All changes remain unbuilt/unrun. The eleven-gate qualification runner checks
+source membership, hashes, binary artifacts, original oracle and HEAD against
+the fresh guarded build receipt. Source review is not runtime qualification.
+
+The final point-incidence bundle is now integrated: exact raw clamping, original
+positive B-spline basis endpoint exclusion, per-edge incidence enumeration and
+exact interior contact binding to the existing canonical node. Six additional
+regressions preserve all prior tests (33 Section definitions, 21 new regressions
+across this continuation). Independent Fraction evaluation passed 598 basis
+support checks across 92 knot configurations; these are mathematical checks,
+not native runtime qualification. The guarded build now waits under the new
+shared FIFO ticket rule. No fresh C++ test counts or images are claimed.
+
+Next acceptance fixture, kept external until baseline qualification: two exact
+curved six-face solids with a singular intersection separating two regular
+interiors, expected volumes 31/60 and 1/60 (total 8/15). This exercises changing
+local touching behavior and has independent geometry/volume review, but is unrun.
+
+November 6 runtime checkpoint: the frozen native build passed with unchanged
+sources and HEAD (receipt `groundwork-source-freeze-build-20261106-v2` in the
+external migration evidence directory). Eleven focused native tests passed:
+two endpoint-preimage tests, six exact raw-trim tests and three polynomial
+measurement tests. One additional endpoint test failed because its premise
+incorrectly assumes native storage rejects a discontinuous degree-one curve.
+The native storage validator permits it; the endpoint ownership proof must
+still reject it. A two-assertion test correction is reviewed but remains external
+until the frozen broader baseline completes. No production proof is weakened.
+
+The eleven-gate native qualification is queued behind the Viewer handback and
+storage guard. It covers refined coincident-support Booleans, NurbsCurve, Split,
+Section, Intersection, Measure, curved seams/poles, Rhino boxes/cones and sphere
+union, preserving the published original volume references. Remaining work is
+to fix observed baseline failures, qualify singular curved partitions and all
+valid Rhino operations, then the original freeform chairs, actual Session Viewer
+images and Windows/Linux/macOS CI. Offsets and language ports remain deferred
+until native C++ Booleans qualify. No new Boolean result images are claimed.
+
+The Boolean entry point currently requires inventory execution completion but
+only reports `coverage_complete()` diagnostically. Therefore a successful Boolean
+test alone does not certify complete original-domain intersection coverage.
+Closing that gap requires qualifying the remaining surface/trim coverage paths;
+merely changing the entry-point check would reject existing cases without
+implementing the missing algorithms.
+
+Two further exact-event native tests passed on the same frozen executable,
+bringing the focused runtime count to 13 passes and the one known test-premise
+failure. The larger test gate is now released after Viewer-owned storage
+retirement; it waits for its FIFO build slot without changing foreign locks.
+
+The next reviewed source bundle remains external until that baseline: preserve
+exact support-node identity over generic proximity, require literal whole raw
+cut coverage, correct the storage-validity test premise, and certify the entire
+intersection segment for exact transverse affine plane pairs. The latter proves
+original-domain maximality independently of curve fitting and retains separate
+BRep trim-ownership qualification. Its small-feature checks use literal
+coordinates because general Point equality rounds to six decimal places.

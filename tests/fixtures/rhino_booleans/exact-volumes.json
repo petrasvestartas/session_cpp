@@ -1,0 +1,58 @@
+{
+  "schema": "rhino_exact_volumes_v1",
+  "why": "The intersection volumes in compact-reference.json are Rhino outputs built at model tolerance 0.001. On curved families they are not accurate enough to gate a kernel at 1e-6: Rhino's own union plus intersection misses the sum of its inputs by 0.00215 on Torus and 0.00834 on Cones, recorded there as volume_identity_diagnostics, far above its reported integration error. The operands are exact rational tori and cones, so the true volume can be computed. Rhino's values stay in compact-reference.json, still drive the checks of Rhino's own consistency, and restore the old gate if this file is removed from the test.",
+  "methods": {
+    "truth.py": "Divergence theorem over each operand's boundary inside the other, exact cuts per parameter line, tanh-sinh outer integral. The total must not depend on the flux origin; two origins agree to 1.2e-9 on Torus and 9e-13 on Cones.",
+    "truth_check.py": "Independent: parallel rays along a generic direction, exact inside length from a quartic or quadratic, summed over a random-shift grid, with its own STEP reading. The error bar is 2 std / sqrt(shifts). Reproduces the sphere lens, Steinmetz solid and each operand with itself within the bar at 2048 x 2048, 16 shifts."
+  },
+  "families": {
+    "Torus": {
+      "exact_intersection": 3595.535346127,
+      "gate": 1e-07,
+      "rhino_intersection": 3595.539114901853,
+      "rhino_intersection_implied_by_its_union": 3595.536962598635,
+      "ray_check": {
+        "grid": 4096,
+        "shifts_per_seed": 32,
+        "seeds": [
+          {
+            "seed": 20261104,
+            "intersection": 3595.5355282,
+            "bar": 0.000132
+          },
+          {
+            "seed": 71117,
+            "intersection": 3595.5351946,
+            "bar": 0.000192
+          }
+        ],
+        "combined_intersection": 3595.5353614,
+        "combined_bar": 0.000116
+      }
+    },
+    "Cones": {
+      "exact_intersection": 4143.411207968,
+      "gate": 1e-07,
+      "rhino_intersection": 4143.426975379369,
+      "rhino_intersection_implied_by_its_union": 4143.41863751848,
+      "ray_check": {
+        "grid": 4096,
+        "shifts_per_seed": 32,
+        "seeds": [
+          {
+            "seed": 20261104,
+            "intersection": 4143.4112034,
+            "bar": 8.92e-06
+          },
+          {
+            "seed": 71117,
+            "intersection": 4143.4112195,
+            "bar": 1.15e-05
+          }
+        ],
+        "combined_intersection": 4143.4112115,
+        "combined_bar": 7.28e-06
+      }
+    }
+  }
+}

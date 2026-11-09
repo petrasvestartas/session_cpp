@@ -3743,4 +3743,44 @@ MINI_TEST("Intersection", "Original Collapsed Pole Endpoints Keep One Sided Meri
         MINI_CHECK(sphere.jsondump() == before_s && plane.jsondump() == before_p);
     }
 }
+
+MINI_TEST("Intersection", "Near Tangent Sphere Section Preserves Wrapped Raw Cuts") {
+    const double tolerance = 1e-7;
+    const double distance = 1.999;
+    const auto first = BRep::create_sphere(1).m_surfaces[0];
+    const auto second = BRep::create_sphere(1).transformed(
+        Xform::translation(distance,0,0)).m_surfaces[0];
+    const auto frozen_first = first.jsondump(), frozen_second = second.jsondump();
+    const double x = distance/2, radius = std::sqrt(1-x*x);
+    for (bool swap : {false,true}) {
+        const auto sections = swap ? Intersection::surface_surface(second,first,tolerance)
+                                   : Intersection::surface_surface(first,second,tolerance);
+        MINI_CHECK(!sections.empty());
+        for (const auto& [world,pa,pb] : sections) {
+            MINI_CHECK(world.is_valid() && pa.is_valid() && pb.is_valid());
+            MINI_CHECK(world.domain() == pa.domain() && world.domain() == pb.domain());
+            MINI_CHECK(world.domain_start() < world.domain_end());
+            MINI_CHECK(curve_surface_intersection::same_parameter(
+                world,pa,swap?second:first,tolerance) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(
+                world,pb,swap?first:second,tolerance) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+        }
+        // Independent analytic circle witnesses; these do not replace whole-pair checks.
+        for (const Point target : {Point(x,radius,0),Point(x,-radius,0),
+                                   Point(x,0,radius),Point(x,0,-radius)}) {
+            bool present = false;
+            for (const auto& section : sections) {
+                const auto& world = std::get<0>(section);
+                const auto [parameter,gap] = Closest::curve_point(world,target);
+                present = present || (std::isfinite(parameter) && std::isfinite(gap) &&
+                    parameter >= world.domain_start() && parameter <= world.domain_end() &&
+                    world.point_at(parameter).distance(target) <= tolerance);
+            }
+            MINI_CHECK(present);
+        }
+    }
+    MINI_CHECK(first.jsondump() == frozen_first && second.jsondump() == frozen_second);
+}
 } // namespace session_cpp

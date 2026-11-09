@@ -24,16 +24,24 @@ std::optional<std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>>
 bilinear_crossing(const NurbsSurface& first, const NurbsSurface& second, double tolerance);
 
 
+/// Certify the complete rectangular ORIGINAL-domain locus for one exact transverse affine-plane segment.
+/// False means unsupported proof (including coincident planes), not empty geometry or failed paired fitting.
+/// This does not establish BRep wire-trim ownership.
+bool affine_plane_curve_coverage(const NurbsSurface& first,const NurbsSurface& second,
+    const std::vector<std::tuple<NurbsCurve,NurbsCurve,NurbsCurve>>& sections);
+
 /// Full-domain qualification is independent of successful legacy locus fitting.
 enum class Coverage { Unverified, OriginalDomainExcluded, GlobalContactPoint,
-                      LegacyLocusOnly, CoincidentUnverified, Unresolved };
+                      LegacyLocusOnly, CoincidentUnverified, Unresolved, OriginalDomainCurve };
 inline bool qualified(Coverage coverage) {
-    return coverage == Coverage::OriginalDomainExcluded || coverage == Coverage::GlobalContactPoint;
+    return coverage == Coverage::OriginalDomainExcluded || coverage == Coverage::GlobalContactPoint ||
+           coverage == Coverage::OriginalDomainCurve;
 }
 inline const char* coverage_name(Coverage coverage) {
     switch (coverage) {
     case Coverage::OriginalDomainExcluded: return "original_domain_excluded";
     case Coverage::GlobalContactPoint: return "global_contact_point";
+    case Coverage::OriginalDomainCurve: return "original_domain_curve";
     case Coverage::LegacyLocusOnly: return "legacy_locus_only";
     case Coverage::CoincidentUnverified: return "coincident_unverified";
     case Coverage::Unresolved: return "unresolved";

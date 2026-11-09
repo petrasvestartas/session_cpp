@@ -239,8 +239,13 @@ double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance
     return value;
 }
 
-std::vector<double> boundary_parameters(const NurbsCurve& curve, const std::vector<double>& vknots) {
-    std::vector<double> parameters = curve.get_span_vector();
+std::vector<double> boundary_parameters(const NurbsCurve& curve,const std::pair<double,double>& range,
+    const std::vector<double>& vknots) {
+    std::vector<double> parameters{range.first,range.second};
+    for (double knot:curve.get_span_vector())
+        if (knot>range.first && knot<range.second) parameters.push_back(knot);
+    std::sort(parameters.begin(),parameters.end());
+    parameters.erase(std::unique(parameters.begin(),parameters.end()),parameters.end());
     if (curve.degree() != 1 || curve.cv_count() != 2)
         return parameters;
     const double scale = std::max(curve.weight(0), curve.weight(1));
@@ -257,7 +262,7 @@ std::vector<double> boundary_parameters(const NurbsCurve& curve, const std::vect
         const double b = last_weight * (last - knot);
         const double fraction = -a / (b - a);
         const double parameter = curve.domain_start() + fraction * (curve.domain_end() - curve.domain_start());
-        if (parameter > curve.domain_start() && parameter < curve.domain_end())
+        if (parameter>range.first && parameter<range.second)
             parameters.push_back(parameter);
     }
     std::sort(parameters.begin(), parameters.end());
@@ -298,8 +303,11 @@ int rectangle_orientation(const BRep& brep, int face, const NurbsSurface& surfac
         if (curve.degree() != 1 || curve.cv_count() != 2 || !(curve.weight(0) > 0) || !(curve.weight(1) > 0))
             return 0;
         const bool reverse = edge.orientation == BRepOrientation::Reversed;
-        const int first = rectangle_corner(curve.get_cv(reverse ? 1 : 0), surface);
-        const int last = rectangle_corner(curve.get_cv(reverse ? 0 : 1), surface);
+        const auto range=brep.pcurve_domain(edge.index,face,edge.orientation);
+        // Rounded evaluations cannot prove a restricted endpoint is an exact chart corner.
+        if (range!=curve.domain()) return 0;
+        const int first=rectangle_corner(curve.get_cv(reverse?1:0),surface);
+        const int last=rectangle_corner(curve.get_cv(reverse?0:1),surface);
         if (first < 0 || last < 0 || (corners & (1u << first)))
             return 0;
         const int sign = last == (first + 1) % 4 ? 1 : (last == (first + 3) % 4 ? -1 : 0);
@@ -392,10 +400,10 @@ double gauge_error(const BRep& brep, int face, const NurbsSurface& surface, doub
                 return INFINITY;
             const auto& pc = brep.m_curves_2d[pi];
             const auto& nc = brep.m_curves_2d[ni];
-            const double pt =
-                previous.orientation == BRepOrientation::Reversed ? pc.domain_start() : pc.domain_end();
-            const double nt =
-                next.orientation == BRepOrientation::Reversed ? nc.domain_end() : nc.domain_start();
+            const auto previous_range=brep.pcurve_domain(previous.index,face,previous.orientation);
+            const auto next_range=brep.pcurve_domain(next.index,face,next.orientation);
+            const double pt=previous.orientation==BRepOrientation::Reversed?previous_range.first:previous_range.second;
+            const double nt=next.orientation==BRepOrientation::Reversed?next_range.second:next_range.first;
             nurbs_interval::CurveBounds a, b;
             if (!nurbs_interval::curve_bounds(pc, {pt, pt}, {0, 0, 0}, a) ||
                 !nurbs_interval::curve_bounds(nc, {nt, nt}, {0, 0, 0}, b))
@@ -461,6 +469,16 @@ std::array<double, 4> trim_hull(const BRep& brep, int face, const NurbsSurface& 
             if (index < 0)
                 return entire;
             const auto& curve = brep.m_curves_2d[index];
+            const auto range=brep.pcurve_domain(edge.index,face,edge.orientation);
+            if (range!=curve.domain()) {
+                nurbs_interval::CurveBounds bounds;
+                if (!nurbs_interval::curve_bounds(curve,{range.first,range.second},{0,0,0},bounds)) return entire;
+                for (int d=0;d<2;++d) {
+                    result[2*d]=std::min(result[2*d],bounds.point[d].lo);
+                    result[2*d+1]=std::max(result[2*d+1],bounds.point[d].hi);
+                }
+                continue;
+            }
             for (int i = 0; i < curve.cv_count(); ++i) {
                 const double w = curve.weight(i);
                 if (!std::isfinite(w) || w <= 0)
@@ -514,7 +532,8 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
             if (index < 0)
                 throw std::runtime_error("Native BRep volume requires every face pcurve");
             const NurbsCurve& curve = brep.m_curves_2d[index];
-            const std::vector<double> knots = boundary_parameters(curve, evaluator.knots[1]);
+            const auto range=brep.pcurve_domain(edge.index,face,edge.orientation);
+            const std::vector<double> knots=boundary_parameters(curve,range,evaluator.knots[1]);
             const double sign = edge.orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
             for (size_t i = 1; i < knots.size(); ++i) {
                 const double allowed = tolerance / (knots.size() * boundary.wires.size());

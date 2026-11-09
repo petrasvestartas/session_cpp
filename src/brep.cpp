@@ -1,4 +1,6 @@
 #include "brep.h"
+#include "brep_curve_use.h"
+#include <google/protobuf/unknown_field_set.h>
 #include "mesh_parametric_metadata.h"
 #include "brep.pb.h"
 #include "brep_boolean.h"
@@ -1503,6 +1505,49 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
     return refine_surface_boundary(srf, crv, samples, scale, angle, chord);
 }
 
+/// A sample where the edge crosses a crease of the surface across it, or that face's mesh would have a vertex this one lacks.
+void add_other_face_creases(const BRep& b, int fi, const BRepEdge& edge, const NurbsCurve& crv,
+                            std::vector<std::tuple<double, Point, Point>>& samples) {
+
+    const NurbsSurface& own = b.m_surfaces[b.m_faces[fi].surface_index];
+
+    for (const BRepCurveOnSurface& use : edge.pcurves) {
+        if (use.surface_index == b.m_faces[fi].surface_index)
+            continue;
+
+        const NurbsCurve& other = b.m_curves_2d[use.curve_2d_index];
+        const std::array<std::vector<double>, 2> creases = parametric_crease_knots(b.m_surfaces[use.surface_index]);
+        const auto mapped = [&](double t) {
+            const double share = (t - crv.domain().first) / (crv.domain().second - crv.domain().first);
+            return other.point_at(other.domain().first + share * (other.domain().second - other.domain().first));
+        };
+
+        for (int dir = 0; dir < 2; ++dir)
+            for (double knot : creases[dir])
+                for (size_t k = 1; k < samples.size(); ++k) {
+                    double low = std::get<0>(samples[k - 1]);
+                    double high = std::get<0>(samples[k]);
+                    const double start = mapped(low)[dir] - knot;
+
+                    if (start == 0.0 || start * (mapped(high)[dir] - knot) >= 0.0)
+                        continue;
+
+                    for (int step = 0; step < 64; ++step) {
+                        const double middle = 0.5 * (low + high);
+
+                        if ((mapped(middle)[dir] - knot) * start > 0.0)
+                            low = middle;
+                        else
+                            high = middle;
+                    }
+
+                    const Point uv = crv.point_at(low);
+                    samples.insert(samples.begin() + k, {low, uv, own.point_at(uv[0], uv[1])});
+                    break;
+                }
+    }
+}
+
 /// Phase 3: samples of one edge use of a CDT face in traversal direction, a closed edge repeating its first point at the end; false when the edge has no pcurve
 bool edge_use_samples(
     const BRep& b,
@@ -1533,6 +1578,7 @@ bool edge_use_samples(
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
         samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge_ends(b, ei), scale, angle, chord);
+        add_other_face_creases(b, fi, edge, crv, samples);
         std::vector<Point> positions;
 
         for (const std::tuple<double, Point, Point>& sample : samples)
@@ -2059,6 +2105,7 @@ std::vector<std::tuple<double, Point, Point>> strip_samples(const NurbsSurface& 
         fractions.push_back((double)k / count);
 
     const std::array<std::vector<double>, 2> crease_knots = parametric_crease_knots(srf);
+
     for (double knot : crease_knots[0]) {
         const bool rising = strip_uv(crv, 0.0)[0] < strip_uv(crv, 1.0)[0];
         double low = 0.0;
@@ -2714,6 +2761,20 @@ std::vector<BRepRef> refs_from_json(const nlohmann::json& arr) {
     return refs;
 }
 
+BRepCurveUseRange use_range_from_json(const nlohmann::json& value) {
+    if (!value.is_array() || value.size()!=2 || !value[0].is_number() || !value[1].is_number())
+        throw std::invalid_argument("Curve use range JSON needs two numeric endpoints");
+    BRepCurveUseRange range{value[0].get<double>(),value[1].get<double>()};
+    if (!std::isfinite(range.first) || !std::isfinite(range.last) || !(range.first<range.last))
+        throw std::invalid_argument("Curve use range JSON must be finite and positive");
+    return range;
+}
+bool unknown_range_field(const google::protobuf::Message& message,int number) {
+    const auto& fields=message.GetReflection()->GetUnknownFields(message);
+    for (int i=0;i<fields.field_count();++i) if (fields.field(i).number()==number) return true;
+    return false;
+}
+
 /// JSON object of an edge, fields in alphabetical order
 nlohmann::ordered_json edge_to_json(const BRepEdge& e) {
 
@@ -2727,12 +2788,15 @@ nlohmann::ordered_json edge_to_json(const BRepEdge& e) {
         nlohmann::ordered_json pj;
         pj["curve_2d_index"] = pc.curve_2d_index;
         pj["curve_2d_index_2"] = pc.curve_2d_index_2;
+        if (pc.primary_range) pj["primary_range"]={pc.primary_range->first,pc.primary_range->last};
+        if (pc.secondary_range) pj["secondary_range"]={pc.secondary_range->first,pc.secondary_range->last};
         pj["surface_index"] = pc.surface_index;
         ej["pcurves"].push_back(pj);
     }
 
     ej["start_vertex"] = e.start_vertex;
     ej["tolerance"] = e.tolerance;
+    if (e.world_range) ej["world_range"]={e.world_range->first,e.world_range->last};
 
     return ej;
 }
@@ -2745,8 +2809,13 @@ BRepEdge edge_from_json(const nlohmann::json& e) {
     be.degenerated = e.at("degenerated");
     be.end_vertex = e.at("end_vertex");
 
-    for (const nlohmann::json& pc : e.at("pcurves"))
-        be.pcurves.push_back({pc.at("surface_index"), pc.at("curve_2d_index"), pc.at("curve_2d_index_2")});
+    for (const nlohmann::json& pc:e.at("pcurves")) {
+        BRepCurveOnSurface image{pc.at("surface_index"),pc.at("curve_2d_index"),pc.at("curve_2d_index_2")};
+        if (pc.contains("primary_range")) image.primary_range=use_range_from_json(pc.at("primary_range"));
+        if (pc.contains("secondary_range")) image.secondary_range=use_range_from_json(pc.at("secondary_range"));
+        be.pcurves.push_back(std::move(image));
+    }
+    if (e.contains("world_range")) be.world_range=use_range_from_json(e.at("world_range"));
 
     be.start_vertex = e.at("start_vertex");
     be.tolerance = e.at("tolerance");
@@ -3296,12 +3365,34 @@ bool BRep::is_valid() const {
         if (!e.degenerated && !in_range(e.curve_3d_index, m_curves_3d.size()))
             return false;
 
+        if (e.world_range && (e.degenerated || !brep_curve_use::valid_domain(
+            m_curves_3d[e.curve_3d_index],{e.world_range->first,e.world_range->last}))) return false;
         for (const BRepCurveOnSurface& pc : e.pcurves) {
             if (!in_range(pc.surface_index, m_surfaces.size()) || !in_range(pc.curve_2d_index, m_curves_2d.size()))
                 return false;
 
             if (pc.curve_2d_index_2 >= 0 && !in_range(pc.curve_2d_index_2, m_curves_2d.size()))
                 return false;
+            for (const auto& prior:e.pcurves) {
+                if (&prior==&pc) break;
+                if (prior.surface_index==pc.surface_index && (e.world_range || pc.primary_range || pc.secondary_range ||
+                    prior.primary_range || prior.secondary_range) &&
+                    (prior.curve_2d_index!=pc.curve_2d_index || prior.curve_2d_index_2!=pc.curve_2d_index_2 ||
+                     prior.primary_range!=pc.primary_range || prior.secondary_range!=pc.secondary_range)) return false;
+            }
+            if (pc.secondary_range && pc.curve_2d_index_2<0) return false;
+            if (e.world_range || pc.primary_range || pc.secondary_range) {
+                if (e.degenerated) return false; // UV-only range semantics are not this tranche.
+                const auto& world=m_curves_3d[e.curve_3d_index];
+                const auto wr=e.world_range?std::pair{e.world_range->first,e.world_range->last}:world.domain();
+                for (int slot=0;slot<2;++slot) {
+                    const int index=slot?pc.curve_2d_index_2:pc.curve_2d_index;
+                    if (index<0) continue;
+                    const auto& curve=m_curves_2d[index];const auto& range=slot?pc.secondary_range:pc.primary_range;
+                    const auto pr=range?std::pair{range->first,range->last}:curve.domain();
+                    if (!brep_curve_use::exact_correspondence(world,wr,curve,pr)) return false;
+                }
+            }
         }
     }
 
@@ -3473,6 +3564,50 @@ int BRep::pcurve_index(int edge_index, int face_index, BRepOrientation orientati
     return -1;
 }
 
+std::pair<double,double> BRep::edge_domain(int index) const {
+    const auto& edge=m_edges.at(index);
+    if (edge.degenerated || edge.curve_3d_index<0) throw std::invalid_argument("Degenerated edge has no world use range");
+    return brep_curve_use::domain(m_curves_3d.at(edge.curve_3d_index),edge.world_range);
+}
+std::pair<double,double> BRep::pcurve_domain(int edge_index,int face_index,BRepOrientation orientation) const {
+    const auto& edge=m_edges.at(edge_index);const int surface=m_faces.at(face_index).surface_index;
+    std::optional<std::pair<double,double>> result;int selected=-1;
+    for (const auto& image:edge.pcurves) {
+        if (image.surface_index!=surface) continue;
+        const bool secondary=orientation==BRepOrientation::Reversed && image.curve_2d_index_2>=0;
+        const int index=secondary?image.curve_2d_index_2:image.curve_2d_index;
+        if (index<0) throw std::invalid_argument("Boundary has no selected pcurve");
+        const auto value=brep_curve_use::domain(m_curves_2d.at(index),secondary?image.secondary_range:image.primary_range);
+        if (result && (selected!=index || *result!=value)) throw std::invalid_argument("Ambiguous selected pcurve use range");
+        result=value;selected=index;
+    }
+    if (!result) throw std::invalid_argument("Edge has no pcurve on selected face");
+    return *result;
+}
+bool BRep::has_curve_use_ranges() const {
+    for (const auto& edge:m_edges) {
+        if (edge.world_range) return true;
+        for (const auto& image:edge.pcurves) if (image.primary_range || image.secondary_range) return true;
+    }
+    return false;
+}
+
+bool BRep::has_restricted_curve_uses() const {
+    if (!has_curve_use_ranges()) return false;
+    if (!is_valid()) throw std::invalid_argument("Cannot inspect restricted uses on invalid range metadata");
+    for (const auto& edge:m_edges) {
+        if (edge.world_range && std::pair{edge.world_range->first,edge.world_range->last}!=
+            m_curves_3d[edge.curve_3d_index].domain()) return true;
+        for (const auto& pc:edge.pcurves) {
+            if (pc.primary_range && std::pair{pc.primary_range->first,pc.primary_range->last}!=
+                m_curves_2d[pc.curve_2d_index].domain()) return true;
+            if (pc.secondary_range && std::pair{pc.secondary_range->first,pc.secondary_range->last}!=
+                m_curves_2d[pc.curve_2d_index_2].domain()) return true;
+        }
+    }
+    return false;
+}
+
 std::vector<BRepRef> BRep::wire_edges(const BRepRef& wire) const {
 
     std::vector<BRepRef> out;
@@ -3526,6 +3661,7 @@ std::vector<Plane> BRep::face_planes() const {
 }
 
 double BRep::update_tolerances() {
+    if (has_curve_use_ranges()) throw std::invalid_argument("Range-aware tolerance update is not enabled");
 
     double worst = 0.0;
 
@@ -3622,6 +3758,8 @@ void BRep::add_pcurve(int edge_index, int surface_index, int curve_2d_index, int
 
     for (BRepCurveOnSurface& pc : m_edges[edge_index].pcurves)
         if (pc.surface_index == surface_index) {
+            if (pc.primary_range || pc.secondary_range)
+                throw std::invalid_argument("Replacing a ranged pcurve requires explicit range correspondence");
             pc.curve_2d_index = curve_2d_index;
             pc.curve_2d_index_2 = curve_2d_index_2;
             return;
@@ -3737,6 +3875,9 @@ static void tag_parametric_boundaries(const BRep& brep, int face, Mesh& mesh, in
 }
 
 std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const {
+
+    if (has_restricted_curve_uses())
+        throw std::runtime_error("Native tessellation of restricted original curve uses is not yet implemented");
 
     const int nf = (int)m_faces.size();
     const double angle = has_quality ? max_angle_deg : 20.0;
@@ -4132,6 +4273,7 @@ BRep BRep::cut_by_plane(const Plane& plane) const {
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════
 nlohmann::ordered_json BRep::jsondump() const {
+    if (has_curve_use_ranges() && !is_valid()) throw std::invalid_argument("Cannot serialize invalid original curve use ranges");
 
     nlohmann::ordered_json j;
     j["curves_2d"] = nlohmann::ordered_json::array();
@@ -4175,6 +4317,7 @@ nlohmann::ordered_json BRep::jsondump() const {
         j["surfaces"].push_back(s.jsondump());
 
     j["type"] = "BRep";
+    if (has_curve_use_ranges()) j["curve_use_ranges_version"]=1;
     j["vertices"] = nlohmann::ordered_json::array();
 
     for (const BRepVertex& v : m_vertices) {
@@ -4194,7 +4337,7 @@ nlohmann::ordered_json BRep::jsondump() const {
 }
 
 BRep BRep::jsonload(const nlohmann::json& data) {
-
+    if (data.value("curve_use_ranges_version",0)>1) throw std::invalid_argument("Unsupported curve use range JSON version");
     BRep b;
 
     if (data.contains("guid"))
@@ -4247,6 +4390,8 @@ BRep BRep::jsonload(const nlohmann::json& data) {
         for (const nlohmann::json& s : data["solids"])
             b.m_solids.push_back({refs_from_json(s.at("shells"))});
 
+    if (b.has_curve_use_ranges() && (data.value("curve_use_ranges_version",0)!=1 || !b.is_valid()))
+        throw std::invalid_argument("Invalid or unversioned original curve use ranges");
     return b;
 }
 
@@ -4279,6 +4424,7 @@ BRep BRep::file_json_load(const std::string& filename) {
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 session_proto::BRep BRep::to_proto() const {
+    if (has_curve_use_ranges()) throw std::invalid_argument("Protobuf curve use ranges are not supported; refusing a lossy export");
 
     session_proto::BRep proto;
 
@@ -4333,6 +4479,12 @@ session_proto::BRep BRep::to_proto() const {
 }
 
 BRep BRep::from_proto(const session_proto::BRep& proto) {
+    for (const auto& edge:proto.edges()) {
+        if (unknown_range_field(edge,7)) throw std::invalid_argument("Unsupported protobuf world use range");
+        for (const auto& image:edge.pcurves())
+            if (unknown_range_field(image,4) || unknown_range_field(image,5))
+                throw std::invalid_argument("Unsupported protobuf pcurve use range");
+    }
 
     BRep b;
 

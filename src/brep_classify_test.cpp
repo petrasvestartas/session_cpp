@@ -1,4 +1,5 @@
 #include "brep_classify.h"
+#include "nurbs_bounds.h"
 #include "brep_face_boundary.h"
 #include "primitives.h"
 #include "file_step.h"
@@ -399,4 +400,127 @@ MINI_TEST("BRep Native Classification", "Parity Ray Stays Clear Of Corner Gaps")
     const double height = brep_classify::clear_ray_height({&first, &second}, corner, 1e-10);
     MINI_CHECK(height != corner && std::abs(height - corner) < 1e-10);
     MINI_CHECK(brep_classify::clear_ray_height({&first, &second}, 0.5, 1e-10) == 0.5);
+}
+
+MINI_TEST("BRep Native Classification", "Original Pooled Circle Uses Retain Quarter Ranges") {
+    BRep shape;
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(-2,-2,0),Point(-2,2,0),Point(2,-2,0),Point(2,2,0)});
+    MINI_CHECK(support.set_domain(0,-2,2) && support.set_domain(1,-2,2));
+    const int surface=shape.add_surface(support);
+    auto circle=Primitives::circle(0,0,0,1);
+    MINI_CHECK(circle.set_domain(-7,13));
+    const int world=shape.add_curve_3d(circle), pc=shape.add_curve_2d(circle);
+    const std::array<double,5> cuts{-7,-2,3,8,13};
+    std::array<int,4> vertices;
+    for (size_t i=0;i<vertices.size();++i)
+        vertices[i]=shape.add_vertex(circle.point_at(cuts[i]));
+    std::vector<BRepRef> uses;
+    for (size_t i=0;i<vertices.size();++i) {
+        const int edge=shape.add_edge(world,vertices[i],vertices[(i+1)%4]);
+        shape.m_edges[edge].world_range=BRepCurveUseRange{cuts[i],cuts[i+1]};
+        shape.add_pcurve(edge,surface,pc);
+        shape.m_edges[edge].pcurves.back().primary_range=BRepCurveUseRange{cuts[i],cuts[i+1]};
+        uses.push_back({edge,BRepOrientation::Forward});
+    }
+    shape.add_face(surface,{{shape.add_wire(uses),BRepOrientation::Forward}});
+    MINI_CHECK(shape.is_valid());
+    for (bool reversed : {false,true}) {
+        shape.m_faces[0].wires[0].orientation=reversed?BRepOrientation::Reversed:BRepOrientation::Forward;
+        const auto frozen=shape.jsondump();
+        const auto boundary=brep_face_boundary::extract(shape,0);
+        MINI_CHECK(boundary.complete && boundary.wires[0].uses.size()==4);
+        MINI_CHECK(brep_classify::face_uv(boundary,Point(0,0,0),1e-7)==brep_classify::State::Inside);
+        MINI_CHECK(brep_classify::face_uv(boundary,Point(1.1,0,0),1e-7)==brep_classify::State::Outside);
+        MINI_CHECK(brep_classify::face_uv(boundary,Point(1,0,0),1e-7)==brep_classify::State::Boundary);
+        MINI_CHECK(shape.m_curves_3d.size()==1 && shape.m_curves_2d.size()==1);
+        MINI_CHECK(shape.jsondump()==frozen);
+    }
+}
+
+MINI_TEST("BRep Native Classification", "Compressed Affine Ranged Boundary Keeps Whole UV Winding") {
+    const double tolerance=std::ldexp(1.,-20),height=tolerance/4;
+    BRep owner;
+    const auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(0,0,0),Point(0,height,0),Point(1,0,0),Point(1,height,0)});
+    const int surface=owner.add_surface(support);
+    const std::array<Point,6> uv{Point(0,0,0),Point(1,0,0),Point(1,.25,0),
+        Point(1,.75,0),Point(1,1,0),Point(0,1,0)};
+    std::array<int,6> vertices;
+    for (size_t i=0;i<vertices.size();++i)
+        vertices[i]=i==3?vertices[2]:owner.add_vertex(i==2?Point(1,height*.5,0):support.point_at(uv[i][0],uv[i][1]));
+    auto right_world=NurbsCurve::create(false,1,{Point(1,0,0),Point(1,height,0)});
+    auto right_pc=NurbsCurve::create(false,1,{Point(1,0,0),Point(1,1,0)});
+    MINI_CHECK(right_world.set_domain(0,1) && right_pc.set_domain(0,1));
+    const int right=owner.add_curve_3d(right_world),right_image=owner.add_curve_2d(right_pc);
+    std::vector<BRepRef> uses;
+    for (size_t i=0;i<uv.size();++i) {
+        const size_t j=(i+1)%uv.size();
+        int world=right,pc=right_image;
+        if (i<1 || i>3) {
+            world=owner.add_curve_3d(NurbsCurve::create(false,1,
+                {support.point_at(uv[i][0],uv[i][1]),support.point_at(uv[j][0],uv[j][1])}));
+            pc=owner.add_curve_2d(NurbsCurve::create(false,1,{uv[i],uv[j]}));
+        }
+        const int edge=owner.add_edge(world,vertices[i],vertices[j]);
+        owner.add_pcurve(edge,surface,pc);
+        if (i>=1 && i<=3) {
+            owner.m_edges[edge].world_range=BRepCurveUseRange{uv[i][1],uv[j][1]};
+            owner.m_edges[edge].pcurves.back().primary_range=BRepCurveUseRange{uv[i][1],uv[j][1]};
+        }
+        uses.push_back({edge,BRepOrientation::Forward});
+    }
+    owner.add_face(surface,{{owner.add_wire(uses),BRepOrientation::Forward}});
+    MINI_CHECK(owner.is_valid());
+    const double uv_tol=tolerance/nurbs_bounds::surface_metric(support);
+    for (bool reversed : {false,true}) {
+        owner.m_faces[0].wires[0].orientation=reversed?BRepOrientation::Reversed:BRepOrientation::Forward;
+        const auto frozen=owner.jsondump();
+        MINI_CHECK(brep_classify::face_uv(owner,0,Point(.5,.5,0),uv_tol)==brep_classify::State::Inside);
+        MINI_CHECK(brep_classify::face_uv(owner,0,Point(1,.5,0),uv_tol)==brep_classify::State::Boundary);
+        MINI_CHECK(owner.jsondump()==frozen);
+    }
+}
+
+MINI_TEST("BRep Native Classification", "Ranged World Edge Excludes Unused Pooled Continuation") {
+    BRep owner=BRep::create_box(2,2,2);
+    const auto original=owner.m_curves_3d[owner.m_edges[0].curve_3d_index];
+    const Point first=original.point_at_start(),last=original.point_at_end();
+    const Vector direction=last-first;
+    const Point query=first+direction*1.5;
+    MINI_CHECK(brep_classify::point(owner,query,1e-7)==brep_classify::State::Outside);
+    auto pooled=NurbsCurve::create(false,1,{first-direction,last+direction});
+    MINI_CHECK(pooled.set_domain(-1,2));
+    const int world=owner.add_curve_3d(pooled);
+    owner.m_edges[0].curve_3d_index=world;
+    owner.m_edges[0].world_range=BRepCurveUseRange{0,1};
+    for (auto& association : owner.m_edges[0].pcurves) {
+        for (bool secondary : {false,true}) {
+            int& index=secondary?association.curve_2d_index_2:association.curve_2d_index;
+            if (index<0)
+                continue;
+            const auto& source=owner.m_curves_2d[index];
+            const Point a=source.point_at_start(),b=source.point_at_end();
+            auto pc=NurbsCurve::create(false,1,{a-(b-a),b+(b-a)});
+            MINI_CHECK(pc.set_domain(-1,2));
+            index=owner.add_curve_2d(pc);
+            auto& range=secondary?association.secondary_range:association.primary_range;
+            range=BRepCurveUseRange{0,1};
+        }
+        const auto original_support=owner.m_surfaces[association.surface_index];
+        const auto u=original_support.domain(0),v=original_support.domain(1);
+        const double a=u.first-(u.second-u.first),b=u.second+(u.second-u.first);
+        const double c=v.first-(v.second-v.first),d=v.second+(v.second-v.first);
+        auto extended=NurbsSurface::create(false,false,1,1,2,2,
+            {original_support.point_at(a,c),original_support.point_at(a,d),
+             original_support.point_at(b,c),original_support.point_at(b,d)});
+        MINI_CHECK(extended.set_domain(0,a,b) && extended.set_domain(1,c,d));
+        owner.m_surfaces[association.surface_index]=extended;
+    }
+    MINI_CHECK(owner.is_valid() && owner.is_solid());
+    MINI_CHECK(pooled.point_at(1.5).distance(query)<1e-12);
+    const auto frozen=owner.jsondump();
+    MINI_CHECK(brep_classify::point(owner,query,1e-7)==brep_classify::State::Outside);
+    MINI_CHECK(brep_classify::point(owner,first+direction*.5,1e-7)==brep_classify::State::Boundary);
+    MINI_CHECK(owner.jsondump()==frozen);
 }

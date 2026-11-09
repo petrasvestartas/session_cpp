@@ -7135,8 +7135,15 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
     if (samples.ts.size() > 32768)
         throw std::runtime_error("Analytic pullback initial sample budget exceeded");
     if (samples.ts.size() < 2 || samples.ts.size() != samples.uv.size() ||
-        samples.ts.front() != world.domain_start() || samples.ts.back() != world.domain_end())
+        samples.ts.front() != world.domain_start() || samples.ts.back() != world.domain_end()) {
+        observe_analytic_route_failure([&] {
+            return nlohmann::ordered_json{{"schema","analytic_route_failure_v1"},
+                {"stage","sample_world_raw_range"},{"world",world.jsondump()},
+                {"surface",surface.jsondump()},{"tolerance",tolerance},
+                {"samples",raw_run_observation(samples)}};
+        });
         throw std::runtime_error("Analytic pullback samples lost their original world parameter range");
+    }
     for (size_t i = 0; i < samples.ts.size(); ++i)
         if (!std::isfinite(samples.ts[i]) || (i && samples.ts[i] <= samples.ts[i - 1]))
             throw std::runtime_error("Analytic pullback raw parameters are not strictly ordered");
@@ -7378,11 +7385,18 @@ static NurbsCurve world_denominator_run_proposal(const std::vector<Point>& local
 }
 
 static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair<double, double>& domain,
-                           const NurbsSurface& surface, const NurbsCurve& world, double tolerance) {
+                           const NurbsSurface& surface, const NurbsCurve& world, double tolerance,
+                           const double* wrapped_head_end) {
     const double lo = world.domain_start(), hi = world.domain_end(), period = domain.second - domain.first;
     PullbackRun samples = run_span_samples(runs, lo, std::min(hi, domain.second));
     if (hi > domain.second) {
-        const PullbackRun head = run_span_samples(runs, domain.first, hi - period);
+        // The source cut is an event identity. Subtracting a rounded lifted endpoint
+        // does not recover it and can place the request beyond its original run.
+        if (!wrapped_head_end || !std::isfinite(*wrapped_head_end) ||
+            !(*wrapped_head_end > domain.first && *wrapped_head_end < domain.second) ||
+            *wrapped_head_end + period != hi)
+            throw std::runtime_error("Analytic wrapped pullback lost its source cut identity");
+        const PullbackRun head = run_span_samples(runs, domain.first, *wrapped_head_end);
         if (samples.ts.empty() || head.ts.empty()) {
             observe_analytic_route_failure([&] {
                 auto all=nlohmann::ordered_json::array();
@@ -7395,7 +7409,10 @@ static NurbsCurve run_span(const std::vector<PullbackRun>& runs, const std::pair
             throw std::runtime_error("Analytic pullback could not preserve a wrapped raw parameter range");
         }
         for (size_t i = 1; i < head.ts.size(); ++i) {
-            samples.ts.push_back(head.ts[i] + period);
+            const double lifted = head.ts[i] + period;
+            if (!std::isfinite(lifted) || !(lifted > samples.ts.back()) || lifted > hi)
+                throw std::runtime_error("Analytic wrapped pullback raw samples are not representably ordered");
+            samples.ts.push_back(lifted);
             samples.uv.push_back(head.uv[i]);
         }
     }
@@ -8306,9 +8323,9 @@ static NurbsCurve latitude_raw_proposal(const NurbsCurve& pc, const NurbsCurve& 
 static NurbsCurve analytic_side_pcurve(const SectionSide& side, const NurbsCurve& source,
                                        const NurbsCurve& piece,
                                        const std::pair<double, double>& domain, double lo, double hi,
-                                       double tolerance) {
+                                       double tolerance, const double* wrapped_head_end) {
     if (!side.runs.empty())
-        return run_span(side.runs, domain, side.srf, piece, tolerance);
+        return run_span(side.runs, domain, side.srf, piece, tolerance, wrapped_head_end);
     NurbsCurve pc=analytic_pcurve(side.srf,side.recog,piece);
     if (!pc.is_valid()) {
         const auto projected=Closest::surface_curve(side.srf,piece);
@@ -8391,9 +8408,14 @@ static bool runs_close(const std::vector<PullbackRun>& runs) {
 /// Push the piece of c3 over [lo, hi] with both pcurves; hi past the domain end wraps the closed curve onto its start.
 static void push_section_piece(const SectionSide& sa, const SectionSide& sb, const NurbsCurve& c3, double lo,
                                double hi, double tolerance,
-                               std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples) {
+                               std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& triples,
+                               const double* wrapped_head_end = nullptr) {
 
     const std::pair<double, double> domain = c3.domain();
+    if (wrapped_head_end && (!std::isfinite(*wrapped_head_end) ||
+        !(*wrapped_head_end > domain.first && *wrapped_head_end < domain.second) ||
+        *wrapped_head_end + (domain.second-domain.first) != hi))
+        throw std::runtime_error("Analytic wrapped section lost its original source cut");
     NurbsCurve piece = c3;
 
     if (hi > domain.second && !piece.change_closed_curve_seam(lo))
@@ -8401,6 +8423,8 @@ static void push_section_piece(const SectionSide& sa, const SectionSide& sb, con
 
     if (!piece.trim(lo, hi))
         return;
+    if (wrapped_head_end && piece.domain() != std::pair<double,double>(lo,hi))
+        throw std::runtime_error("Analytic section trim changed its requested original raw range");
 
     PullbackObservationContext context{&c3, lo, hi, 0};
     struct RestorePullbackContext {
@@ -8409,9 +8433,9 @@ static void push_section_piece(const SectionSide& sa, const SectionSide& sb, con
     } restore_context{pullback_observation_context};
     const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
     if (capture && *capture) pullback_observation_context = &context;
-    NurbsCurve pa = analytic_side_pcurve(sa, c3, piece, domain, lo, hi, tolerance);
+    NurbsCurve pa = analytic_side_pcurve(sa, c3, piece, domain, lo, hi, tolerance, wrapped_head_end);
     context.side = 1;
-    NurbsCurve pb = analytic_side_pcurve(sb, c3, piece, domain, lo, hi, tolerance);
+    NurbsCurve pb = analytic_side_pcurve(sb, c3, piece, domain, lo, hi, tolerance, wrapped_head_end);
 
     if (pa.is_valid() && pb.is_valid()
         && (piece.domain() != pa.domain() || piece.domain() != pb.domain())) {
@@ -8480,7 +8504,7 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
         const SectionSide sa{a, ra, analytic_side_runs(a, ra, cc3, tolerance)};
         const SectionSide sb{b, rb, analytic_side_runs(b, rb, cc3, tolerance)};
         const std::vector<double> cuts = seam_cuts(cc3, sa.runs, sb.runs);
-        const double wrapped_upper = cuts.size()>2 ? cuts[1]+cuts.back()-cuts.front() : cuts.back();
+        const double wrapped_upper = cuts.size()>2 ? cuts[1]+(cuts.back()-cuts.front()) : cuts.back();
         const bool wrap = cuts.size() > 2 && cc3.is_closed() && runs_close(sa.runs) && runs_close(sb.runs) &&
             std::isfinite(wrapped_upper) && wrapped_upper>cuts.back(); // Never lose a positive wrapped head.
         const size_t first = wrap ? 1 : 0;
@@ -8490,7 +8514,7 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
             push_section_piece(sa, sb, cc3, cuts[k], cuts[k + 1], tolerance, res.triples);
 
         if (wrap)
-            push_section_piece(sa, sb, cc3, cuts[last], wrapped_upper, tolerance, res.triples);
+            push_section_piece(sa, sb, cc3, cuts[last], wrapped_upper, tolerance, res.triples, &cuts[1]);
     }
 
     res.status = AnalyticResult::HIT;
@@ -8842,10 +8866,12 @@ public:
     std::array<bool, 4> closed; // Whether each parameter wraps around a seam.
     std::array<double, 4> step; // Grid cell size per parameter.
     std::array<std::vector<double>, 4> knots; // Distinct parameter spans.
+    std::array<std::vector<double>, 4> creases; // Interior knots of full multiplicity, where a parameter loses smoothness.
     std::vector<std::array<double, 12>> boxes_a; // Cell boxes of a.
     std::vector<std::array<double, 12>> boxes_b; // Cell boxes of b.
     double h_init; // Initial 3D marching step.
     double conv_tol; // Corrector convergence tolerance.
+    bool chart_pieces = false; // Cut sections at crease knots and fit each piece from exact jets, for trims a volume is measured on.
     int max_steps; // Marching step cap per direction.
     double close_tol; // 3D distance that closes a loop.
 
@@ -8907,6 +8933,11 @@ SurfaceSurfaceField::SurfaceSurfaceField(const NurbsSurface& a_, const NurbsSurf
         range[k] = hi[k] - lo[k];
         closed[k] = srf.is_closed(k % 2);
         knots[k] = srf.get_span_vector(k % 2);
+        for (double knot : knots[k]) {
+            const std::vector<double>& all = srf.m_nurbsknot[k % 2];
+            if (knot > lo[k] && knot < hi[k] && std::count(all.begin(), all.end(), knot) >= srf.degree(k % 2))
+                creases[k].push_back(knot);
+        }
         cells[k] = std::max(static_cast<int>(knots[k].size()) - 1, 1) * 4;
         step[k] = range[k] / cells[k];
     }
@@ -10709,6 +10740,47 @@ void split_quad_at_seams(
     }
 }
 
+/// Insert corrected samples where the run crosses a crease knot of either surface and record them as cuts, like seam crossings:
+/// the world section is smooth there but its parameters are not, and a fit across such a knot converges only by crowding samples at it.
+void split_quad_at_creases(const SurfaceSurfaceField& field, std::vector<std::array<double, 4>>& pts, std::vector<int>& cross_idx) {
+    std::vector<std::array<double, 4>> result;
+    std::vector<int> cuts;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        result.push_back(pts[i]);
+        if (std::find(cross_idx.begin(), cross_idx.end(), static_cast<int>(i)) != cross_idx.end())
+            cuts.push_back(static_cast<int>(result.size()) - 1);
+        if (i + 1 == pts.size())
+            break;
+        const std::array<double, 4>& pa = pts[i];
+        const std::array<double, 4>& pb = pts[i + 1];
+        std::vector<std::tuple<double, int, double>> crossings;
+        for (int k = 0; k < 4; ++k) {
+            const double low = std::min(pa[k], pb[k]), high = std::max(pa[k], pb[k]);
+            const double margin = field.range[k] * 1e-12;
+            const int turns = field.closed[k] ? static_cast<int>(std::ceil(std::max(std::abs(low - field.lo[k]), std::abs(high - field.lo[k])) / field.range[k])) : 0;
+            for (double knot : field.creases[k])
+                for (int j = -turns; j <= turns; ++j) {
+                    const double value = knot + j * field.range[k];
+                    if (value > low + margin && value < high - margin)
+                        crossings.push_back({(value - pa[k]) / (pb[k] - pa[k]), k, value});
+                }
+        }
+        std::sort(crossings.begin(), crossings.end());
+        for (const std::tuple<double, int, double>& crossing : crossings) {
+            std::array<double, 4> cp;
+            for (int k = 0; k < 4; ++k)
+                cp[k] = pa[k] + (pb[k] - pa[k]) * std::get<0>(crossing);
+            cp[std::get<1>(crossing)] = std::get<2>(crossing);
+            if (!field.correct_on_seam(cp, std::get<1>(crossing)))
+                throw std::runtime_error("Native SSI crease crossing could not be refined");
+            result.push_back(cp);
+            cuts.push_back(static_cast<int>(result.size()) - 1);
+        }
+    }
+    pts = std::move(result);
+    cross_idx = std::move(cuts);
+}
+
 /// Seam-free pieces of a split run, the last loop piece wrapped past the start by the closure shift.
 std::vector<std::pair<std::vector<std::array<double, 4>>, bool>> quad_pieces(
     const SurfaceSurfaceField& field,
@@ -10861,7 +10933,8 @@ bool refine_surface_fit(
     const SurfaceSurfaceField& field,
     const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
     const std::vector<double>& parameters,
-    std::vector<std::array<double, 4>>& samples
+    std::vector<std::array<double, 4>>& samples,
+    double share
 ) {
     std::vector<std::array<double, 4>> refined = {samples.front()};
     const std::array<double, 3> dummy = {};
@@ -10869,7 +10942,7 @@ bool refine_surface_fit(
         bool split = false;
         for (double fraction : {0.25, 0.5, 0.75}) {
             const double t = parameters[i - 1] + fraction * (parameters[i] - parameters[i - 1]);
-            split = split || surface_fit_error(field, triple, t) > field.tolerance * 0.5;
+            split = split || surface_fit_error(field, triple, t) > field.tolerance * share;
         }
         if (split) {
             const double t = std::midpoint(parameters[i - 1], parameters[i]);
@@ -10942,6 +11015,102 @@ bool certified_surface_fit(const SurfaceSurfaceField& field,
                field.tolerance) == ParameterMatch::Matched;
 }
 
+/// First and second derivatives of a section and its two pcurves along the world arc.
+struct SectionJet {
+    Vector world_first, world_second, a_first, a_second, b_first, b_second;
+};
+
+/// The two surfaces fix the tangent and each the curvature along its own normal, so no neighbouring sample is needed.
+bool section_jet(const SurfaceSurfaceField& field, const std::array<double, 4>& x, const Vector& forward, SectionJet& jet) {
+    const std::vector<Vector> a = field.a.evaluate(field.wrap(0, x[0]), field.wrap(1, x[1]), 2);
+    const std::vector<Vector> b = field.b.evaluate(field.wrap(2, x[2]), field.wrap(3, x[3]), 2);
+    if (a.size() != 6 || b.size() != 6)
+        return false;
+    const auto in_surface = [](const Vector& su, const Vector& sv, const Vector& along, Vector& result) {
+        const double uu = su.dot(su), uv = su.dot(sv), vv = sv.dot(sv);
+        const double determinant = uu * vv - uv * uv;
+        if (!(determinant > 0.0))
+            return false;
+        const double p = along.dot(su), q = along.dot(sv);
+        result = Vector((p * vv - q * uv) / determinant, (q * uu - p * uv) / determinant, 0.0);
+        return true;
+    };
+    const auto bending = [](const std::vector<Vector>& s, const Vector& first) {
+        return s[5] * (first[0] * first[0]) + s[4] * (2.0 * first[0] * first[1]) + s[2] * (first[1] * first[1]);
+    };
+    Vector na = a[3].cross(a[1]);
+    Vector nb = b[3].cross(b[1]);
+    if (!na.normalize_self() || !nb.normalize_self())
+        return false;
+    Vector tangent = na.cross(nb);
+    if (tangent.magnitude() < 1e-3 || !tangent.normalize_self())
+        return false;
+    if (tangent.dot(forward) < 0.0)
+        tangent *= -1.0;
+    Vector a_first, b_first, a_second, b_second;
+    if (!in_surface(a[3], a[1], tangent, a_first) || !in_surface(b[3], b[1], tangent, b_first))
+        return false;
+    const Vector a_bend = bending(a, a_first);
+    const Vector b_bend = bending(b, b_first);
+    const Vector across_b = nb.cross(tangent);
+    const Vector across_a = tangent.cross(na);
+    const double volume = na.dot(across_b);
+    if (std::abs(volume) < 1e-6)
+        return false;
+    const Vector second = (across_b * a_bend.dot(na) + across_a * b_bend.dot(nb)) * (1.0 / volume);
+    if (!in_surface(a[3], a[1], second - a_bend, a_second) || !in_surface(b[3], b[1], second - b_bend, b_second))
+        return false;
+    jet = {tangent, second, a_first, a_second, b_first, b_second};
+    return true;
+}
+
+/// A quintic Bezier per sample interval from the exact section jets: sixth order, where a spline through the points is fourth.
+bool quintic_section(
+    const SurfaceSurfaceField& field,
+    const std::vector<std::array<double, 4>>& samples,
+    const std::vector<double>& parameters,
+    std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple
+) {
+    std::vector<nurbs_hermite::QuinticSpan> world, first, second;
+    const double inside = 1e-10;
+    const auto world_point = [&field](const std::array<double, 4>& x) {
+        const std::array<double, 3> p = field.point(x);
+        return Point(p[0], p[1], p[2]);
+    };
+    for (size_t i = 1; i < samples.size(); ++i) {
+        std::array<double, 4> head = samples[i - 1], tail = samples[i];
+        // one-sided at a crease: a little inside the interval
+        for (int k = 0; k < 4; ++k) {
+            head[k] += (samples[i][k] - samples[i - 1][k]) * inside;
+            tail[k] -= (samples[i][k] - samples[i - 1][k]) * inside;
+        }
+        const Point p0 = world_point(samples[i - 1]), p1 = world_point(samples[i]);
+        const Vector forward = p1 - p0;
+        SectionJet s, e;
+        if (!section_jet(field, head, forward, s) || !section_jet(field, tail, forward, e))
+            return false;
+        const double t0 = parameters[i - 1], t1 = parameters[i];
+        // The three curves share t only if t runs with the true arc: a chord's error here is a fourth order error in the fit.
+        double arc = forward.magnitude();
+        for (int pass = 0; pass < 3; ++pass) {
+            const double speed = arc / (t1 - t0);
+            const NurbsCurve trial = nurbs_hermite::quintic({{t0, t1, p0, p1, s.world_first * speed, e.world_first * speed,
+                s.world_second * (speed * speed), e.world_second * (speed * speed)}});
+            if (!trial.is_valid())
+                return false;
+            arc = trial.length();
+        }
+        const double speed = arc / (t1 - t0), bend = speed * speed;
+        world.push_back({t0, t1, p0, p1, s.world_first * speed, e.world_first * speed, s.world_second * bend, e.world_second * bend});
+        first.push_back({t0, t1, Point(samples[i - 1][0], samples[i - 1][1], 0.0), Point(samples[i][0], samples[i][1], 0.0),
+            s.a_first * speed, e.a_first * speed, s.a_second * bend, e.a_second * bend});
+        second.push_back({t0, t1, Point(samples[i - 1][2], samples[i - 1][3], 0.0), Point(samples[i][2], samples[i][3], 0.0),
+            s.b_first * speed, e.b_first * speed, s.b_second * bend, e.b_second * bend});
+    }
+    triple = {nurbs_hermite::quintic(world), nurbs_hermite::quintic(first), nurbs_hermite::quintic(second)};
+    return std::get<0>(triple).is_valid() && std::get<1>(triple).is_valid() && std::get<2>(triple).is_valid();
+}
+
 /// Section triple of one seam-free piece with adaptive paired-lift residual checks.
 bool piece_triple(
     const SurfaceSurfaceField& field,
@@ -10963,14 +11132,46 @@ bool piece_triple(
         return false;
 
     SurfaceSurfaceField refined = field;
+    if (field.chart_pieces) {
+        // Samples far tighter than the tolerance: the volume under a trim moves with the trim's error times its reach.
+        double reach = 0.0;
+        for (const NurbsSurface* surface : {&field.a, &field.b})
+            for (int i = 0; i < surface->cv_count(0); ++i)
+                for (int j = 0; j < surface->cv_count(1); ++j) {
+                    const Point point = surface->get_cv(i, j);
+                    reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
+                }
+        refined.conv_tol = std::min(field.conv_tol, std::max(field.tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon()));
+    }
     const std::array<double, 3> dummy = {0.0, 0.0, 0.0};
     for (size_t i = 0; i < piece_pts.size(); ++i) {
-
-        if (!refined.correct(piece_pts[i], false, dummy, dummy))
+        // An end on a domain edge or crease stays on it.
+        int pinned = -1;
+        if (i == 0 || i + 1 == piece_pts.size())
+            for (int k = 0; k < 4; ++k) {
+                const double value = refined.wrap(k, piece_pts[i][k]);
+                if (value == refined.lo[k] || value == refined.hi[k] ||
+                    std::find(refined.creases[k].begin(), refined.creases[k].end(), value) != refined.creases[k].end())
+                    pinned = k;
+            }
+        if (pinned >= 0 ? !refined.correct_on_seam(piece_pts[i], pinned) : !refined.correct(piece_pts[i], false, dummy, dummy))
             throw std::runtime_error("Native surface section point could not be refined");
 
     }
-    refine_quad_piece(refined, piece_pts);
+    // The fit puts samples where its error asks for them: start from few.
+    if (!field.chart_pieces)
+        refine_quad_piece(refined, piece_pts);
+    const std::vector<std::array<double, 4>> marched = piece_pts;
+    if (field.chart_pieces && piece_pts.size() > 17) {
+        std::vector<std::array<double, 4>> sparse;
+        const size_t stride = (piece_pts.size() - 1) / 16;
+        for (size_t i = 0; i + stride < piece_pts.size(); i += stride)
+            sparse.push_back(piece_pts[i]);
+        sparse.push_back(piece_pts.back());
+        piece_pts = std::move(sparse);
+    }
+    bool jets = field.chart_pieces;
+    bool chord_refined = !field.chart_pieces;
     for (int iteration = 0; iteration < 20 && piece_pts.size() <= 32768; ++iteration) {
         piece_pts.erase(std::unique(piece_pts.begin(), piece_pts.end()), piece_pts.end());
         if (piece_pts.size() < (piece_loop ? 4u : 2u))
@@ -10991,8 +11192,17 @@ bool piece_triple(
         }
         try {
             ssi_diagnostics::Timer interpolation(ssi_diagnostics::Stage::Interpolation);
-            triple = {fit_surface_track(pts3, parameters, piece_loop), fit_surface_track(pts_pa, parameters, piece_loop),
-                fit_surface_track(pts_pb, parameters, piece_loop)};
+            jets = jets && quintic_section(refined, piece_pts, parameters, triple);
+            if (!jets && !chord_refined) {
+                piece_pts = marched;
+                refine_quad_piece(refined, piece_pts);
+                chord_refined = true;
+                iteration = 0;
+                continue;
+            }
+            if (!jets)
+                triple = {fit_surface_track(pts3, parameters, piece_loop), fit_surface_track(pts_pa, parameters, piece_loop),
+                    fit_surface_track(pts_pb, parameters, piece_loop)};
         } catch (section_fit::Error& error) {
             error.world_samples = pts3;
             error.pcurve_samples = pts_pa;
@@ -11000,7 +11210,8 @@ bool piece_triple(
             throw;
         }
         ssi_diagnostics::Timer refinement(ssi_diagnostics::Stage::Refinement);
-        if (!refine_surface_fit(refined, triple, parameters, piece_pts))
+        // Sixth order reaches a trim the volume can not feel; the spline, near a tangency, stops at the tolerance's own share.
+        if (!refine_surface_fit(refined, triple, parameters, piece_pts, jets ? 0.02 : 0.5))
             return true;
     }
     if (certified_surface_fit(field, triple))
@@ -11384,12 +11595,14 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_triples(
     const NurbsSurface& a,
     const NurbsSurface& b,
-    double tolerance
+    double tolerance,
+    bool chart_pieces
 ) {
 
     ssi_diagnostics::Timer total(ssi_diagnostics::Stage::Total);
     ssi_diagnostics::Timer initialize(ssi_diagnostics::Stage::Initialize);
-    const SurfaceSurfaceField field(a, b, tolerance);
+    SurfaceSurfaceField field(a, b, tolerance);
+    field.chart_pieces = chart_pieces;
     initialize.stop();
     const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
     std::vector<SurfaceSurfaceSeed> seeds = surface_surface_seeds(field);
@@ -11420,6 +11633,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
         std::vector<std::array<double, 4>> out_pts;
         std::vector<int> cross_idx;
         split_quad_at_seams(field, quad, out_pts, cross_idx);
+        if (field.chart_pieces)
+            split_quad_at_creases(field, out_pts, cross_idx);
         densify.stop();
 
         for (std::pair<std::vector<std::array<double, 4>>, bool>& piece : quad_pieces(field, out_pts, cross_idx, is_loop, closure)) {
@@ -11530,10 +11745,23 @@ std::string ssi_diagnostics::seed_chart_diagnostic(const NurbsSurface& a, const 
     return result.dump();
 }
 
+/// A plane on an affine parallelogram, whose section with a curved surface is cut from the whole plane section by its bounds alone.
+static bool parallelogram_plane(const NurbsSurface& planar, const NurbsSurface& other) {
+    if (other.is_planar(nullptr, 1e-9))
+        return false;
+    if (planar.degree(0) != 1 || planar.degree(1) != 1 || planar.cv_count(0) != 2 || planar.cv_count(1) != 2)
+        return false;
+    const double weight = planar.weight(0, 0);
+    return weight > 0.0 && std::isfinite(weight) &&
+        planar.weight(0, 1) == weight && planar.weight(1, 0) == weight && planar.weight(1, 1) == weight &&
+        planar.is_planar(nullptr, 1e-9) && is_parallelogram_face(planar, face_frame(planar));
+}
+
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
     const NurbsSurface& a,
     const NurbsSurface& b,
-    double tolerance
+    double tolerance,
+    bool chart_pieces
 ) {
 
     if (!a.is_valid() || !b.is_valid())
@@ -11545,15 +11773,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     for (int side = 0; side < 2; ++side) {
         const NurbsSurface& planar = side == 0 ? a : b;
         const NurbsSurface& other = side == 0 ? b : a;
-        if (other.is_planar(nullptr, 1e-9))
-            continue;
-        if (planar.degree(0) != 1 || planar.degree(1) != 1 ||
-            planar.cv_count(0) != 2 || planar.cv_count(1) != 2)
-            continue;
-        const double weight = planar.weight(0, 0);
-        if (!(weight > 0.0) || !std::isfinite(weight) ||
-            planar.weight(0, 1) != weight || planar.weight(1, 0) != weight || planar.weight(1, 1) != weight ||
-            !planar.is_planar(nullptr, 1e-9) || !is_parallelogram_face(planar, face_frame(planar)))
+        if (!parallelogram_plane(planar, other))
             continue;
         const std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> exact =
             surface_section::extrusion_plane(other, surface_mid_plane(planar), tolerance);
@@ -11616,7 +11836,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     if (auto crossing = surface_section::bilinear_crossing(a, b, tolerance))
         return *crossing;
 
-    return marched_section_triples(a, b, tolerance);
+    return marched_section_triples(a, b, tolerance, chart_pieces);
 }
 
 namespace {
@@ -13383,36 +13603,47 @@ bool isolated_boundary_seed(const SurfaceSurfaceField& field, const SurfaceSurfa
 std::optional<surface_section::PointEvent> isolated_support_corner(const NurbsSurface& a,
                                                                    const NurbsSurface& b) {
     const BezierChart ca(a), cb(b);
-    if (!ca.valid() || !cb.valid())
+    if (!ca.valid() || !cb.valid()) return std::nullopt;
+    const auto prove=[&](const ExactCorner& point,const Point& ua,const Point& ub)
+        ->std::optional<surface_section::PointEvent> {
+        for (int axis=0;axis<3;++axis) for (int orientation:{-1,1}) {
+            const auto first=support_side(a,ca,point,axis,orientation);
+            const auto second=support_side(b,cb,point,axis,-orientation);
+            if (!first.valid || !second.valid) continue;
+            bool unique=first.unique || second.unique;
+            if (!unique) {
+                unique=true;
+                for (int d=0;d<3;++d) if (d!=axis)
+                    unique=unique && pinned_coordinate(first,second,point,d);
+            }
+            if (unique) return surface_section::PointEvent{
+                {point.h[0]/point.w,point.h[1]/point.w,point.h[2]/point.w},ua,ub,
+                {point.h[0],point.h[1],point.h[2],point.w}};
+        }
         return std::nullopt;
-    for (int i = 0; i <= ca.nu; ++i)
-        for (int j = 0; j <= ca.nv; ++j)
-            for (int k = 0; k <= cb.nu; ++k)
-                for (int l = 0; l <= cb.nv; ++l) {
-                    const auto point = projective_corner(a, i * ca.p, j * ca.q);
-                    if (!same_corner(point, projective_corner(b, k * cb.p, l * cb.q)))
-                        continue;
-                    for (int axis = 0; axis < 3; ++axis)
-                        for (int orientation : {-1, 1}) {
-                            const auto first = support_side(a, ca, point, axis, orientation);
-                            const auto second = support_side(b, cb, point, axis, -orientation);
-                            if (!first.valid || !second.valid)
-                                continue;
-                            bool unique = first.unique || second.unique;
-                            if (!unique) {
-                                unique = true;
-                                for (int d = 0; d < 3; ++d)
-                                    if (d != axis)
-                                        unique = unique && pinned_coordinate(first, second, point, d);
-                            }
-                            if (unique)
-                                return surface_section::PointEvent{
-                                    {point.h[0] / point.w, point.h[1] / point.w, point.h[2] / point.w},
-                                    {ca.u[i], ca.v[j], 0},
-                                    {cb.u[k], cb.v[l], 0},
-                                    {point.h[0], point.h[1], point.h[2], point.w}};
-                        }
-                }
+    };
+    // Preserve the existing common-corner path and its candidate ordering.
+    for (int i=0;i<=ca.nu;++i) for (int j=0;j<=ca.nv;++j)
+        for (int k=0;k<=cb.nu;++k) for (int l=0;l<=cb.nv;++l) {
+            const auto point=projective_corner(a,i*ca.p,j*ca.q);
+            if (same_corner(point,projective_corner(b,k*cb.p,l*cb.q)))
+                if (auto event=prove(point,{ca.u[i],ca.v[j],0},{cb.u[k],cb.v[l],0})) return event;
+        }
+    // An original contact corner on one support may lie inside the other's affine chart.
+    // The inverse is exact, globally injective and domain-checked; it is not a sampled seed.
+    for (int side=0;side<2;++side) {
+        const auto& source=side?b:a;
+        const auto& other=side?a:b;
+        const auto& chart=side?cb:ca;
+        for (int i=0;i<=chart.nu;++i) for (int j=0;j<=chart.nv;++j) {
+            const auto point=projective_corner(source,i*chart.p,j*chart.q);
+            surface_point_preimages::Domain inverse;
+            if (!surface_point_preimages::exact_affine_preimage(other,
+                {point.h[0],point.h[1],point.h[2],point.w},inverse)) continue;
+            const Point source_uv(chart.u[i],chart.v[j],0), other_uv(inverse.uv[0],inverse.uv[2],0);
+            if (auto event=prove(point,side?other_uv:source_uv,side?source_uv:other_uv)) return event;
+        }
+    }
     return std::nullopt;
 }
 } // namespace
@@ -13460,16 +13691,24 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                 result.coverage=Coverage::CoincidentUnverified;
             } else {
                 // Section curves are fitted well inside the model tolerance, so what they sum to across a boundary stays within it.
-                result.curves=Intersection::surface_surface(a,b,std::max(tolerance*.125,std::min(tolerance,1e-7)));
+                result.curves=Intersection::surface_surface(a,b,std::max(tolerance*.125,std::min(tolerance,1e-7)),true);
                 for (const auto& section:result.curves)
                     if (curve_surface_intersection::same_parameter(std::get<0>(section),std::get<1>(section),a,tolerance)
                             !=curve_surface_intersection::ParameterMatch::Matched ||
                         curve_surface_intersection::same_parameter(std::get<0>(section),std::get<2>(section),b,tolerance)
                             !=curve_surface_intersection::ParameterMatch::Matched)
                         throw std::runtime_error("Support inventory curve lacks original paired agreement");
+                const auto whole_section=[&](const NurbsSurface& planar,const NurbsSurface& other) {
+                    return parallelogram_plane(planar,other) &&
+                        surface_section::extrusion_plane(other,surface_mid_plane(planar),tolerance).has_value();
+                };
                 if (!result.curves.empty()) {
                     // Do not pretend returned-locus agreement proves every original branch.
-                    result.coverage=Coverage::LegacyLocusOnly;
+                    result.coverage=affine_plane_curve_coverage(a,b,result.curves)
+                        ? Coverage::OriginalDomainCurve : Coverage::LegacyLocusOnly;
+                } else if (whole_section(a,b) || whole_section(b,a)) {
+                    // The closed form is the whole locus and none of it lies in the patch, a patch edge tangent to it included.
+                    result.coverage=Coverage::OriginalDomainExcluded;
                 } else {
                     const SurfaceSurfaceField original(a,b,tolerance);
                     // A root that leaves both patches at once is a boundary contact and adds nothing to what the edges meeting there already own.

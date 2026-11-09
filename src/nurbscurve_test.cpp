@@ -1,5 +1,6 @@
 #include "mini_test.h"
 #include "nurbscurve.h"
+#include "nurbs_coincidence.h"
 #include "nurbscurve.pb.h"
 #include "point.h"
 #include "plane.h"
@@ -1598,5 +1599,188 @@ MINI_TEST("NurbsCurve", "Divide By Count Stations Are Equal Arcs On Long Curves"
             MINI_CHECK(std::abs(piece.length() - share) < 1e-7);
         }
     }
+}
+} // namespace session_cpp
+
+
+namespace session_cpp {
+namespace {
+nlohmann::ordered_json raw_trim_fixture() {
+    const auto root=std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root/"tests/fixtures/native_exact_trim_endpoint_intervals.json");
+    MINI_CHECK(input.good());
+    return nlohmann::ordered_json::parse(input);
+}
+}
+
+MINI_TEST("NurbsCurve", "Actual Representable Positive Raw Prefix Is Preserved") {
+    const auto record=raw_trim_fixture().at("cases").at(1).at("record");
+    auto curve=NurbsCurve::jsonload(record.at("curve"));
+    const double first=record.at("first"),last=record.at("last");
+    MINI_CHECK(first==0 && last>0 && curve.domain_start()==0 && curve.domain_end()==1);
+    MINI_CHECK(curve.trim(first,last));
+    MINI_CHECK(curve.is_valid() && curve.domain_start()==first && curve.domain_end()==last);
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(curve));
+    for (double fraction:{0.,.25,.5,.75,1.}) {
+        const double t=fraction*last;
+        const auto point=curve.point_at(t);
+        MINI_CHECK(std::abs(point[0]-.61)<=2*std::numeric_limits<double>::epsilon());
+        MINI_CHECK(std::abs(point[1]-t)<=8*std::numeric_limits<double>::epsilon()*std::abs(t));
+    }
+    MINI_CHECK(curve.point_at_end()[1]>0);
+}
+
+MINI_TEST("NurbsCurve", "Unrepresentable Positive Bezier Prefix Declines Without Becoming Point") {
+    const auto record=raw_trim_fixture().at("cases").at(0).at("record");
+    auto curve=NurbsCurve::jsonload(record.at("curve"));
+    const double first=record.at("first"),last=record.at("last");
+    MINI_CHECK(first==0 && last>0 && !nurbs_coincidence::curve_constant_image(curve));
+    const double start=curve.cv(0)[2],end=curve.cv(1)[2];
+    MINI_CHECK(end>start && (end-start)*last>0);
+    MINI_CHECK((end-start)*last*2<std::nextafter(start,std::numeric_limits<double>::infinity())-start);
+    const auto frozen=curve.jsondump();
+    // Safety prerequisite: the real source interval is positive, but binary64
+    // endpoint materialization loses its variation. Keep its original lineage.
+    MINI_CHECK(!curve.trim(first,last));
+    MINI_CHECK(curve.jsondump()==frozen && !nurbs_coincidence::curve_constant_image(curve));
+}
+
+MINI_TEST("NurbsCurve", "Distinct Off Knot Raw Values Keep Amplified Physical Feature") {
+    const double a=std::ldexp(1.,-55),b=std::ldexp(1.,-54),amplitude=std::ldexp(1.,45);
+    NurbsCurve curve(3,false,2,2);
+    curve.m_nurbsknot={0,1};
+    MINI_CHECK(curve.set_cv(0,{0,0,0}) && curve.set_cv(1,{1,amplitude,0}));
+    MINI_CHECK(curve.insert_nurbsknot(a,1));
+    MINI_CHECK(curve.insert_nurbsknot(b,1));
+    MINI_CHECK(curve.cv_count()==4);
+    MINI_CHECK(std::count(curve.m_nurbsknot.begin(),curve.m_nurbsknot.end(),a)==1);
+    MINI_CHECK(std::count(curve.m_nurbsknot.begin(),curve.m_nurbsknot.end(),b)==1);
+    const auto frozen=curve.jsondump();
+    auto piece=curve;
+    MINI_CHECK(piece.trim(a,b));
+    MINI_CHECK(piece.is_valid() && piece.domain_start()==a && piece.domain_end()==b);
+    MINI_CHECK(piece.point_at_start()[1]==amplitude*a && piece.point_at_end()[1]==amplitude*b);
+    MINI_CHECK(piece.point_at_end()[1]-piece.point_at_start()[1]>.0009);
+    MINI_CHECK(curve.jsondump()==frozen);
+}
+
+MINI_TEST("NurbsCurve", "Off Knot Shifted Reversed Raw Interval Retains Real Feature") {
+    const double a=3,b=std::nextafter(a,13.),amplitude=std::ldexp(1.,45);
+    const double height=amplitude*(b-a);
+    MINI_CHECK(a<b && height>.01);
+    for (bool reverse:{false,true}) {
+        NurbsCurve curve(3,false,2,2);
+        curve.m_nurbsknot={-7,13};
+        MINI_CHECK(curve.set_cv(0,{-10,-10*amplitude,0}) && curve.set_cv(1,{10,10*amplitude,0}));
+        if (reverse) MINI_CHECK(curve.reverse());
+        const auto frozen=curve.jsondump();
+        auto piece=curve;
+        MINI_CHECK(piece.trim(a,b));
+        MINI_CHECK(piece.is_valid() && piece.domain_start()==a && piece.domain_end()==b);
+        const double sign=reverse?-1.:1.;
+        MINI_CHECK(piece.point_at_start()[1]==0);
+        MINI_CHECK(sign*piece.point_at_end()[1]>.9*height);
+        MINI_CHECK(std::abs(piece.point_at_end()[1]-sign*height)<=16*std::numeric_limits<double>::epsilon()*height);
+        MINI_CHECK(!nurbs_coincidence::curve_constant_image(piece));
+        MINI_CHECK(curve.jsondump()==frozen);
+    }
+}
+
+MINI_TEST("NurbsCurve", "Variable Positive Weights Keep Tiny Raw Prefix And Reversed Suffix") {
+    const double tiny=std::ldexp(1.,-55);
+    for (bool reverse:{false,true}) {
+        NurbsCurve source(3,true,2,2);
+        source.m_nurbsknot={0,1};
+        MINI_CHECK(source.set_cv_4d(0,0,0,0,2) && source.set_cv_4d(1,3,6,-3,3));
+        if (reverse) MINI_CHECK(source.reverse());
+        const double a=reverse?std::nextafter(1.,0.):0.,b=reverse?1.:tiny;
+        const auto frozen=source.jsondump();
+        auto piece=source;
+        MINI_CHECK(piece.trim(a,b));
+        MINI_CHECK(piece.is_valid() && piece.is_rational());
+        MINI_CHECK(piece.domain_start()==a && piece.domain_end()==b);
+        MINI_CHECK(!nurbs_coincidence::curve_constant_image(piece));
+        for (double t:{a,b}) {
+            const double expected=reverse?3*(1-t)/(3-t):3*t/(2+t);
+            const auto point=piece.point_at(t);
+            const double error=16*std::numeric_limits<double>::epsilon()*std::abs(expected);
+            MINI_CHECK(std::abs(point[0]-expected)<=error);
+            MINI_CHECK(std::abs(point[1]-2*expected)<=2*error);
+            MINI_CHECK(std::abs(point[2]+expected)<=error);
+        }
+        MINI_CHECK(source.jsondump()==frozen);
+    }
+    NurbsCurve constant(3,true,2,2);
+    constant.m_nurbsknot={0,1};
+    MINI_CHECK(constant.set_cv_4d(0,1,-2,4,3) && constant.set_cv_4d(1,2,-4,8,6));
+    MINI_CHECK(nurbs_coincidence::curve_constant_image(constant));
+    MINI_CHECK(constant.trim(0,tiny));
+    MINI_CHECK(constant.domain_start()==0 && constant.domain_end()==tiny);
+    MINI_CHECK(nurbs_coincidence::curve_constant_image(constant));
+}
+
+MINI_TEST("NurbsCurve", "Clamped Outside Positive Request Declines Before Mutation") {
+    NurbsCurve source(3,false,3,4);
+    source.m_nurbsknot={-1,0,1,2,3};
+    for (int i=0;i<4;++i) MINI_CHECK(source.set_cv(i,{static_cast<double>(i),static_cast<double>(i%2),0}));
+    MINI_CHECK(source.is_valid() && !source.is_clamped());
+    const double tiny=std::ldexp(1.,-55),beyond=std::nextafter(2.,3.);
+    for (const auto range:{std::pair<double,double>{-2*tiny,-tiny},
+                           std::pair<double,double>{beyond,std::nextafter(beyond,3.)}}) {
+        auto curve=source;
+        const auto frozen=curve.jsondump();
+        MINI_CHECK(range.first<range.second);
+        MINI_CHECK(!curve.trim(range.first,range.second));
+        MINI_CHECK(curve.jsondump()==frozen);
+    }
+}
+} // namespace session_cpp
+
+
+namespace session_cpp {
+MINI_TEST("NurbsCurve", "Original Linear Trim Keeps Exact Representable Endpoints") {
+    for (int dimension:{1,2,3}) for (bool rational:{false,true})
+        for (double weight:{2.,3.,5.}) for (bool shifted:{false,true}) {
+            NurbsCurve curve(dimension,rational,2,2);
+            const double lo=shifted?-7.:0.,hi=shifted?13.:1.;
+            const double first=shifted?-2.:.25,last=shifted?8.:.75;
+            curve.m_nurbsknot={lo,hi};
+            const std::array<Point,2> points={Point(-2,.5,-7),Point(2,-.5,13)};
+            for (int i=0;i<2;++i) {
+                if (rational) MINI_CHECK(curve.set_cv_4d(i,points[i][0]*weight,points[i][1]*weight,points[i][2]*weight,weight));
+                else MINI_CHECK(curve.set_cv(i,points[i]));
+            }
+            const auto guid=curve.jsondump().at("guid");
+            MINI_CHECK(curve.trim(first,last));
+            MINI_CHECK(curve.is_valid() && curve.cv_count()==2 && curve.degree()==1);
+            MINI_CHECK(curve.domain_start()==first && curve.domain_end()==last);
+            MINI_CHECK(curve.is_rational()==rational && curve.jsondump().at("guid")==guid);
+            const std::array<Point,2> expected={Point(-1,.25,-2),Point(1,-.25,8)};
+            for (int i=0;i<2;++i) for (int d=0;d<dimension;++d) {
+                MINI_CHECK(curve.get_cv(i)[d]==expected[i][d]);
+                MINI_CHECK(curve.cv(i)[d]==expected[i][d]*(rational?weight:1.));
+            }
+            if (rational) MINI_CHECK(curve.weight(0)==weight && curve.weight(1)==weight);
+        }
+}
+MINI_TEST("NurbsCurve", "Original Rational Linear Trim Preserves Homogeneous Raw Law") {
+    NurbsCurve curve(3,true,2,2);curve.m_nurbsknot={0,1};
+    MINI_CHECK(curve.set_cv_4d(0,-4,2,0,2) && curve.set_cv_4d(1,12,0,6,3));
+    MINI_CHECK(curve.trim(.25,.75));
+    const std::array<std::array<double,4>,2> expected={{{0,1.5,1.5,2.25},{8,.5,4.5,2.75}}};
+    MINI_CHECK(curve.is_valid() && curve.domain_start()==.25 && curve.domain_end()==.75);
+    for (int i=0;i<2;++i) for (int d=0;d<4;++d) MINI_CHECK(curve.cv(i)[d]==expected[i][d]);
+    MINI_CHECK(!nurbs_coincidence::curve_constant_image(curve));
+}
+MINI_TEST("NurbsCurve", "Original Linear Trim Declines Actual Nonrepresentable Positive Interval") {
+    NurbsCurve curve(3,false,2,2);curve.m_nurbsknot={0,1};
+    MINI_CHECK(curve.set_cv(0,{0,.0009613037109375,1.02}));
+    MINI_CHECK(curve.set_cv(1,{0,.0009613037109375,-1.02}));
+    const double first=.009803921568627416,last=.00980392156862746;
+    MINI_CHECK(first<last && 2*1.02*(last-first)>0);
+    MINI_CHECK(2*1.02*(last-first)<std::numeric_limits<double>::epsilon());
+    const auto frozen=curve.jsondump();
+    MINI_CHECK(!curve.trim(first,last));
+    MINI_CHECK(curve.jsondump()==frozen && !nurbs_coincidence::curve_constant_image(curve));
 }
 } // namespace session_cpp

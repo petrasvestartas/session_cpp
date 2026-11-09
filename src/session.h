@@ -5,6 +5,7 @@
 #include "guid.h"
 #include "json.h"
 #include "matrix.h"
+#include "text.h"
 #include "objects.h"
 #include "point.h"
 #include "vector.h"
@@ -305,6 +306,9 @@ public:
     /// Add a matrix as its component (type_name Matrix, the matrix's guid), placed by set_xform on that guid; a guid already live adds nothing and returns the node that guid has.
     std::shared_ptr<TreeNode> add_matrix(const Matrix& matrix, std::shared_ptr<TreeNode> parent = nullptr);
 
+    /// Add text as its component (type_name Text, the text's guid), placed by set_xform on that guid.
+    std::shared_ptr<TreeNode> add_text(const Text& text, std::shared_ptr<TreeNode> parent = nullptr);
+
     /// Add a definition, geometry in its own frame that instances share; returns its guid, also when that guid is already defined, and "" for null or a guid an object, instance or component holds.
     std::string add_definition(const Geometry& definition);
 
@@ -378,6 +382,14 @@ public:
 
     /// Set the central LOCAL transform under tree-node name/object guid, relative to its parent; a definition-only guid is ignored.
     void set_xform(const std::string& guid, const Xform& xform);
+
+    /// Set a local transform and record its presentation duration and delay.
+    void animate_xform(
+        const std::string& guid,
+        const Xform& xform,
+        double duration_ms = 650.0,
+        double delay_ms = 0.0
+    );
 
     /// Removes an object's local transform, returning whether one was present.
     bool remove_xform(const std::string& guid);

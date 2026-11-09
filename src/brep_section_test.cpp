@@ -1,4 +1,9 @@
 #include "brep_section.h"
+#include "brep_assemble.h"
+#include "section_original_endpoint_alias.h"
+#include "section_exact_knot_preimages.h"
+#include "brep_polygon_trim_coverage.h"
+#include "section_exact_linear_event.h"
 #include "brep_interference_internal.h"
 #include "closest.h"
 #include "nurbs_bounds.h"
@@ -356,8 +361,19 @@ MINI_TEST("BRep Native Section", "Shared Inventory Keeps Mixed Curve And Point O
         if (!inventory.complete)
             throw std::runtime_error(inventory.failure);
         MINI_CHECK(inventory.expected_pairs==4 && inventory.coverage.size()==4);
-        // A certified returned line does not claim all original support branches.
-        MINI_CHECK(!inventory.coverage_complete());
+        // This exact fixture now has a maximal original-domain line AND its
+        // complete polygon trim proof; the independent corner contact and both
+        // off-diagonal exclusions also have original-domain receipts.
+        for (const auto& pair:inventory.coverage) {
+            MINI_CHECK(pair.trim_ownership_complete);
+            if (pair.first_face==0 && pair.second_face==0)
+                MINI_CHECK(pair.support==surface_section::Coverage::OriginalDomainCurve);
+            else if (pair.first_face==1 && pair.second_face==1)
+                MINI_CHECK(pair.support==surface_section::Coverage::GlobalContactPoint);
+            else
+                MINI_CHECK(pair.support==surface_section::Coverage::OriginalDomainExcluded);
+        }
+        MINI_CHECK(inventory.coverage_complete());
         MINI_CHECK(inventory.curve_representatives.size()==1);
         MINI_CHECK(inventory.support_points.size()==1);
         size_t isolated=0,owned=0;
@@ -385,7 +401,8 @@ MINI_TEST("BRep Native Section", "Shared Inventory Keeps Mixed Curve And Point O
         }
         const auto section=Intersection::brep_brep(a,b,tolerance);
         MINI_CHECK(section.curves.size()==1 && section.points.size()==1);
-        MINI_CHECK(section.coverage==SectionCoverage::LegacyLocusUnqualified);
+        // Every pair's original support/trim theorem was asserted above.
+        MINI_CHECK(section.coverage==SectionCoverage::OriginalDomainQualified);
         if (!section.curves.empty()) {
             const auto& line=section.curves.front();
             const Point lo(-1,0,0),hi(1,0,0);
@@ -793,6 +810,45 @@ MINI_TEST("BRep Native Section", "Trimmed Point Contact Does Not Manufacture Pos
         const auto inventory=brep_section::interferences(a,b,tolerance);
         if (!inventory.complete) throw std::runtime_error(inventory.failure);
         MINI_CHECK(inventory.curves.empty());
+        size_t owned_count=0;
+        for (const auto& law:inventory.original_trim_laws)
+            for (const auto& owned:law.owned_intervals) {
+                ++owned_count;
+                MINI_CHECK(owned.first<owned.last && owned.node<inventory.nodes.size());
+                MINI_CHECK(owned.events.size()==owned.boundary_parameters.size());
+                MINI_CHECK(owned.events.size()==owned.boundary_laws.size());
+                for (int d=0;d<3;++d)
+                    MINI_CHECK(nurbs_coincidence::exact_products_equal(point[d],owned.weight,owned.homogeneous[d],1.));
+                if (owned.node>=inventory.nodes.size()) continue;
+                const auto& node=inventory.nodes[owned.node];
+                MINI_CHECK(nurbs_interval::curve_within_ball(law.original.world,{owned.first,owned.last},
+                    {node.point[0],node.point[1],node.point[2]},tolerance));
+                const brep_section::detail::ExactLinearEvent exact{owned.homogeneous,owned.weight,owned.center};
+                bool first_raw=false,last_raw=false;
+                for (size_t i=0;i<owned.events.size();++i) {
+                    const size_t index=owned.events[i];
+                    MINI_CHECK(index<law.events.size());
+                    if (index>=law.events.size()) continue;
+                    const auto& original=law.events[index];
+                    first_raw=first_raw || original.section_parameter==owned.first;
+                    last_raw=last_raw || original.section_parameter==owned.last;
+                    const int other_face=original.operand==0?law.original.second_face:law.original.first_face;
+                    bool matched=false;
+                    for (size_t event:node.boundary_events) {
+                        const auto& boundary=inventory.boundary_events[event];
+                        if (boundary.operand!=original.operand || boundary.edge!=original.edge ||
+                            boundary.hit.face!=other_face || boundary.hit.t<owned.boundary_parameters[i].first ||
+                            boundary.hit.t>owned.boundary_parameters[i].second ||
+                            !brep_section::detail::exact_event_at_raw_parameter(exact,owned.boundary_laws[i],boundary.hit.t)) continue;
+                        for (const auto& use:boundary.uses)
+                            matched=matched || (use.face==original.face && use.wire==original.wire &&
+                                use.occurrence==original.occurrence && use.pcurve==original.pcurve);
+                    }
+                    MINI_CHECK(matched);
+                }
+                MINI_CHECK(first_raw && last_raw);
+            }
+        MINI_CHECK(owned_count>0);
         size_t isolated=0;
         for (const auto& node:inventory.nodes)
             if (node.isolated && node.point.distance(point)<tolerance/1000) ++isolated;
@@ -997,5 +1053,979 @@ MINI_TEST("BRep Native Section", "Original Trim Receipts Preserve Both Raw Param
         check_original_trim_receipts(first,second,1e-7,boundary);
         check_original_trim_receipts(second,first,1e-7,boundary);
     }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Adjacent Original Supports Preserve Refined Boundary Aliases") {
+    const auto original = BRep::create_cylinder(1,2);
+    auto refined = original;
+    for (auto& world : refined.m_curves_3d) {
+        MINI_CHECK(world.increase_degree(world.degree()+1));
+        MINI_CHECK(world.insert_nurbsknot(world.domain_start()+.375*(world.domain_end()-world.domain_start())));
+    }
+    for (auto& pc : refined.m_curves_2d) {
+        MINI_CHECK(pc.increase_degree(pc.degree()+2));
+        MINI_CHECK(pc.insert_nurbsknot(pc.domain_start()+.625*(pc.domain_end()-pc.domain_start())));
+    }
+    const auto frozen_original = original.jsondump(), frozen_refined = refined.jsondump();
+    for (bool swap : {false,true}) {
+        const auto& a = swap ? refined : original;
+        const auto& b = swap ? original : refined;
+        const auto result = brep_section::interferences(a,b,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(!result.curves.empty() && !result.boundary_events.empty());
+        bool adjacent = false;
+        for (const auto& curve : result.curves) {
+            adjacent = adjacent || curve.first_face != curve.second_face;
+            MINI_CHECK(curve.world.domain() == curve.first_pcurve.domain());
+            MINI_CHECK(curve.world.domain() == curve.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.first_pcurve,
+                a.m_surfaces[a.m_faces[curve.first_face].surface_index],1e-7) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.second_pcurve,
+                b.m_surfaces[b.m_faces[curve.second_face].surface_index],1e-7) ==
+                curve_surface_intersection::ParameterMatch::Matched);
+        }
+        MINI_CHECK(adjacent); // Cap/cylinder incidences need the edge's other original support law.
+    }
+    MINI_CHECK(original.jsondump() == frozen_original && refined.jsondump() == frozen_refined);
+}
+} // namespace session_cpp
+
+MINI_TEST("BRep Native Section", "Positive Short Section Is Not An Isolated Contact") {
+    const double tol=std::ldexp(1.,-10), h=tol/8;
+    const auto a=inventory_exact_face({Point(-1,-h,0),Point(1,-h,0),Point(1,h,0),Point(-1,h,0)});
+    const auto b=inventory_exact_face({Point(0,-1,-1),Point(0,1,-1),Point(0,1,1),Point(0,-1,1)});
+    const auto before_a=a.jsondump(),before_b=b.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=brep_section::interferences(swap?b:a,swap?a:b,tol);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        bool positive=false;
+        for (const auto& section:result.curves) {
+            MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
+            MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=section.world.point_at_start(),q=section.world.point_at_end();
+            positive=positive || (std::abs(p[1]-q[1])>=h && std::abs(p[1]-q[1])<=4*h);
+        }
+        MINI_CHECK(positive);
+    }
+    MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
+}
+
+MINI_TEST("BRep Native Section", "Tangential Line Remains In Shared Inventory") {
+    // Exact polynomial supports z=x*x and z=0 meet along x=z=0, -1<=y<=1.
+    // A contact need not bound retained material, but is still a section locus.
+    const double tol=1e-7;
+    NurbsSurface curved(3,false,3,2,3,2);
+    curved.m_nurbsknot[0]={0,0,1,1};curved.m_nurbsknot[1]={0,1};
+    for (int i=0;i<3;++i) for (int j=0;j<2;++j)
+        MINI_CHECK(curved.set_cv(i,j,{double(i-1),double(2*j-1),i==1?-1.:1.}));
+    const auto a=inventory_uv_rectangle(curved,0,1,0,1);
+    const auto b=inventory_exact_face({Point(-1,-1,0),Point(1,-1,0),Point(1,1,0),Point(-1,1,0)});
+    const auto before_a=a.jsondump(),before_b=b.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=brep_section::interferences(swap?b:a,swap?a:b,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        bool line=false;
+        for (const auto& section:result.curves) {
+            MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
+            MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            const auto p=section.world.point_at_start(),q=section.world.point_at_end();
+            line=line || (std::abs(p[1]-q[1])>1 && std::abs(p[0])<1e-7 && std::abs(q[0])<1e-7 && std::abs(p[2])<1e-7 && std::abs(q[2])<1e-7);
+        }
+        MINI_CHECK(line);
+    }
+    MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
+}
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Exact Original Linear Event Keeps Projective And Raw Identity") {
+    const double tolerance=std::ldexp(1.,-10),x=15*tolerance/64;
+    const auto a=NurbsCurve::create(false,1,{{-1,0,0},{1,0,0}});
+    const auto b=NurbsCurve::create(false,1,{{x,0,-1},{x,0,1}});
+    const auto event=brep_section::detail::exact_linear_crossing(a,b);
+    MINI_CHECK(event.has_value());
+    if (!event) return;
+    MINI_CHECK(nurbs_coincidence::exact_products_equal(x,event->weight,event->homogeneous[0],1.));
+    MINI_CHECK(event->homogeneous[1]==0 && event->homogeneous[2]==0);
+    MINI_CHECK((event->center==Point(x,0,0)));
+    for (bool reverse:{false,true}) {
+        auto world=NurbsCurve::create(false,1,{{x,-1,0},{x,1,0}});
+        MINI_CHECK(world.set_domain(-7,13));
+        if (reverse) MINI_CHECK(world.reverse());
+        const auto frozen=world.jsondump();
+        MINI_CHECK(brep_section::detail::exact_event_on_raw_interval(*event,world,2,4));
+        MINI_CHECK(!brep_section::detail::exact_event_on_raw_interval(*event,world,-7,2));
+        MINI_CHECK(!brep_section::detail::exact_event_on_raw_interval(*event,world,4,13));
+        MINI_CHECK(world.jsondump()==frozen);
+        auto nearby=world;
+        for (int i=0;i<2;++i) {auto point=nearby.get_cv(i);point[0]+=tolerance/8;MINI_CHECK(nearby.set_cv(i,point));}
+        MINI_CHECK(!brep_section::detail::exact_event_on_raw_interval(*event,nearby,2,4));
+    }
+    const double original_parameter=1+x;
+    MINI_CHECK(brep_section::detail::exact_event_at_raw_parameter(*event,a,original_parameter));
+    const double other_parameter=std::nextafter(original_parameter,2.);
+    MINI_CHECK(a.point_at(other_parameter).distance(event->center)<tolerance);
+    MINI_CHECK(!brep_section::detail::exact_event_at_raw_parameter(*event,a,other_parameter));
+    auto rounded_difference=NurbsCurve::create(false,1,{{x,-.02,0},{x,1.02,0}});
+    MINI_CHECK(rounded_difference.set_domain(0,1));
+    MINI_CHECK(brep_section::detail::exact_axis_event_on_raw_interval(*event,rounded_difference,0,.5));
+    MINI_CHECK(!brep_section::detail::exact_axis_event_on_raw_interval(*event,rounded_difference,.5,1));
+    MINI_CHECK(rounded_difference.reverse());
+    MINI_CHECK(brep_section::detail::exact_axis_event_on_raw_interval(*event,rounded_difference,.5,1));
+    auto skew=b;
+    for (int i=0;i<2;++i) {auto point=skew.get_cv(i);point[1]=tolerance/8;MINI_CHECK(skew.set_cv(i,point));}
+    MINI_CHECK(!brep_section::detail::exact_linear_crossing(a,skew));
+    const auto separate=NurbsCurve::create(false,1,{{x+tolerance/8,0,-1},{x+tolerance/8,0,1}});
+    const auto other=brep_section::detail::exact_linear_crossing(a,separate);
+    MINI_CHECK(other.has_value());
+    if (other) MINI_CHECK(!nurbs_coincidence::exact_products_equal(event->homogeneous[0],other->weight,
+        other->homogeneous[0],event->weight));
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Exact Original Raw Singleton Keeps Rotated Rational Law") {
+    NurbsCurve original(3,true,2,2);
+    original.m_nurbsknot={-7,13};
+    MINI_CHECK(original.set_cv_4d(0,-2,-4,0,2));
+    MINI_CHECK(original.set_cv_4d(1,3,6,0,3));
+    const auto cross=NurbsCurve::create(false,1,{{0,0,-1},{0,0,1}});
+    const auto exact=brep_section::detail::exact_linear_crossing(original,cross);
+    MINI_CHECK(exact.has_value());
+    if (!exact) return;
+    const auto frozen=original.jsondump();
+    for (bool reverse:{false,true}) {
+        auto curve=original;
+        if (reverse) MINI_CHECK(curve.reverse());
+        const double parameter=reverse?5:1;
+        MINI_CHECK(brep_section::detail::exact_event_at_raw_parameter(*exact,curve,parameter));
+        const double nearby=std::nextafter(parameter,13.);
+        MINI_CHECK(nearby!=parameter && curve.get_cv(0).distance(curve.get_cv(1))>0);
+        MINI_CHECK(!brep_section::detail::exact_event_at_raw_parameter(*exact,curve,nearby));
+    }
+    MINI_CHECK(original.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Endpoint Preimages Keep Original Rational Meridian Knots") {
+    NurbsCurve curve(3,true,3,5);
+    curve.m_nurbsknot={-7,-7,3,3,13,13};
+    const double weight=std::sqrt(.5);
+    MINI_CHECK(curve.set_cv_4d(0,0,0,2,1));
+    MINI_CHECK(curve.set_cv_4d(1,2*weight,0,2*weight,weight));
+    MINI_CHECK(curve.set_cv_4d(2,2,0,0,1));
+    MINI_CHECK(curve.set_cv_4d(3,2*weight,0,-2*weight,weight));
+    MINI_CHECK(curve.set_cv_4d(4,0,0,-2,1));
+    MINI_CHECK(curve.is_valid());
+    MINI_CHECK(brep_section::detail::exact_raw_clamped(curve));
+    const std::array<double,4> north={0,0,2,1},south={0,0,-2,1};
+    const auto frozen=curve.jsondump();
+    for (bool reverse:{false,true}) {
+        auto original=curve;
+        if (reverse) MINI_CHECK(original.reverse());
+        for (bool shifted:{false,true}) {
+            auto raw=original;
+            if (shifted) MINI_CHECK(raw.set_domain(32,35));
+            MINI_CHECK(brep_section::detail::endpoint_preimages_only(raw,north));
+            MINI_CHECK(brep_section::detail::endpoint_preimages_only(raw,south));
+        }
+    }
+    MINI_CHECK(curve.jsondump()==frozen);
+    NurbsCurve nonbinary(3,true,3,3);
+    nonbinary.m_nurbsknot={-7,-7,13,13};
+    MINI_CHECK(nonbinary.set_cv_4d(0,1,-2,4,3));
+    MINI_CHECK(nonbinary.set_cv_4d(1,2,0,1,2));
+    MINI_CHECK(nonbinary.set_cv_4d(2,4,0,0,5));
+    const std::array<double,4> exact={1,-2,4,3};
+    MINI_CHECK(brep_section::detail::endpoint_preimages_only(nonbinary,exact));
+}
+
+MINI_TEST("BRep Native Section", "Endpoint Preimages Reject Returning And Constant Raw Occurrences") {
+    const std::array<double,4> zero={0,0,0,1};
+    NurbsCurve returning(3,false,2,4);
+    returning.m_nurbsknot={0,1,2,3};
+    for (int i=0;i<4;++i) MINI_CHECK(returning.set_cv(i,{i==1?1.:i==3?2.:0.,0,0}));
+    MINI_CHECK(returning.is_valid() && returning.point_at(2).distance({0,0,0})==0);
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(returning,zero));
+    NurbsCurve interior(3,false,4,4);
+    interior.m_nurbsknot={0,0,0,1,1,1};
+    const std::array<double,4> x={0,1,-2,3};
+    for (int i=0;i<4;++i) MINI_CHECK(interior.set_cv(i,{x[i],0,0}));
+    MINI_CHECK(interior.point_at(.5).distance({0,0,0})==0);
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(interior,zero));
+    NurbsCurve constant(3,true,3,3);
+    constant.m_nurbsknot={0,0,1,1};
+    MINI_CHECK(constant.set_cv_4d(0,1,-2,4,3));
+    MINI_CHECK(constant.set_cv_4d(1,2,-4,8,6));
+    MINI_CHECK(constant.set_cv_4d(2,4,-8,16,12));
+    const std::array<double,4> exact={1,-2,4,3};
+    const auto frozen=constant.jsondump();
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(constant,exact));
+    auto bulge=constant;
+    MINI_CHECK(bulge.set_cv_4d(1,2,std::nextafter(-4.,-3.),8,6));
+    MINI_CHECK(brep_section::detail::endpoint_preimages_only(bulge,exact));
+    MINI_CHECK(constant.jsondump()==frozen);
+}
+
+MINI_TEST("BRep Native Section", "Endpoint Preimages Require Exact Clamping And Continuous Positive Basis") {
+    const std::array<double,4> zero={0,0,0,1};
+    NurbsCurve almost(3,false,3,3);
+    almost.m_nurbsknot={0,std::ldexp(1.,-45),1,1};
+    MINI_CHECK(almost.set_cv(0,{0,0,0}));
+    MINI_CHECK(almost.set_cv(1,{1,0,0}));
+    MINI_CHECK(almost.set_cv(2,{2,0,0}));
+    MINI_CHECK(almost.is_valid() && almost.m_nurbsknot[0]!=almost.m_nurbsknot[1]);
+    MINI_CHECK(!brep_section::detail::exact_raw_clamped(almost));
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(almost,zero));
+    NurbsCurve jump(3,false,2,4);
+    jump.m_nurbsknot={0,1,1,2};
+    for (int i=0;i<4;++i) MINI_CHECK(jump.set_cv(i,{double(i),0,0}));
+    MINI_CHECK(jump.is_valid());
+    MINI_CHECK(brep_section::detail::exact_raw_clamped(jump));
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(jump,zero));
+    NurbsCurve tiny(3,false,2,3);
+    tiny.m_nurbsknot={0,std::nextafter(0.,1.),1};
+    for (int i=0;i<3;++i) MINI_CHECK(tiny.set_cv(i,{double(i),0,0}));
+    MINI_CHECK(tiny.is_valid());
+    MINI_CHECK(brep_section::detail::endpoint_preimages_only(tiny,zero));
+    auto negative=tiny;
+    MINI_CHECK(negative.to_rational());
+    negative.cv(1)[3]=-1;
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(negative,zero));
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+namespace {
+std::vector<int> point_use_loop(BRep& owner,const std::vector<Point>& points) {
+    std::vector<int> vertices,edges;
+    for (const auto& point:points) vertices.push_back(owner.add_vertex(point,1e-7));
+    std::vector<BRepRef> references;
+    for (size_t i=0;i<points.size();++i) {
+        const size_t next=(i+1)%points.size();
+        auto world=NurbsCurve::create(false,1,{points[i],points[next]});
+        MINI_CHECK(world.set_domain(-7,13));
+        NurbsCurve pc(3,false,2,2);pc.m_nurbsknot={32,35};
+        MINI_CHECK(pc.set_cv(0,{(points[i][0]+1)*.5,(points[i][1]+1)*.5,0}));
+        MINI_CHECK(pc.set_cv(1,{(points[next][0]+1)*.5,(points[next][1]+1)*.5,0}));
+        const int edge=owner.add_edge(owner.add_curve_3d(world),vertices[i],vertices[next],1e-7);
+        owner.add_pcurve(edge,0,owner.add_curve_2d(pc));
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pc,owner.m_surfaces[0],1e-7)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        references.push_back({edge,BRepOrientation::Forward});edges.push_back(edge);
+    }
+    owner.m_faces[0].wires.push_back({owner.add_wire(references),BRepOrientation::Reversed});
+    return edges;
+}
+}
+MINI_TEST("BRep Native Section", "Point Ownership Visits Later Original Interior Boundary Uses") {
+    auto plane=inventory_exact_face({Point(-1,-1,0),Point(1,-1,0),Point(1,1,0),Point(-1,1,0)});
+    // Diagnostic trim: two hole boundaries touch at P. This asserts incidence
+    // preservation, not regular-solid/material acceptance for the touching holes.
+    const auto first=point_use_loop(plane,{{0,0,0},{-.25,-.25,0},{0,-.5,0},{.25,-.25,0}});
+    const auto second=point_use_loop(plane,{{-.25,0,0},{.25,0,0},{.25,.5,0},{-.25,.5,0}});
+    auto sphere=BRep::create_sphere(1);sphere.transform(Xform::translation(0,0,1));
+    MINI_CHECK(plane.is_valid() && sphere.is_valid());
+    const auto frozen_p=plane.jsondump(),frozen_s=sphere.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=swap?brep_section::interferences(sphere,plane,1e-7):
+                               brep_section::interferences(plane,sphere,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        bool endpoint_a=false,endpoint_b=false,interior=false;
+        for (const auto& event:result.boundary_events) {
+            if (event.operand!=static_cast<int>(swap)) continue;
+            if (event.edge==first.front()) endpoint_a=endpoint_a || event.hit.t==-7;
+            if (event.edge==first.back()) endpoint_b=endpoint_b || event.hit.t==13;
+            if (event.edge==second.front()) {
+                MINI_CHECK(event.vertex==-1 && event.hit.t==3);
+                MINI_CHECK(plane.m_curves_3d[plane.m_edges[event.edge].curve_3d_index].point_at(event.hit.t)==Point(0,0,0));
+                MINI_CHECK(!event.uses.empty());
+                interior=true;
+            }
+        }
+        MINI_CHECK(endpoint_a && endpoint_b && interior);
+    }
+    MINI_CHECK(plane.jsondump()==frozen_p && sphere.jsondump()==frozen_s);
+}
+
+MINI_TEST("BRep Native Section", "Original Linear Point Uses Keep Variable Weights And Raw Domains") {
+    auto first=BRep::create_box(2,2,2);
+    for (auto& curve:first.m_curves_3d) {
+        MINI_CHECK(curve.set_domain(-7,13));
+        for (int i=0;i<curve.cv_count();++i) {
+            const auto point=curve.get_cv(i);const double weight=i?3:2;
+            MINI_CHECK(curve.set_cv_4d(i,point[0]*weight,point[1]*weight,point[2]*weight,weight));
+        }
+    }
+    for (auto& curve:first.m_curves_2d) {
+        MINI_CHECK(curve.set_domain(32,35));
+        for (int i=0;i<curve.cv_count();++i) {
+            const auto point=curve.get_cv(i);const double weight=i?3:2;
+            MINI_CHECK(curve.set_cv_4d(i,point[0]*weight,point[1]*weight,point[2]*weight,weight));
+        }
+    }
+    const auto second=BRep::create_box(2,2,2).transformed(Xform::translation(2,2,2));
+    const auto frozen_a=first.jsondump(),frozen_b=second.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=swap?brep_section::interferences(second,first,1e-7):
+                               brep_section::interferences(first,second,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(result.nodes.size()==1 && result.curves.empty());
+        for (size_t edge=0;edge<first.m_edges.size();++edge) {
+            const auto& source=first.m_edges[edge];
+            const auto& world=first.m_curves_3d[source.curve_3d_index];
+            for (bool end:{false,true}) {
+                const Point point=end?world.point_at_end():world.point_at_start();
+                if (point!=Point(1,1,1)) continue;
+                bool found=false;
+                for (const auto& event:result.boundary_events)
+                    if (event.operand==static_cast<int>(swap) && event.edge==static_cast<int>(edge) &&
+                        event.hit.t==(end?13:-7) && event.vertex==(end?source.end_vertex:source.start_vertex)) found=true;
+                MINI_CHECK(found);
+            }
+        }
+    }
+    MINI_CHECK(first.jsondump()==frozen_a && second.jsondump()==frozen_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Sole Interior Boundary Contact Binds Existing Support Node") {
+    auto plane=inventory_exact_face({Point(-1,0,0),Point(1,0,0),Point(1,1,0),Point(-1,1,0)});
+    for (auto& world:plane.m_curves_3d) MINI_CHECK(world.set_domain(-7,13));
+    for (auto& pc:plane.m_curves_2d) MINI_CHECK(pc.set_domain(32,35));
+    auto sphere=BRep::create_sphere(1);sphere.transform(Xform::translation(0,0,1));
+    const auto frozen_p=plane.jsondump(),frozen_s=sphere.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=swap?brep_section::interferences(sphere,plane,1e-7):
+                               brep_section::interferences(plane,sphere,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(result.nodes.size()==1 && result.curves.empty());
+        bool interior=false;
+        for (const auto& node:result.nodes) {
+            MINI_CHECK(!node.support_points.empty() && node.point==Point(0,0,0));
+            for (size_t index:node.boundary_events) {
+                const auto& event=result.boundary_events[index];
+                if (event.operand==static_cast<int>(swap)) {
+                    MINI_CHECK(event.edge==0 && event.vertex==-1 && event.hit.t==3);
+                    MINI_CHECK(!event.uses.empty() && event.uses.front().face==0);
+                    interior=true;
+                }
+            }
+        }
+        MINI_CHECK(interior);
+        // No original plane vertex bridges P: this is a true interior-only owner.
+        for (const auto& vertex:plane.m_vertices) MINI_CHECK(vertex.point!=Point(0,0,0));
+    }
+    MINI_CHECK(plane.jsondump()==frozen_p && sphere.jsondump()==frozen_s);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Nearby Exact Support Points Keep Their Own Raw Incidences") {
+    const double tolerance=std::ldexp(1.,-10),delta=tolerance/8;
+    auto plane=inventory_exact_face({Point(-1,0,0),Point(1,0,0),Point(1,1,0),Point(-1,1,0)});
+    for (auto& world:plane.m_curves_3d) MINI_CHECK(world.set_domain(-7,13));
+    for (auto& pc:plane.m_curves_2d) MINI_CHECK(pc.set_domain(32,35));
+    for (bool reverse_faces:{false,true}) {
+        const auto left=BRep::create_sphere(1).transformed(Xform::translation(0,0,1));
+        const auto right=BRep::create_sphere(1).transformed(Xform::translation(delta,0,1));
+        // Independent source-face compound for interference ownership only.
+        // The overlapping source sphere solids are not a regular Boolean operand claim.
+        const auto contacts=reverse_faces?inventory_compound(right,left):inventory_compound(left,right);
+        const auto frozen_p=plane.jsondump(),frozen_c=contacts.jsondump();
+        for (bool swap:{false,true}) {
+            const auto result=swap?brep_section::interferences(contacts,plane,tolerance):
+                                   brep_section::interferences(plane,contacts,tolerance);
+            if (!result.complete) throw std::runtime_error(result.failure);
+            MINI_CHECK(result.nodes.size()==2 && result.curves.empty());
+            MINI_CHECK(result.coverage.size()==2 && result.support_points.size()==2);
+            for (const auto& coverage:result.coverage)
+                MINI_CHECK(coverage.support==surface_section::Coverage::GlobalContactPoint);
+            bool first=false,second=false;
+            for (const auto& node:result.nodes) {
+                const bool is_first=node.point[0]==0 && node.point[1]==0 && node.point[2]==0;
+                const bool is_second=node.point[0]==delta && node.point[1]==0 && node.point[2]==0;
+                MINI_CHECK(is_first!=is_second && !node.support_points.empty());
+                first=first||is_first;second=second||is_second;
+                const double raw=3+10*(is_second?delta:0);
+                const int other_face=(is_second!=reverse_faces)?1:0;
+                for (size_t index:node.support_points) {
+                    const auto& witness=result.support_points[index].event.exact_witness;
+                    for (int d=0;d<3;++d)
+                        MINI_CHECK(nurbs_coincidence::exact_products_equal(node.point[d],witness[3],witness[d],1.));
+                }
+                int plane_uses=0;
+                for (size_t index:node.boundary_events) {
+                    const auto& event=result.boundary_events[index];
+                    if (event.operand!=static_cast<int>(swap)) continue;
+                    MINI_CHECK(event.edge==0 && event.vertex==-1 && event.hit.t==raw);
+                    MINI_CHECK(event.hit.face==other_face);
+                    for (int d=0;d<3;++d) MINI_CHECK(event.hit.point[d]==node.point[d]);
+                    MINI_CHECK(std::any_of(event.uses.begin(),event.uses.end(),[](const auto& use){return use.face==0;}));
+                    ++plane_uses;
+                }
+                MINI_CHECK(plane_uses==1);
+            }
+            MINI_CHECK(first && second && 3+10*delta!=3);
+        }
+        MINI_CHECK(plane.jsondump()==frozen_p && contacts.jsondump()==frozen_c);
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+namespace {
+NurbsCurve polygon_qualification_line(const Point& a, const Point& b, double lo, double hi, double weight) {
+    NurbsCurve result(3, true, 2, 2);
+    result.m_nurbsknot = {lo, hi};
+    MINI_CHECK(result.set_cv_4d(0, a[0] * weight, a[1] * weight, a[2] * weight, weight));
+    MINI_CHECK(result.set_cv_4d(1, b[0] * weight, b[1] * weight, b[2] * weight, weight));
+    return result;
+}
+int polygon_qualification_wire(BRep& owner, const std::vector<Point>& points, bool reverse) {
+    const auto& support = owner.m_surfaces[0];
+    std::vector<int> vertices;
+    for (const auto& uv : points)
+        vertices.push_back(owner.add_vertex(support.point_at(uv[0], uv[1]), 1e-7));
+    std::vector<BRepRef> uses;
+    for (size_t i = 0; i < points.size(); ++i) {
+        const size_t next = (i + 1) % points.size();
+        const auto world = polygon_qualification_line(owner.m_vertices[vertices[i]].point,
+                                                      owner.m_vertices[vertices[next]].point, -7, 13, 2);
+        const auto uv = polygon_qualification_line(points[i], points[next], 32, 35, 3);
+        const int edge = owner.add_edge(owner.add_curve_3d(world), vertices[i], vertices[next], 1e-7);
+        owner.add_pcurve(edge, 0, owner.add_curve_2d(uv));
+        uses.push_back({edge, BRepOrientation::Forward});
+    }
+    const int index = owner.add_wire(uses);
+    owner.m_faces[0].wires.push_back({index, reverse ? BRepOrientation::Reversed : BRepOrientation::Forward});
+    return index;
+}
+BRep polygon_qualification_face(bool vertical, const std::vector<std::vector<Point>>& loops,
+                                bool reverse = false) {
+    BRep owner;
+    NurbsSurface support(3, true, 2, 2, 2, 2);
+    support.m_nurbsknot[0] = support.m_nurbsknot[1] = {0, 1};
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            const Point point =
+                vertical ? Point(-2 + 4 * i, 0, -2 + 4 * j) : Point(-2 + 4 * i, -2 + 4 * j, 0);
+            MINI_CHECK(support.set_cv_4d(i, j, point[0] * 5, point[1] * 5, point[2] * 5, 5));
+        }
+    owner.add_surface(support);
+    owner.add_face(0, {}, 1e-7);
+    for (const auto& loop : loops)
+        polygon_qualification_wire(owner, loop, reverse);
+    MINI_CHECK(owner.is_valid());
+    return owner;
+}
+std::vector<Point> polygon_qualification_rectangle(double lo, double hi, double bottom = 0, double top = 1) {
+    return {{lo, bottom, 0}, {hi, bottom, 0}, {hi, top, 0}, {lo, top, 0}};
+}
+brep_section::FaceResult polygon_qualification_inventory(const BRep& a, const BRep& b,const char* stage="polygon") {
+    auto inventory = brep_section::interferences(a, b, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    MINI_CHECK(inventory.coverage.size() == 1 && inventory.original_trim_laws.size() == 1);
+    MINI_CHECK(inventory.coverage[0].support == surface_section::Coverage::OriginalDomainCurve);
+    if (!inventory.coverage[0].trim_ownership_complete)
+        throw std::runtime_error(std::string("Exact polygon trim ownership failed at ")+stage);
+    MINI_CHECK(inventory.coverage[0].trim_ownership_complete);
+    MINI_CHECK(inventory.original_trim_laws[0].trim_ownership_complete);
+    MINI_CHECK(inventory.coverage_complete());
+    return inventory;
+}
+} // namespace
+
+MINI_TEST("BRep Native Section", "Exact Polygon Trim Coverage Keeps Holes And Original Raw Uses") {
+    const auto outer = polygon_qualification_rectangle(.125, .875);
+    const auto hole = polygon_qualification_rectangle(.375, .625, .25, .75);
+    const auto whole = polygon_qualification_rectangle(0, 1);
+    for (bool reverse : {false, true})
+        for (bool swap : {false, true}) {
+            const auto a = polygon_qualification_face(false, {outer, hole}, reverse);
+            const auto b = polygon_qualification_face(true, {whole}, !reverse);
+            const auto frozen_a = a.jsondump(), frozen_b = b.jsondump();
+            const auto inventory =
+                swap ? polygon_qualification_inventory(b, a) : polygon_qualification_inventory(a, b);
+            const auto& law = inventory.original_trim_laws[0];
+            // Exact x acceptance: [-1.5,-.5] union [.5,1.5], with no hole reinsertion.
+            MINI_CHECK(law.retained_pieces.size() == 2 && law.partition.size() == 6);
+            for (const auto& piece : law.retained_pieces) {
+                const auto& world = inventory.curves[piece.curve].world;
+                const double x = world.point_at(std::midpoint(piece.first, piece.last))[0];
+                MINI_CHECK((x > -1.5 && x < -.5) || (x > .5 && x < 1.5));
+            }
+            MINI_CHECK(a.jsondump() == frozen_a && b.jsondump() == frozen_b);
+        }
+}
+
+MINI_TEST("BRep Native Section", "Exact Polygon Trim Coverage Retains Collinear And Tangent Contacts") {
+    const auto whole = polygon_qualification_rectangle(0, 1);
+    const auto b = polygon_qualification_face(true, {whole});
+    const auto nested =
+        polygon_qualification_face(false, {whole, polygon_qualification_rectangle(.25, .75, .25, .75),
+                                           polygon_qualification_rectangle(.375, .625, .375, .625)});
+    const auto nested_result = polygon_qualification_inventory(nested, b,"nested holes");
+    MINI_CHECK(nested_result.original_trim_laws[0].retained_pieces.size() == 2);
+    const auto disjoint = polygon_qualification_face(false, {polygon_qualification_rectangle(0, 1, .75, 1)});
+    const auto empty = polygon_qualification_inventory(disjoint, b,"trimmed empty");
+    MINI_CHECK(empty.curves.empty() && empty.nodes.empty());
+    const auto collinear =
+        polygon_qualification_face(false, {whole, polygon_qualification_rectangle(.25, .75, .5, .75)});
+    const auto first = polygon_qualification_inventory(collinear, b,"collinear boundary");
+    MINI_CHECK(first.original_trim_laws[0].retained_pieces.size() == 3);
+    MINI_CHECK(first.original_trim_laws[0].owned_intervals.empty());
+    const std::vector<Point> triangle = {{.5, .5, 0}, {.75, .75, 0}, {.25, .75, 0}};
+    const auto tangent = polygon_qualification_face(false, {whole, triangle});
+    const auto second = polygon_qualification_inventory(tangent, b,"tangent vertex");
+    MINI_CHECK(second.original_trim_laws[0].retained_pieces.size() == 2);
+    const auto contact = polygon_qualification_face(false, {triangle});
+    const auto isolated = polygon_qualification_inventory(contact, b,"isolated vertex");
+    MINI_CHECK(isolated.curves.empty() && isolated.nodes.size() == 1 && isolated.nodes[0].isolated);
+    MINI_CHECK(isolated.nodes[0].point[0] == 0 && isolated.nodes[0].point[1] == 0 &&
+               isolated.nodes[0].point[2] == 0);
+}
+
+MINI_TEST("BRep Native Section",
+          "Exact Polygon Trim Coverage Rejects Missing Extra And Wrong Piece Receipts") {
+    const auto whole = polygon_qualification_rectangle(0, 1);
+    const auto a =
+        polygon_qualification_face(false, {whole, polygon_qualification_rectangle(.25, .75, .25, .75)});
+    const auto b = polygon_qualification_face(true, {whole});
+    const auto original = polygon_qualification_inventory(a, b);
+    MINI_CHECK(
+        brep_section::detail::polygon_trim_coverage(original, original.original_trim_laws[0], a, b, 1e-7));
+    for (int variant = 0; variant < 7; ++variant) {
+        auto changed = original;
+        auto& law = changed.original_trim_laws[0];
+        if (variant == 0)
+            law.events.pop_back();
+        if (variant == 1)
+            law.events.push_back(law.events.front());
+        if (variant == 2)
+            law.partition.erase(law.partition.begin() + 1);
+        if (variant == 3)
+            law.retained_pieces.pop_back();
+        if (variant == 4)
+            law.retained_pieces[0].last = law.partition.back();
+        if (variant == 5)
+            changed.nodes.clear();
+        if (variant == 6)
+            law.owned_intervals.push_back({});
+        MINI_CHECK(!brep_section::detail::polygon_trim_coverage(changed, law, a, b, 1e-7));
+    }
+    auto weighted = a;
+    const auto pole = weighted.m_surfaces[0].get_cv(0, 0);
+    MINI_CHECK(weighted.m_surfaces[0].set_cv_4d(0, 0, pole[0] * 3, pole[1] * 3, pole[2] * 3, 3));
+    MINI_CHECK(!brep_section::detail::polygon_trim_coverage(original, original.original_trim_laws[0],
+                                                            weighted, b, 1e-7));
+    auto gap = a;
+    auto& uv = gap.m_curves_2d[0];
+    auto point = uv.get_cv(1);
+    point[1] = std::nextafter(point[1], 1.);
+    MINI_CHECK(uv.set_cv(1, point));
+    MINI_CHECK(
+        !brep_section::detail::polygon_trim_coverage(original, original.original_trim_laws[0], gap, b, 1e-7));
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Exact Polygon Trim Coverage Declines Nonrepresentable Root") {
+    const auto line = polygon_qualification_line({0, .5, 0}, {1, .5, 0}, -7, 13, 2);
+    const auto edge = polygon_qualification_line({0, 0, 0}, {1, 1.5, 0}, 32, 35, 3);
+    brep_section::detail::PolygonTrimEdge use;
+    use.uv = &edge;
+    MINI_CHECK(brep_section::detail::polygon_linear(edge, use.ends));
+    brep_section::detail::PolygonTrimProof proof;
+    // Exact root x=1/3 is not binary64; whole ownership remains explicitly unqualified.
+    MINI_CHECK(!brep_section::detail::polygon_edge_events(proof, use, line));
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Original Rational Meridian Contact Keeps Its Interior Knot And Seam Uses") {
+    const auto first=BRep::create_sphere(1);
+    const auto second=first.transformed(Xform::translation(2,0,0));
+    const auto frozen_a=first.jsondump(),frozen_b=second.jsondump();
+    const std::array<double,4> witness{1,0,0,1};
+    const auto& meridian=first.m_curves_3d[first.m_edges[0].curve_3d_index];
+    std::vector<double> raw;
+    MINI_CHECK(brep_section::detail::original_knot_preimages_only(meridian,witness,raw));
+    MINI_CHECK(raw==std::vector<double>{1});
+    MINI_CHECK(!brep_section::detail::endpoint_preimages_only(meridian,witness));
+    MINI_CHECK(!brep_section::detail::original_knot_is_preimage(meridian,witness,std::nextafter(1.,2.)));
+    for (bool swap:{false,true}) {
+        const auto result=swap?brep_section::interferences(second,first,1e-7):
+                               brep_section::interferences(first,second,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(result.curves.empty() && result.support_points.size()==1 && result.nodes.size()==1);
+        MINI_CHECK(result.coverage.size()==1 && result.coverage[0].support==surface_section::Coverage::GlobalContactPoint);
+        MINI_CHECK(result.nodes[0].support_points.size()==1 && result.nodes[0].boundary_events.size()==1);
+        const auto& event=result.boundary_events[result.nodes[0].boundary_events[0]];
+        MINI_CHECK(event.operand==static_cast<int>(swap) && event.edge==0 && event.vertex==-1 && event.hit.t==1);
+        MINI_CHECK(event.uses.size()==2 && result.uv_only_incidences.empty());
+    }
+    MINI_CHECK(first.jsondump()==frozen_a && second.jsondump()==frozen_b);
+}
+MINI_TEST("BRep Native Section", "Original Knot Preimages Retain Returning Occurrences And Decline Unproved Roots") {
+    const std::array<double,4> point{0,0,0,3};
+    NurbsCurve returning(3,true,2,5);
+    returning.m_nurbsknot={-7,-2,3,8,13};
+    const std::array<double,5> values{-1,0,1,0,-1},weights{2,3,5,3,2};
+    for (int i=0;i<5;++i)
+        MINI_CHECK(returning.set_cv_4d(i,values[i]*weights[i],0,0,weights[i]));
+    const auto frozen=returning.jsondump();
+    for (bool reverse:{false,true}) {
+        auto curve=returning;
+        if (reverse) MINI_CHECK(curve.reverse());
+        std::vector<double> raw;
+        MINI_CHECK(brep_section::detail::original_knot_preimages_only(curve,point,raw));
+        MINI_CHECK(raw==std::vector<double>({-2,8}));
+        for (double t:raw) MINI_CHECK(brep_section::detail::original_knot_is_preimage(curve,point,t));
+    }
+    const auto crossing=NurbsCurve::create(false,1,{Point(-1,0,0),Point(1,0,0)});
+    const auto constant=NurbsCurve::create(false,1,{Point(0,0,0),Point(0,0,0)});
+    std::vector<double> raw{123};
+    MINI_CHECK(!brep_section::detail::original_knot_preimages_only(crossing,point,raw) && raw.empty());
+    MINI_CHECK(!brep_section::detail::original_knot_preimages_only(constant,point,raw) && raw.empty());
+    NurbsCurve jump(3,false,2,4);jump.m_nurbsknot={0,1,1,2};
+    for (int i=0;i<4;++i) MINI_CHECK(jump.set_cv(i,{i<2?-1.:1.,0,0}));
+    MINI_CHECK(jump.is_valid());
+    MINI_CHECK(!brep_section::detail::original_knot_preimages_only(jump,point,raw));
+    MINI_CHECK(returning.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Own Trim Admission Retains Excluded Original Uses Without Contact Nodes") {
+    const auto whole=polygon_qualification_rectangle(0,1);
+    const auto own=polygon_qualification_face(false,{whole,
+        polygon_qualification_rectangle(.25,.75,.25,.75),
+        polygon_qualification_rectangle(.375,.625,.375,.625)});
+    const auto target=polygon_qualification_face(true,{whole});
+    const auto frozen_own=own.jsondump(),frozen_target=target.jsondump();
+    for (bool swap:{false,true}) {
+        const auto inventory=swap?polygon_qualification_inventory(target,own,"excluded source point swapped"):
+                                  polygon_qualification_inventory(own,target,"excluded source point");
+        size_t excluded=0;
+        for (size_t index=0;index<inventory.boundary_events.size();++index) {
+            const auto& event=inventory.boundary_events[index];
+            if (event.retained) continue;
+            MINI_CHECK(event.operand==static_cast<int>(swap));
+            MINI_CHECK(event.source_parameters.size()==event.uses.size() && !event.uses.empty());
+            for (size_t i=0;i<event.uses.size();++i) {
+                const auto& use=event.uses[i];
+                const auto& pc=own.m_curves_2d[use.pcurve];
+                const double raw=event.source_parameters[i];
+                MINI_CHECK(raw>=pc.domain_start() && raw<=pc.domain_end());
+                MINI_CHECK(brep_classify::face_uv(own,use.face,pc.point_at(raw),
+                    1e-7/nurbs_bounds::surface_metric(own.m_surfaces[own.m_faces[use.face].surface_index]))==
+                    brep_classify::State::Outside);
+            }
+            for (const auto& node:inventory.nodes)
+                MINI_CHECK(std::find(node.boundary_events.begin(),node.boundary_events.end(),index)==node.boundary_events.end());
+            ++excluded;
+        }
+        MINI_CHECK(excluded>=2);
+        // A nested-hole border lying ON the other support is a positive raw
+        // boundary overlap, yet is wholly outside its OWN face material.
+        const auto shifted=target.transformed(Xform::translation(0,-.5,0));
+        const auto span_inventory=swap?polygon_qualification_inventory(shifted,own,"excluded source span swapped"):
+                                       polygon_qualification_inventory(own,shifted,"excluded source span");
+        bool excluded_span=false;
+        for (const auto& span:span_inventory.excluded_boundary_spans)
+            if (span.operand==static_cast<int>(swap) && span.own_outside) {
+                MINI_CHECK(span.first<span.last && span.use.face==0);
+                const auto& world=own.m_curves_3d[own.m_edges[span.edge].curve_3d_index];
+                MINI_CHECK(span.first>=world.domain_start() && span.last<=world.domain_end());
+                excluded_span=true;
+            }
+        MINI_CHECK(excluded_span);
+        MINI_CHECK(span_inventory.original_trim_laws[0].retained_pieces.size()==2);
+    }
+    MINI_CHECK(own.jsondump()==frozen_own && target.jsondump()==frozen_target);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Own Trim Cuts Cannot Enlarge A Partial Original Boundary Overlap") {
+    const auto whole=polygon_qualification_rectangle(0,1);
+    const auto source=polygon_qualification_face(false,{whole,
+        polygon_qualification_rectangle(.8125,.9375,0,.125)});
+    const auto target=inventory_exact_face({Point(-1,-2,0),Point(1,-2,0),Point(1,0,0),Point(-1,0,0)});
+    const auto frozen_a=source.jsondump(),frozen_b=target.jsondump();
+    for (bool swap:{false,true}) {
+        const auto inventory=swap?brep_section::interferences(target,source,1e-7):
+                                  brep_section::interferences(source,target,1e-7);
+        if (!inventory.complete) throw std::runtime_error(inventory.failure);
+        MINI_CHECK(!inventory.curves.empty());
+        for (const auto& curve:inventory.curves) {
+            for (double t:{curve.world.domain_start(),std::midpoint(curve.world.domain_start(),curve.world.domain_end()),
+                           curve.world.domain_end()}) {
+                const auto point=curve.world.point_at(t);
+                MINI_CHECK(point[0]>=-1 && point[0]<=1 && point[1]>=-2 && point[1]<=0 && point[2]==0);
+            }
+            const auto& first=swap?target:source;const auto& second=swap?source:target;
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.first_pcurve,
+                first.m_surfaces[first.m_faces[curve.first_face].surface_index],1e-7)==
+                curve_surface_intersection::ParameterMatch::Matched);
+            MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.second_pcurve,
+                second.m_surfaces[second.m_faces[curve.second_face].surface_index],1e-7)==
+                curve_surface_intersection::ParameterMatch::Matched);
+        }
+    }
+    MINI_CHECK(source.jsondump()==frozen_a && target.jsondump()==frozen_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Original Closed Endpoint Alias Uses Identity Not Near Raw Parameters") {
+    for (bool shifted:{false,true}) for (bool reversed:{false,true}) {
+        auto owner=BRep::create_cylinder(1,2);
+        int index=-1;
+        for (int i=0;i<owner.edge_count();++i)
+            if (!owner.m_edges[i].degenerated && owner.m_edges[i].start_vertex==owner.m_edges[i].end_vertex)
+                index=i;
+        MINI_CHECK(index>=0);
+        const auto& edge=owner.m_edges[index];
+        auto& world=owner.m_curves_3d[edge.curve_3d_index];
+        if (shifted) MINI_CHECK(world.set_domain(-7,13));
+        if (reversed) MINI_CHECK(world.reverse());
+        const Point point=owner.m_vertices[edge.start_vertex].point;
+        brep_section::BoundaryEvent first,last;
+        first.operand=last.operand=0;first.edge=last.edge=index;
+        first.vertex=last.vertex=edge.start_vertex;
+        first.hit.t=world.domain_start();last.hit.t=world.domain_end();
+        first.uses.push_back({0,0,0,0});last.uses=first.uses;
+        const auto frozen=owner.jsondump();
+        MINI_CHECK(brep_section::detail::original_closed_endpoint_alias(first,last,owner,1e-7));
+        MINI_CHECK(brep_section::detail::original_closed_endpoint_alias(last,first,owner,1e-7));
+        const double near=first.hit.t+(last.hit.t-first.hit.t)*std::ldexp(1.,-30);
+        MINI_CHECK(near>first.hit.t && world.point_at(near).distance(point)<2.5e-8);
+        auto interior=first;interior.hit.t=near;
+        MINI_CHECK(!brep_section::detail::original_closed_endpoint_alias(interior,last,owner,1e-7));
+        auto other_operand=last;other_operand.operand=1;
+        MINI_CHECK(!brep_section::detail::original_closed_endpoint_alias(first,other_operand,owner,1e-7));
+        auto other_vertex=last;other_vertex.vertex=(edge.start_vertex+1)%owner.vertex_count();
+        MINI_CHECK(other_vertex.vertex!=edge.start_vertex);
+        MINI_CHECK(!brep_section::detail::original_closed_endpoint_alias(first,other_vertex,owner,1e-7));
+        MINI_CHECK(owner.jsondump()==frozen);
+    }
+}
+MINI_TEST("BRep Native Section", "Original Endpoint Alias Does Not Collapse Returning Interior Occurrences") {
+    auto owner=BRep::create_cylinder(1,2);
+    int index=-1;
+    for (int i=0;i<owner.edge_count();++i)
+        if (!owner.m_edges[i].degenerated && owner.m_edges[i].start_vertex==owner.m_edges[i].end_vertex)
+            index=i;
+    MINI_CHECK(index>=0);
+    const auto edge=owner.m_edges[index];
+    const Point p=owner.m_vertices[edge.start_vertex].point;
+    NurbsCurve returning(3,false,2,5);returning.m_nurbsknot={0,1,2,3,4};
+    const std::array<Point,5> points{p,p+Vector(0,2,0),p,p+Vector(0,-2,0),p};
+    for (int i=0;i<5;++i) MINI_CHECK(returning.set_cv(i,points[i]));
+    owner.m_curves_3d[edge.curve_3d_index]=returning;
+    brep_section::BoundaryEvent a,b;
+    a.operand=b.operand=0;a.edge=b.edge=index;a.vertex=b.vertex=edge.start_vertex;
+    a.hit.t=0;b.hit.t=4;a.uses.push_back({0,0,0,0});b.uses=a.uses;
+    MINI_CHECK(brep_section::detail::original_closed_endpoint_alias(a,b,owner,1e-7));
+    auto interior=a;interior.hit.t=2;
+    MINI_CHECK(!brep_section::detail::original_closed_endpoint_alias(interior,b,owner,1e-7));
+    MINI_CHECK(returning.point_at(1).distance(p)>1);
+}
+} // namespace session_cpp
+
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Original Closed Edge Endpoint Aliases Keep Both Raw Occurrences") {
+    auto owner=BRep::create_cylinder(1,2);
+    int selected=-1,original_edge=-1;
+    for (int f=0;f<owner.face_count() && selected<0;++f) {
+        const auto& face=owner.m_faces[f];
+        if (face.wires.size()!=1) continue;
+        const auto uses=owner.wire_edges(face.wires[0]);
+        if (uses.size()!=1) continue;
+        const auto& edge=owner.m_edges[uses[0].index];
+        if (!edge.degenerated && edge.start_vertex==edge.end_vertex) {
+            selected=f;original_edge=uses[0].index;
+        }
+    }
+    MINI_CHECK(selected>=0 && original_edge>=0);
+    owner.m_faces={owner.m_faces[selected]};
+    owner.m_solids.clear();owner.m_shells.clear();
+    MINI_CHECK(owner.is_valid() && owner.face_count()==1 && owner.solid_count()==0);
+    const auto& edge=owner.m_edges[original_edge];
+    const auto& world=owner.m_curves_3d[edge.curve_3d_index];
+    MINI_CHECK(brep_section::detail::exact_raw_clamped(world));
+    MINI_CHECK(world.domain_start()<world.domain_end());
+    const auto point=owner.m_vertices[edge.start_vertex].point;
+    const std::array<double,4> witness{point[0],point[1],point[2],1};
+    MINI_CHECK(brep_section::detail::endpoint_preimages_only(world,witness));
+    MINI_CHECK(world.point_at(std::midpoint(world.domain_start(),world.domain_end())).distance(point)>1);
+    for (double t:{world.domain_start(),world.domain_end()})
+        MINI_CHECK(nurbs_interval::curve_within_ball(world,{t,t},{point[0],point[1],point[2]},2.5e-8));
+    const BRep other=owner;
+    const auto frozen=owner.jsondump(),frozen_other=other.jsondump();
+    const auto result=brep_section::interferences(owner,other,1e-7);
+    if (!result.complete) throw std::runtime_error(result.failure);
+    for (int operand:{0,1}) {
+        size_t first=std::numeric_limits<size_t>::max(),last=first;
+        size_t first_count=0,last_count=0;
+        for (size_t n=0;n<result.nodes.size();++n)
+            for (size_t index:result.nodes[n].boundary_events) {
+                const auto& event=result.boundary_events[index];
+                if (event.operand!=operand || event.edge!=original_edge || event.vertex!=edge.start_vertex)
+                    continue;
+                if (event.hit.t==world.domain_start()) {
+                    if (first_count) MINI_CHECK(first==n);
+                    first=n;++first_count;
+                }
+                if (event.hit.t==world.domain_end()) {
+                    if (last_count) MINI_CHECK(last==n);
+                    last=n;++last_count;
+                }
+            }
+        MINI_CHECK(first_count>0 && last_count>0 && first==last);
+    }
+    MINI_CHECK(owner.jsondump()==frozen && other.jsondump()==frozen_other);
+}
+} // namespace session_cpp
+
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Original Knot Endpoint Owns Positive Unmaterialized Raw Interval") {
+    const auto root=std::filesystem::path(__FILE__).parent_path().parent_path();
+    std::ifstream input(root/"tests/fixtures/native_original_knot_interval_context.json");
+    MINI_CHECK(input.good());const auto fixture=nlohmann::json::parse(input);
+    const auto first=BRep::jsonload(fixture.at("first_brep"));
+    const auto second=BRep::jsonload(fixture.at("second_brep"));
+    const auto frozen_a=first.jsondump(),frozen_b=second.jsondump();
+    const double lo=fixture.at("first"),hi=fixture.at("last"),tol=fixture.at("tolerance");
+    MINI_CHECK(lo<hi);
+    for (bool swap:{false,true}) {
+        const auto inventory=swap?brep_section::interferences(second,first,tol):
+                                  brep_section::interferences(first,second,tol);
+        if (!inventory.complete) throw std::runtime_error(inventory.failure);
+        // The original order has a top (+Z) singleton-knot cap. Swapping reverses
+        // the section and exposes the bottom (-Z) original closed endpoint aliases.
+        const double z=swap?-1.:1.;
+        size_t owned=0;
+        for (const auto& law:inventory.original_trim_laws) for (const auto& cap:law.owned_intervals) {
+            if (cap.first!=lo || cap.last!=hi || cap.center[0]!=0 ||
+                cap.center[1]!=.0009613037109375 || cap.center[2]!=z) continue;
+            ++owned;
+            MINI_CHECK(cap.first<cap.last && cap.events.size()==(swap?3:2));
+            MINI_CHECK(cap.events.size()==cap.boundary_parameters.size() && cap.node<inventory.nodes.size());
+            const auto& node=inventory.nodes[cap.node];
+            std::vector<std::tuple<int,double,bool>> actual;
+            for (size_t i=0;i<cap.events.size();++i) {
+                const auto& event=law.events[cap.events[i]];
+                MINI_CHECK(event.section_parameter>=cap.first && event.section_parameter<=cap.last);
+                MINI_CHECK(cap.boundary_parameters[i].first==cap.boundary_parameters[i].second);
+                MINI_CHECK(cap.boundary_parameters[i].first==event.boundary_parameter);
+                actual.push_back({event.operand,event.boundary_parameter,event.overlap_endpoint});
+                bool bound=false;
+                for (size_t receipt:node.boundary_events) {
+                    const auto& point=inventory.boundary_events[receipt];
+                    if (!point.retained || point.operand!=event.operand || point.edge!=event.edge ||
+                        point.hit.t!=cap.boundary_parameters[i].first) continue;
+                    for (const auto& use:point.uses)
+                        if (use.face==event.face && use.wire==event.wire && use.occurrence==event.occurrence &&
+                            use.pcurve==event.pcurve) bound=true;
+                }
+                MINI_CHECK(bound);
+            }
+            std::vector<std::tuple<int,double,bool>> expected=swap?
+                std::vector<std::tuple<int,double,bool>>{{0,1.5,true},{1,0,false},{1,5.998077392578125,true}}:
+                std::vector<std::tuple<int,double,bool>>{{0,4.498558044433594,true},{1,3,true}};
+            std::sort(actual.begin(),actual.end());std::sort(expected.begin(),expected.end());
+            MINI_CHECK(actual==expected);
+            if (swap) {
+                const auto& edge=first.m_edges[1];
+                const auto& world=first.m_curves_3d[edge.curve_3d_index];
+                MINI_CHECK(edge.start_vertex==edge.end_vertex && world.domain_start()==0 &&
+                           world.domain_end()==5.998077392578125);
+                const auto& vertex=first.m_vertices[edge.start_vertex].point;
+                for (int d=0;d<3;++d)
+                    MINI_CHECK(nurbs_coincidence::exact_products_equal(vertex[d],cap.weight,cap.homogeneous[d],1.));
+            }
+            MINI_CHECK(nurbs_interval::curve_within_ball(law.original.world,{cap.first,cap.last},
+                {node.point[0],node.point[1],node.point[2]},tol));
+        }
+        MINI_CHECK(owned==1);
+    }
+    MINI_CHECK(first.jsondump()==frozen_a && second.jsondump()==frozen_b);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("BRep Native Section", "Partial Original Uses Reject Pooled Section Fallback") {
+    BRep owner;
+    auto support=NurbsSurface::create(false,false,1,1,2,2,
+        {Point(-2,-2,0),Point(-2,2,0),Point(2,-2,0),Point(2,2,0)});
+    MINI_CHECK(support.set_domain(0,-2,2) && support.set_domain(1,-2,2));
+    const int surface=owner.add_surface(support);
+    const std::array<Point,4> corners{Point(0,0,0),Point(1,0,0),Point(1,1,0),Point(0,1,0)};
+    std::array<int,4> vertices;
+    for (size_t i=0;i<vertices.size();++i)
+        vertices[i]=owner.add_vertex(corners[i]);
+    std::vector<BRepRef> uses;
+    for (size_t i=0;i<vertices.size();++i) {
+        const auto direction=corners[(i+1)%4]-corners[i];
+        auto source=NurbsCurve::create(false,1,
+            {corners[i]-direction,corners[i]+direction*2});
+        MINI_CHECK(source.set_domain(-1,2));
+        const int edge=owner.add_edge(owner.add_curve_3d(source),vertices[i],vertices[(i+1)%4]);
+        owner.m_edges[edge].world_range=BRepCurveUseRange{0,1};
+        owner.add_pcurve(edge,surface,owner.add_curve_2d(source));
+        owner.m_edges[edge].pcurves.back().primary_range=BRepCurveUseRange{0,1};
+        uses.push_back({edge,BRepOrientation::Forward});
+    }
+    owner.add_face(surface,{{owner.add_wire(uses),BRepOrientation::Forward}});
+    MINI_CHECK(owner.is_valid());
+    const auto frozen=owner.jsondump();
+    const auto input=NurbsCurve::create(false,1,{Point(.5,.5,-1),Point(.5,.5,1)});
+    for (int api=0;api<3;++api) {
+        bool rejected=false;
+        try {
+            if (api==0)
+                (void)brep_section::curve(input,owner,1e-7);
+            else if (api==1)
+                (void)brep_section::faces(owner,owner,1e-7);
+            else
+                (void)brep_section::interferences(owner,owner,1e-7);
+        } catch (const brep_section::RangedInputError& error) {
+            rejected=true;
+            MINI_CHECK(error.operand==0 && error.face==0 && error.edge==0 && error.pcurve==-1);
+            MINI_CHECK(error.range.first==0 && error.range.second==1);
+        }
+        MINI_CHECK(rejected);
+        MINI_CHECK(owner.jsondump()==frozen);
+    }
+    bool assembly_rejected=false;
+    try {
+        (void)brep_assemble::assemble({{&owner,0,false}},1e-7);
+    } catch (const std::invalid_argument& error) {
+        assembly_rejected=std::string(error.what())==
+            "BRep assembly does not yet support partial original curve uses";
+    }
+    MINI_CHECK(assembly_rejected && owner.jsondump()==frozen);
 }
 } // namespace session_cpp

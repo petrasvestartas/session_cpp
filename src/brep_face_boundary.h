@@ -1,6 +1,7 @@
 #pragma once
 
 #include "brep.h"
+#include "brep_curve_use.h"
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,16 +33,23 @@ inline bool active(BRepOrientation orientation) {
     return orientation == BRepOrientation::Forward || orientation == BRepOrientation::Reversed;
 }
 
-inline bool unique_association(const BRepEdge& edge, int support, BRepOrientation orientation) {
+inline bool unique_association(const BRep& owner,const BRepEdge& edge, int support, BRepOrientation orientation) {
     int associated = -1;
+    std::pair<double,double> associated_range{};
     for (const auto& image : edge.pcurves) {
         if (image.surface_index != support)
             continue;
-        const int selected = orientation == BRepOrientation::Reversed && image.curve_2d_index_2 >= 0
-            ? image.curve_2d_index_2 : image.curve_2d_index;
-        if (associated >= 0 && selected != associated && active(orientation))
-            return false;
-        associated = selected;
+        const bool secondary=orientation==BRepOrientation::Reversed && image.curve_2d_index_2>=0;
+        const int selected=secondary?image.curve_2d_index_2:image.curve_2d_index;
+        if (selected<0) {
+            if (active(orientation)) return false;
+            continue; // Structural extraction still retains inactive uses with no PC.
+        }
+        if (selected>=static_cast<int>(owner.m_curves_2d.size())) return false;
+        const auto range=brep_curve_use::domain(owner.m_curves_2d[selected],
+            secondary?image.secondary_range:image.primary_range);
+        if (associated>=0 && active(orientation) && (selected!=associated || range!=associated_range)) return false;
+        associated=selected;associated_range=range;
     }
     return true;
 }
@@ -61,21 +69,28 @@ inline bool extract_use(const BRep& brep, int face, const BRepRef& ref, Use& use
     use.degenerated = edge.degenerated;
     use.first_vertex = ref.orientation == BRepOrientation::Reversed ? edge.end_vertex : edge.start_vertex;
     use.last_vertex = ref.orientation == BRepOrientation::Reversed ? edge.start_vertex : edge.end_vertex;
+    if (edge.degenerated && edge.world_range)
+        return fail("Degenerated boundary cannot have a positive original world range");
     if (edge.degenerated && edge.start_vertex != edge.end_vertex)
         return fail("Degenerated boundary has distinct vertex identities");
     if (!edge.degenerated) {
         if (edge.curve_3d_index < 0 || edge.curve_3d_index >= static_cast<int>(brep.m_curves_3d.size()))
             return fail("Boundary world curve index is invalid");
         use.has_world_domain = true;
-        use.world_domain = brep.m_curves_3d[edge.curve_3d_index].domain();
+        try { use.world_domain=brep.edge_domain(ref.index); }
+        catch (const std::exception& error) { return fail(error.what()); }
     }
-    if (!unique_association(edge, brep.m_faces[face].surface_index, ref.orientation))
-        return fail("Boundary has ambiguous pcurve associations on one support");
+    try {
+        if (!unique_association(brep,edge,brep.m_faces[face].surface_index,ref.orientation))
+            return fail("Boundary has ambiguous pcurve association or active range on one support");
+    } catch (const std::exception& error) { return fail(error.what()); }
     use.pcurve = brep.pcurve_index(ref.index, face, ref.orientation);
     if (use.pcurve >= static_cast<int>(brep.m_curves_2d.size()))
         return fail("Boundary pcurve index is invalid");
-    if (use.pcurve >= 0)
-        use.pcurve_domain = brep.m_curves_2d[use.pcurve].domain();
+    if (use.pcurve>=0) {
+        try { use.pcurve_domain=brep.pcurve_domain(ref.index,face,ref.orientation); }
+        catch (const std::exception& error) { return fail(error.what()); }
+    }
     if (active(ref.orientation) && use.pcurve < 0)
         return fail("Boundary use has no pcurve on its support");
     return true;

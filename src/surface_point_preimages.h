@@ -19,6 +19,68 @@ struct Result {
     std::string failure;
 };
 
+// Exact inverse of an ORIGINAL injective CW affine rectangle. Decline is not exclusion.
+inline bool exact_affine_preimage(const NurbsSurface& surface,const ProjectivePoint& point,Domain& domain) {
+    if (!surface.is_valid() || surface.dimension()!=3 || surface.degree(0)!=1 || surface.degree(1)!=1 ||
+        surface.cv_count(0)!=2 || surface.cv_count(1)!=2 || !(point[3]>0)) return false;
+    for (double value:point) if (!std::isfinite(value)) return false;
+    const auto difference=[](double a,double b,double& out) {
+        return nurbs_coincidence::exact_difference(a,b,out) && std::isfinite(out);
+    };
+    const auto product=[](double a,double b,double& out) {
+        out=a*b;return std::isfinite(out) && nurbs_coincidence::exact_products_equal(a,b,out,1.);
+    };
+    const auto determinant=[&](double a,double b,double c,double d,double& out) {
+        double first,second;return product(a,b,first) && product(c,d,second) && difference(first,second,out);
+    };
+    const double weight=surface.weight(0,0);
+    if (!(weight>0) || !std::isfinite(weight)) return false;
+    std::array<std::array<double,3>,4> cv;
+    std::array<double,3> target,u,v,rhs;
+    for (int d=0;d<3;++d) {
+        target[d]=point[d]/point[3];
+        if (!std::isfinite(target[d]) || !nurbs_coincidence::exact_products_equal(target[d],point[3],point[d],1.)) return false;
+        for (int i=0;i<2;++i) for (int j=0;j<2;++j) {
+            const double h=surface.cv(i,j)[d];
+            const double value=h/weight;
+            if (surface.weight(i,j)!=weight || !std::isfinite(h) || !std::isfinite(value) ||
+                !nurbs_coincidence::exact_products_equal(value,weight,h,1.)) return false;
+            cv[i*2+j][d]=value;
+        }
+        double opposite;
+        if (!difference(cv[2][d],cv[0][d],u[d]) || !difference(cv[1][d],cv[0][d],v[d]) ||
+            !difference(cv[3][d],cv[2][d],opposite) || opposite!=v[d] ||
+            !difference(target[d],cv[0][d],rhs[d])) return false;
+    }
+    double det=0,numerator_u=0,numerator_v=0;
+    bool independent=false;
+    for (int a=0;a<3 && !independent;++a) for (int b=a+1;b<3 && !independent;++b) {
+        if (!determinant(u[a],v[b],v[a],u[b],det)) return false;
+        if (det==0) continue;
+        if (!determinant(rhs[a],v[b],v[a],rhs[b],numerator_u) ||
+            !determinant(u[a],rhs[b],rhs[a],u[b],numerator_v)) return false;
+        independent=true;
+    }
+    if (!independent) return false;
+    const double s=numerator_u/det,t=numerator_v/det;
+    if (!std::isfinite(s) || !std::isfinite(t) || s<0 || s>1 || t<0 || t>1 ||
+        !nurbs_coincidence::exact_products_equal(s,det,numerator_u,1.) ||
+        !nurbs_coincidence::exact_products_equal(t,det,numerator_v,1.)) return false;
+    for (int d=0;d<3;++d) {
+        double a,b,sum;
+        if (!product(s,u[d],a) || !product(t,v[d],b) || !difference(a,-b,sum) || sum!=rhs[d]) return false;
+    }
+    for (int d=0;d<2;++d) {
+        const auto& knots=surface.m_nurbsknot[d];
+        double width,offset,raw;
+        if (knots.size()!=2 || !std::isfinite(knots[0]) || !std::isfinite(knots[1]) ||
+            !difference(knots[1],knots[0],width) || !(width>0) ||
+            !product(d?t:s,width,offset) || !difference(knots[0],-offset,raw)) return false;
+        domain.uv[2*d]=domain.uv[2*d+1]=raw;
+    }
+    return true; // Nonzero exact minor gives a unique preimage on the whole original rectangle.
+}
+
 // Sufficient Bernstein preimage certificate on clamped C0 tensor Bezier charts.
 // Keeps distinct raw seam aliases; domains describe constant maps to the witness.
 inline Result enumerate(const NurbsSurface &surface, const ProjectivePoint &point) {
@@ -32,6 +94,12 @@ inline Result enumerate(const NurbsSurface &surface, const ProjectivePoint &poin
     for (double value : point)
         if (!std::isfinite(value))
             return fail("Nonfinite projective witness");
+    Domain affine;
+    if (exact_affine_preimage(surface,point,affine)) {
+        result.domains.push_back(affine);
+        result.complete=true;
+        return result;
+    }
     std::array<std::vector<double>, 2> knots;
     for (int d = 0; d < 2; ++d) {
         const int degree = surface.degree(d);

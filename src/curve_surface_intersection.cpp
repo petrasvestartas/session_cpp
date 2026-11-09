@@ -1231,6 +1231,32 @@ bool subdivide(const Part& part, int direction, std::vector<Part>& work) {
     return true;
 }
 
+// Control points within tolerance of the chord, and of the bilinear patch over the corners.
+bool flat_part(const Part& part, double tolerance) {
+    const Point a = part.curve.point_at_start();
+    const Vector chord = part.curve.point_at_end() - a;
+    const double length2 = chord.dot(chord);
+    for (int i = 0; i < part.curve.cv_count(); ++i) {
+        const Point p = part.curve.get_cv(i);
+        const double t = length2 > 0.0 ? std::clamp((p - a).dot(chord) / length2, 0.0, 1.0) : 0.0;
+        if (p.distance(a + chord * t) > tolerance)
+            return false;
+    }
+    const int nu = part.surface.cv_count(0), nv = part.surface.cv_count(1);
+    const Point p00 = part.surface.get_cv(0, 0), p10 = part.surface.get_cv(nu - 1, 0);
+    const Point p01 = part.surface.get_cv(0, nv - 1), p11 = part.surface.get_cv(nu - 1, nv - 1);
+    for (int i = 0; i < nu; ++i)
+        for (int j = 0; j < nv; ++j) {
+            const double s = nu > 1 ? static_cast<double>(i) / (nu - 1) : 0.0;
+            const double t = nv > 1 ? static_cast<double>(j) / (nv - 1) : 0.0;
+            const Point low = p00 + (p10 - p00) * s;
+            const Point high = p01 + (p11 - p01) * s;
+            if (part.surface.get_cv(i, j).distance(low + (high - low) * t) > tolerance)
+                return false;
+        }
+    return true;
+}
+
 void intersect_general(Result& result, const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {
     const Part original{curve, surface, 0};
     Bounds original_curve;
@@ -1265,6 +1291,23 @@ void intersect_general(Result& result, const NurbsCurve& curve, const NurbsSurfa
             if (refined || contact)
                 append_hit(result, curve, surface, hit, tolerance);
             else
+                fail(result, "Unresolved curve/surface root enclosure");
+            continue;
+        }
+        // Flat pieces in contact need no more cutting: along a tangency they would only multiply down to the tolerance.
+        if (flat_part(part, tolerance * 0.125)) {
+            Hit hit;
+            const bool local = refine(part, tolerance, hit, false);
+            if (!local) {
+                hit.t = std::midpoint(part.curve.domain_start(), part.curve.domain_end());
+                hit.u = std::midpoint(part.surface.domain(0).first, part.surface.domain(0).second);
+                hit.v = std::midpoint(part.surface.domain(1).first, part.surface.domain(1).second);
+            }
+            const bool refined = local && refine(original, precision, hit, true);
+            const bool contact = polish_contact(original, precision, hit);
+            if (refined || contact)
+                append_hit(result, curve, surface, hit, tolerance);
+            else if (local)
                 fail(result, "Unresolved curve/surface root enclosure");
             continue;
         }

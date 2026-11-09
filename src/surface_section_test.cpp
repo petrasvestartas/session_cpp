@@ -1,4 +1,6 @@
 #include "surface_section.h"
+#include "brep_section.h"
+#include <numeric>
 #include "intersection.h"
 #include "closest.h"
 #include "curve_surface_intersection.h"
@@ -927,3 +929,189 @@ MINI_TEST("Surface Section Native", "Bilinear Critical Route Declines Unsupporte
             MINI_CHECK(different.set_cv(i, j, different.get_cv(i, j) + Vector(.125, 0, 0)));
     MINI_CHECK(!surface_section::bilinear_crossing(a, different, 1e-12).has_value());
 }
+
+namespace session_cpp {
+namespace {
+Point coverage_test_transform(Point point,bool transform) {
+    if (!transform) return point;
+    return {point[0]+point[2]+.5,point[1]+point[0]*.5-.25,point[2]+point[1]*.25+1};
+}
+NurbsSurface coverage_test_plane(bool second,bool shifted,bool transform) {
+    const std::array<Point,4> a{Point(-1,-1,0),Point(1,-1,0),Point(-1,1,0),Point(1,1,0)};
+    const std::array<Point,4> b{Point(0,-1,-1),Point(0,1,-1),Point(0,-1,1),Point(0,1,1)};
+    NurbsSurface result(3,false,2,2,2,2);
+    result.m_nurbsknot[0]=shifted?std::vector<double>{-7,13}:std::vector<double>{0,1};
+    result.m_nurbsknot[1]=shifted?std::vector<double>{32,35}:std::vector<double>{0,1};
+    const double weight=shifted?(second?3:2):1;
+    if (shifted) MINI_CHECK(result.to_rational());
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j) {
+        const auto point=coverage_test_transform((second?b:a)[i+2*j],transform);
+        MINI_CHECK(result.set_cv_4d(i,j,point[0]*weight,point[1]*weight,point[2]*weight,weight));
+    }
+    if (shifted) MINI_CHECK(result.reverse(second?0:1));
+    return result;
+}
+NurbsCurve coverage_test_line(Point first,Point last,double weight=1) {
+    NurbsCurve result(3,weight!=1,2,2);result.m_nurbsknot={-2,6};
+    MINI_CHECK(result.set_cv_4d(0,first[0]*weight,first[1]*weight,first[2]*weight,weight));
+    MINI_CHECK(result.set_cv_4d(1,last[0]*weight,last[1]*weight,last[2]*weight,weight));
+    return result;
+}
+std::vector<std::tuple<NurbsCurve,NurbsCurve,NurbsCurve>> coverage_test_section(
+    const NurbsSurface& a,const NurbsSurface& b,bool shifted,bool transform,double y0=-1,double y1=1) {
+    const auto au=a.domain(0),av=a.domain(1),bu=b.domain(0),bv=b.domain(1);
+    const auto parameter=[&](double y,const std::pair<double,double>& domain) {
+        const double fraction=shifted?(1-y)*.5:(y+1)*.5;
+        return domain.first+(domain.second-domain.first)*fraction;
+    };
+    const auto world=coverage_test_line(coverage_test_transform({0,y0,0},transform),
+                                       coverage_test_transform({0,y1,0},transform),shifted?5:1);
+    const auto pa=coverage_test_line({std::midpoint(au.first,au.second),parameter(y0,av),0},
+                                    {std::midpoint(au.first,au.second),parameter(y1,av),0},shifted?3:1);
+    const auto pb=coverage_test_line({parameter(y0,bu),std::midpoint(bv.first,bv.second),0},
+                                    {parameter(y1,bu),std::midpoint(bv.first,bv.second),0},shifted?2:1);
+    return {{world,pa,pb}};
+}
+}
+MINI_TEST("Surface Section", "Exact Affine Plane Segment Proves Whole Original Domain") {
+    for (bool shifted:{false,true}) for (bool transform:{false,true}) {
+        const auto a=coverage_test_plane(false,shifted,transform),b=coverage_test_plane(true,shifted,transform);
+        const auto sections=coverage_test_section(a,b,shifted,transform);
+        const auto frozen_a=a.jsondump(),frozen_b=b.jsondump();
+        MINI_CHECK(surface_section::affine_plane_curve_coverage(a,b,sections));
+        const auto& [world,pa,pb]=sections.front();
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-7)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-7)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(surface_section::affine_plane_curve_coverage(b,a,{{world,pb,pa}}));
+        auto reversed=sections;
+        MINI_CHECK(std::get<0>(reversed[0]).reverse() && std::get<1>(reversed[0]).reverse() &&
+                   std::get<2>(reversed[0]).reverse());
+        MINI_CHECK(surface_section::affine_plane_curve_coverage(a,b,reversed));
+        MINI_CHECK(a.jsondump()==frozen_a && b.jsondump()==frozen_b);
+    }
+}
+MINI_TEST("Surface Section", "Paired Subsegment And Near Boundary Do Not Prove Exhaustiveness") {
+    const auto a=coverage_test_plane(false,false,false),b=coverage_test_plane(true,false,false);
+    for (const auto range:{std::pair{-.5,.5},std::pair{-1+std::ldexp(1.,-30),1.}}) {
+        const auto sections=coverage_test_section(a,b,false,false,range.first,range.second);
+        const auto& [world,pa,pb]=sections.front();
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,a,1e-7)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,b,1e-7)==
+            curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,b,sections));
+    }
+    const auto full=coverage_test_section(a,b,false,false);
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,b,{}));
+    auto duplicate=full;duplicate.push_back(full.front());
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,b,duplicate));
+    auto raw_mismatch=full;MINI_CHECK(std::get<1>(raw_mismatch[0]).set_domain(-2,7));
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,b,raw_mismatch));
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,a,full));
+    auto warped=b;const auto corner=warped.get_cv(1,1);
+    MINI_CHECK(warped.set_cv(1,1,{corner[0]+std::ldexp(1.,-40),corner[1],corner[2]}));
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,warped,full));
+    auto variable_weight=a;MINI_CHECK(variable_weight.to_rational());
+    const auto point=variable_weight.get_cv(1,1);
+    MINI_CHECK(variable_weight.set_cv_4d(1,1,point[0]*2,point[1]*2,point[2]*2,2));
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(variable_weight,b,full));
+    auto variable_world=full;
+    MINI_CHECK(std::get<0>(variable_world[0]).set_cv_4d(1,0,3,0,3));
+    MINI_CHECK(!surface_section::affine_plane_curve_coverage(a,b,variable_world));
+}
+MINI_TEST("Surface Section", "Exact Positive Plane Coverage Has No Physical Length Floor") {
+    const double tiny=std::ldexp(1.,-30);
+    const auto a=coverage_test_plane(false,false,false);
+    auto b=coverage_test_plane(true,false,false);
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j) {
+        auto point=b.get_cv(i,j);point[1]*=tiny;MINI_CHECK(b.set_cv(i,j,point));
+    }
+    const auto world=coverage_test_line({0,-tiny,0},{0,tiny,0});
+    const auto pa=coverage_test_line({.5,.5-tiny*.5,0},{.5,.5+tiny*.5,0});
+    const auto pb=coverage_test_line({0,.5,0},{1,.5,0});
+    MINI_CHECK(world.point_at_start()[1]<world.point_at_end()[1] && 2*tiny<1e-7);
+    MINI_CHECK(surface_section::affine_plane_curve_coverage(a,b,{{world,pa,pb}}));
+}
+MINI_TEST("Surface Section", "Positive Plane Coverage Is Separate From BRep Trim Ownership") {
+    for (bool shifted:{false,true}) {
+        const auto a=coverage_test_plane(false,shifted,false),b=coverage_test_plane(true,shifted,false);
+        for (bool swap:{false,true}) {
+            const auto result=surface_section::intersect(swap?b:a,swap?a:b,1e-7);
+            if (!result.complete) throw std::runtime_error(result.failure);
+            MINI_CHECK(result.coverage==surface_section::Coverage::OriginalDomainCurve);
+            MINI_CHECK(surface_section::qualified(result.coverage) && result.curves.size()==1 && result.points.empty());
+            for (const auto& [world,pa,pb]:result.curves) {
+                MINI_CHECK(world.domain()==pa.domain() && world.domain()==pb.domain());
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,pa,swap?b:a,1e-7)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+                MINI_CHECK(curve_surface_intersection::same_parameter(world,pb,swap?a:b,1e-7)==
+                    curve_surface_intersection::ParameterMatch::Matched);
+            }
+            brep_section::PairCoverage wire_receipt;
+            wire_receipt.support=result.coverage;
+            MINI_CHECK(!wire_receipt.trim_ownership_complete && !wire_receipt.qualified());
+        }
+    }
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Surface Section", "Exact Original Affine Contact Inverse Owns Interior Raw Point") {
+    NurbsSurface surface(3,true,2,2,2,2);
+    surface.m_nurbsknot[0]={-7,13};surface.m_nurbsknot[1]={32,35};
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j) {
+        const Point p(-2+4*i+2*j,-3+8*j,0);
+        MINI_CHECK(surface.set_cv_4d(i,j,3*p[0],3*p[1],0,3));
+    }
+    const auto frozen=surface.jsondump();
+    const surface_point_preimages::ProjectivePoint point{0,5,0,5};
+    surface_point_preimages::Domain domain;
+    MINI_CHECK(surface_point_preimages::exact_affine_preimage(surface,point,domain));
+    MINI_CHECK(domain.uv[0]==-2 && domain.uv[1]==-2 && domain.uv[2]==33.5 && domain.uv[3]==33.5);
+    const auto result=surface_point_preimages::enumerate(surface,point);
+    MINI_CHECK(result.complete && result.domains.size()==1 && result.domains[0].uv==domain.uv);
+    MINI_CHECK(!surface_point_preimages::exact_affine_preimage(surface,{20,5,0,5},domain));
+    MINI_CHECK(!surface_point_preimages::exact_affine_preimage(surface,{0,5,1,5},domain));
+    auto warped=surface;
+    MINI_CHECK(warped.set_cv_4d(1,1,12,15,3,3));
+    MINI_CHECK(!surface_point_preimages::exact_affine_preimage(warped,point,domain));
+    auto variable=surface;
+    MINI_CHECK(variable.set_cv_4d(1,1,24,30,0,6));
+    MINI_CHECK(!surface_point_preimages::exact_affine_preimage(variable,point,domain));
+    auto collapsed=surface;
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j)
+        MINI_CHECK(collapsed.set_cv_4d(i,j,3*(i+j),0,0,3));
+    MINI_CHECK(!surface_point_preimages::exact_affine_preimage(collapsed,{1,0,0,1},domain));
+    MINI_CHECK(surface.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Surface Section", "Exact Affine Interior Tangency Keeps Shifted Sheared Original Supports") {
+    NurbsSurface plane(3,true,2,2,2,2);
+    plane.m_nurbsknot[0]={-7,13};plane.m_nurbsknot[1]={32,35};
+    for (int i=0;i<2;++i) for (int j=0;j<2;++j)
+        MINI_CHECK(plane.set_cv_4d(i,j,3*(-2+4*i+2*j),3*(-3+8*j),0,3));
+    const auto sphere_brep=BRep::create_sphere(1).transformed(Xform::translation(0,0,1));
+    const auto& sphere=sphere_brep.m_surfaces[0];
+    const auto frozen_p=plane.jsondump(),frozen_s=sphere.jsondump();
+    for (bool swap:{false,true}) {
+        const auto result=swap?surface_section::intersect(sphere,plane,1e-7):
+                               surface_section::intersect(plane,sphere,1e-7);
+        if (!result.complete) throw std::runtime_error(result.failure);
+        MINI_CHECK(result.world_coverage_complete() && result.coverage==surface_section::Coverage::GlobalContactPoint);
+        MINI_CHECK(result.curves.empty() && result.points.size()==1);
+        const auto& event=result.points[0];
+        MINI_CHECK(event.point[0]==0 && event.point[1]==0 && event.point[2]==0);
+        const auto& uv=swap?event.second:event.first;
+        MINI_CHECK(uv[0]==-.75 && uv[1]==33.125);
+        const auto& preimages=swap?event.second_preimages:event.first_preimages;
+        MINI_CHECK(preimages.complete && preimages.domains.size()==1);
+        MINI_CHECK(preimages.domains[0].uv[0]==-.75 && preimages.domains[0].uv[1]==-.75 &&
+                   preimages.domains[0].uv[2]==33.125 && preimages.domains[0].uv[3]==33.125);
+    }
+    MINI_CHECK(plane.jsondump()==frozen_p && sphere.jsondump()==frozen_s);
+}
+} // namespace session_cpp

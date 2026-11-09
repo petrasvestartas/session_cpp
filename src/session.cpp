@@ -1045,6 +1045,10 @@ std::shared_ptr<TreeNode> Session::add_matrix(const Matrix& matrix, std::shared_
     return add_component(matrix.to_component(), parent);
 }
 
+std::shared_ptr<TreeNode> Session::add_text(const Text& text, std::shared_ptr<TreeNode> parent) {
+    return add_component(text.to_component(), parent);
+}
+
 std::string Session::add_definition(const Geometry& definition) {
 
     const bool empty = std::visit(
@@ -1495,6 +1499,18 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
     xforms[guid] = xform;
     bvh_cache_dirty = true;
     revision++;
+}
+
+void Session::animate_xform(
+    const std::string& guid,
+    const Xform& xform,
+    double duration_ms,
+    double delay_ms
+) {
+
+    set_xform(guid, xform);
+    graph.set_vertex_attribute(guid, "xform_ms", duration_ms);
+    graph.set_vertex_attribute(guid, "delay_ms", delay_ms);
 }
 
 bool Session::remove_xform(const std::string& guid) {

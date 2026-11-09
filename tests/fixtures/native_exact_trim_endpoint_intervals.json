@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "capture_sha256": "9d494212f3e444513280587c9c379062220a98a0878396dd4729ff7515b33891",
+      "record": {
+        "first": 0.0,
+        "last": 1.5618089172781544e-17,
+        "domain": [
+          0.0,
+          1.0
+        ],
+        "curve": {
+          "control_points": [
+            [
+              -0.7,
+              1.0,
+              -0.6950000000000001
+            ],
+            [
+              -0.7,
+              1.0,
+              0.8599999999999999
+            ]
+          ],
+          "cv_count": 2,
+          "cv_stride": 3,
+          "dimension": 3,
+          "guid": "45d2e596-164f-47d0-b6f5-3b309207c1f0",
+          "is_rational": false,
+          "linecolors": [],
+          "is_locked": false,
+          "is_visible": true,
+          "name": "my_nurbscurve",
+          "nurbsknots": [
+            0.0,
+            1.0
+          ],
+          "order": 2,
+          "pointcolors": [],
+          "type": "NurbsCurve",
+          "width": 1.0
+        }
+      }
+    },
+    {
+      "capture_sha256": "44ce71cd6e4a41ef6b07f0f21222121cc6181de8487c6c9b5aef0c72a9aa0c82",
+      "record": {
+        "first": 0.0,
+        "last": 2.7755575615628914e-17,
+        "domain": [
+          0.0,
+          1.0
+        ],
+        "curve": {
+          "control_points": [
+            [
+              0.61,
+              0.0,
+              0.0
+            ],
+            [
+              0.61,
+              1.0,
+              0.0
+            ]
+          ],
+          "cv_count": 2,
+          "cv_stride": 3,
+          "dimension": 3,
+          "guid": "c67516f6-c3d4-4b68-abb4-a0d8b70c42f9",
+          "is_rational": false,
+          "linecolors": [],
+          "is_locked": false,
+          "is_visible": true,
+          "name": "my_nurbscurve",
+          "nurbsknots": [
+            0.0,
+            1.0
+          ],
+          "order": 2,
+          "pointcolors": [],
+          "type": "NurbsCurve",
+          "width": 1.0
+        }
+      }
+    }
+  ]
+}

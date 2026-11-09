@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -21,6 +24,38 @@ struct Pair {
     Span b;
     int depth = 0;
 };
+
+void observe_complete_overlap(const NurbsCurve& curve,const Pair& pair,double tolerance,
+    const NurbsCurve& a,const NurbsCurve& b,const curve_intersection::Result& events) {
+    const char* path=std::getenv("SESSION_SELF_INTERSECTION_OVERLAP_FAILURE");
+    if (!path || !*path) return;
+    try {
+        nlohmann::ordered_json saved={{"schema","native_self_intersection_overlap_failure_v1"},
+            {"stage","complete_cc_overlap"},{"tolerance",tolerance},{"depth",pair.depth},
+            {"requested_a",{pair.a.lo,pair.a.hi}},{"requested_b",{pair.b.lo,pair.b.hi}},
+            {"original_domain",curve.domain()},{"actual_a_domain",a.domain()},{"actual_b_domain",b.domain()},
+            {"original",curve.jsondump()},{"a",a.jsondump()},{"b",b.jsondump()},
+            {"cc_complete",events.complete},{"cc_failure",events.failure},
+            {"points",nlohmann::ordered_json::array()},{"overlaps",nlohmann::ordered_json::array()}};
+        for (const auto& hit:events.points)
+            saved["points"].push_back({{"a",hit.a},{"b",hit.b},{"tangent",hit.tangent},
+                {"point",{hit.point[0],hit.point[1],hit.point[2]}}});
+        for (const auto& overlap:events.overlaps)
+            saved["overlaps"].push_back({{"a0",overlap.a0},{"a1",overlap.a1},
+                {"b0",overlap.b0},{"b1",overlap.b1}});
+        std::ofstream output(path,std::ios::binary|std::ios::app);
+        if (!output || !(output<<saved.dump()<<'\n'))
+            throw std::runtime_error("Cannot append self-overlap failure witness");
+        output.flush();
+        if (!output) throw std::runtime_error("Cannot flush self-overlap failure witness");
+        output.close();
+        if (output.fail()) throw std::runtime_error("Cannot close self-overlap failure witness");
+    } catch (const std::exception& error) {
+        std::cerr<<"Self-overlap failure witness failed: "<<error.what()<<'\n';
+    } catch (...) {
+        std::cerr<<"Self-overlap failure witness failed with unknown error\n";
+    }
+}
 
 struct Bounds {
     std::array<double, 3> lo;
@@ -526,6 +561,8 @@ AppendState append(
     }
     result.overlaps.insert(result.overlaps.end(), events.overlaps.begin(), events.overlaps.end());
     if (!events.complete || !events.overlaps.empty()) {
+        if (events.complete && !events.overlaps.empty())
+            observe_complete_overlap(curve,pair,tolerance,a,b,events);
         result.failure = events.complete ? "Self intersection found a nonisolated overlap" : events.failure;
         return AppendState::Failed;
     }
