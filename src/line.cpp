@@ -537,6 +537,21 @@ void Line::get_middle_line(const Line& l0, const Line& l1, Line& out) {
     out = from_points(output_start, output_end);
 }
 
+Line Line::lerp(const Line& a, const Line& b, double t) {
+
+    const Point s = Point::lerp(a.start(), b.start(), t);
+    const Point e = Point::lerp(a.end(), b.end(), t);
+    Line result = a;
+    result._x0 = s[0];
+    result._y0 = s[1];
+    result._z0 = s[2];
+    result._x1 = e[0];
+    result._y1 = e[1];
+    result._z1 = e[2];
+
+    return result;
+}
+
 bool Line::from_projected_points(const Line& line, const std::vector<Point>& points, Line& out) {
 
     Point output_start;

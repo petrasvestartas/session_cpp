@@ -80,8 +80,8 @@ MINI_TEST("Text", "Component") {
     MINI_CHECK(component.guid() == text.guid());
     MINI_CHECK(loaded == text);
     MINI_CHECK(session.objects.components->size() == 1);
-    MINI_CHECK((*session.objects.components)[0]->type_name == "Text");
-    MINI_CHECK(Text::from_component(*restored.objects.components->at(0)) == text);
+    MINI_CHECK(session.objects.components->at(0).type_name == "Text");
+    MINI_CHECK(Text::from_component(restored.objects.components->at(0)) == text);
 }
 
 } // namespace session_cpp

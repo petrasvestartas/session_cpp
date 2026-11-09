@@ -194,6 +194,9 @@ public:
     /// Return the length of the first column: the uniform scale the matrix applies.
     double uniform_scale() const;
 
+    /// Return the blend at t in [0, 1]: translation and axis scales lerped, rotation slerped.
+    static Xform interpolate(const Xform& a, const Xform& b, double t);
+
     /// Return the eye of a view-projection: where clip x, y and w vanish at once; orthographic has none, so the view direction pushed far back.
     Point eye() const;
 

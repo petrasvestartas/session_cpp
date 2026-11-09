@@ -762,6 +762,34 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(tweened.get_point(1)[0], 2.0));
     }
 
+    MINI_TEST("Polyline", "Morph") {
+        // using session_cpp::Polyline;
+        // using session_cpp::Point;
+
+        const Polyline pl({
+            Point(0.0, 0.0, 0.0),
+            Point(2.0, 0.0, 0.0),
+            Point(2.0, 2.0, 0.0),
+        });
+        const Polyline line({
+            Point(0.0, 0.0, 1.0),
+            Point(1.0, 0.0, 1.0),
+            Point(2.0, 0.0, 1.0),
+            Point(3.0, 0.0, 1.0),
+            Point(4.0, 0.0, 1.0),
+        });
+        const Polyline resampled = pl.resampled(5);
+        const Polyline morphed = Polyline::morph(pl, line, 0.5);
+
+        MINI_CHECK(resampled.point_count() == 5);
+        MINI_CHECK(TOLERANCE.is_point_close(resampled.get_point(1), Point(1.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(resampled.get_point(2), Point(2.0, 0.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(resampled.get_point(3), Point(2.0, 1.0, 0.0)));
+        MINI_CHECK(morphed.point_count() == 5);
+        MINI_CHECK(TOLERANCE.is_point_close(morphed.get_point(2), Point(2.0, 0.0, 0.5)));
+        MINI_CHECK(Polyline::morph(pl, line, 0.0) == resampled);
+    }
+
     MINI_TEST("Polyline", "Average Plane") {
         // using session_cpp::Polyline;
         // using session_cpp::Point;

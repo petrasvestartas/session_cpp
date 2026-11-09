@@ -655,6 +655,22 @@ namespace session_cpp {
         MINI_CHECK(TOLERANCE.is_close(Xform::translation(1.0, 2.0, 3.0).uniform_scale(), 1.0));
     }
 
+    MINI_TEST("Xform", "Interpolate") {
+        // using session_cpp::Xform;
+
+        const Xform a = Xform::identity();
+        const Xform b = Xform::translation(2.0, 4.0, 6.0) * Xform::rotation_z(Tolerance::PI / 2.0);
+        const Xform half = Xform::interpolate(a, b, 0.5);
+        const Xform scaled = Xform::interpolate(a, Xform::scale_xyz(3.0, 3.0, 3.0), 0.5);
+        const double c = std::cos(Tolerance::PI / 4.0);
+
+        MINI_CHECK(TOLERANCE.is_close(half.m[12], 1.0) && TOLERANCE.is_close(half.m[13], 2.0) && TOLERANCE.is_close(half.m[14], 3.0));
+        MINI_CHECK(TOLERANCE.is_close(half.m[0], c) && TOLERANCE.is_close(half.m[1], c) && TOLERANCE.is_close(half.m[2], 0.0));
+        MINI_CHECK(Xform::interpolate(a, b, 0.0) == a);
+        MINI_CHECK(Xform::interpolate(a, b, 1.0) == b);
+        MINI_CHECK(TOLERANCE.is_close(scaled.m[0], 2.0));
+    }
+
     MINI_TEST("Xform", "Eye") {
         // using session_cpp::Xform;
         // using session_cpp::Point;

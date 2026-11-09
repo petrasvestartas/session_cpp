@@ -404,6 +404,20 @@ namespace session_cpp {
         MINI_CHECK(zero[0] == 0.0 && zero[1] == 0.0 && zero[2] == 0.0);
     }
 
+    MINI_TEST("Vector", "Lerp") {
+        // using session_cpp::Vector;
+
+        const Vector a(0.0, 0.0, 0.0);
+        const Vector b(2.0, 4.0, 6.0);
+        const Vector half = Vector::lerp(a, b, 0.5);
+        const Vector start = Vector::lerp(a, b, 0.0);
+        const Vector end = Vector::lerp(a, b, 1.0);
+
+        MINI_CHECK(half[0] == 1.0 && half[1] == 2.0 && half[2] == 3.0);
+        MINI_CHECK(start == a);
+        MINI_CHECK(end == b);
+    }
+
     MINI_TEST("Vector", "Is Zero") {
         // using session_cpp::Vector;
 

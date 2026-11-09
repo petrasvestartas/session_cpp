@@ -727,6 +727,88 @@ double Xform::uniform_scale() const {
     return std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
 }
 
+Xform Xform::interpolate(const Xform& a, const Xform& b, double t) {
+
+    const std::array<const Xform*, 2> xforms = {&a, &b};
+    std::array<std::array<double, 4>, 2> q{};
+    std::array<std::array<double, 3>, 2> s{};
+
+    for (int k = 0; k < 2; k++) {
+        const std::array<double, 16>& n = xforms[k]->m;
+        std::array<std::array<double, 3>, 3> r{};
+
+        for (int c = 0; c < 3; c++) {
+            s[k][c] = std::sqrt(n[c * 4] * n[c * 4] + n[c * 4 + 1] * n[c * 4 + 1] + n[c * 4 + 2] * n[c * 4 + 2]);
+
+            for (int i = 0; i < 3; i++)
+                r[i][c] = s[k][c] > 0.0 ? n[c * 4 + i] / s[k][c] : (i == c ? 1.0 : 0.0);
+        }
+
+        const double trace = r[0][0] + r[1][1] + r[2][2];
+
+        if (trace > 0.0) {
+            const double d = 2.0 * std::sqrt(1.0 + trace);
+            q[k] = {0.25 * d, (r[2][1] - r[1][2]) / d, (r[0][2] - r[2][0]) / d, (r[1][0] - r[0][1]) / d};
+        } else if (r[0][0] > r[1][1] && r[0][0] > r[2][2]) {
+            const double d = 2.0 * std::sqrt(1.0 + r[0][0] - r[1][1] - r[2][2]);
+            q[k] = {(r[2][1] - r[1][2]) / d, 0.25 * d, (r[0][1] + r[1][0]) / d, (r[0][2] + r[2][0]) / d};
+        } else if (r[1][1] > r[2][2]) {
+            const double d = 2.0 * std::sqrt(1.0 + r[1][1] - r[0][0] - r[2][2]);
+            q[k] = {(r[0][2] - r[2][0]) / d, (r[0][1] + r[1][0]) / d, 0.25 * d, (r[1][2] + r[2][1]) / d};
+        } else {
+            const double d = 2.0 * std::sqrt(1.0 + r[2][2] - r[0][0] - r[1][1]);
+            q[k] = {(r[1][0] - r[0][1]) / d, (r[0][2] + r[2][0]) / d, (r[1][2] + r[2][1]) / d, 0.25 * d};
+        }
+    }
+
+    double dot = q[0][0] * q[1][0] + q[0][1] * q[1][1] + q[0][2] * q[1][2] + q[0][3] * q[1][3];
+
+    if (dot < 0.0) {
+        for (int i = 0; i < 4; i++)
+            q[1][i] = -q[1][i];
+        dot = -dot;
+    }
+
+    double w0 = 1.0 - t;
+    double w1 = t;
+
+    if (dot <= 0.9995) {
+        const double theta = std::acos(dot);
+        w0 = std::sin((1.0 - t) * theta) / std::sin(theta);
+        w1 = std::sin(t * theta) / std::sin(theta);
+    }
+
+    std::array<double, 4> p{};
+
+    for (int i = 0; i < 4; i++)
+        p[i] = w0 * q[0][i] + w1 * q[1][i];
+
+    const double len = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] + p[3] * p[3]);
+    const double w = p[0] / len;
+    const double x = p[1] / len;
+    const double y = p[2] / len;
+    const double z = p[3] / len;
+    const double sx = s[0][0] + (s[1][0] - s[0][0]) * t;
+    const double sy = s[0][1] + (s[1][1] - s[0][1]) * t;
+    const double sz = s[0][2] + (s[1][2] - s[0][2]) * t;
+
+    Xform result;
+    result.m[0] = (1.0 - 2.0 * (y * y + z * z)) * sx;
+    result.m[1] = 2.0 * (x * y + w * z) * sx;
+    result.m[2] = 2.0 * (x * z - w * y) * sx;
+    result.m[4] = 2.0 * (x * y - w * z) * sy;
+    result.m[5] = (1.0 - 2.0 * (x * x + z * z)) * sy;
+    result.m[6] = 2.0 * (y * z + w * x) * sy;
+    result.m[8] = 2.0 * (x * z + w * y) * sz;
+    result.m[9] = 2.0 * (y * z - w * x) * sz;
+    result.m[10] = (1.0 - 2.0 * (x * x + y * y)) * sz;
+
+    for (int i = 12; i < 15; i++)
+        result.m[i] = a.m[i] + (b.m[i] - a.m[i]) * t;
+
+    return result;
+}
+
 Point Xform::eye() const {
 
     const std::array<std::array<double, 3>, 3> rows = {{

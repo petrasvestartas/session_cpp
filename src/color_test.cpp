@@ -114,6 +114,19 @@ namespace session_cpp {
         MINI_CHECK(back == c);
     }
 
+    MINI_TEST("Color", "Lerp") {
+        // using session_cpp::Color;
+
+        const Color a(0.0f, 0.0f, 0.0f, 1.0f);
+        const Color b(1.0f, 0.5f, 0.0f, 0.0f);
+        const Color c = Color::lerp(a, b, 0.5);
+
+        MINI_CHECK(TOLERANCE.is_close(c.r, 0.5));
+        MINI_CHECK(TOLERANCE.is_close(c.g, 0.25));
+        MINI_CHECK(TOLERANCE.is_close(c.b, 0.0));
+        MINI_CHECK(TOLERANCE.is_close(c.a, 0.5));
+    }
+
     MINI_TEST("Color", "Presets") {
         // using session_cpp::Color;
 

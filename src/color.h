@@ -157,6 +157,9 @@ public:
     /// Construct from [r, g, b, a].
     static Color from_unified_array(std::array<float, 4> arr);
 
+    /// Return the color at parameter t in [0, 1] between a and b, named after a.
+    static Color lerp(const Color& a, const Color& b, double t);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════

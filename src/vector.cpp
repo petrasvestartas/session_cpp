@@ -450,6 +450,10 @@ Vector Vector::average(const std::vector<Vector>& vectors) {
     return sum_of_vectors(vectors) / static_cast<double>(vectors.size());
 }
 
+Vector Vector::lerp(const Vector& a, const Vector& b, double t) {
+    return a + (b - a) * t;
+}
+
 void Vector::scale_up() {
     *this *= SCALE;
 }

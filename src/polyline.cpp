@@ -1336,6 +1336,38 @@ Polyline Polyline::tween_two_polylines(const Polyline& polyline0, const Polyline
     return result;
 }
 
+Polyline Polyline::resampled(size_t count) const {
+
+    if (count < 2 || point_count() < 2)
+        return *this;
+
+    const double total = length();
+    Polyline result = *this;
+    result._coords.clear();
+    result.add_point(get_point(0));
+
+    for (size_t i = 1; i + 1 < count; i++)
+        result.add_point(point_at_length(total * static_cast<double>(i) / static_cast<double>(count - 1)));
+
+    result.add_point(get_point(point_count() - 1));
+
+    return result;
+}
+
+Polyline Polyline::morph(const Polyline& a, const Polyline& b, double t) {
+
+    const size_t count = std::max(a.point_count(), b.point_count());
+    const Polyline pa = a.resampled(count);
+    const Polyline pb = b.resampled(count);
+    Polyline result = a;
+    result._coords.clear();
+
+    for (size_t i = 0; i < std::min(pa.point_count(), pb.point_count()); i++)
+        result.add_point(Point::lerp(pa.get_point(i), pb.get_point(i), t));
+
+    return result;
+}
+
 std::vector<Point> Polyline::interpolate_points(const Point& from, const Point& to, int steps, int kind) {
     return Point::interpolate(from, to, steps, kind);
 }

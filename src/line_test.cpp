@@ -265,6 +265,20 @@ namespace session_cpp {
         MINI_CHECK(pe[0] == 10.0 && pe[1] == 10.0 && pe[2] == 10.0);
     }
 
+    MINI_TEST("Line", "Lerp") {
+        // using session_cpp::Line;
+        // using session_cpp::Point;
+
+        Line a(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        a.width = 3.0;
+        const Line b(0.0, 2.0, 0.0, 1.0, 4.0, 0.0);
+        const Line half = Line::lerp(a, b, 0.5);
+
+        MINI_CHECK(TOLERANCE.is_point_close(half.start(), Point(0.0, 1.0, 0.0)));
+        MINI_CHECK(TOLERANCE.is_point_close(half.end(), Point(1.0, 2.0, 0.0)));
+        MINI_CHECK(half.width == 3.0);
+    }
+
     MINI_TEST("Line", "Closest Point") {
         // using session_cpp::Line;
         // using session_cpp::Point;

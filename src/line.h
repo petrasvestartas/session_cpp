@@ -211,6 +211,9 @@ public:
     /// Compute the line through the midpoints of the paired starts and ends.
     static void get_middle_line(const Line& l0, const Line& l1, Line& out);
 
+    /// Return a copy of a with each end at parameter t in [0, 1] between the ends of a and b.
+    static Line lerp(const Line& a, const Line& b, double t);
+
     /// Compute the extreme sub-segment of line spanned by the projected points.
     static bool from_projected_points(const Line& line, const std::vector<Point>& points, Line& out);
 

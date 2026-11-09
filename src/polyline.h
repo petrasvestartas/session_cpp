@@ -307,6 +307,12 @@ public:
     /// Return the pointwise blend; polyline0 when the counts differ.
     static Polyline tween_two_polylines(const Polyline& polyline0, const Polyline& polyline1, double weight);
 
+    /// Return a copy with count points at equal arc-length spacing, first and last kept.
+    Polyline resampled(size_t count) const;
+
+    /// Return the pointwise blend at t, the polyline with fewer points resampled to the larger count.
+    static Polyline morph(const Polyline& a, const Polyline& b, double t);
+
     /// Return steps points between from and to; kind 0 none, 1 both, 2 start endpoint.
     static std::vector<Point> interpolate_points(const Point& from, const Point& to, int steps, int kind = 0);
 

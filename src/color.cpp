@@ -208,6 +208,17 @@ Color Color::from_unified_array(std::array<float, 4> arr) {
     return Color(arr[0], arr[1], arr[2], arr[3]);
 }
 
+Color Color::lerp(const Color& a, const Color& b, double t) {
+
+    return Color(
+        static_cast<float>(a.r + (b.r - a.r) * t),
+        static_cast<float>(a.g + (b.g - a.g) * t),
+        static_cast<float>(a.b + (b.b - a.b) * t),
+        static_cast<float>(a.a + (b.a - a.a) * t),
+        a.name
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON
 // ═══════════════════════════════════════════════════════════════════════════

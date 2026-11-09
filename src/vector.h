@@ -205,6 +205,9 @@ public:
     /// Return the component-wise average; empty input returns zero.
     static Vector average(const std::vector<Vector>& vectors);
 
+    /// Return the vector at parameter t in [0, 1] between a and b.
+    static Vector lerp(const Vector& a, const Vector& b, double t);
+
     /// Scale in place by SCALE.
     void scale_up();
 
