@@ -1501,18 +1501,6 @@ void Session::set_xform(const std::string& guid, const Xform& xform) {
     revision++;
 }
 
-void Session::animate_xform(
-    const std::string& guid,
-    const Xform& xform,
-    double duration_ms,
-    double delay_ms
-) {
-
-    set_xform(guid, xform);
-    graph.set_vertex_attribute(guid, "xform_ms", duration_ms);
-    graph.set_vertex_attribute(guid, "delay_ms", delay_ms);
-}
-
 bool Session::remove_xform(const std::string& guid) {
 
     auto before = xforms.find(guid);

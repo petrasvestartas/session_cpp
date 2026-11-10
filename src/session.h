@@ -383,14 +383,6 @@ public:
     /// Set the central LOCAL transform under tree-node name/object guid, relative to its parent; a definition-only guid is ignored.
     void set_xform(const std::string& guid, const Xform& xform);
 
-    /// Set a local transform and record its presentation duration and delay.
-    void animate_xform(
-        const std::string& guid,
-        const Xform& xform,
-        double duration_ms = 650.0,
-        double delay_ms = 0.0
-    );
-
     /// Removes an object's local transform, returning whether one was present.
     bool remove_xform(const std::string& guid);
 
