@@ -207,9 +207,11 @@ int run_all(const std::string &language) {
   std::map<std::string, std::vector<const RegisteredTest *>> tests_by_group;
   const char* selected_name = std::getenv("SESSION_MINITEST_NAME");
   const char* selected_group = std::getenv("SESSION_MINITEST_GROUP");
+  const char* selected_file = std::getenv("SESSION_MINITEST_FILE");
   const bool progress = std::getenv("SESSION_MINITEST_PROGRESS") != nullptr;
   for (const auto &t : tests) {
-    if ((!selected_name || t.name == selected_name) && (!selected_group || t.group == selected_group))
+    const bool in_file = !selected_file || fs::path(t.file).stem().string() == selected_file;
+    if ((!selected_name || t.name == selected_name) && (!selected_group || t.group == selected_group) && in_file)
       tests_by_group[t.group].push_back(&t);
   }
   if (tests_by_group.empty())
