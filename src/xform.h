@@ -257,6 +257,12 @@ public:
 private:
     /// Return the determinant of a 3x3 given by rows.
     static double det3(const std::array<std::array<double, 3>, 3>& rows);
+
+    /// Return the lengths of the first three columns.
+    std::array<double, 3> axis_scales() const;
+
+    /// Return the rotation part as a unit quaternion [w, x, y, z].
+    std::array<double, 4> rotation_quaternion() const;
 };
 
 } // namespace session_cpp

@@ -729,43 +729,14 @@ double Xform::uniform_scale() const {
 
 Xform Xform::interpolate(const Xform& a, const Xform& b, double t) {
 
-    const std::array<const Xform*, 2> xforms = {&a, &b};
-    std::array<std::array<double, 4>, 2> q{};
-    std::array<std::array<double, 3>, 2> s{};
-
-    for (int k = 0; k < 2; k++) {
-        const std::array<double, 16>& n = xforms[k]->m;
-        std::array<std::array<double, 3>, 3> r{};
-
-        for (int c = 0; c < 3; c++) {
-            s[k][c] = std::sqrt(n[c * 4] * n[c * 4] + n[c * 4 + 1] * n[c * 4 + 1] + n[c * 4 + 2] * n[c * 4 + 2]);
-
-            for (int i = 0; i < 3; i++)
-                r[i][c] = s[k][c] > 0.0 ? n[c * 4 + i] / s[k][c] : (i == c ? 1.0 : 0.0);
-        }
-
-        const double trace = r[0][0] + r[1][1] + r[2][2];
-
-        if (trace > 0.0) {
-            const double d = 2.0 * std::sqrt(1.0 + trace);
-            q[k] = {0.25 * d, (r[2][1] - r[1][2]) / d, (r[0][2] - r[2][0]) / d, (r[1][0] - r[0][1]) / d};
-        } else if (r[0][0] > r[1][1] && r[0][0] > r[2][2]) {
-            const double d = 2.0 * std::sqrt(1.0 + r[0][0] - r[1][1] - r[2][2]);
-            q[k] = {(r[2][1] - r[1][2]) / d, 0.25 * d, (r[0][1] + r[1][0]) / d, (r[0][2] + r[2][0]) / d};
-        } else if (r[1][1] > r[2][2]) {
-            const double d = 2.0 * std::sqrt(1.0 + r[1][1] - r[0][0] - r[2][2]);
-            q[k] = {(r[0][2] - r[2][0]) / d, (r[0][1] + r[1][0]) / d, 0.25 * d, (r[1][2] + r[2][1]) / d};
-        } else {
-            const double d = 2.0 * std::sqrt(1.0 + r[2][2] - r[0][0] - r[1][1]);
-            q[k] = {(r[1][0] - r[0][1]) / d, (r[0][2] + r[2][0]) / d, (r[1][2] + r[2][1]) / d, 0.25 * d};
-        }
-    }
-
-    double dot = q[0][0] * q[1][0] + q[0][1] * q[1][1] + q[0][2] * q[1][2] + q[0][3] * q[1][3];
+    const std::array<double, 3> sa = a.axis_scales();
+    const std::array<double, 3> sb = b.axis_scales();
+    const std::array<double, 4> qa = a.rotation_quaternion();
+    std::array<double, 4> qb = b.rotation_quaternion();
+    double dot = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3];
 
     if (dot < 0.0) {
-        for (int i = 0; i < 4; i++)
-            q[1][i] = -q[1][i];
+        qb = {-qb[0], -qb[1], -qb[2], -qb[3]};
         dot = -dot;
     }
 
@@ -781,16 +752,16 @@ Xform Xform::interpolate(const Xform& a, const Xform& b, double t) {
     std::array<double, 4> p{};
 
     for (int i = 0; i < 4; i++)
-        p[i] = w0 * q[0][i] + w1 * q[1][i];
+        p[i] = w0 * qa[i] + w1 * qb[i];
 
     const double len = std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2] + p[3] * p[3]);
     const double w = p[0] / len;
     const double x = p[1] / len;
     const double y = p[2] / len;
     const double z = p[3] / len;
-    const double sx = s[0][0] + (s[1][0] - s[0][0]) * t;
-    const double sy = s[0][1] + (s[1][1] - s[0][1]) * t;
-    const double sz = s[0][2] + (s[1][2] - s[0][2]) * t;
+    const double sx = sa[0] + (sb[0] - sa[0]) * t;
+    const double sy = sa[1] + (sb[1] - sa[1]) * t;
+    const double sz = sa[2] + (sb[2] - sa[2]) * t;
 
     Xform result;
     result.m[0] = (1.0 - 2.0 * (y * y + z * z)) * sx;
@@ -862,6 +833,71 @@ double Xform::det3(const std::array<std::array<double, 3>, 3>& rows) {
     return rows[0][0] * (rows[1][1] * rows[2][2] - rows[1][2] * rows[2][1])
         - rows[0][1] * (rows[1][0] * rows[2][2] - rows[1][2] * rows[2][0])
         + rows[0][2] * (rows[1][0] * rows[2][1] - rows[1][1] * rows[2][0]);
+}
+
+std::array<double, 3> Xform::axis_scales() const {
+
+    std::array<double, 3> s{};
+
+    for (int c = 0; c < 3; c++) {
+        const double x = m[c * 4];
+        const double y = m[c * 4 + 1];
+        const double z = m[c * 4 + 2];
+        s[c] = std::sqrt(x * x + y * y + z * z);
+    }
+
+    return s;
+}
+
+std::array<double, 4> Xform::rotation_quaternion() const {
+
+    const std::array<double, 3> s = axis_scales();
+    std::array<std::array<double, 3>, 3> r{};
+
+    for (int c = 0; c < 3; c++) {
+        for (int i = 0; i < 3; i++)
+            r[i][c] = s[c] > 0.0 ? m[c * 4 + i] / s[c] : (i == c ? 1.0 : 0.0);
+    }
+
+    const double trace = r[0][0] + r[1][1] + r[2][2];
+
+    if (trace > 0.0) {
+        const double d = 2.0 * std::sqrt(1.0 + trace);
+        return {
+            0.25 * d,
+            (r[2][1] - r[1][2]) / d,
+            (r[0][2] - r[2][0]) / d,
+            (r[1][0] - r[0][1]) / d
+        };
+    }
+
+    if (r[0][0] > r[1][1] && r[0][0] > r[2][2]) {
+        const double d = 2.0 * std::sqrt(1.0 + r[0][0] - r[1][1] - r[2][2]);
+        return {
+            (r[2][1] - r[1][2]) / d,
+            0.25 * d,
+            (r[0][1] + r[1][0]) / d,
+            (r[0][2] + r[2][0]) / d
+        };
+    }
+
+    if (r[1][1] > r[2][2]) {
+        const double d = 2.0 * std::sqrt(1.0 + r[1][1] - r[0][0] - r[2][2]);
+        return {
+            (r[0][2] - r[2][0]) / d,
+            (r[0][1] + r[1][0]) / d,
+            0.25 * d,
+            (r[1][2] + r[2][1]) / d
+        };
+    }
+
+    const double d = 2.0 * std::sqrt(1.0 + r[2][2] - r[0][0] - r[1][1]);
+    return {
+        (r[1][0] - r[0][1]) / d,
+        (r[0][2] + r[2][0]) / d,
+        (r[1][2] + r[2][1]) / d,
+        0.25 * d
+    };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
