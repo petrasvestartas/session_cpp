@@ -1017,6 +1017,33 @@ MINI_TEST("Session", "Add Matrix") {
     MINI_CHECK(restored == m && restored.guid() == m.guid());
 }
 
+MINI_TEST("Session", "Add Network") {
+    // using session_cpp::Color;
+    // using session_cpp::Matrix;
+    // using session_cpp::Session;
+
+    Session session;
+    Matrix connectivity = Matrix::from_rows({{1.0, -1.0, 0.0}, {1.0, 0.0, -1.0}});
+    Matrix coordinates = Matrix::from_rows({{0.0, 0.0, 1.0}, {2.0, 0.0, 0.0}, {0.0, 3.0, 0.0}});
+    std::vector<Color> colors = {Color(1.0f, 0.0f, 0.0f, 1.0f), Color(0.0f, 0.0f, 1.0f, 1.0f)};
+    std::vector<double> widths = {2.0, 4.0};
+
+    std::shared_ptr<TreeNode> group = session.add_network(connectivity, coordinates, colors, widths);
+    std::shared_ptr<Point> p0 = session.objects.points->at(0);
+    std::shared_ptr<Point> p2 = session.objects.points->at(2);
+    std::shared_ptr<Line> l0 = session.objects.lines->at(0);
+    std::shared_ptr<Line> l1 = session.objects.lines->at(1);
+    std::shared_ptr<TreeNode> refused = session.add_network(connectivity, Matrix::zeros(2, 3));
+
+    MINI_CHECK(group != nullptr && group->name == "network");
+    MINI_CHECK(session.objects.points->size() == 3 && session.objects.lines->size() == 2);
+    MINI_CHECK(p0->name == "n0" && (*p2)[1] == 3.0);
+    MINI_CHECK(l1->name == "e1" && l1->end()[1] == 3.0);
+    MINI_CHECK(l0->linecolor == colors[0] && l1->width == 4.0);
+    MINI_CHECK(session.graph.has_edge({p0->guid(), p2->guid()}));
+    MINI_CHECK(refused == nullptr && session.objects.points->size() == 3);
+}
+
 MINI_TEST("Session", "Component Json Roundtrip") {
     // using session_cpp::Session;
     // using session_cpp::Component;

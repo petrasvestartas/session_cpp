@@ -1049,6 +1049,76 @@ std::shared_ptr<TreeNode> Session::add_text(const Text& text, std::shared_ptr<Tr
     return add_component(text.to_component(), parent);
 }
 
+std::shared_ptr<TreeNode> Session::add_network(
+    const Matrix& connectivity,
+    const Matrix& coordinates,
+    const std::vector<Color>& colors,
+    const std::vector<double>& widths,
+    std::shared_ptr<TreeNode> parent) {
+
+    const int m = connectivity.rows;
+    const int n = coordinates.rows;
+
+    if (coordinates.cols != 3 || connectivity.cols != n) {
+        return nullptr;
+    }
+
+    if ((!colors.empty() && static_cast<int>(colors.size()) != m) || (!widths.empty() && static_cast<int>(widths.size()) != m)) {
+        return nullptr;
+    }
+
+    std::vector<std::pair<int, int>> ends;
+
+    for (int j = 0; j < m; j++) {
+        int start = -1;
+        int end = -1;
+
+        for (int i = 0; i < n; i++) {
+            if (connectivity(j, i) > 0.0 && start < 0) {
+                start = i;
+            } else if (connectivity(j, i) < 0.0 && end < 0) {
+                end = i;
+            }
+        }
+
+        if (start < 0 || end < 0) {
+            return nullptr;
+        }
+
+        ends.push_back({start, end});
+    }
+
+    std::shared_ptr<TreeNode> group = add_group("network", parent);
+    std::vector<std::shared_ptr<Point>> points;
+
+    for (int i = 0; i < n; i++) {
+        std::shared_ptr<Point> point = std::make_shared<Point>(coordinates(i, 0), coordinates(i, 1), coordinates(i, 2));
+        point->name = "n" + std::to_string(i);
+        add_point(point, group);
+        points.push_back(point);
+    }
+
+    for (int j = 0; j < m; j++) {
+        const int start = ends[j].first;
+        const int end = ends[j].second;
+        std::shared_ptr<Line> line = std::make_shared<Line>(Line::from_points(*points[start], *points[end]));
+        line->name = "e" + std::to_string(j);
+
+        if (!colors.empty()) {
+            line->linecolor = colors[j];
+        }
+
+        if (!widths.empty()) {
+            line->width = widths[j];
+        }
+
+        add_line(line, group);
+        add_edge(points[start]->guid(), points[end]->guid(), line->name);
+    }
+
+    return group;
+}
+
 std::string Session::add_definition(const Geometry& definition) {
 
     const bool empty = std::visit(

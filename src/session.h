@@ -309,6 +309,14 @@ public:
     /// Add text as its component (type_name Text, the text's guid), placed by set_xform on that guid.
     std::shared_ptr<TreeNode> add_text(const Text& text, std::shared_ptr<TreeNode> parent = nullptr);
 
+    /// Add a net as the group "network": a point n<i> per row of coordinates (x, y, z), a line e<j> per row of connectivity (1 at its start node, -1 at its end node) and a graph edge between the two points of every line; colors and widths, when not empty, hold one per line. Null, and nothing added, when the shapes do not fit or a row lacks its 1 or its -1.
+    std::shared_ptr<TreeNode> add_network(
+        const Matrix& connectivity,
+        const Matrix& coordinates,
+        const std::vector<Color>& colors = {},
+        const std::vector<double>& widths = {},
+        std::shared_ptr<TreeNode> parent = nullptr);
+
     /// Add a definition, geometry in its own frame that instances share; returns its guid, also when that guid is already defined, and "" for null or a guid an object, instance or component holds.
     std::string add_definition(const Geometry& definition);
 
