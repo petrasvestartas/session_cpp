@@ -479,6 +479,17 @@ if(SESSION_BUILD_NATIVE_EVIDENCE)
     endif()
 endif()
 
+option(SESSION_BUILD_BOOLEAN_FUZZ "Build the random primitive-pair Boolean driver" OFF)
+if(SESSION_BUILD_BOOLEAN_FUZZ)
+    add_executable(native_boolean_fuzz examples/native_boolean_fuzz.cpp)
+    target_compile_options(native_boolean_fuzz PRIVATE ${SESSION_COMPILE_OPTIONS})
+    target_link_libraries(native_boolean_fuzz PRIVATE session_core)
+    LINK_PROTOBUF(native_boolean_fuzz)
+    if(MSVC)
+        target_compile_definitions(native_boolean_fuzz PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+endif()
+
 # Optional local scratch driver (untracked): drop a main_dbg.cpp next to this file to get a
 # quick executable linked against the kernel without touching the test targets.
 if(SESSION_BUILD_EXAMPLES AND EXISTS "${PROJECT_SOURCE_DIR}/main_dbg.cpp")
