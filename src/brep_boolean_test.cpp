@@ -1946,6 +1946,35 @@ MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against Tilted Curved 
     }
 }
 
+MINI_TEST("BRep Native Boolean", "Sphere Sections Meeting On An Edge Of The Other Solid") {
+    // Two section arcs on the sphere end at one point of a box edge or a cone rim, their rational pcurves a hair apart: one node, not a piece inside the vertex.
+    const auto check = [](const BRep& a, const BRep& b) {
+        const double va = a.volume_exact(), vb = b.volume_exact();
+        const BRep common = a.boolean_intersection(b);
+        MINI_CHECK(common.is_valid() && common.is_solid());
+        const double vi = common.volume_exact();
+        MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
+        const std::array<BRep, 4> results = {a.boolean_union(b), a.boolean_difference(b), b.boolean_difference(a), a.boolean_xor(b)};
+        const std::array<double, 4> expected = {va + vb - vi, va - vi, vb - vi, va + vb - 2 * vi};
+        for (size_t i = 0; i < results.size(); ++i) {
+            MINI_CHECK(results[i].is_valid() && results[i].is_solid());
+            MINI_CHECK(std::abs(results[i].volume_exact() - expected[i]) < 1e-6);
+        }
+    };
+    const Xform box_placed = Xform::from_matrix({0.057027908583589706, -0.71205414662124078, -0.69980476557542715, 0,
+        0.99819556599766945, 0.053865002254347608, 0.026536268666331964, 0,
+        0.018799725135606571, -0.70005532196508291, 0.71384110033199255, 0,
+        -0.40488519294593361, -0.34100767895003881, -0.2827601462323161, 1});
+    check(BRep::create_sphere(0.6 * 0.94077304168792808),
+        BRep::create_box(1.1011832113083302, 1.5461308640858129, 1.0642055477237329).transformed(box_placed));
+    const Xform sphere_placed = Xform::from_matrix({0.81447359529995822, 0.44791330354442249, 0.36879050295131222, 0,
+        -0.57719080709051829, 0.69016928383912213, 0.43648268219390951, 0,
+        -0.059021477187172572, -0.56836610749842864, 0.82065609915343274, 0,
+        -0.31691755065104443, -0.44854478354990124, -0.12868429973653137, 1});
+    check(BRep::create_cone(0.6 * 1.0582795637279456, 0.62566623233237839),
+        BRep::create_sphere(0.6 * 0.96727887625466313).transformed(sphere_placed));
+}
+
 MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     // The real joint's outlines, sizes, turns and asymmetric nodes, cut with the seam where the column has it and turned into the slot.
     std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/column_head_slots.json");

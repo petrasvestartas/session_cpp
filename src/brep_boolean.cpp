@@ -99,19 +99,26 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
 /// Ends of two cuts within the model tolerance are one node: sections meeting on a third face's edge end a march step apart, and the conservative uv tolerance would leave the chain open and drop the whole cut as dangling. Ends a seam apart are one point in space but stay two.
 void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, double tolerance) {
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    // Below this the arrangement merges the ends itself, and exact coordinates are better left alone.
-    const double merged = 4.0 * uv_tolerance(surface, tolerance);
+    // Ends a rounding apart are already one point; a hair further and the arrangement would find one cut ending on the other beside its end, a piece inside the vertex.
+    const std::pair<double, double> span_u = surface.domain(0), span_v = surface.domain(1);
+    const double merged = 256.0 * std::numeric_limits<double>::epsilon() * std::max({1.0, std::abs(span_u.first),
+        std::abs(span_u.second), std::abs(span_v.first), std::abs(span_v.second)});
     const double reach = 64.0 * uv_tolerance(surface, tolerance);
     const auto cv = [](const split::FaceCut& cut, int end) { return end ? cut.pcurve.cv_count() - 1 : 0; };
     const auto world = [](const split::FaceCut& cut, int end) {
         return end ? cut.world.point_at_end() : cut.world.point_at_start();
     };
+    // The end of a clamped curve is its end control point whatever its weight, which stays.
+    const auto move_end = [&cv](split::FaceCut& cut, int end, const Point& uv) {
+        const int index = cv(cut, end);
+        const double weight = cut.pcurve.is_rational() ? cut.pcurve.weight(index) : 1.0;
+        cut.pcurve.set_cv_4d(index, uv[0] * weight, uv[1] * weight, uv[2] * weight, weight);
+    };
     for (size_t i = 0; i < cuts.size(); ++i)
         for (size_t j = i + 1; j < cuts.size(); ++j)
             for (int a = 0; a < 2; ++a)
                 for (int b = 0; b < 2; ++b) {
-                    if (cuts[i].pcurve.is_rational() || cuts[j].pcurve.is_rational() ||
-                        !cuts[i].pcurve.is_clamped() || !cuts[j].pcurve.is_clamped())
+                    if (!cuts[i].pcurve.is_clamped() || !cuts[j].pcurve.is_clamped())
                         continue;
                     const Point first = cuts[i].pcurve.get_cv(cv(cuts[i], a));
                     const Point second = cuts[j].pcurve.get_cv(cv(cuts[j], b));
@@ -119,12 +126,12 @@ void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face
                     if (gap <= merged || gap > reach || world(cuts[i], a).distance(world(cuts[j], b)) > tolerance)
                         continue;
                     const Point middle((first[0] + second[0]) * 0.5, (first[1] + second[1]) * 0.5, (first[2] + second[2]) * 0.5);
-                    cuts[i].pcurve.set_cv(cv(cuts[i], a), middle);
-                    cuts[j].pcurve.set_cv(cv(cuts[j], b), middle);
+                    move_end(cuts[i], a, middle);
+                    move_end(cuts[j], b, middle);
                 }
     // The same for an end at a trim vertex: left a hair off it, the cut would re-split the edge beside the vertex.
     for (split::FaceCut& cut : cuts)
-        for (int end = 0; end < 2 && !cut.pcurve.is_rational() && cut.pcurve.is_clamped(); ++end)
+        for (int end = 0; end < 2 && cut.pcurve.is_clamped(); ++end)
             for (const BRepRef& wire : brep.m_faces[face].wires)
                 for (const BRepRef& edge : brep.wire_edges(wire)) {
                     const int index = brep.pcurve_index(edge.index, face, edge.orientation);
@@ -135,7 +142,7 @@ void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face
                         const double gap = cut.pcurve.get_cv(cv(cut, end)).distance(corner);
                         if (gap > merged && gap <= reach &&
                             world(cut, end).distance(surface.point_at(corner[0], corner[1])) <= tolerance)
-                            cut.pcurve.set_cv(cv(cut, end), corner);
+                            move_end(cut, end, corner);
                     }
                 }
 }
