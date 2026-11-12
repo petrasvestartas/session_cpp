@@ -11261,10 +11261,21 @@ std::vector<std::pair<std::vector<std::array<double, 4>>, bool>> quad_pieces(
     return pieces;
 }
 
-/// Shift closed parameters of a piece by whole periods so its middle sample lies in the domain.
+/// Shift closed parameters of a piece by whole periods so the middle of its extent lies in the domain: a sample may sit on the seam itself, where either period is as good, and a short piece between a crease and the seam has no other.
 void shift_quad_piece(const SurfaceSurfaceField& field, std::vector<std::array<double, 4>>& piece_pts) {
 
-    const std::array<double, 4> mid = piece_pts[piece_pts.size() / 2];
+    std::array<double, 4> mid;
+
+    for (int k = 0; k < 4; k++) {
+        double lowest = piece_pts.front()[k], highest = lowest;
+
+        for (const std::array<double, 4>& p : piece_pts) {
+            lowest = std::min(lowest, p[k]);
+            highest = std::max(highest, p[k]);
+        }
+
+        mid[k] = std::midpoint(lowest, highest);
+    }
 
     for (int k = 0; k < 4; k++) {
         if (!field.closed[k])

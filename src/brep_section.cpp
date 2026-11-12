@@ -403,6 +403,12 @@ NurbsCurve exact_trim(const NurbsCurve& curve, double lo, double hi) {
     if (!(lo < hi))
         throw std::runtime_error("Interference requires a positive original raw interval");
     NurbsCurve result = trimmed(curve, lo, hi);
+    // The world curve and its two pcurves can hold one knot a rounding apart, and trim keeps each its own: the cut names all three.
+    const double resolution = trim_resolution(curve);
+    const double first = result.domain_start(), last = result.domain_end();
+    if (std::abs(first - lo) <= resolution && std::abs(last - hi) <= resolution)
+        for (double& knot : result.m_nurbsknot)
+            knot = knot == first ? lo : knot == last ? hi : knot;
     if (result.domain_start() != lo || result.domain_end() != hi)
         throw std::runtime_error("Interference trim lost a required original raw event");
     return result;

@@ -1924,55 +1924,70 @@ MINI_TEST("BRep Native Boolean", "Blind Round Hole In A Plate") {
     MINI_CHECK(result.is_solid() && std::abs(result.volume_exact() - exact) < 1e-6 && result.mesh().is_closed());
 }
 
+namespace {
+/// All five operations of two overlapping solids close, and their volumes add up around the common part.
+void five_operation_identities(const BRep& a, const BRep& b) {
+    const double va = a.volume_exact(), vb = b.volume_exact();
+    const BRep common = a.boolean_intersection(b);
+    MINI_CHECK(common.is_valid() && common.is_solid());
+    const double vi = common.volume_exact();
+    MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
+    const std::array<BRep, 4> results = {a.boolean_union(b), a.boolean_difference(b), b.boolean_difference(a), a.boolean_xor(b)};
+    const std::array<double, 4> expected = {va + vb - vi, va - vi, vb - vi, va + vb - 2 * vi};
+    for (size_t i = 0; i < results.size(); ++i) {
+        MINI_CHECK(results[i].is_valid() && results[i].is_solid());
+        MINI_CHECK(std::abs(results[i].volume_exact() - expected[i]) < 1e-6);
+    }
+}
+}
+
 MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against Tilted Curved Solids") {
     // A pyramid side is a bilinear patch collapsed at the apex: a plane whose parameters are not affine, cut by conics that leave the triangle.
     const BRep pyramid = BRep::create_pyramid(1.2, 1.4);
     const Xform placed = Xform::translation(0.15, -0.1, 0.35) * Xform::rotation(Vector(1, 2, 3), 0.7);
-    const double va = pyramid.volume_exact();
-    for (const BRep& solid : {BRep::create_sphere(0.6), BRep::create_cylinder(0.45, 1.1), BRep::create_cone(0.55, 1.2)}) {
-        const BRep curved = solid.transformed(placed);
-        const double vb = curved.volume_exact();
-        const BRep common = pyramid.boolean_intersection(curved);
-        MINI_CHECK(common.is_valid() && common.is_solid());
-        const double vi = common.volume_exact();
-        MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
-        const std::array<BRep, 4> results = {pyramid.boolean_union(curved), pyramid.boolean_difference(curved),
-            curved.boolean_difference(pyramid), pyramid.boolean_xor(curved)};
-        const std::array<double, 4> expected = {va + vb - vi, va - vi, vb - vi, va + vb - 2 * vi};
-        for (size_t i = 0; i < results.size(); ++i) {
-            MINI_CHECK(results[i].is_valid() && results[i].is_solid());
-            MINI_CHECK(std::abs(results[i].volume_exact() - expected[i]) < 1e-6);
-        }
-    }
+    for (const BRep& solid : {BRep::create_sphere(0.6), BRep::create_cylinder(0.45, 1.1), BRep::create_cone(0.55, 1.2)})
+        five_operation_identities(pyramid, solid.transformed(placed));
 }
 
 MINI_TEST("BRep Native Boolean", "Sphere Sections Meeting On An Edge Of The Other Solid") {
     // Two section arcs on the sphere end at one point of a box edge or a cone rim, their rational pcurves a hair apart: one node, not a piece inside the vertex.
-    const auto check = [](const BRep& a, const BRep& b) {
-        const double va = a.volume_exact(), vb = b.volume_exact();
-        const BRep common = a.boolean_intersection(b);
-        MINI_CHECK(common.is_valid() && common.is_solid());
-        const double vi = common.volume_exact();
-        MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
-        const std::array<BRep, 4> results = {a.boolean_union(b), a.boolean_difference(b), b.boolean_difference(a), a.boolean_xor(b)};
-        const std::array<double, 4> expected = {va + vb - vi, va - vi, vb - vi, va + vb - 2 * vi};
-        for (size_t i = 0; i < results.size(); ++i) {
-            MINI_CHECK(results[i].is_valid() && results[i].is_solid());
-            MINI_CHECK(std::abs(results[i].volume_exact() - expected[i]) < 1e-6);
-        }
-    };
     const Xform box_placed = Xform::from_matrix({0.057027908583589706, -0.71205414662124078, -0.69980476557542715, 0,
         0.99819556599766945, 0.053865002254347608, 0.026536268666331964, 0,
         0.018799725135606571, -0.70005532196508291, 0.71384110033199255, 0,
         -0.40488519294593361, -0.34100767895003881, -0.2827601462323161, 1});
-    check(BRep::create_sphere(0.6 * 0.94077304168792808),
+    five_operation_identities(BRep::create_sphere(0.6 * 0.94077304168792808),
         BRep::create_box(1.1011832113083302, 1.5461308640858129, 1.0642055477237329).transformed(box_placed));
     const Xform sphere_placed = Xform::from_matrix({0.81447359529995822, 0.44791330354442249, 0.36879050295131222, 0,
         -0.57719080709051829, 0.69016928383912213, 0.43648268219390951, 0,
         -0.059021477187172572, -0.56836610749842864, 0.82065609915343274, 0,
         -0.31691755065104443, -0.44854478354990124, -0.12868429973653137, 1});
-    check(BRep::create_cone(0.6 * 1.0582795637279456, 0.62566623233237839),
+    five_operation_identities(BRep::create_cone(0.6 * 1.0582795637279456, 0.62566623233237839),
         BRep::create_sphere(0.6 * 0.96727887625466313).transformed(sphere_placed));
+}
+
+MINI_TEST("BRep Native Boolean", "Torus Section Dipping Across Its Seam Beside A Knot Line") {
+    // The section crosses the torus seam twice within a hair, a knot line between: the short piece from the knot line to the seam belongs to the period before it.
+    const Xform placed = Xform::from_matrix({0.94750334969242633, -0.25564145045403325, 0.19205429214518893, 0,
+        0.1670291357393402, 0.90790468897029653, 0.38446110799392724, 0,
+        -0.27265118766622048, -0.33219952521866608, 0.90294230452930502, 0,
+        0.32036832311288754, -0.29713112557879529, 0.19312218990049262, 1});
+    five_operation_identities(BRep::create_torus(0.8 * 1.3692296040935199, 0.25 * 1.1149230602792839),
+        BRep::create_sphere(0.6 * 1.3781385267651347).transformed(placed));
+}
+
+MINI_TEST("BRep Native Boolean", "Section And Pcurve Knots A Rounding Apart") {
+    // An axis-parallel cone through a drilled block: a section's world curve and a pcurve end one rounding apart, and a cut there names both.
+    const BRep block = BRep::create_block_with_hole(1.2 * 1.4338411151035795, 1.2 * 1.5145944866517971, 1.4577257003922226, 0.3);
+    const BRep cone = BRep::create_cone(0.6 * 1.0036137660421676, 1.3484577905685238)
+        .transformed(Xform::translation(0.35990501766051547, 0.24731141955836952, -0.29949569698687217));
+    const double va = block.volume_exact(), vb = cone.volume_exact();
+    const BRep common = block.boolean_intersection(cone);
+    MINI_CHECK(common.is_valid() && common.is_solid());
+    const double vi = common.volume_exact();
+    MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
+    const BRep joined = block.boolean_union(cone), cut = block.boolean_difference(cone);
+    MINI_CHECK(joined.is_valid() && joined.is_solid() && std::abs(joined.volume_exact() - (va + vb - vi)) < 1e-6);
+    MINI_CHECK(cut.is_valid() && cut.is_solid() && std::abs(cut.volume_exact() - (va - vi)) < 1e-6);
 }
 
 MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
