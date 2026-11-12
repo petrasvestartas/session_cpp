@@ -5351,6 +5351,63 @@ static bool bisect_height_v(
     return true;
 }
 
+/// Parameters of p on a planar bilinear patch, continued past its edges: a section piece may leave the face before the trims cut it, and a clamped closest point would lose it. False on the line where the patch collapses.
+static bool bilinear_plane_inverse(const NurbsSurface& srf, const Point& p, double tol, Point& uv) {
+
+    const Point p00 = srf.get_cv(0, 0), p10 = srf.get_cv(1, 0), p01 = srf.get_cv(0, 1), p11 = srf.get_cv(1, 1);
+    const Vector e = p10 - p00, f = p01 - p00, g = (p11 - p01) - e, h = p - p00;
+    Vector n = (p11 - p00).cross(p01 - p10);
+
+    if (!n.normalize_self())
+        return false;
+
+    const double a = -f.cross(g).dot(n), b = h.cross(g).dot(n) - f.cross(e).dot(n), c = h.cross(e).dot(n);
+    const double scale = std::max({std::abs(a), std::abs(b), std::abs(c)});
+    std::array<double, 2> roots{};
+    int count = 0;
+
+    if (std::abs(a) <= 1e-14 * scale) {
+        if (std::abs(b) > 1e-14 * scale)
+            roots[count++] = -c / b;
+    } else {
+        const double disc = b * b - 4 * a * c;
+
+        if (disc >= 0) {
+            const double q = -0.5 * (b + std::copysign(std::sqrt(disc), b));
+            roots[count++] = q / a;
+            if (q != 0)
+                roots[count++] = c / q;
+        }
+    }
+
+    const std::pair<double, double> du = srf.domain(0), dv = srf.domain(1);
+    double best = std::numeric_limits<double>::infinity();
+
+    for (int k = 0; k < count; ++k) {
+        const double v = roots[k];
+        const Vector d = e + g * v, r = h - f * v;
+        const double dd = d.dot(d);
+
+        if (!std::isfinite(v) || dd <= 1e-20 * (e.dot(e) + f.dot(f)))
+            continue;
+
+        const double u = r.dot(d) / dd;
+        const Point q = p00 + e * u + f * v + g * (u * v);
+
+        if (q.distance(p) > tol)
+            continue;
+
+        const double outside = std::max({-u, u - 1, -v, v - 1, 0.0});
+
+        if (outside < best) {
+            best = outside;
+            uv = Point(du.first + u * (du.second - du.first), dv.first + v * (dv.second - dv.first), 0.0);
+        }
+    }
+
+    return std::isfinite(best);
+}
+
 /// Pcurve on a planar face that is not its corner parallelogram: a polyline through 65 inverted points, invalid when the curve leaves the face.
 static NurbsCurve inverted_plane_pcurve(const NurbsSurface& srf, const FaceFrame& f, const NurbsCurve& c3d) {
 
@@ -5358,8 +5415,21 @@ static NurbsCurve inverted_plane_pcurve(const NurbsSurface& srf, const FaceFrame
     const double tol = 1e-6 * std::sqrt(f.exx + f.eyy);
     std::vector<Point> uvs;
 
+    const bool bilinear = srf.degree(0) == 1 && srf.degree(1) == 1 && srf.cv_count(0) == 2 && srf.cv_count(1) == 2 && !srf.is_rational();
+
     for (int i = 0; i <= 64; ++i) {
         const Point p = c3d.point_at(domain.first + (domain.second - domain.first) * i / 64.0);
+
+        if (bilinear) {
+            Point uv;
+
+            if (!bilinear_plane_inverse(srf, p, tol, uv))
+                return NurbsCurve();
+
+            uvs.push_back(uv);
+            continue;
+        }
+
         const std::tuple<double, double, double> closest = Closest::surface_point(srf, p, 0.0, 0.0, 0.0, 0.0);
 
         if (std::get<2>(closest) > tol)
@@ -5378,6 +5448,187 @@ static NurbsCurve inverted_plane_pcurve(const NurbsSurface& srf, const FaceFrame
     return pc.is_valid() ? pc : NurbsCurve{};
 }
 
+/// Homogeneous barycentric curve (b, c, w) of c3d in the triangle of a planar bilinear patch with one collapsed edge: b along the base, c towards the apex, in the curve's own basis. False when the patch is not such a triangle.
+static bool triangle_barycentric_curve(const NurbsSurface& srf, const NurbsCurve& c3d, NurbsCurve& bary, bool& along_u, bool& flipped) {
+
+    if (srf.degree(0) != 1 || srf.degree(1) != 1 || srf.cv_count(0) != 2 || srf.cv_count(1) != 2 || srf.is_rational())
+        return false;
+
+    const Point p00 = srf.get_cv(0, 0), p10 = srf.get_cv(1, 0), p01 = srf.get_cv(0, 1), p11 = srf.get_cv(1, 1);
+    const double size = p00.distance(p11) + p10.distance(p01);
+    const double same = 1e-14 * size;
+    Point base_a, base_b, apex;
+    along_u = true;
+    flipped = false;
+
+    if (p01.distance(p11) <= same) { base_a = p00; base_b = p10; apex = p01; }
+    else if (p00.distance(p10) <= same) { base_a = p01; base_b = p11; apex = p00; flipped = true; }
+    else if (p10.distance(p11) <= same) { base_a = p00; base_b = p01; apex = p10; along_u = false; }
+    else if (p00.distance(p01) <= same) { base_a = p10; base_b = p11; apex = p00; along_u = false; flipped = true; }
+    else return false;
+
+    const Vector eb = base_b - base_a, ec = apex - base_a;
+    const double bb = eb.dot(eb), bc = eb.dot(ec), cc = ec.dot(ec), det = bb * cc - bc * bc;
+
+    if (!(det > 1e-24 * size * size * size * size))
+        return false;
+
+    bary = NurbsCurve(3, false, c3d.order(), c3d.cv_count());
+    bary.m_nurbsknot = c3d.m_nurbsknot;
+
+    for (int i = 0; i < c3d.cv_count(); ++i) {
+        double x, y, z, w;
+        if (!c3d.get_cv_4d(i, x, y, z, w))
+            return false;
+        const Vector r(x - w * base_a[0], y - w * base_a[1], z - w * base_a[2]);
+        const double rb = r.dot(eb), rc = r.dot(ec);
+        if (!bary.set_cv(i, Point((cc * rb - bc * rc) / det, (bb * rc - bc * rb) / det, w)))
+            return false;
+    }
+
+    return true;
+}
+
+/// Parameter ranges of c3d inside the wedge of such a patch from its base to its apex, cut where a side is crossed; false when the patch is no triangle. Past the apex line the triangle chart has no pcurve, and no trim reaches there.
+static bool triangle_clip_ranges(const NurbsSurface& srf, const NurbsCurve& c3d, std::vector<std::pair<double, double>>& ranges) {
+
+    NurbsCurve bary;
+    bool along_u, flipped;
+
+    if (!triangle_barycentric_curve(srf, c3d, bary, along_u, flipped))
+        return false;
+
+    // A hair wider than the triangle, so that the trims and not these cuts place the ends: a cut a rounding away from a trim event is neither that event nor another.
+    const double margin = 1e-3;
+    const auto coordinates = [&](double t) {
+        const Point h = bary.point_at(t);
+        const double rest = h[2] - h[1];
+        return std::array<double, 3>{rest - h[0] + margin * rest, h[0] + margin * rest, h[1] + margin * h[2]};
+    };
+    const std::vector<double> spans = c3d.get_span_vector();
+    std::vector<double> cuts{spans.front(), spans.back()};
+
+    for (size_t k = 0; k + 1 < spans.size(); ++k)
+        for (int i = 0; i < 64; ++i) {
+            const double lo = std::lerp(spans[k], spans[k + 1], i / 64.0), hi = std::lerp(spans[k], spans[k + 1], (i + 1) / 64.0);
+            const std::array<double, 3> a = coordinates(lo), b = coordinates(hi);
+            for (int c = 0; c < 3; ++c) {
+                if (!((a[c] < 0 && b[c] > 0) || (a[c] > 0 && b[c] < 0)))
+                    continue;
+                double x = lo, y = hi;
+                for (int step = 0; step < 80 && std::nextafter(x, y) < y; ++step) {
+                    const double m = std::midpoint(x, y);
+                    ((coordinates(m)[c] < 0) == (a[c] < 0) ? x : y) = m;
+                }
+                cuts.push_back(std::midpoint(x, y));
+            }
+        }
+
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    ranges.clear();
+
+    for (size_t k = 0; k + 1 < cuts.size(); ++k) {
+        const std::array<double, 3> m = coordinates(std::midpoint(cuts[k], cuts[k + 1]));
+        if (m[0] >= 0 && m[1] >= 0 && m[2] >= 0)
+            ranges.push_back({cuts[k], cuts[k + 1]});
+    }
+
+    return true;
+}
+
+/// Pieces of c3d inside the triangle of such a patch; c3d itself when it stays inside or the patch is no triangle.
+static std::vector<NurbsCurve> clip_curve_to_triangle(const NurbsSurface& srf, const NurbsCurve& c3d) {
+
+    std::vector<std::pair<double, double>> ranges;
+
+    if (!triangle_clip_ranges(srf, c3d, ranges) || (ranges.size() == 1 && ranges[0] == c3d.domain()))
+        return {c3d};
+
+    std::vector<NurbsCurve> pieces;
+
+    for (const std::pair<double, double>& range : ranges) {
+        NurbsCurve piece = c3d;
+        if (piece.trim(range.first, range.second))
+            pieces.push_back(std::move(piece));
+    }
+
+    return pieces;
+}
+
+/// Exact pcurve on a planar bilinear patch with one collapsed edge, a triangle: along the base u = b / (a + b) and towards the apex v = c in barycentric a, b, c, both rational in the curve, so over the common denominator the pcurve has twice the degree. Invalid when the patch is not such a triangle or the curve reaches the line through the apex parallel to the base.
+static NurbsCurve triangle_plane_pcurve(const NurbsSurface& srf, const NurbsCurve& c3d) {
+
+    NurbsCurve bary;
+    bool along_u, flipped;
+
+    if (!triangle_barycentric_curve(srf, c3d, bary, along_u, flipped))
+        return NurbsCurve();
+
+    const int degree = c3d.order() - 1;
+    const std::vector<double> spans = c3d.get_span_vector();
+    const int product = 2 * degree, nodes = product + 1;
+
+    if (spans.size() < 2 || degree < 1 || product > 12)
+        return NurbsCurve();
+
+    std::vector<double> binomial(nodes, 1.0);
+    for (int k = 1; k < nodes; ++k)
+        binomial[k] = binomial[k - 1] * (product - k + 1) / k;
+
+    const int pieces = static_cast<int>(spans.size()) - 1;
+    NurbsCurve pc(3, true, product + 1, pieces * product + 1);
+    pc.m_nurbsknot.clear();
+
+    for (int k = 0; k < pieces; ++k) {
+        // Bernstein coefficients of the three products from their values at uniform nodes.
+        std::vector<std::array<double, 16>> rows(nodes);
+        for (int i = 0; i < nodes; ++i) {
+            const double s = static_cast<double>(i) / product;
+            const Point h = bary.point_at(std::lerp(spans[k], spans[k + 1], s));
+            const double b = h[0], c = h[1], w = h[2], rest = w - c;
+            for (int j = 0; j < nodes; ++j)
+                rows[i][j] = binomial[j] * std::pow(s, j) * std::pow(1 - s, product - j);
+            rows[i][nodes] = b * w;
+            rows[i][nodes + 1] = flipped ? rest * rest : c * rest;
+            rows[i][nodes + 2] = w * rest;
+        }
+        for (int col = 0; col < nodes; ++col) {
+            int pivot = col;
+            for (int i = col + 1; i < nodes; ++i)
+                if (std::abs(rows[i][col]) > std::abs(rows[pivot][col]))
+                    pivot = i;
+            if (rows[pivot][col] == 0)
+                return NurbsCurve();
+            std::swap(rows[col], rows[pivot]);
+            for (int i = 0; i < nodes; ++i) {
+                if (i == col)
+                    continue;
+                const double factor = rows[i][col] / rows[col][col];
+                for (int j = col; j < nodes + 3; ++j)
+                    rows[i][j] -= factor * rows[col][j];
+            }
+        }
+        const std::pair<double, double> du = srf.domain(0), dv = srf.domain(1);
+        for (int j = k == 0 ? 0 : 1; j < nodes; ++j) {
+            const double along = rows[j][nodes] / rows[j][j], toward = rows[j][nodes + 1] / rows[j][j], weight = rows[j][nodes + 2] / rows[j][j];
+            if (!(weight > 0) || !std::isfinite(along) || !std::isfinite(toward))
+                return NurbsCurve();
+            const double u = along_u ? along : toward, v = along_u ? toward : along;
+            if (!pc.set_cv_4d(k * product + j, du.first * weight + (du.second - du.first) * u,
+                    dv.first * weight + (dv.second - dv.first) * v, 0.0, weight))
+                return NurbsCurve();
+        }
+        for (int j = 0; j < product; ++j)
+            pc.m_nurbsknot.push_back(spans[k]);
+    }
+
+    for (int j = 0; j < product; ++j)
+        pc.m_nurbsknot.push_back(spans.back());
+
+    return pc.is_valid() ? pc : NurbsCurve();
+}
+
 /// Plane pcurve: inverted points on a face that is not its corner parallelogram, else the control points mapped to its parameters.
 static NurbsCurve plane_pcurve(const NurbsSurface& srf, const NurbsCurve& c3d) {
 
@@ -5390,6 +5641,11 @@ static NurbsCurve plane_pcurve(const NurbsSurface& srf, const NurbsCurve& c3d) {
     FaceFrame f = face_frame(srf);
 
     if (!is_parallelogram_face(srf, f)) {
+        NurbsCurve triangle = triangle_plane_pcurve(srf, c3d);
+
+        if (triangle.is_valid())
+            return triangle;
+
         NurbsCurve inverted = inverted_plane_pcurve(srf, f, c3d);
 
         if (inverted.is_valid())
@@ -8615,6 +8871,16 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
     if (!analytic_curves(a, ra, b, rb, c3_list, tolerance))
         return res;
 
+    for (const NurbsSurface* plane : {ra.kind == RecogSurface::PLANE ? &a : nullptr, rb.kind == RecogSurface::PLANE ? &b : nullptr}) {
+        if (!plane)
+            continue;
+        std::vector<NurbsCurve> clipped;
+        for (const NurbsCurve& curve : c3_list)
+            for (NurbsCurve& piece : clip_curve_to_triangle(*plane, curve))
+                clipped.push_back(std::move(piece));
+        c3_list = std::move(clipped);
+    }
+
     for (const NurbsCurve& cc3 : c3_list) {
         const SectionSide sa{a, ra, analytic_side_runs(a, ra, cc3, tolerance)};
         const SectionSide sb{b, rb, analytic_side_runs(b, rb, cc3, tolerance)};
@@ -8855,6 +9121,24 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> planar_section_tripl
 
     for (const std::pair<NurbsCurve, NurbsCurve>& section : Intersection::surface_plane_uv(other, surface_mid_plane(planar), tolerance)) {
         const NurbsCurve& c3 = section.first;
+        std::vector<std::pair<double, double>> ranges;
+
+        if (triangle_clip_ranges(planar, c3, ranges)) {
+            for (const std::pair<double, double>& range : ranges) {
+                NurbsCurve world = c3, other_uv = section.second;
+                if (!world.trim(range.first, range.second) || !other_uv.trim(range.first, range.second))
+                    continue;
+                NurbsCurve triangle_uv = triangle_plane_pcurve(planar, world);
+                if (!triangle_uv.is_valid())
+                    continue;
+                if (planar_first)
+                    result.push_back({std::move(world), std::move(triangle_uv), std::move(other_uv)});
+                else
+                    result.push_back({std::move(world), std::move(other_uv), std::move(triangle_uv)});
+            }
+            continue;
+        }
+
         NurbsCurve pp = plane_pcurve(planar, c3);
 
         if (!pp.is_valid())
@@ -11895,6 +12179,16 @@ static bool parallelogram_plane(const NurbsSurface& planar, const NurbsSurface& 
         planar.is_planar(nullptr, 1e-9) && is_parallelogram_face(planar, face_frame(planar));
 }
 
+/// A plane on a bilinear patch collapsed to a triangle, whose section with a curved surface is cut from the whole plane section by its three sides.
+static bool triangle_plane(const NurbsSurface& planar, const NurbsSurface& other) {
+    if (other.is_planar(nullptr, 1e-9) || !planar.is_planar(nullptr, 1e-9))
+        return false;
+    NurbsCurve probe(3, false, 2, 2), bary;
+    probe.m_nurbsknot = {0, 1};
+    bool along_u, flipped;
+    return triangle_barycentric_curve(planar, probe, bary, along_u, flipped);
+}
+
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surface_surface(
     const NurbsSurface& a,
     const NurbsSurface& b,
@@ -11911,6 +12205,34 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     for (int side = 0; side < 2; ++side) {
         const NurbsSurface& planar = side == 0 ? a : b;
         const NurbsSurface& other = side == 0 ? b : a;
+        if (triangle_plane(planar, other)) {
+            std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> exact =
+                surface_section::extrusion_plane(other, surface_mid_plane(planar), tolerance);
+            if (!exact)
+                exact = surface_section::ruling_plane(other, surface_mid_plane(planar), tolerance);
+            if (!exact)
+                continue;
+            std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
+            for (const std::pair<NurbsCurve, NurbsCurve>& section : *exact) {
+                std::vector<std::pair<double, double>> ranges;
+                triangle_clip_ranges(planar, section.first, ranges);
+                for (const std::pair<double, double>& range : ranges) {
+                    NurbsCurve world = section.first;
+                    NurbsCurve other_uv = section.second;
+                    if (!world.trim(range.first, range.second) || !other_uv.trim(range.first, range.second))
+                        throw std::runtime_error("Exact extrusion section could not trim shared parameters");
+                    NurbsCurve plane_uv = triangle_plane_pcurve(planar, world);
+                    if (!plane_uv.is_valid())
+                        throw std::runtime_error("Exact extrusion section has no valid triangle plane parameters");
+                    if (side == 0)
+                        result.push_back({std::move(world), std::move(plane_uv), std::move(other_uv)});
+                    else
+                        result.push_back({std::move(world), std::move(other_uv), std::move(plane_uv)});
+                }
+            }
+            drop_point_sections(result, tolerance);
+            return result;
+        }
         if (!parallelogram_plane(planar, other))
             continue;
         std::optional<std::vector<std::pair<NurbsCurve, NurbsCurve>>> exact =

@@ -1924,6 +1924,28 @@ MINI_TEST("BRep Native Boolean", "Blind Round Hole In A Plate") {
     MINI_CHECK(result.is_solid() && std::abs(result.volume_exact() - exact) < 1e-6 && result.mesh().is_closed());
 }
 
+MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against Tilted Curved Solids") {
+    // A pyramid side is a bilinear patch collapsed at the apex: a plane whose parameters are not affine, cut by conics that leave the triangle.
+    const BRep pyramid = BRep::create_pyramid(1.2, 1.4);
+    const Xform placed = Xform::translation(0.15, -0.1, 0.35) * Xform::rotation(Vector(1, 2, 3), 0.7);
+    const double va = pyramid.volume_exact();
+    for (const BRep& solid : {BRep::create_sphere(0.6), BRep::create_cylinder(0.45, 1.1), BRep::create_cone(0.55, 1.2)}) {
+        const BRep curved = solid.transformed(placed);
+        const double vb = curved.volume_exact();
+        const BRep common = pyramid.boolean_intersection(curved);
+        MINI_CHECK(common.is_valid() && common.is_solid());
+        const double vi = common.volume_exact();
+        MINI_CHECK(vi > 1e-3 && vi < std::min(va, vb) - 1e-3);
+        const std::array<BRep, 4> results = {pyramid.boolean_union(curved), pyramid.boolean_difference(curved),
+            curved.boolean_difference(pyramid), pyramid.boolean_xor(curved)};
+        const std::array<double, 4> expected = {va + vb - vi, va - vi, vb - vi, va + vb - 2 * vi};
+        for (size_t i = 0; i < results.size(); ++i) {
+            MINI_CHECK(results[i].is_valid() && results[i].is_solid());
+            MINI_CHECK(std::abs(results[i].volume_exact() - expected[i]) < 1e-6);
+        }
+    }
+}
+
 MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     // The real joint's outlines, sizes, turns and asymmetric nodes, cut with the seam where the column has it and turned into the slot.
     std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/column_head_slots.json");
