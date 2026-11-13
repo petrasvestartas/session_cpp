@@ -11206,6 +11206,10 @@ bool snap_quad_to_seam(const SurfaceSurfaceField& field, const std::array<double
 
         if (std::abs(p[k] - seam) < field.range[k] * 1e-9 && std::abs(p[k] - prev[k]) > field.range[k] * 1e-9) {
             p[k] = seam;
+            // A snapped point must still be on the curve, or the piece ending there can not be certified up to its end.
+            std::array<double, 4> solved = p;
+            if (field.correct_on_seam(solved, k) && solved[k] == seam)
+                p = solved;
             on_seam = true;
         }
     }
