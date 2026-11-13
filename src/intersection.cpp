@@ -9629,9 +9629,9 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k, const
         std::vector<double> res = {sa[0] - sb[0], sa[1] - sb[1], sa[2] - sb[2]};
         const double gap = std::sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2]);
 
-        // Inside the tolerance the crossing can still sit a tolerance along the curve from where it meets the seam, and the piece would end beside its own end: step on while a step still halves the gap.
+        // Inside the tolerance the crossing can still sit a tolerance along the curve from where it meets the seam, and the piece would end beside its own end: step on while a step still narrows the gap.
         if (gap < conv_tol) {
-            if (!(gap < 0.5 * accepted)) {
+            if (!(gap < accepted)) {
                 if (gap < accepted)
                     x = y;
                 return true;
@@ -11967,7 +11967,10 @@ std::vector<SurfaceSurfaceArc> continuation_arcs(const SurfaceSurfaceField& fiel
         record_continuation_failure(precise, segment.first, segment.last, middle, segment.depth, arc.failure);
         if (++attempts >= 32768 || segment.depth >= 48 || middle == segment.first || middle == segment.last) {
             nlohmann::ordered_json diagnostic = {{"first", segment.first}, {"last", segment.last},
-                {"middle", middle}, {"depth", segment.depth}};
+                {"middle", middle}, {"depth", segment.depth}, {"piece_points", points.size()},
+                {"piece_first", points.front()}, {"piece_second", points[1]},
+                {"piece_before_last", points[points.size() - 2]}, {"piece_last", points.back()},
+                {"domain_lo", field.lo}, {"domain_hi", field.hi}};
             continuation_arc(precise, segment.first, segment.last, middle, arc, &diagnostic);
             throw std::runtime_error("Native SSI could not certify walking continuation: " + diagnostic.dump());
         }
