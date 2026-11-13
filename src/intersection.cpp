@@ -11711,6 +11711,12 @@ bool piece_triple(
         int pinned = -1;
         if (i == 0 || i + 1 == piece_pts.size())
             for (int k = 0; k < 4; ++k) {
+                // An end a rounding off a seam is on it: left beside it, the piece ends outside the domain.
+                if (refined.closed[k]) {
+                    const double seam = refined.lo[k] + std::round((piece_pts[i][k] - refined.lo[k]) / refined.range[k]) * refined.range[k];
+                    if (std::abs(piece_pts[i][k] - seam) <= 64.0 * std::numeric_limits<double>::epsilon() * refined.range[k])
+                        piece_pts[i][k] = seam;
+                }
                 const double value = refined.wrap(k, piece_pts[i][k]);
                 if (value == refined.lo[k] || value == refined.hi[k] ||
                     std::find(refined.creases[k].begin(), refined.creases[k].end(), value) != refined.creases[k].end())
