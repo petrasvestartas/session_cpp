@@ -3048,6 +3048,29 @@ BRep BRep::create_cone(double radius, double height) {
     return b;
 }
 
+BRep BRep::create_frustum(double radius_base, double radius_top, double height) {
+
+    if (radius_top == 0.0)
+        return create_cone(radius_base, height);
+
+    BRep b;
+    b.name = "frustum";
+    const NurbsSurface body = Primitives::frustum_surface(0, 0, 0, radius_base, radius_top, height);
+    const Point p_bot = body.point_at_corner(0, 0);
+    const Point p_top = body.point_at_corner(0, 1);
+    const int v_bot = b.add_vertex(p_bot);
+    const int v_top = b.add_vertex(p_top);
+    const int e_bot = b.add_edge(b.add_curve_3d(Primitives::circle(0, 0, 0, radius_base)), v_bot, v_bot);
+    const int e_top = b.add_edge(b.add_curve_3d(Primitives::circle(0, 0, height, radius_top)), v_top, v_top);
+    const int e_seam = b.add_edge(b.add_curve_3d(NurbsCurve::create(false, 1, {p_bot, p_top})), v_bot, v_top);
+    const int f_body = body_face(b, b.add_surface(body), e_bot, e_seam, e_top);
+    const int f_bot = cap_face(b, cap_patch(radius_base, 0, false), e_bot);
+    const int f_top = cap_face(b, cap_patch(radius_top, height, true), e_top);
+    b.add_solid({{b.add_shell({{f_body, F}, {f_bot, F}, {f_top, F}}), F}});
+
+    return b;
+}
+
 BRep BRep::create_pyramid(double base, double height) {
 
     BRep b;

@@ -144,6 +144,9 @@ public:
     /// Cone along +Z: base circle at z=0, apex at z=height (degenerated apex edge), planar base
     static BRep create_cone(double radius, double height);
 
+    /// Truncated cone along +Z: base circle of radius_base at z=0, top circle of radius_top at z=height, two planar caps; a cone when radius_top is zero
+    static BRep create_frustum(double radius_base, double radius_top, double height);
+
     /// Square pyramid: base edge `base` centered at the origin in z=0, apex at (0,0,height)
     static BRep create_pyramid(double base, double height);
 

@@ -81,6 +81,9 @@ public:
     /// Rational cone surface of degree 2x1 with the apex at cz + height.
     static NurbsSurface cone_surface(double cx, double cy, double cz, double radius, double height);
 
+    /// Truncated cone along +Z: circle of radius_base at cz, circle of radius_top at cz + height
+    static NurbsSurface frustum_surface(double cx, double cy, double cz, double radius_base, double radius_top, double height);
+
     /// Rational torus surface of degree 2x2.
     static NurbsSurface torus_surface(double cx, double cy, double cz, double major_radius, double minor_radius);
 

@@ -1327,6 +1327,26 @@ namespace session_cpp {
         MINI_CHECK(!m.is_empty());
     }
 
+    MINI_TEST("BRep", "Create Frustum") {
+        // using session_cpp::BRep;
+        // using session_cpp::Mesh;
+        // using session_cpp::Tolerance;
+
+        const BRep frustum = BRep::create_frustum(2.0, 1.0, 3.0);
+        const Mesh m = frustum.mesh();
+
+        MINI_CHECK(frustum.is_valid());
+        MINI_CHECK(frustum.face_count() == 3);
+        MINI_CHECK(frustum.edge_count() == 3);
+        MINI_CHECK(frustum.vertex_count() == 2);
+        MINI_CHECK(frustum.is_solid());
+        MINI_CHECK(frustum.name == "frustum");
+        MINI_CHECK(!m.is_empty());
+        MINI_CHECK(std::abs(frustum.volume_exact() - Tolerance::PI * 3.0 * (4.0 + 2.0 + 1.0) / 3.0) < 1e-9);
+        MINI_CHECK(BRep::create_frustum(1.0, 2.0, 3.0).is_solid());
+        MINI_CHECK(BRep::create_frustum(1.0, 0.0, 2.0).name == "cone");
+    }
+
     MINI_TEST("BRep", "Create Pyramid") {
         // using session_cpp::BRep;
         // using session_cpp::Mesh;

@@ -2030,6 +2030,14 @@ MINI_TEST("BRep Native Boolean", "Cone Arc From Rim To Rim Is No Loop") {
     five_operation_identities(cone, block);
 }
 
+MINI_TEST("BRep Native Boolean", "Frustum Across A Cylinder") {
+    // OCCT tests/boolean/bop*_simple/ZK5: pcylinder b1 4 8; pcone b2 2 1 10; ttranslate b2 0 0 -1; trotate b2 0 0 4 0 1 0 90.
+    const BRep cylinder = BRep::create_cylinder(4, 8);
+    const BRep frustum = BRep::create_frustum(2, 1, 10).transformed(
+        Xform::translation(0, 0, 4) * Xform::rotation(Vector(0, 1, 0), 90, true) * Xform::translation(0, 0, -5));
+    five_operation_identities(cylinder, frustum);
+}
+
 MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     // The real joint's outlines, sizes, turns and asymmetric nodes, cut with the seam where the column has it and turned into the slot.
     std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/column_head_slots.json");

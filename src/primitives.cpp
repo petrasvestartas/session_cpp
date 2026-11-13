@@ -1045,6 +1045,19 @@ NurbsSurface Primitives::cone_surface(double cx, double cy, double cz, double ra
     return srf;
 }
 
+NurbsSurface Primitives::frustum_surface(double cx, double cy, double cz, double radius_base, double radius_top, double height) {
+
+    NurbsSurface srf(3, true, 3, 2, 9, 2);
+
+    for (int i = 0; i < 10; i++)
+        srf.set_nurbsknot(0, i, CIRCLE_NURBSKNOTS[i]);
+
+    set_circle_row(srf, 0, cx, cy, cz, radius_base, 1.0);
+    set_circle_row(srf, 1, cx, cy, cz + height, radius_top, 1.0);
+
+    return srf;
+}
+
 NurbsSurface Primitives::torus_surface(double cx, double cy, double cz, double major_radius, double minor_radius) {
 
     NurbsSurface srf(3, true, 3, 3, 9, 9);

@@ -1575,6 +1575,39 @@ MINI_TEST("Primitives", "Mesh Hex Mesh") {
     MINI_CHECK(m2.is_valid());
 }
 
+MINI_TEST("Primitives", "Nurbssurface Frustum") {
+    // using session_cpp::Primitives;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+
+    const NurbsSurface surface = Primitives::frustum_surface(0.0, 0.0, 0.0, 2.0, 1.0, 5.0);
+
+    MINI_CHECK(surface.is_valid());
+    MINI_CHECK(surface.is_rational());
+    MINI_CHECK(surface.cv_count(0) == 9);
+    MINI_CHECK(surface.cv_count(1) == 2);
+    MINI_CHECK(surface.order(0) == 3);
+    MINI_CHECK(surface.order(1) == 2);
+
+    const Point pbase = surface.point_at(0.0, 0.0);
+
+    MINI_CHECK(std::abs(pbase[0] - 2.0) < 1e-10);
+    MINI_CHECK(std::abs(pbase[1] - 0.0) < 1e-10);
+    MINI_CHECK(std::abs(pbase[2] - 0.0) < 1e-10);
+
+    const Point ptop = surface.point_at(0.0, 1.0);
+
+    MINI_CHECK(std::abs(ptop[0] - 1.0) < 1e-10);
+    MINI_CHECK(std::abs(ptop[1] - 0.0) < 1e-10);
+    MINI_CHECK(std::abs(ptop[2] - 5.0) < 1e-10);
+
+    const Point pmid = surface.point_at(0.0, 0.5);
+
+    MINI_CHECK(std::abs(pmid[0] - 1.5) < 1e-10);
+    MINI_CHECK(std::abs(pmid[1] - 0.0) < 1e-10);
+    MINI_CHECK(std::abs(pmid[2] - 2.5) < 1e-10);
+}
+
 MINI_TEST("Primitives", "Mesh Cone Subdivisions") {
     // using session_cpp::Primitives;
     // using session_cpp::NurbsSurface;
