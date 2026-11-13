@@ -490,6 +490,17 @@ if(SESSION_BUILD_BOOLEAN_FUZZ)
     endif()
 endif()
 
+option(SESSION_BUILD_BOOLEAN_BENCH "Build the fixed-list Boolean measurement driver" OFF)
+if(SESSION_BUILD_BOOLEAN_BENCH)
+    add_executable(native_boolean_bench examples/native_boolean_bench.cpp)
+    target_compile_options(native_boolean_bench PRIVATE ${SESSION_COMPILE_OPTIONS})
+    target_link_libraries(native_boolean_bench PRIVATE session_core)
+    LINK_PROTOBUF(native_boolean_bench)
+    if(MSVC)
+        target_compile_definitions(native_boolean_bench PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+endif()
+
 # Optional local scratch driver (untracked): drop a main_dbg.cpp next to this file to get a
 # quick executable linked against the kernel without touching the test targets.
 if(SESSION_BUILD_EXAMPLES AND EXISTS "${PROJECT_SOURCE_DIR}/main_dbg.cpp")
