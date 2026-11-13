@@ -573,10 +573,17 @@ std::vector<double> product(const std::vector<double>& a, const std::vector<doub
     const int m = static_cast<int>(b.size()) - 1;
     if (n < 0 || m < 0 || n + m > 96)
         return {};
+    std::array<double, 97> of_n, of_m, of_sum;
+    for (int i = 0; i <= n; ++i)
+        of_n[i] = binomial(n, i);
+    for (int j = 0; j <= m; ++j)
+        of_m[j] = binomial(m, j);
+    for (int k = 0; k <= n + m; ++k)
+        of_sum[k] = binomial(n + m, k);
     std::vector<double> result(n + m + 1, 0.0);
     for (int i = 0; i <= n; ++i)
         for (int j = 0; j <= m; ++j)
-            result[i + j] += a[i] * b[j] * binomial(n, i) * binomial(m, j) / binomial(n + m, i + j);
+            result[i + j] += a[i] * b[j] * of_n[i] * of_m[j] / of_sum[i + j];
     for (double coefficient : result)
         if (!std::isfinite(coefficient))
             return {};

@@ -152,8 +152,9 @@ double closest_parameter(const NurbsCurve& curve, const Point& point) {
     const double lo = curve.domain_start();
     const double hi = curve.domain_end();
     for (int i = 0; i < 32; ++i) {
-        const std::vector<Vector> d = curve.evaluate(t, 2);
-        const Vector r = curve.point_at(t) - point;
+        std::array<xyz, 3> d{};
+        curve.jet(t, 2, d);
+        const xyz r = curve.point(t) - point;
         const double den = d[1].dot(d[1]) + r.dot(d[2]);
         if (den <= 0.0)
             break;
@@ -249,13 +250,13 @@ std::vector<std::pair<double, double>> endpoint_matches(const Pair& pair, double
     for (const double ta : {pair.a.domain_start(), pair.a.domain_end()}) {
         const Point p = pair.a.point_at(ta);
         const double tb = closest_parameter(pair.b, p);
-        if (p.distance(pair.b.point_at(tb)) <= tolerance)
+        if (xyz(p).distance(pair.b.point(tb)) <= tolerance)
             matches.emplace_back(ta, tb);
     }
     for (const double tb : {pair.b.domain_start(), pair.b.domain_end()}) {
         const Point p = pair.b.point_at(tb);
         const double ta = closest_parameter(pair.a, p);
-        if (p.distance(pair.a.point_at(ta)) <= tolerance)
+        if (xyz(p).distance(pair.a.point(ta)) <= tolerance)
             matches.emplace_back(ta, tb);
     }
     std::sort(matches.begin(), matches.end());

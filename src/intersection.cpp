@@ -1271,10 +1271,11 @@ double SurfacePlaneField::value(double u, double v) const {
 
 void SurfacePlaneField::value_and_gradient(double u, double v, double& val, double& gu, double& gv) const {
 
-    const std::vector<Vector> derivs = surface.evaluate(wrap_u(u), wrap_v(v), 1);
-    const Vector& S = derivs[0];
-    const Vector& Su = derivs[2];
-    const Vector& Sv = derivs[1];
+    std::array<xyz, 6> derivs{};
+    surface.jet(wrap_u(u), wrap_v(v), 1, derivs);
+    const xyz& S = derivs[0];
+    const xyz& Su = derivs[2];
+    const xyz& Sv = derivs[1];
     val = (S[0] - p0[0]) * pn[0] + (S[1] - p0[1]) * pn[1] + (S[2] - p0[2]) * pn[2];
     gu = Su[0] * pn[0] + Su[1] * pn[1] + Su[2] * pn[2];
     gv = Sv[0] * pn[0] + Sv[1] * pn[1] + Sv[2] * pn[2];
@@ -9735,18 +9736,20 @@ double SurfaceSurfaceField::wrap(int k, double t) const {
 
 void SurfaceSurfaceField::eval_a(double u, double v, Vector& s, Vector& su, Vector& sv) const {
 
-    const std::vector<Vector> d = a.evaluate(wrap(0, u), wrap(1, v), 1);
-    s = d[0];
-    su = d[2];
-    sv = d[1];
+    std::array<xyz, 6> d{};
+    a.jet(wrap(0, u), wrap(1, v), 1, d);
+    s = Vector(d[0]);
+    su = Vector(d[2]);
+    sv = Vector(d[1]);
 }
 
 void SurfaceSurfaceField::eval_b(double u, double v, Vector& s, Vector& su, Vector& sv) const {
 
-    const std::vector<Vector> d = b.evaluate(wrap(2, u), wrap(3, v), 1);
-    s = d[0];
-    su = d[2];
-    sv = d[1];
+    std::array<xyz, 6> d{};
+    b.jet(wrap(2, u), wrap(3, v), 1, d);
+    s = Vector(d[0]);
+    su = Vector(d[2]);
+    sv = Vector(d[1]);
 }
 
 std::array<double, 3> SurfaceSurfaceField::point(const std::array<double, 4>& q) const {

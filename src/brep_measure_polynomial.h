@@ -122,9 +122,10 @@ inline Grid antiderivative(const Grid& source, Interval width, std::vector<Inter
 }
 
 inline Interval evaluate(const Grid& grid, Interval u, Interval v) {
-    std::vector<Interval> row(grid.v + 1);
+    nurbsknot::Scratch<Interval, 32> storage(grid.u + grid.v + 2);
+    Interval* row = storage.data;
+    Interval* column = row + grid.v + 1;
     for (int j = 0; j <= grid.v; ++j) {
-        std::vector<Interval> column(grid.u + 1);
         for (int i = 0; i <= grid.u; ++i)
             column[i] = grid.at(i, j);
         for (int count = grid.u; count > 0; --count)

@@ -10,6 +10,7 @@
 #include "tolerance.h"
 #include "vector.h"
 #include "xform.h"
+#include <array>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -355,6 +356,12 @@ public:
     /// Return the point and partials up to num_derivs (max 2) in (k, m) loop order: [S, Sv, Svv, Su, Suv, Suu].
     std::vector<Vector> evaluate(double u, double v, int num_derivs = 0) const;
 
+    /// Return S(u, v) as a plain triple: the value of point_at, without allocation. Validity is the caller's to check, once: the control points are not scanned.
+    xyz point(double u, double v) const;
+
+    /// Write the point and the partials up to num_derivs (at most 2) in evaluate's order: the values of evaluate, without allocation. Validity is the caller's to check, once: the control points are not scanned. False when the layout is unset.
+    bool jet(double u, double v, int num_derivs, std::array<xyz, 6>& out) const;
+
     /// Return the corner CV; u_end and v_end are 0 or 1.
     Point point_at_corner(int u_end, int v_end) const;
 
@@ -496,14 +503,11 @@ private:
     /// Return the Euclidean point of a homogeneous CV or blend.
     Point dehomogenize(const double* h) const;
 
+    /// Array sizes an evaluation reads, in constant time: unlike is_valid() it leaves the values to the caller.
+    bool has_evaluation_tables() const;
+
     /// Return the span index in dir containing t.
     int find_span(int dir, double t) const;
-
-    /// Return the basis derivatives ders[k][j] of the order functions on the span (Piegl & Tiller A2.3).
-    std::vector<std::vector<double>> basis_functions_derivatives(int dir, int span, double t, int deriv_order) const;
-
-    /// Apply the rational quotient rule to homogeneous partials in (k, m) loop order (Piegl & Tiller A4.4).
-    std::vector<Vector> rational_derivatives(const std::vector<std::vector<double>>& skl, int num_derivs) const;
 
     /// Run Newton on (n1, n2) . (S - p0) = 0 from (u, v); false when it leaves the domain or stalls.
     bool line_newton(double& u, double& v, const Point& p0, const Vector& n1, const Vector& n2) const;

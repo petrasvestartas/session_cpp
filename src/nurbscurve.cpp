@@ -1432,21 +1432,18 @@ static bool constant_span_coordinate(const NurbsCurve& curve, int span, int coor
     if (curve.is_rational() || coordinate >= curve.dimension() || !std::isfinite(t) ||
         t < curve.domain_start() || t > curve.domain_end())
         return false;
-    const double* first = curve.cv(span);
-    if (!first || !std::isfinite(first[coordinate]) || first[coordinate] == 0.0)
+    const double* first = &curve.m_cv[span * curve.m_cv_stride];
+    if (!std::isfinite(first[coordinate]) || first[coordinate] == 0.0)
         return false;
     const double candidate = first[coordinate];
-    for (int i = 1; i < curve.order(); ++i) {
-        const double* point = curve.cv(span + i);
-        if (!point || point[coordinate] != candidate)
+    for (int i = 1; i < curve.order(); ++i)
+        if (first[i * curve.m_cv_stride + coordinate] != candidate)
             return false;
-    }
     value = candidate;
     return true;
 }
 
-static bool linear_span_values(const NurbsCurve& curve, int span, double t,
-                               Point& point, Vector& derivative) {
+static bool linear_span_values(const NurbsCurve& curve, int span, double t, xyz& point, xyz& derivative) {
     if (curve.is_rational() || curve.degree() != 1 || !std::isfinite(t))
         return false;
     const double first = curve.m_nurbsknot[span], last = curve.m_nurbsknot[span + 1];
@@ -1454,8 +1451,8 @@ static bool linear_span_values(const NurbsCurve& curve, int span, double t,
     if (!(t >= first && t <= last && width > 0.0 && std::isfinite(width)))
         return false;
     const double fraction = (t - first) / width;
-    const double* a = curve.cv(span);
-    const double* b = curve.cv(span + 1);
+    const double* a = &curve.m_cv[span * curve.m_cv_stride];
+    const double* b = a + curve.m_cv_stride;
     for (int d = 0; d < 3; ++d) {
         const double first_coordinate = d < curve.dimension() ? a[d] : 0.0;
         const double last_coordinate = d < curve.dimension() ? b[d] : 0.0;
@@ -1470,18 +1467,19 @@ static bool linear_span_values(const NurbsCurve& curve, int span, double t,
     return true;
 }
 
-Point NurbsCurve::point_at(double t) const {
+xyz NurbsCurve::point(double t) const {
 
     if (!has_evaluation_tables())
-        return Point(0, 0, 0);
+        return {0.0, 0.0, 0.0};
 
     const int span = find_span(t);
-    Point linear;
-    Vector derivative;
+    xyz linear;
+    xyz derivative;
     if (linear_span_values(*this, span, t, linear, derivative))
         return linear;
-    std::vector<double> basis;
-    basis_functions(span, t, basis);
+    nurbsknot::Scratch<double, 640> scratch(3 * static_cast<std::size_t>(m_order));
+    double* basis = scratch.data;
+    nurbsknot::basis_values(m_order, m_nurbsknot.data() + span, t, basis, basis + m_order);
 
     double x = 0.0;
     double y = 0.0;
@@ -1489,11 +1487,7 @@ Point NurbsCurve::point_at(double t) const {
     double w = 0.0;
 
     for (int i = 0; i < m_order; i++) {
-        const double* cv_ptr = cv(span + i);
-
-        if (!cv_ptr)
-            continue;
-
+        const double* cv_ptr = &m_cv[(span + i) * m_cv_stride];
         const double N = basis[i];
         x += N * cv_ptr[0];
         y += N * (m_dim > 1 ? cv_ptr[1] : 0.0);
@@ -1506,15 +1500,101 @@ Point NurbsCurve::point_at(double t) const {
     }
 
     if (m_is_rat && w != 0.0)
-        return Point(x / w, y / w, z / w);
+        return {x / w, y / w, z / w};
 
-    Point point(x, y, z);
+    xyz value{x, y, z};
     for (int coordinate = 0; coordinate < std::min(m_dim, 3); ++coordinate) {
         double constant;
         if (constant_span_coordinate(*this, span, coordinate, t, constant))
-            point[coordinate] = constant;
+            value[coordinate] = constant;
     }
-    return point;
+    return value;
+}
+
+bool NurbsCurve::jet(double t, int derivative_count, std::array<xyz, 3>& out) const {
+
+    if (!has_evaluation_tables()) {
+        out = {};
+        return false;
+    }
+
+    jet_values(t, std::clamp(derivative_count, 0, 2), out.data());
+
+    return true;
+}
+
+void NurbsCurve::jet_values(double t, int derivative_count, xyz* out) const {
+
+    const int max_derivs = m_is_rat ? derivative_count : std::min(derivative_count, degree());
+    const int span = find_span(t);
+    xyz linear;
+    xyz derivative;
+    if (linear_span_values(*this, span, t, linear, derivative)) {
+        out[0] = linear;
+        if (derivative_count > 0)
+            out[1] = derivative;
+        for (int k = 2; k <= derivative_count; ++k)
+            out[k] = {0.0, 0.0, 0.0};
+        return;
+    }
+    const int rows = std::min(max_derivs, degree()) + 1;
+    const std::size_t order = static_cast<std::size_t>(m_order);
+    nurbsknot::Scratch<double, 640> scratch(rows * order + order * (order + 4) + (max_derivs + 1));
+    double* ders = scratch.data;
+    double* weights = ders + rows * order;
+    nurbsknot::basis_derivatives(m_order, m_nurbsknot.data() + span, t, rows - 1, ders, weights + max_derivs + 1);
+
+    // out holds the homogeneous sums first, then the derivatives in place: derivative k reads only sums and derivatives below k.
+    for (int k = 0; k <= max_derivs; ++k) {
+        out[k] = {0.0, 0.0, 0.0};
+        weights[k] = 0.0;
+
+        for (int j = 0; k < rows && j < m_order; ++j) {
+            const double* cv_ptr = &m_cv[(span + j) * m_cv_stride];
+            const double Nx = ders[k * order + j];
+            out[k].x += Nx * cv_ptr[0];
+            out[k].y += Nx * ((m_dim > 1) ? cv_ptr[1] : 0.0);
+            out[k].z += Nx * ((m_dim > 2) ? cv_ptr[2] : 0.0);
+            weights[k] += Nx * (m_is_rat ? cv_ptr[m_dim] : 1.0);
+        }
+    }
+
+    if (m_is_rat) {
+        for (int k = 0; k <= max_derivs; ++k) {
+            const double w = weights[0];
+            const double inv_w = (w != 0.0) ? 1.0 / w : 0.0;
+            double Ck_x = out[k].x;
+            double Ck_y = out[k].y;
+            double Ck_z = out[k].z;
+
+            double coeff = 1.0;
+            for (int j = 1; j <= std::min(k, degree()); ++j) {
+                coeff *= static_cast<double>(k - j + 1) / j;
+                const double wj = weights[j];
+                Ck_x -= coeff * wj * out[k - j].x;
+                Ck_y -= coeff * wj * out[k - j].y;
+                Ck_z -= coeff * wj * out[k - j].z;
+            }
+
+            out[k] = {Ck_x * inv_w, Ck_y * inv_w, Ck_z * inv_w};
+        }
+    }
+
+    for (int coordinate = 0; coordinate < std::min(m_dim, 3); ++coordinate) {
+        double constant;
+        if (constant_span_coordinate(*this, span, coordinate, t, constant)) {
+            out[0][coordinate] = constant;
+            for (int k = 1; k <= max_derivs; ++k)
+                out[k][coordinate] = 0.0;
+        }
+    }
+
+    for (int k = max_derivs + 1; k <= derivative_count; ++k)
+        out[k] = {0.0, 0.0, 0.0};
+}
+
+Point NurbsCurve::point_at(double t) const {
+    return Point(point(t));
 }
 
 std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
@@ -1528,62 +1608,14 @@ std::vector<Vector> NurbsCurve::evaluate(double t, int derivative_count) const {
     }
 
     derivative_count = std::max(derivative_count, 0);
-    const int max_derivs = m_is_rat ? derivative_count : std::min(derivative_count, degree());
-    const int span = find_span(t);
-    Point linear;
-    Vector derivative;
-    if (linear_span_values(*this, span, t, linear, derivative)) {
-        result.emplace_back(linear[0], linear[1], linear[2]);
-        if (derivative_count > 0)
-            result.push_back(derivative);
-        for (int k = 2; k <= derivative_count; ++k)
-            result.emplace_back(0.0, 0.0, 0.0);
-        return result;
-    }
-    std::vector<std::vector<double>> ders;
-    basis_functions_derivatives(span, t, std::min(max_derivs, degree()), ders);
+    std::array<xyz, 8> few;
+    std::vector<xyz> many(derivative_count < 8 ? 0 : derivative_count + 1);
+    xyz* values = many.empty() ? few.data() : many.data();
+    jet_values(t, derivative_count, values);
+    result.reserve(derivative_count + 1);
 
-    std::vector<std::array<double, 4>> Aders = homogeneous_derivatives(span, ders);
-    Aders.resize(max_derivs + 1, {0.0, 0.0, 0.0, 0.0});
-    std::vector<std::array<double, 3>> Cders(max_derivs + 1);
-
-    if (!m_is_rat) {
-        for (int k = 0; k <= max_derivs; ++k)
-            Cders[k] = {Aders[k][0], Aders[k][1], Aders[k][2]};
-    } else {
-        for (int k = 0; k <= max_derivs; ++k) {
-            const double w = Aders[0][3];
-            const double inv_w = (w != 0.0) ? 1.0 / w : 0.0;
-            double Ck_x = Aders[k][0];
-            double Ck_y = Aders[k][1];
-            double Ck_z = Aders[k][2];
-
-            double coeff = 1.0;
-            for (int j = 1; j <= std::min(k, degree()); ++j) {
-                coeff *= static_cast<double>(k - j + 1) / j;
-                const double wj = Aders[j][3];
-                Ck_x -= coeff * wj * Cders[k - j][0];
-                Ck_y -= coeff * wj * Cders[k - j][1];
-                Ck_z -= coeff * wj * Cders[k - j][2];
-            }
-
-            Cders[k] = {Ck_x * inv_w, Ck_y * inv_w, Ck_z * inv_w};
-        }
-    }
-
-    for (int coordinate = 0; coordinate < std::min(m_dim, 3); ++coordinate) {
-        double constant;
-        if (constant_span_coordinate(*this, span, coordinate, t, constant)) {
-            Cders[0][coordinate] = constant;
-            for (int k = 1; k <= max_derivs; ++k)
-                Cders[k][coordinate] = 0.0;
-        }
-    }
-    for (int k = 0; k <= max_derivs; ++k)
-        result.emplace_back(Cders[k][0], Cders[k][1], Cders[k][2]);
-
-    for (int k = max_derivs + 1; k <= derivative_count; ++k)
-        result.emplace_back(0.0, 0.0, 0.0);
+    for (int k = 0; k <= derivative_count; ++k)
+        result.emplace_back(values[k]);
 
     return result;
 }
@@ -2734,115 +2766,6 @@ int NurbsCurve::find_span(double t) const {
     }
 
     return low;
-}
-
-void NurbsCurve::basis_functions(int span, double t, std::vector<double>& basis) const {
-
-    basis.resize(m_order);
-
-    std::vector<double> left(m_order);
-    std::vector<double> right(m_order);
-    const double* nurbsknot = m_nurbsknot.data() + (m_order - 2) + span;
-    basis[0] = 1.0;
-
-    for (int j = 1; j < m_order; j++) {
-        left[j] = t - nurbsknot[1 - j];
-        right[j] = nurbsknot[j] - t;
-
-        double saved = 0.0;
-
-        for (int r = 0; r < j; r++) {
-            const double denom = right[r + 1] + left[j - r];
-            const double temp = (denom != 0.0) ? basis[r] / denom : 0.0;
-            basis[r] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-
-        basis[j] = saved;
-    }
-}
-
-void NurbsCurve::basis_functions_derivatives(int span, double t, int deriv_order, std::vector<std::vector<double>>& ders) const {
-
-    const int p = degree();
-    const int n_der = std::min(deriv_order, p);
-    ders.assign(n_der + 1, std::vector<double>(p + 1, 0.0));
-
-    std::vector<std::vector<double>> ndu;
-    basis_functions_ndu(span, t, ndu);
-
-    for (int j = 0; j <= p; ++j)
-        ders[0][j] = ndu[j][p];
-
-    std::vector<std::vector<double>> a(2, std::vector<double>(p + 1, 0.0));
-
-    for (int r = 0; r <= p; ++r) {
-        int s1 = 0;
-        int s2 = 1;
-        a[0][0] = 1.0;
-
-        for (int k = 1; k <= n_der; ++k) {
-            double d = 0.0;
-            const int rk = r - k;
-            const int pk = p - k;
-
-            if (r >= k) {
-                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
-                d = a[s2][0] * ndu[rk][pk];
-            }
-
-            const int j1 = (rk >= -1) ? 1 : -rk;
-            const int j2 = (r - 1 <= pk) ? k - 1 : p - r;
-
-            for (int j = j1; j <= j2; ++j) {
-                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
-                d += a[s2][j] * ndu[rk + j][pk];
-            }
-
-            if (r <= pk) {
-                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
-                d += a[s2][k] * ndu[r][pk];
-            }
-
-            ders[k][r] = d;
-            std::swap(s1, s2);
-        }
-    }
-
-    double scale = static_cast<double>(p);
-
-    for (int k = 1; k <= n_der; ++k) {
-        for (int j = 0; j <= p; ++j)
-            ders[k][j] *= scale;
-
-        scale *= static_cast<double>(p - k);
-    }
-}
-
-void NurbsCurve::basis_functions_ndu(int span, double t, std::vector<std::vector<double>>& ndu) const {
-
-    const int p = degree();
-    std::vector<double> left(p + 1);
-    std::vector<double> right(p + 1);
-    const double* nurbsknot = m_nurbsknot.data() + (m_order - 2) + span;
-    ndu.assign(p + 1, std::vector<double>(p + 1, 0.0));
-    ndu[0][0] = 1.0;
-
-    for (int j = 1; j <= p; ++j) {
-        left[j] = t - nurbsknot[1 - j];
-        right[j] = nurbsknot[j] - t;
-
-        double saved = 0.0;
-
-        for (int r = 0; r < j; ++r) {
-            ndu[j][r] = right[r + 1] + left[j - r];
-            const double temp = ndu[r][j - 1] / ndu[j][r];
-            ndu[r][j] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-
-        ndu[j][j] = saved;
-    }
 }
 
 void NurbsCurve::deep_copy_from(const NurbsCurve& src) {
@@ -4041,32 +3964,6 @@ std::vector<std::pair<double, Point>> NurbsCurve::adaptive_samples(double angle_
     std::sort(samples.begin(), samples.end(), sample_before);
 
     return samples;
-}
-
-std::vector<std::array<double, 4>> NurbsCurve::homogeneous_derivatives(int span, const std::vector<std::vector<double>>& ders) const {
-
-    const int p = degree();
-    const int count = static_cast<int>(ders.size());
-    std::vector<std::array<double, 4>> Aders(count);
-
-    for (int k = 0; k < count; ++k) {
-        Aders[k] = {0.0, 0.0, 0.0, 0.0};
-
-        for (int j = 0; j <= p; ++j) {
-            const double* cv_ptr = cv(span + j);
-
-            if (!cv_ptr)
-                continue;
-
-            const double Nx = ders[k][j];
-            Aders[k][0] += Nx * cv_ptr[0];
-            Aders[k][1] += Nx * ((m_dim > 1) ? cv_ptr[1] : 0.0);
-            Aders[k][2] += Nx * ((m_dim > 2) ? cv_ptr[2] : 0.0);
-            Aders[k][3] += Nx * (m_is_rat ? cv_ptr[m_dim] : 1.0);
-        }
-    }
-
-    return Aders;
 }
 
 bool NurbsCurve::start_frame(Vector& T0, Vector& r0) const {

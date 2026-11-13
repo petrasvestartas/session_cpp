@@ -26,11 +26,11 @@ static double curve_seed(const NurbsCurve& curve, const Point& test_point, doubl
     const int num_samples = std::max(50, (int)std::ceil(curve.cv_count() * 10 * std::min(share, 1.0)));
     const double dt = (t1 - t0) / num_samples;
     double best_t = t0;
-    double best_dist = curve.point_at(t0).distance(test_point);
+    double best_dist = curve.point(t0).distance(test_point);
 
     for (int i = 0; i <= num_samples; i++) {
         const double t = t0 + i * dt;
-        const double dist = curve.point_at(t).distance(test_point);
+        const double dist = curve.point(t).distance(test_point);
 
         if (dist < best_dist) {
             best_dist = dist;
@@ -48,14 +48,14 @@ static double curve_newton(const NurbsCurve& curve, const Point& test_point, dou
     const double step_tolerance = (t1 - t0) * 1e-12;
 
     for (int iter = 0; iter < max_iterations; iter++) {
-        const std::vector<Vector> derivs = curve.evaluate(t, 2);
+        std::array<xyz, 3> derivs;
 
-        if (derivs.size() < 3)
+        if (!curve.jet(t, 2, derivs))
             break;
 
-        const Vector& pt = derivs[0];
-        const Vector& d1 = derivs[1];
-        const Vector& d2 = derivs[2];
+        const xyz& pt = derivs[0];
+        const xyz& d1 = derivs[1];
+        const xyz& d2 = derivs[2];
         const double rx = pt[0] - test_point[0];
         const double ry = pt[1] - test_point[1];
         const double rz = pt[2] - test_point[2];
@@ -98,14 +98,14 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
     const double v1 = curve1.domain_end();
     const int n0 = std::max(40, curve0.cv_count() * 8);
     const int n1 = std::max(40, curve1.cv_count() * 8);
-    std::vector<Point> p0(n0 + 1);
-    std::vector<Point> p1(n1 + 1);
+    std::vector<xyz> p0(n0 + 1);
+    std::vector<xyz> p1(n1 + 1);
 
     for (int i = 0; i <= n0; i++)
-        p0[i] = curve0.point_at(u0 + (u1 - u0) * i / n0);
+        p0[i] = curve0.point(u0 + (u1 - u0) * i / n0);
 
     for (int j = 0; j <= n1; j++)
-        p1[j] = curve1.point_at(v0 + (v1 - v0) * j / n1);
+        p1[j] = curve1.point(v0 + (v1 - v0) * j / n1);
 
     double best = std::numeric_limits<double>::infinity();
     double u = u0;
@@ -113,7 +113,7 @@ static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, cons
 
     for (int i = 0; i <= n0; i++) {
         for (int j = 0; j <= n1; j++) {
-            const double d2 = (p0[i] - p1[j]).magnitude_squared();
+            const double d2 = (p0[i] - p1[j]).length_squared();
 
             if (d2 < best) {
                 best = d2;
@@ -162,7 +162,7 @@ static std::pair<double, double> surface_seed(
         for (int j = 0; j <= v_samples; j++) {
             const double uu = u0 + i * du_param;
             const double vv = v0 + j * dv_param;
-            const double dist = surface.point_at(uu, vv).distance(test_point);
+            const double dist = surface.point(uu, vv).distance(test_point);
 
             if (dist < best_dist) {
                 best_dist = dist;
@@ -193,15 +193,15 @@ static std::pair<double, double> surface_newton(
     const double max_step = std::min(u1 - u0, v1 - v0) * 0.5;
 
     for (int iter = 0; iter < max_iterations; iter++) {
-        const std::vector<Vector> derivs = surface.evaluate(u, v, 1);
+        std::array<xyz, 6> derivs;
 
-        if (derivs.size() < 3)
+        if (!surface.jet(u, v, 1, derivs))
             break;
 
-        const Point pt = surface.point_at(u, v);
-        const Vector du_vec = derivs[2];
-        const Vector dv_vec = derivs[1];
-        const Vector delta = test_point - pt;
+        const xyz pt = surface.point(u, v);
+        const xyz& du_vec = derivs[2];
+        const xyz& dv_vec = derivs[1];
+        const xyz delta = test_point - pt;
         const double fu = -delta.dot(du_vec);
         const double fv = -delta.dot(dv_vec);
 
@@ -940,9 +940,9 @@ std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Po
     t1 = std::min(t1, domain_end);
 
     double t = curve_newton(curve, test_point, t0, t1, curve_seed(curve, test_point, t0, t1));
-    double final_dist = curve.point_at(t).distance(test_point);
-    const double dist_start = curve.point_at(t0).distance(test_point);
-    const double dist_end = curve.point_at(t1).distance(test_point);
+    double final_dist = curve.point(t).distance(test_point);
+    const double dist_start = curve.point(t0).distance(test_point);
+    const double dist_end = curve.point(t1).distance(test_point);
 
     if (dist_start < final_dist) {
         t = t0;
@@ -971,18 +971,18 @@ std::tuple<double, double, double> Closest::curve_curve(const NurbsCurve& curve0
     std::tie(u, v) = curve_curve_seed(curve0, curve1);
 
     for (int iter = 0; iter < 64; iter++) {
-        const std::vector<Vector> e0 = curve0.evaluate(u, 2);
-        const std::vector<Vector> e1 = curve1.evaluate(v, 2);
+        std::array<xyz, 3> e0;
+        std::array<xyz, 3> e1;
 
-        if (e0.size() < 3 || e1.size() < 3)
+        if (!curve0.jet(u, 2, e0) || !curve1.jet(v, 2, e1))
             break;
 
-        const Vector& c0 = e0[0];
-        const Vector& c0p = e0[1];
-        const Vector& c0pp = e0[2];
-        const Vector& c1 = e1[0];
-        const Vector& c1p = e1[1];
-        const Vector& c1pp = e1[2];
+        const xyz& c0 = e0[0];
+        const xyz& c0p = e0[1];
+        const xyz& c0pp = e0[2];
+        const xyz& c1 = e1[0];
+        const xyz& c1p = e1[1];
+        const xyz& c1pp = e1[2];
         const double rx = c0[0] - c1[0];
         const double ry = c0[1] - c1[1];
         const double rz = c0[2] - c1[2];
@@ -1012,7 +1012,7 @@ std::tuple<double, double, double> Closest::curve_curve(const NurbsCurve& curve0
             break;
     }
 
-    const double dist = curve0.point_at(u).distance(curve1.point_at(v));
+    const double dist = curve0.point(u).distance(curve1.point(v));
 
     return {u, v, dist};
 }
@@ -1116,7 +1116,7 @@ std::tuple<double, double, double> Closest::surface_point(
     double u = 0.0;
     double v = 0.0;
     std::tie(u, v) = surface_newton(surface, test_point, u0, u1, v0, v1, seed);
-    double gap = surface.point_at(u, v).distance(test_point);
+    double gap = surface.point(u, v).distance(test_point);
 
     // On a closed surface a seed on the seam stands for both ends of the domain, and Newton from the wrong end stays clamped there.
     const auto on_seam = [&](int dir, double at, double low, double high) {
@@ -1135,7 +1135,7 @@ std::tuple<double, double, double> Closest::surface_point(
         double other_v = 0.0;
         std::tie(other_u, other_v) = surface_newton(surface, test_point, u0, u1, v0, v1,
             {(ends & 1) ? u0 + u1 - seed.first : seed.first, (ends & 2) ? v0 + v1 - seed.second : seed.second});
-        const double other_gap = surface.point_at(other_u, other_v).distance(test_point);
+        const double other_gap = surface.point(other_u, other_v).distance(test_point);
 
         if (other_gap < gap) {
             u = other_u;

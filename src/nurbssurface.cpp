@@ -39,17 +39,6 @@ std::vector<double> expand_nurbsknots(const std::vector<double>& knots, const st
     return full;
 }
 
-/// C(n, k).
-double binomial(int n, int k) {
-
-    double r = 1.0;
-
-    for (int i = 0; i < k; i++)
-        r = r * (n - i) / (i + 1);
-
-    return r;
-}
-
 /// True when any weight differs from one.
 bool is_rational_weights(const std::vector<std::vector<double>>& weights) {
 
@@ -59,93 +48,6 @@ bool is_rational_weights(const std::vector<std::vector<double>>& weights) {
                 return true;
 
     return false;
-}
-
-/// Triangular table of basis values and knot differences (Piegl & Tiller A2.3).
-std::vector<std::vector<double>> basis_table(const std::vector<double>& knot, int degree, int base, double t) {
-
-    const int order = degree + 1;
-    std::vector<std::vector<double>> ndu(order, std::vector<double>(order, 0.0));
-    ndu[0][0] = 1.0;
-    std::vector<double> left(order, 0.0);
-    std::vector<double> right(order, 0.0);
-
-    for (int j = 1; j <= degree; j++) {
-        left[j] = t - knot[base - j];
-        right[j] = knot[base + j - 1] - t;
-        double saved = 0.0;
-
-        for (int r = 0; r < j; r++) {
-            ndu[j][r] = right[r + 1] + left[j - r];
-            const double temp = ndu[r][j - 1] / ndu[j][r];
-            ndu[r][j] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-
-        ndu[j][j] = saved;
-    }
-
-    return ndu;
-}
-
-/// Basis derivatives ders[k][j] from the triangular table (Piegl & Tiller A2.3).
-std::vector<std::vector<double>> basis_table_derivatives(
-    const std::vector<std::vector<double>>& ndu,
-    int degree,
-    int deriv_order
-) {
-
-    const int order = degree + 1;
-    std::vector<std::vector<double>> ders(deriv_order + 1, std::vector<double>(order, 0.0));
-
-    for (int j = 0; j <= degree; j++)
-        ders[0][j] = ndu[j][degree];
-
-    std::vector<std::vector<double>> a(2, std::vector<double>(order, 0.0));
-
-    for (int r = 0; r <= degree; r++) {
-        int s1 = 0;
-        int s2 = 1;
-        a[0][0] = 1.0;
-
-        for (int k = 1; k <= deriv_order; k++) {
-            double d = 0.0;
-            const int rk = r - k;
-            const int pk = degree - k;
-
-            if (r >= k) {
-                a[s2][0] = a[s1][0] / ndu[pk + 1][rk];
-                d = a[s2][0] * ndu[rk][pk];
-            }
-
-            const int j1 = rk >= -1 ? 1 : -rk;
-            const int j2 = r - 1 <= pk ? k - 1 : degree - r;
-
-            for (int j = j1; j <= j2; j++) {
-                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[pk + 1][rk + j];
-                d += a[s2][j] * ndu[rk + j][pk];
-            }
-
-            if (r <= pk) {
-                a[s2][k] = -a[s1][k - 1] / ndu[pk + 1][r];
-                d += a[s2][k] * ndu[r][pk];
-            }
-
-            ders[k][r] = d;
-            std::swap(s1, s2);
-        }
-    }
-
-    double factor = degree;
-
-    for (int k = 1; k <= deriv_order; k++) {
-        for (int j = 0; j <= degree; j++)
-            ders[k][j] *= factor;
-
-        factor *= degree - k;
-    }
-
-    return ders;
 }
 
 /// Bounding box of a 7 x 7 sample of the surface.
@@ -564,6 +466,14 @@ bool NurbsSurface::is_valid() const {
             return false;
 
     return true;
+}
+
+bool NurbsSurface::has_evaluation_tables() const {
+
+    return m_dim >= 1 && m_order[0] >= 2 && m_order[1] >= 2 && m_cv_count[0] >= m_order[0] && m_cv_count[1] >= m_order[1]
+        && static_cast<int>(m_nurbsknot[0].size()) == nurbsknot_count(0)
+        && static_cast<int>(m_nurbsknot[1].size()) == nurbsknot_count(1)
+        && static_cast<int>(m_cv.size()) >= cv_count() * cv_size();
 }
 
 bool NurbsSurface::is_valid_nurbsknot_vector(int dir) const {
@@ -1070,23 +980,156 @@ Point NurbsSurface::point_at(double u, double v) const {
     if (!is_valid())
         return Point(0, 0, 0);
 
+    return Point(point(u, v));
+}
+
+xyz NurbsSurface::point(double u, double v) const {
+
+    if (!has_evaluation_tables())
+        return {0.0, 0.0, 0.0};
+
     const int span_u = find_span(0, u);
     const int span_v = find_span(1, v);
-    const std::vector<double> nu = nurbsknot::eval_basis(m_order[0], m_nurbsknot[0], span_u, u);
-    const std::vector<double> nv = nurbsknot::eval_basis(m_order[1], m_nurbsknot[1], span_v, v);
-    const int size = cv_size();
-    std::vector<double> sum(size, 0.0);
+    const int order_u = m_order[0];
+    const int order_v = m_order[1];
+    nurbsknot::Scratch<double, 640> scratch(order_u + order_v + 2 * static_cast<std::size_t>(std::max(order_u, order_v)));
+    double* nu = scratch.data;
+    double* nv = nu + order_u;
+    nurbsknot::basis_values(order_u, m_nurbsknot[0].data() + span_u, u, nu, nv + order_v);
+    nurbsknot::basis_values(order_v, m_nurbsknot[1].data() + span_v, v, nv, nv + order_v);
+    const int dim = m_dim;
+    const bool rational = m_is_rat;
+    const int stride_u = m_cv_stride[0];
+    const int stride_v = m_cv_stride[1];
+    const double* cvs = m_cv.data() + span_u * stride_u + span_v * stride_v;
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    double w = 0.0;
 
-    for (int i = 0; i < m_order[0]; i++)
-        for (int j = 0; j < m_order[1]; j++) {
+    for (int i = 0; i < order_u; i++) {
+        const double* cv_ptr = cvs + i * stride_u;
+
+        for (int j = 0; j < order_v; j++, cv_ptr += stride_v) {
             const double c = nu[i] * nv[j];
-            const double* cv_ptr = cv(span_u + i, span_v + j);
+            x += c * cv_ptr[0];
 
-            for (int d = 0; d < size; d++)
-                sum[d] += c * cv_ptr[d];
+            if (dim > 1)
+                y += c * cv_ptr[1];
+
+            if (dim > 2)
+                z += c * cv_ptr[2];
+
+            if (rational)
+                w += c * cv_ptr[dim];
+        }
+    }
+
+    if (!rational || w == 0.0)
+        w = 1.0;
+
+    return {x / w, dim > 1 ? y / w : 0.0, dim > 2 ? z / w : 0.0};
+}
+
+bool NurbsSurface::jet(double u, double v, int num_derivs, std::array<xyz, 6>& out) const {
+
+    if (!has_evaluation_tables() || num_derivs < 0)
+        return false;
+
+    const int n = std::min(num_derivs, 2);
+    const double t[2] = {u, v};
+    const int span[2] = {find_span(0, u), find_span(1, v)};
+    const std::size_t order[2] = {static_cast<std::size_t>(m_order[0]), static_cast<std::size_t>(m_order[1])};
+    const std::size_t widest = std::max(order[0], order[1]);
+    nurbsknot::Scratch<double, 640> scratch((n + 1) * (order[0] + order[1]) + widest * (widest + 4));
+    double* ders[2] = {scratch.data, scratch.data + (n + 1) * order[0]};
+
+    for (int dir = 0; dir < 2; dir++) {
+        const double* knot = m_nurbsknot[dir].data() + span[dir];
+
+        if (knot[order[dir] - 2] == knot[order[dir] - 1])
+            std::fill(ders[dir], ders[dir] + (n + 1) * order[dir], 0.0);
+        else
+            nurbsknot::basis_derivatives(m_order[dir], knot, t[dir], n, ders[dir], ders[1] + (n + 1) * order[1]);
+    }
+
+    const int dim = m_dim;
+    const bool rational = m_is_rat;
+    const int order_u = m_order[0];
+    const int order_v = m_order[1];
+    const int stride_u = m_cv_stride[0];
+    const int stride_v = m_cv_stride[1];
+    const double* cvs = m_cv.data() + span[0] * stride_u + span[1] * stride_v;
+    std::array<xyz, 6> skl;
+    double weights[6];
+    int count = 0;
+
+    for (int k = 0; k <= n; k++)
+        for (int m = 0; m <= n - k; m++) {
+            const double* du = ders[0] + k * order[0];
+            const double* dv = ders[1] + m * order[1];
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            double w = 0.0;
+
+            for (int i = 0; i < order_u; i++) {
+                const double* cv_ptr = cvs + i * stride_u;
+
+                for (int j = 0; j < order_v; j++, cv_ptr += stride_v) {
+                    const double c = du[i] * dv[j];
+                    x += c * cv_ptr[0];
+
+                    if (dim > 1)
+                        y += c * cv_ptr[1];
+
+                    if (dim > 2)
+                        z += c * cv_ptr[2];
+
+                    if (rational)
+                        w += c * cv_ptr[dim];
+                }
+            }
+
+            skl[count] = {x, y, z};
+            weights[count++] = w;
         }
 
-    return dehomogenize(sum.data());
+    if (!rational) {
+        std::copy_n(skl.begin(), count, out.begin());
+
+        return true;
+    }
+
+    const double w00 = weights[0];
+
+    if (w00 == 0.0) {
+        std::fill(out.begin(), out.begin() + count, xyz{0.0, 0.0, 0.0});
+
+        return true;
+    }
+
+    // Rational quotient rule on the homogeneous partials (Piegl & Tiller A4.4); C(k, i) for k up to 2.
+    constexpr double choose[3][3] = {{1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {1.0, 2.0, 1.0}};
+
+    for (int k = 0; k <= n; k++)
+        for (int m = 0; m <= n - k; m++) {
+            const int index = k * (n + 1) - k * (k - 1) / 2 + m;
+            xyz a = skl[index];
+
+            for (int i = 0; i <= k; i++)
+                for (int j = 0; j <= m; j++) {
+                    if (i == 0 && j == 0)
+                        continue;
+
+                    const double c = choose[k][i] * choose[m][j] * weights[i * (n + 1) - i * (i - 1) / 2 + j];
+                    a -= out[(k - i) * (n + 1) - (k - i) * (k - i - 1) / 2 + (m - j)] * c;
+                }
+
+            out[index] = a / w00;
+        }
+
+    return true;
 }
 
 std::pair<double, double> NurbsSurface::closest_parameters(const Point& test_point) const {
@@ -1226,39 +1269,17 @@ std::vector<Point> NurbsSurface::intersections_with_line(const Line& line) const
 std::vector<Vector> NurbsSurface::evaluate(double u, double v, int num_derivs) const {
 
     std::vector<Vector> result;
+    std::array<xyz, 6> values;
 
-    if (!is_valid() || num_derivs < 0)
+    if (!is_valid() || !jet(u, v, num_derivs, values))
         return result;
 
     const int n = std::min(num_derivs, 2);
-    const int span_u = find_span(0, u);
-    const int span_v = find_span(1, v);
-    const std::vector<std::vector<double>> ders_u = basis_functions_derivatives(0, span_u, u, n);
-    const std::vector<std::vector<double>> ders_v = basis_functions_derivatives(1, span_v, v, n);
-    const int size = cv_size();
-    std::vector<std::vector<double>> skl;
+    const int count = (n + 1) * (n + 2) / 2;
+    result.reserve(count);
 
-    for (int k = 0; k <= n; k++)
-        for (int m = 0; m <= n - k; m++) {
-            std::vector<double> sum(size, 0.0);
-
-            for (int i = 0; i < m_order[0]; i++)
-                for (int j = 0; j < m_order[1]; j++) {
-                    const double c = ders_u[k][i] * ders_v[m][j];
-                    const double* cv_ptr = cv(span_u + i, span_v + j);
-
-                    for (int d = 0; d < size; d++)
-                        sum[d] += c * cv_ptr[d];
-                }
-
-            skl.push_back(sum);
-        }
-
-    if (m_is_rat)
-        return rational_derivatives(skl, n);
-
-    for (const std::vector<double>& s : skl)
-        result.push_back(Vector(s[0], m_dim > 1 ? s[1] : 0.0, m_dim > 2 ? s[2] : 0.0));
+    for (int i = 0; i < count; i++)
+        result.emplace_back(values[i]);
 
     return result;
 }
@@ -1935,56 +1956,6 @@ Point NurbsSurface::dehomogenize(const double* h) const {
 
 int NurbsSurface::find_span(int dir, double t) const {
     return nurbsknot::find_span(m_order[dir], m_cv_count[dir], m_nurbsknot[dir], t);
-}
-
-std::vector<std::vector<double>> NurbsSurface::basis_functions_derivatives(
-    int dir,
-    int span,
-    double t,
-    int deriv_order
-) const {
-
-    const int order = m_order[dir];
-    const int degree = order - 1;
-    const std::vector<double>& knot = m_nurbsknot[dir];
-    const int base = span + degree;
-
-    if (knot[base - 1] == knot[base])
-        return std::vector<std::vector<double>>(deriv_order + 1, std::vector<double>(order, 0.0));
-
-    return basis_table_derivatives(basis_table(knot, degree, base, t), degree, deriv_order);
-}
-
-std::vector<Vector> NurbsSurface::rational_derivatives(
-    const std::vector<std::vector<double>>& skl,
-    int num_derivs
-) const {
-
-    std::vector<Vector> result;
-    const int n = num_derivs;
-    const double w00 = skl[0][m_dim];
-
-    if (w00 == 0.0)
-        return std::vector<Vector>(skl.size(), Vector(0, 0, 0));
-
-    for (int k = 0; k <= n; k++)
-        for (int m = 0; m <= n - k; m++) {
-            const std::vector<double>& s = skl[k * (n + 1) - k * (k - 1) / 2 + m];
-            Vector a(s[0], m_dim > 1 ? s[1] : 0.0, m_dim > 2 ? s[2] : 0.0);
-
-            for (int i = 0; i <= k; i++)
-                for (int j = 0; j <= m; j++) {
-                    if (i == 0 && j == 0)
-                        continue;
-
-                    const double c = binomial(k, i) * binomial(m, j) * skl[i * (n + 1) - i * (i - 1) / 2 + j][m_dim];
-                    a -= result[(k - i) * (n + 1) - (k - i) * (k - i - 1) / 2 + (m - j)] * c;
-                }
-
-            result.push_back(a / w00);
-        }
-
-    return result;
 }
 
 bool NurbsSurface::line_newton(double& u, double& v, const Point& p0, const Vector& n1, const Vector& n2) const {

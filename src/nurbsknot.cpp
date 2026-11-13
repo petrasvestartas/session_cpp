@@ -543,25 +543,8 @@ std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, 
             return std::vector<double>();
 
     std::vector<double> basis(order, 0.0);
-    std::vector<double> left(order, 0.0);
-    std::vector<double> right(order, 0.0);
-    const std::size_t k_offset = first + static_cast<std::size_t>(order) - 2;
-    basis[0] = 1.0;
-
-    for (int j = 1; j < order; j++) {
-        left[j] = t - nurbsknot[k_offset + 1 - j];
-        right[j] = nurbsknot[k_offset + j] - t;
-        double saved = 0.0;
-
-        for (int r = 0; r < j; r++) {
-            const double denom = right[r + 1] + left[j - r];
-            const double temp = denom != 0.0 ? basis[r] / denom : 0.0;
-            basis[r] = saved + right[r + 1] * temp;
-            saved = left[j - r] * temp;
-        }
-
-        basis[j] = saved;
-    }
+    Scratch<double, 640> scratch(2 * static_cast<std::size_t>(order));
+    basis_values(order, nurbsknot.data() + first, t, basis.data(), scratch.data);
 
     return basis;
 }

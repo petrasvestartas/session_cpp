@@ -385,6 +385,12 @@ public:
     /// Return [point, first derivative, ..., derivative_count] with zeros past the degree.
     std::vector<Vector> evaluate(double t, int derivative_count = 0) const;
 
+    /// Return the point at parameter t as a plain triple: the value of point_at, without allocation.
+    xyz point(double t) const;
+
+    /// Write the point and the derivatives up to derivative_count (at most 2): the values of evaluate, without allocation. False when the layout is unset.
+    bool jet(double t, int derivative_count, std::array<xyz, 3>& out) const;
+
     /// Return the unit tangent by central difference.
     Vector tangent_at(double t) const;
 
@@ -527,14 +533,8 @@ private:
     /// Return the span index of t relative to nurbsknot[order - 2] by binary search.
     int find_span(double t) const;
 
-    /// Compute the Cox-de Boor basis at t.
-    void basis_functions(int span, double t, std::vector<double>& basis) const;
-
-    /// Compute the basis derivatives (Piegl & Tiller A2.3).
-    void basis_functions_derivatives(int span, double t, int deriv_order, std::vector<std::vector<double>>& ders) const;
-
-    /// Compute the triangular table of basis functions and nurbsknot differences (Piegl & Tiller A2.3).
-    void basis_functions_ndu(int span, double t, std::vector<std::vector<double>>& ndu) const;
+    /// Write derivative_count + 1 triples, the values of evaluate; the layout is the caller's to check.
+    void jet_values(double t, int derivative_count, xyz* out) const;
 
     /// Copy every field but the guid.
     void deep_copy_from(const NurbsCurve& src);
@@ -635,9 +635,6 @@ private:
 
     /// Return the (t, point) samples of the chord-deviation bisection, sorted by t.
     std::vector<std::pair<double, Point>> adaptive_samples(double angle_tolerance, double min_edge_length, double max_edge_length) const;
-
-    /// Return the homogeneous derivatives (x, y, z, w) at span from the basis derivatives.
-    std::vector<std::array<double, 4>> homogeneous_derivatives(int span, const std::vector<std::vector<double>>& ders) const;
 
     /// Compute the unit tangent and normal at the domain start, false when the derivative vanishes.
     bool start_frame(Vector& T0, Vector& r0) const;

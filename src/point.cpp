@@ -200,27 +200,7 @@ Point Point::mid_point(const Point& a, const Point& b) {
 }
 
 double Point::distance(const Point& p, double double_min) const {
-
-    double dx = std::abs(_x - p[0]);
-    double dy = std::abs(_y - p[1]);
-    double dz = std::abs(_z - p[2]);
-
-    if (dy >= dx && dy >= dz)
-        std::swap(dx, dy);
-    else if (dz >= dx && dz >= dy)
-        std::swap(dx, dz);
-
-    if (dx > double_min) {
-        dy /= dx;
-        dz /= dx;
-
-        return dx * std::sqrt(1.0 + dy * dy + dz * dz);
-    }
-
-    if (dx > 0.0 && std::isfinite(dx))
-        return dx;
-
-    return 0.0;
+    return xyz{_x, _y, _z}.distance(p, double_min);
 }
 
 double Point::distance(const Point& a, const Point& b, double double_min) {

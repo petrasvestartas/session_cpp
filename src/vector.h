@@ -3,6 +3,7 @@
 #include "json.h"
 #include "tolerance.h"
 #include "xform.h"
+#include "xyz.h"
 #include "fmt/core.h"
 #include <array>
 #include <cmath>
@@ -47,6 +48,9 @@ public:
     /// Construct from components.
     Vector(double x, double y, double z) : _x(x), _y(y), _z(z) {}
 
+    /// Construct from a plain coordinate triple.
+    explicit Vector(const xyz& components) : _x(components.x), _y(components.y), _z(components.z) {}
+
     /// Copy with a new guid and the same data.
     Vector(const Vector& other);
 
@@ -87,6 +91,11 @@ public:
 
     /// Return the mutable guid, creating it on first access.
     std::string& guid();
+
+    /// Return the plain coordinate triple.
+    operator xyz() const {
+        return {_x, _y, _z};
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators

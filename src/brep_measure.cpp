@@ -42,13 +42,16 @@ constexpr std::array<double, 16> higher_weights = {0.096540088514727854, 0.09563
     0.034273862913021411, 0.025392065309262139, 0.016274394730905709,
     0.0070186100094701363};
 
-template<size_t N>
-double gauss(const std::function<double(double)>& function, double first, double last,
+template<typename Function, size_t N>
+double gauss(const Function& function, double first, double last,
              const std::array<double, N>& points, const std::array<double, N>& coefficients) {
     const double middle = (first + last) * 0.5, half = (last - first) * 0.5;
     double sum = 0.0;
-    for (size_t i = 0; i < N; ++i)
-        sum += coefficients[i] * (function(middle - half * points[i]) + function(middle + half * points[i]));
+    for (size_t i = 0; i < N; ++i) {
+        const double below = function(middle - half * points[i]);
+        const double above = function(middle + half * points[i]);
+        sum += coefficients[i] * (below + above);
+    }
     return half * sum;
 }
 
@@ -63,7 +66,8 @@ struct Work {
     int outer_depth = 0;
 };
 
-double integrate(const std::function<double(double)>& function, double first, double last,
+template<typename Function>
+double integrate(const Function& function, double first, double last,
                  double tolerance, Work& work, int depth = 0, bool inner = false) {
     if (first == last)
         return 0.0;
@@ -98,19 +102,22 @@ double integrate(const std::function<double(double)>& function, double first, do
 }
 
 
-template<size_t N>
+template<typename Function, size_t N>
 nurbs_interval::Interval enclosed_gauss(
-    const std::function<nurbs_interval::Interval(double)>& function, double first, double last,
+    const Function& function, double first, double last,
     const std::array<double, N>& points, const std::array<double, N>& coefficients) {
     const double middle = (first + last) * 0.5, half = (last - first) * 0.5;
     nurbs_interval::Interval sum;
-    for (size_t i = 0; i < N; ++i)
-        sum = sum + nurbs_interval::Interval(coefficients[i]) *
-            (function(middle - half * points[i]) + function(middle + half * points[i]));
+    for (size_t i = 0; i < N; ++i) {
+        const nurbs_interval::Interval above = function(middle + half * points[i]);
+        const nurbs_interval::Interval below = function(middle - half * points[i]);
+        sum = sum + nurbs_interval::Interval(coefficients[i]) * (below + above);
+    }
     return nurbs_interval::Interval(half) * sum;
 }
 
-double integrate_polynomial(const std::function<nurbs_interval::Interval(double)>& function,
+template<typename Function>
+double integrate_polynomial(const Function& function,
     double first, double last, double tolerance, Work& work, int depth = 0) {
     if (first == last)
         return 0.0;
@@ -179,6 +186,7 @@ struct SurfaceEvaluator {
     const NurbsSurface& surface;
     NurbsSurface local;
     std::array<int, 2> active{-1, -1};
+    bool usable = false;
     std::array<std::vector<double>, 2> knots;
 
     explicit SurfaceEvaluator(const NurbsSurface& source)
@@ -200,12 +208,14 @@ struct SurfaceEvaluator {
                 for (int j = 0; j < local.cv_count(1); ++j)
                     std::copy_n(surface.cv(span[0] + i, span[1] + j), surface.cv_size(), local.cv(i, j));
             active = span;
+            // Checked where the span is copied in; nothing else writes local.
+            usable = local.is_valid();
         }
-        const std::vector<Vector> derivatives = local.evaluate(u, v, 1);
-        if (derivatives.size() != 3)
+        std::array<xyz, 6> derivatives;
+        if (!usable || !local.jet(u, v, 1, derivatives))
             throw std::runtime_error("Native BRep volume could not evaluate a local surface span");
         // One global divergence-one field, F=(0,0,z), for EVERY face/path.
-        return derivatives[0][2] * derivatives[2].cross(derivatives[1])[2];
+        return derivatives[0].z * derivatives[2].cross(derivatives[1]).z;
     }
 };
 
@@ -520,7 +530,8 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
                 const double allowed = tolerance / (knots.size() * boundary.wires.size());
                 if (!cache.cells.empty())
                     value += sign * integrate_polynomial([&](double parameter) {
-                        const auto d = curve.evaluate(parameter, 1);
+                        std::array<xyz, 3> d;
+                        curve.jet(parameter, 1, d);
                         if (d[1][1] == 0.0)
                             return nurbs_interval::Interval();
                         const nurbs_interval::Interval primitive = cache.at(d[0][0], d[0][1]);
@@ -546,7 +557,8 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
                     }, knots[i - 1], knots[i], allowed, work);
                 else
                     value += sign * integrate([&](double parameter) {
-                        const auto d = curve.evaluate(parameter, 1);
+                        std::array<xyz, 3> d;
+                        curve.jet(parameter, 1, d);
                         if (d[1][1] == 0.0)
                             return 0.0;
                         return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work, boundary.surface_index, memo) * d[1][1];

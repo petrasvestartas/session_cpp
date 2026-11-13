@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -99,6 +100,162 @@ std::vector<double> build_interp_nurbsknots(const std::vector<double>& params, i
 
 /// Return the order non-zero B-spline basis values at t by Cox-de Boor evaluation over a finite span window.
 std::vector<double> eval_basis(int order, const std::vector<double>& nurbsknot, int span, double t);
+
+/// Working storage of count values for one evaluation: in place and unset up to N, on the heap above it.
+template <typename T, std::size_t N>
+struct Scratch {
+    alignas(T) std::byte local[N * sizeof(T)];
+    std::vector<T> heap;
+    T* data;
+
+    explicit Scratch(std::size_t count) : data(reinterpret_cast<T*>(local)) {
+        if (count > N) {
+            heap.resize(count);
+            data = heap.data();
+        }
+    }
+    Scratch(const Scratch&) = delete;
+    Scratch& operator=(const Scratch&) = delete;
+};
+
+/// The arithmetic of basis_values for one order; an order FIXED above zero is known at compile time, so its small loops unroll.
+template <int FIXED>
+inline void basis_values_of(int order, const double* knot, double t, double* values, double* scratch) {
+
+    [[maybe_unused]] double fixed[FIXED ? 2 * FIXED : 1];
+    double* left = scratch;
+
+    if constexpr (FIXED != 0) {
+        order = FIXED;
+        left = fixed;
+    }
+
+    double* right = left + order;
+    values[0] = 1.0;
+
+    for (int j = 1; j < order; j++) {
+        left[j] = t - knot[order - 1 - j];
+        right[j] = knot[order - 2 + j] - t;
+        double saved = 0.0;
+
+        for (int r = 0; r < j; r++) {
+            const double denom = right[r + 1] + left[j - r];
+            const double temp = denom != 0.0 ? values[r] / denom : 0.0;
+            values[r] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+
+        values[j] = saved;
+    }
+}
+
+/// Write the order non-zero basis values at t, the arithmetic of eval_basis without allocation: knot points at the first of the 2 * order - 2 knots of the span, scratch holds 2 * order doubles.
+inline void basis_values(int order, const double* knot, double t, double* values, double* scratch) {
+
+    switch (order) {
+        case 2: return basis_values_of<2>(order, knot, t, values, scratch);
+        case 3: return basis_values_of<3>(order, knot, t, values, scratch);
+        case 4: return basis_values_of<4>(order, knot, t, values, scratch);
+        case 6: return basis_values_of<6>(order, knot, t, values, scratch);
+        default: return basis_values_of<0>(order, knot, t, values, scratch);
+    }
+}
+
+/// The arithmetic of basis_derivatives for one order; an order FIXED above zero is known at compile time, so its small loops unroll.
+template <int FIXED>
+inline void basis_derivatives_of(int order, const double* knot, double t, int derivative_count, double* values, double* scratch) {
+
+    [[maybe_unused]] double fixed[FIXED ? FIXED * (FIXED + 4) : 1];
+    double* ndu = scratch;
+
+    if constexpr (FIXED != 0) {
+        order = FIXED;
+        ndu = fixed;
+    }
+
+    const int degree = order - 1;
+    double* left = ndu + order * order;
+    double* right = left + order;
+    double* a = right + order;
+    ndu[0] = 1.0;
+
+    for (int j = 1; j <= degree; j++) {
+        left[j] = t - knot[degree - j];
+        right[j] = knot[degree + j - 1] - t;
+        double saved = 0.0;
+
+        for (int r = 0; r < j; r++) {
+            ndu[j * order + r] = right[r + 1] + left[j - r];
+            const double temp = ndu[r * order + j - 1] / ndu[j * order + r];
+            ndu[r * order + j] = saved + right[r + 1] * temp;
+            saved = left[j - r] * temp;
+        }
+
+        ndu[j * order + j] = saved;
+    }
+
+    for (int j = 0; j <= degree; j++)
+        values[j] = ndu[j * order + degree];
+
+    for (int j = 0; j < 2 * order; j++)
+        a[j] = 0.0;
+
+    for (int r = 0; r <= degree; r++) {
+        int s1 = 0;
+        int s2 = order;
+        a[0] = 1.0;
+
+        for (int k = 1; k <= derivative_count; k++) {
+            double d = 0.0;
+            const int rk = r - k;
+            const int pk = degree - k;
+
+            if (r >= k) {
+                a[s2] = a[s1] / ndu[(pk + 1) * order + rk];
+                d = a[s2] * ndu[rk * order + pk];
+            }
+
+            const int j1 = rk >= -1 ? 1 : -rk;
+            const int j2 = r - 1 <= pk ? k - 1 : degree - r;
+
+            for (int j = j1; j <= j2; j++) {
+                a[s2 + j] = (a[s1 + j] - a[s1 + j - 1]) / ndu[(pk + 1) * order + rk + j];
+                d += a[s2 + j] * ndu[(rk + j) * order + pk];
+            }
+
+            if (r <= pk) {
+                a[s2 + k] = -a[s1 + k - 1] / ndu[(pk + 1) * order + r];
+                d += a[s2 + k] * ndu[r * order + pk];
+            }
+
+            values[k * order + r] = d;
+            const int swapped = s1;
+            s1 = s2;
+            s2 = swapped;
+        }
+    }
+
+    double factor = degree;
+
+    for (int k = 1; k <= derivative_count; k++) {
+        for (int j = 0; j <= degree; j++)
+            values[k * order + j] *= factor;
+
+        factor *= degree - k;
+    }
+}
+
+/// Write the basis derivatives values[k * order + j] for k up to derivative_count without allocation (Piegl & Tiller A2.3): knot points at the first of the 2 * order - 2 knots of the span, scratch holds order * (order + 4) doubles.
+inline void basis_derivatives(int order, const double* knot, double t, int derivative_count, double* values, double* scratch) {
+
+    switch (order) {
+        case 2: return basis_derivatives_of<2>(order, knot, t, derivative_count, values, scratch);
+        case 3: return basis_derivatives_of<3>(order, knot, t, derivative_count, values, scratch);
+        case 4: return basis_derivatives_of<4>(order, knot, t, derivative_count, values, scratch);
+        case 6: return basis_derivatives_of<6>(order, knot, t, derivative_count, values, scratch);
+        default: return basis_derivatives_of<0>(order, knot, t, derivative_count, values, scratch);
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fitting

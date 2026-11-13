@@ -4,6 +4,7 @@
 #include "json.h"
 #include "vector.h"
 #include "xform.h"
+#include "xyz.h"
 #include "fmt/core.h"
 #include <cmath>
 #include <fstream>
@@ -43,6 +44,9 @@ public:
     Point(double x, double y, double z, std::string name = "my_point")
         : _x(x), _y(y), _z(z), name(std::move(name)) {}
 
+    /// Construct from a plain coordinate triple.
+    explicit Point(const xyz& coordinates) : _x(coordinates.x), _y(coordinates.y), _z(coordinates.z) {}
+
     /// Copy with a new guid and the same data.
     Point(const Point& other);
 
@@ -71,6 +75,11 @@ public:
 
     /// Clear the guid so a fresh one mints lazily on the next read.
     void refresh_guid();
+
+    /// Return the plain coordinate triple.
+    operator xyz() const {
+        return {_x, _y, _z};
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Operators

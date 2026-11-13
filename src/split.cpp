@@ -575,7 +575,8 @@ double chord_area(const NurbsCurve& piece) {
     const double hi = piece.domain_end();
     double area = 0.0;
     for (const std::array<double, 2>& node : NODES) {
-        const std::vector<Vector> d = piece.evaluate(0.5 * (lo + hi + node[0] * (hi - lo)), 1);
+        std::array<xyz, 3> d{};
+        piece.jet(0.5 * (lo + hi + node[0] * (hi - lo)), 1, d);
         area += node[1] * ((d[0][0] - start[0]) * d[1][1] - (d[0][1] - start[1]) * d[1][0]);
     }
     return 0.25 * (hi - lo) * area;
