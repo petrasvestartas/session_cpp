@@ -58,15 +58,22 @@ fixed with a test that was red before:
 - a plane-section loop seeded on a seam: cut at its start;
 - a plane-section end cut on a seam: polished along the seam only.
 
-After them: `brep_boolean_test` 62/62, `brep_test` 72/72, `intersection_test` 115/115,
-`brep_section_test` 25/25, `surface_section_test` 23/23, thicken 15/15, hollow 11/11,
-offset 14/14, tessellation 7/7. Sweep of 49 ordered pairs, seeds 1 and 2: generic poses 96/98,
-axis-parallel poses 98/98.
+Later the same day, with OCCT `d3056ef8` read where a case was not obvious:
 
-Open: torus against cone in one pose (marched trace starting a hair off the seam), sphere
-against drilled block in one pose and one operation (paired fit budget), an axis-parallel plane
-through a cone whose fitted hyperbola pcurve fails the self-intersection check, a cone against
-a drilled block (tangent fan), and the exact volume budget on some torus results.
+- macOS only: a fitted pcurve with two knots one rounding apart; curve self-intersection passes over a span with no parameter inside;
+- a marched seam crossing is stepped on past the convergence tolerance until it sits on the curve;
+- every marching step is judged for turning, the first from its own tangent, as `IntWalk_PWalking::TestDeflection` judges from the first point;
+- a pullback sample one rounding from its neighbour is dropped before the fit;
+- a plane trace ending on open sides of the domain is never closed into a loop by the join distance.
+
+After them: the whole suite 1580/1581 on Linux, the one failure reading the bunny from
+`session_data`, which is not checked out there. CI green on Linux, Windows and macOS at
+`f778d5db`. Sweep of 49 ordered pairs on seeds 1, 2 and 3: 147/147 generic poses and 147/147
+axis-parallel poses give valid results in all five operations; drilled block against torus needs
+about 280 s in each mode.
+
+Open: `volume_exact` exceeds its fixed work budget on some torus results, whose fitted pcurves
+have hundreds of spans; the speed of drilled block against torus; Viewer images of the chairs.
 
 ## Groundwork first — 2026-11-01
 
