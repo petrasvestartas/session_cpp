@@ -39,6 +39,35 @@ The previous OCCT-backed results establish reference data, not native completion
 Keep that evidence separate. Do not silently fall back to OCCT on native failure.
 Do not count skipped, unsupported, or inconclusive cases as passes.
 
+## Checkpoint — 2026-11-12, Linux, branch `claude/clever-ramanujan-dkse3b`
+
+Main at `3326d89b` passes `brep_boolean_test` 58/58 and `brep_test` 72/72 on Linux, the seven
+Rhino families and all five freeform chair operations included. The 6 November range-foundation
+packets (`codex/native-brep-recovery-20261112`) are not applied: main passes the tests they
+were written for.
+
+`examples/native_boolean_fuzz.cpp` (option `SESSION_BUILD_BOOLEAN_FUZZ`, sweep script beside
+it) runs random pairs of the seven primitives through all five operations and checks validity,
+volume identities and point membership. It found six failure classes the fixtures miss; each is
+fixed with a test that was red before:
+
+- collapsed triangle faces of a pyramid: exact rational pcurve, sections clipped to the wedge;
+- section ends meeting on an edge of the other solid: joined whatever the pcurve weights;
+- a marched seam piece between a knot line and the seam: period from its extent;
+- world curve and pcurve knots a rounding apart: an exact trim names the cut on all three;
+- a plane-section loop seeded on a seam: cut at its start;
+- a plane-section end cut on a seam: polished along the seam only.
+
+After them: `brep_boolean_test` 62/62, `brep_test` 72/72, `intersection_test` 115/115,
+`brep_section_test` 25/25, `surface_section_test` 23/23, thicken 15/15, hollow 11/11,
+offset 14/14, tessellation 7/7. Sweep of 49 ordered pairs, seeds 1 and 2: generic poses 96/98,
+axis-parallel poses 98/98.
+
+Open: torus against cone in one pose (marched trace starting a hair off the seam), sphere
+against drilled block in one pose and one operation (paired fit budget), an axis-parallel plane
+through a cone whose fitted hyperbola pcurve fails the self-intersection check, a cone against
+a drilled block (tangent fan), and the exact volume budget on some torus results.
+
 ## Groundwork first — 2026-11-01
 
 The user has paused individual Rhino-case repairs until the shared Boolean
