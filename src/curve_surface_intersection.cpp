@@ -4,6 +4,7 @@
 #include "intersection.h"
 #include "nurbs_interval.h"
 #include "nurbs_coincidence.h"
+#include "nurbs_memo.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1625,7 +1626,7 @@ static bool exact_world_chart(NurbsCurve& world, NurbsSurface& surface) {
     return true;
 }
 
-ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
+static ParameterMatch same_parameter_once(const NurbsCurve& curve, const NurbsCurve& pcurve,
     const NurbsSurface& surface, double tolerance, std::string* diagnostic, ParameterFailure* failure) {
     const auto finish = [&](ParameterMatch match) {
         if (failure && failure->has_interval) {
@@ -1652,6 +1653,30 @@ ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
     if (!exact_world_chart(local_world, local_surface))
         return finish(original); // Preserve the original coordinate-guard diagnostic.
     return finish(same_parameter_impl(local_world, pcurve, local_surface, tolerance, diagnostic, nullptr, failure));
+}
+
+ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
+    const NurbsSurface& surface, double tolerance, std::string* diagnostic, ParameterFailure* failure) {
+    nurbs_memo::Scope* memo = nurbs_memo::Scope::active;
+    if (!memo || parameter_diagnostics::active)
+        return same_parameter_once(curve, pcurve, surface, tolerance, diagnostic, failure);
+    std::string key;
+    nurbs_memo::add(key, curve);
+    nurbs_memo::add(key, pcurve);
+    nurbs_memo::add(key, surface);
+    nurbs_memo::add(key, &tolerance, 1);
+    if (memo->matched.contains(key)) {
+        // What a matched certificate leaves behind.
+        if (diagnostic)
+            diagnostic->clear();
+        if (failure)
+            *failure = {};
+        return ParameterMatch::Matched;
+    }
+    const ParameterMatch match = same_parameter_once(curve, pcurve, surface, tolerance, diagnostic, failure);
+    if (match == ParameterMatch::Matched)
+        memo->matched.insert(std::move(key));
+    return match;
 }
 
 Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {

@@ -86,32 +86,66 @@ inline double magnitude(Interval a) {
 
 using Homogeneous = std::array<Interval, 4>;
 
-/// Outward-rounded blossom on one original NURBS span, including a point interval.
-inline std::vector<Homogeneous> blossom(const std::vector<Homogeneous>& controls,
-    const std::vector<double>& knots, int span, int degree, double lo, double hi) {
-    std::vector<Homogeneous> result(degree + 1);
-    for (int pole = 0; pole <= degree; ++pole) {
-        std::vector<Homogeneous> work = controls;
-        for (int level = 1; level <= degree; ++level) {
-            const double t = level > degree - pole ? hi : lo;
-            for (int j = degree; j >= level; --j) {
+/// Affine weights of every blossom step on one original NURBS span, at the arguments lo and hi: one table serves every pole and every row of controls on that span.
+struct BlossomSteps {
+    int degree;
+    bool valid = true;
+    std::vector<std::array<Interval, 2>> weights;
+
+    BlossomSteps(const std::vector<double>& knots, int span, int degree, double lo, double hi)
+        : degree(degree), weights(2 * degree * (degree + 1)) {
+        for (int level = 1; level <= degree && valid; ++level)
+            for (int j = degree; j >= level && valid; --j) {
                 const int index = span - degree + j;
                 const double left = knots[index];
                 const double right = knots[index + degree - level + 1];
                 const Interval width = Interval(right) - Interval(left);
-                if (width.lo <= 0.0)
-                    return {};
-                const Interval alpha = t == left ? Interval(0.0) : t == right ? Interval(1.0) :
-                    (Interval(t) - Interval(left)) / width;
-                for (int d = 0; d < 4; ++d)
-                    if (!(work[j - 1][d].lo == work[j - 1][d].hi && work[j][d].lo == work[j][d].hi &&
-                        work[j - 1][d].lo == work[j][d].lo))
-                        work[j][d] = (Interval(1.0) - alpha) * work[j - 1][d] + alpha * work[j][d];
+                valid = !(width.lo <= 0.0);
+                for (int end = 0; end < 2 && valid; ++end) {
+                    const double t = end ? hi : lo;
+                    const Interval alpha = t == left ? Interval(0.0) : t == right ? Interval(1.0) :
+                        (Interval(t) - Interval(left)) / width;
+                    at(end, level, j) = {Interval(1.0) - alpha, alpha};
+                }
             }
+    }
+
+    std::array<Interval, 2>& at(int end, int level, int j) {
+        return weights[((end * degree) + level - 1) * (degree + 1) + j];
+    }
+
+    void step(std::vector<Homogeneous>& work, int end, int level) const {
+        for (int j = degree; j >= level; --j) {
+            const std::array<Interval, 2>& weight = weights[((end * degree) + level - 1) * (degree + 1) + j];
+            for (int d = 0; d < 4; ++d)
+                if (!(work[j - 1][d].lo == work[j - 1][d].hi && work[j][d].lo == work[j][d].hi &&
+                    work[j - 1][d].lo == work[j][d].lo))
+                    work[j][d] = weight[0] * work[j - 1][d] + weight[1] * work[j][d];
         }
+    }
+};
+
+/// Outward-rounded blossom on one original NURBS span, including a point interval.
+inline std::vector<Homogeneous> blossom(const std::vector<Homogeneous>& controls, const BlossomSteps& steps) {
+    if (!steps.valid)
+        return {};
+    const int degree = steps.degree;
+    std::vector<Homogeneous> result(degree + 1), low = controls, work;
+    // A pole takes its first steps at lo and the rest at hi; the steps at lo are the same for every pole after it and are taken once.
+    for (int pole = degree; pole >= 0; --pole) {
+        work = low;
+        for (int level = degree - pole + 1; level <= degree; ++level)
+            steps.step(work, 1, level);
         result[pole] = work[degree];
+        if (pole > 0)
+            steps.step(low, 0, degree - pole + 1);
     }
     return result;
+}
+
+inline std::vector<Homogeneous> blossom(const std::vector<Homogeneous>& controls,
+    const std::vector<double>& knots, int span, int degree, double lo, double hi) {
+    return blossom(controls, BlossomSteps(knots, span, degree, lo, hi));
 }
 
 struct CurveBounds {
@@ -227,6 +261,8 @@ inline std::vector<Homogeneous> surface_controls(const NurbsSurface& surface,
             (rectangle[d * 2 + 1] > knots[d][span[d] + 1] && !(extend && span[d] == surface.cv_count(d) - 1)))
             return {};
     }
+    const BlossomSteps along_u(knots[0], span[0], p, rectangle[0], rectangle[1]);
+    const BlossomSteps along_v(knots[1], span[1], q, rectangle[2], rectangle[3]);
     std::vector<Homogeneous> controls((p + 1) * (q + 1));
     for (int j = 0; j <= q; ++j) {
         std::vector<Homogeneous> column(p + 1);
@@ -237,7 +273,7 @@ inline std::vector<Homogeneous> surface_controls(const NurbsSurface& surface,
             for (int d = 0; d < 3; ++d)
                 column[i][d] = Interval(cv[d]) - Interval(origin[d]) * Interval(weight);
         }
-        const auto extracted = blossom(column, knots[0], span[0], p, rectangle[0], rectangle[1]);
+        const auto extracted = blossom(column, along_u);
         if (extracted.empty())
             return {};
         for (int i = 0; i <= p; ++i)
@@ -245,7 +281,7 @@ inline std::vector<Homogeneous> surface_controls(const NurbsSurface& surface,
     }
     for (int i = 0; i <= p; ++i) {
         std::vector<Homogeneous> row(controls.begin() + i * (q + 1), controls.begin() + (i + 1) * (q + 1));
-        const auto extracted = blossom(row, knots[1], span[1], q, rectangle[2], rectangle[3]);
+        const auto extracted = blossom(row, along_v);
         if (extracted.empty())
             return {};
         std::copy(extracted.begin(), extracted.end(), controls.begin() + i * (q + 1));

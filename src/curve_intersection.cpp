@@ -1,6 +1,7 @@
 #include "curve_intersection.h"
 #include "closest.h"
 #include "nurbs_interval.h"
+#include "nurbs_memo.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -727,9 +728,7 @@ void map_result(const NurbsCurve& a, const NurbsCurve& b, Result& result) {
     }
 }
 
-}
-
-Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+Result intersect_once(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
     if (!std::isfinite(tolerance) || tolerance <= 0.0 || !a.is_valid() || !b.is_valid())
         throw std::invalid_argument("Curve intersection requires valid curves and a positive finite tolerance");
 
@@ -796,6 +795,25 @@ Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
         result.failure = "Curve intersection exceeded its subdivision or floating-point resolution limit";
 
     map_result(a, b, result);
+    return result;
+}
+
+}
+
+Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+    nurbs_memo::Scope* memo = nurbs_memo::Scope::active;
+    if (!memo)
+        return intersect_once(a, b, tolerance);
+    std::string key;
+    nurbs_memo::add(key, a);
+    nurbs_memo::add(key, b);
+    nurbs_memo::add(key, &tolerance, 1);
+    const auto found = memo->curve_pairs.find(key);
+    if (found != memo->curve_pairs.end())
+        return found->second;
+    Result result = intersect_once(a, b, tolerance);
+    if (result.complete)
+        memo->curve_pairs.emplace(std::move(key), result);
     return result;
 }
 

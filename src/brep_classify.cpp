@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <stdexcept>
 
@@ -143,7 +144,11 @@ bool append_hit(RayResult& result, const BRep& brep, int face,
     return true;
 }
 
-void intersect_face(RayResult& result, const BRep& brep, int face, const RayFrame& frame, const Vector* grazed = nullptr) {
+// Roots of one ray on the surfaces it has met, by surface index and advance: faces split from one face share their surface.
+using SurfaceRoots = std::map<std::pair<int, double>, surface_ray::Result>;
+
+void intersect_face(RayResult& result, const BRep& brep, int face, const RayFrame& frame, SurfaceRoots& met,
+    const Vector* grazed = nullptr) {
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
     surface_ray::Options options;
     options.include_origin = true;
@@ -160,14 +165,18 @@ void intersect_face(RayResult& result, const BRep& brep, int face, const RayFram
         }
         advance = 64.0 * frame.tolerance / across;
     }
-    Vector step = frame.direction;
-    step.normalize_self();
-    auto intersections = surface_ray::intersect(surface, advance > 0.0 ? frame.origin + step * advance : frame.origin,
-        frame.direction, frame.tolerance, options);
-    for (auto& root : intersections.roots) {
-        root.distance += advance;
-        root.distance_enclosure[0] += advance;
-        root.distance_enclosure[1] += advance;
+    const auto [found, fresh] = met.try_emplace({brep.m_faces[face].surface_index, advance});
+    surface_ray::Result& intersections = found->second;
+    if (fresh) {
+        Vector step = frame.direction;
+        step.normalize_self();
+        intersections = surface_ray::intersect(surface, advance > 0.0 ? frame.origin + step * advance : frame.origin,
+            frame.direction, frame.tolerance, options);
+        for (auto& root : intersections.roots) {
+            root.distance += advance;
+            root.distance_enclosure[0] += advance;
+            root.distance_enclosure[1] += advance;
+        }
     }
     if (!intersections.complete) {
         result.complete = false;
@@ -335,9 +344,10 @@ RayResult ray(const BRep& brep, const Point& origin, const Vector& direction, do
     const RayFrame frame = {origin, direction, tolerance};
     RayResult result;
     const std::vector<bool> active = active_faces(brep);
+    SurfaceRoots met;
     for (int face = 0; face < brep.face_count(); ++face)
         if (active[face])
-            intersect_face(result, brep, face, frame);
+            intersect_face(result, brep, face, frame, met);
     std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
         return a.distance < b.distance;
     });
@@ -351,11 +361,12 @@ RayResult grazing_ray(const BRep& brep, const Point& origin, const Vector& direc
     const RayFrame frame = {origin, direction, tolerance};
     RayResult result;
     const std::vector<bool> active = active_faces(brep);
+    SurfaceRoots met;
     for (int face = 0; face < brep.face_count(); ++face) {
         if (!active[face])
             continue;
         const auto found = std::find_if(grazed.begin(), grazed.end(), [face](const auto& item) { return item.first == face; });
-        intersect_face(result, brep, face, frame, found == grazed.end() ? nullptr : &found->second);
+        intersect_face(result, brep, face, frame, met, found == grazed.end() ? nullptr : &found->second);
     }
     std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
         return a.distance < b.distance;

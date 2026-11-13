@@ -11,6 +11,7 @@
 #include "nurbs_interval.h"
 #include <map>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -977,13 +978,25 @@ void point_boundary_events(FaceResult& result,const BRep& a,const BRep& b,double
     }
 }
 
+// Events on one edge ask for the same pairs of curves: a pair is intersected once. A key names two curves by owner and index (0 and 1 the operands' edges, 2 the section curves), fixed while the nodes are built.
+struct MetCurves {
+    std::map<std::array<int,4>,curve_intersection::Result> found;
+    const curve_intersection::Result& operator()(const std::array<int,4>& key,const NurbsCurve& x,
+                                                 const NurbsCurve& y,double tolerance) {
+        auto at=found.find(key);
+        if (at==found.end())
+            at=found.emplace(key,curve_intersection::intersect(x,y,tolerance)).first;
+        return at->second;
+    }
+};
+
 bool boundary_equivalent(const BoundaryEvent& p,const BoundaryEvent& q,
-                         const BRep& a,const BRep& b,double tolerance) {
+                         const BRep& a,const BRep& b,double tolerance,MetCurves& met) {
     const auto& x=event_source(p,a,b);
     const auto& y=event_source(q,a,b);
     if (p.operand==q.operand && p.edge==q.edge)
         return interval_event(x,p.hit.t,q.hit.t,q.hit.point,tolerance);
-    const auto events=curve_intersection::intersect(x,y,tolerance);
+    const auto& events=met({p.operand,p.edge,q.operand,q.edge},x,y,tolerance);
     if (!events.complete)
         throw std::runtime_error(events.failure);
     for (const auto& hit:events.points)
@@ -1060,12 +1073,13 @@ void support_nodes(FaceResult& result,double tolerance) {
 }
 
 void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolerance) {
+    MetCurves met;
     for (size_t i=0;i<result.boundary_events.size();++i) {
         auto& point=result.boundary_events[i];
         const auto& source=event_source(point,a,b);
         for (size_t curve_index=0;curve_index<result.curves.size();++curve_index) {
             const auto& curve=result.curves[curve_index];
-            const auto events=curve_intersection::intersect(source,curve.world,tolerance);
+            const auto& events=met({point.operand,point.edge,2,static_cast<int>(curve_index)},source,curve.world,tolerance);
             if (!events.complete)
                 throw std::runtime_error(events.failure);
             const auto own=[&](double a,double b) {
@@ -1094,7 +1108,7 @@ void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolera
         for (size_t n=0;n<result.nodes.size();++n) {
             bool same=false;
             for (size_t j:result.nodes[n].boundary_events)
-                same=same || boundary_equivalent(point,result.boundary_events[j],a,b,tolerance);
+                same=same || boundary_equivalent(point,result.boundary_events[j],a,b,tolerance,met);
             for (size_t j:result.nodes[n].support_points) {
                 const auto& support=result.support_points[j];
                 const int own_face=point.operand?support.second_face:support.first_face;

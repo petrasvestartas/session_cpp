@@ -10528,9 +10528,11 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
     field.eval_b(root[2], root[3], point, bu, bv);
     const Vector columns[4] = {au, av, -bu, -bv};
     SsiPatchBounds root_a, root_b;
-    const bool root_enclosed =
-        nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, root_a, false) &&
+    const bool root_a_enclosed =
+        nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, root_a, false);
+    const bool root_b_enclosed =
         nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, root_b, false);
+    const bool root_enclosed = root_a_enclosed && root_b_enclosed;
     for (int fixed : seed_isoparameters(field, root)) {
         if (required_fixed >= 0 && fixed != required_fixed)
             continue;
@@ -10605,11 +10607,14 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
         std::array<double, 4> center_hi = root;
         center_lo[fixed] = lo[fixed];
         center_hi[fixed] = hi[fixed];
-        SsiPatchBounds a0, b0;
+        // The surface whose parameters both stay at the root has the root's enclosure, bounded above.
+        SsiPatchBounds a0 = root_a, b0 = root_b;
         if (chart)
             (*chart)["status"] = "center_residual_bounds_unproved";
-        if (!nurbs_interval::surface_bounds(field.a, {center_lo[0], center_hi[0], center_lo[1], center_hi[1]}, origin, a0, false) ||
-            !nurbs_interval::surface_bounds(field.b, {center_lo[2], center_hi[2], center_lo[3], center_hi[3]}, origin, b0, false))
+        if (fixed < 2 ? !root_b_enclosed || !nurbs_interval::surface_bounds(field.a,
+                {center_lo[0], center_hi[0], center_lo[1], center_hi[1]}, origin, a0, false)
+            : !root_a_enclosed || !nurbs_interval::surface_bounds(field.b,
+                {center_lo[2], center_hi[2], center_lo[3], center_hi[3]}, origin, b0, false))
             continue;
         std::array<SsiInterval, 3> domain;
         std::array<SsiInterval, 3> interior;

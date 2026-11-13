@@ -8,6 +8,7 @@
 #include "split.h"
 #include "nurbs_bounds.h"
 #include "nurbs_coincidence.h"
+#include "nurbs_memo.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -688,6 +689,7 @@ BRep apply(const BRep& first, const BRep& second, Operation operation, double to
             throw std::invalid_argument("Native BRep Booleans require closed oriented solid operands");
     if (empty(first) || empty(second))
         return empty_operation(first, second, operation);
+    nurbs_memo::Scope reuse;
     boolean_progress("section");
     const brep_section::FaceResult sections = brep_section::interferences(first, second, tolerance);
     if (!sections.complete)
