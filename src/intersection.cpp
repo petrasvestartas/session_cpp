@@ -11006,6 +11006,31 @@ bool boundary_trace_start(const SurfaceSurfaceField& field,
 }
 
 /// Trace both directions from a seed into one unwrapped run; false when it is too short.
+/// One point where the walk has two a rounding apart, as on either side of a seam it stepped onto: the one inside the domain stays. OCCT's IntWalk_PWalking does not append a point that has not left the previous one. Left in, the pair is a step with no length that no seam cut divides.
+void drop_repeated_points(const SurfaceSurfaceField& field, std::vector<std::array<double, 4>>& quad) {
+    const auto inside = [&field](const std::array<double, 4>& q) {
+        for (int k = 0; k < 4; ++k)
+            if (q[k] < field.lo[k] || q[k] > field.hi[k])
+                return false;
+        return true;
+    };
+    std::vector<std::array<double, 4>> distinct;
+
+    for (const std::array<double, 4>& q : quad) {
+        bool repeated = !distinct.empty();
+
+        for (int k = 0; k < 4 && repeated; ++k)
+            repeated = std::abs(q[k] - distinct.back()[k]) <= field.range[k] * 1e-12;
+
+        if (!repeated)
+            distinct.push_back(q);
+        else if (!inside(distinct.back()) && inside(q))
+            distinct.back() = q;
+    }
+
+    quad = std::move(distinct);
+}
+
 bool trace_seed(
     const SurfaceSurfaceField& field,
     const std::array<double, 4>& x0,
@@ -12162,6 +12187,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
         trace.stop();
         ssi_diagnostics::Timer densify(ssi_diagnostics::Stage::DensifyAndSeams);
         densify_quad(field, quad);
+        drop_repeated_points(field, quad);
         const std::array<double, 4> closure = close_quad(field, quad, is_loop);
         std::vector<std::array<double, 4>> out_pts;
         std::vector<int> cross_idx;
