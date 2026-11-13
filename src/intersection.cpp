@@ -2849,6 +2849,295 @@ Point evaluate_valid_curve(const NurbsCurve& curve, double t) {
     return {point[0] / weight, point[1] / weight, point[2] / weight};
 }
 
+// The measured gap a fit is refined to. A volume moves with a trim's error times its reach, so the gap times
+// the reach keeps a share of the tolerance, down to what the coordinates resolve.
+static double fit_gap(double tolerance, double reach) {
+    return std::min(tolerance, std::max(tolerance * 0.02 / std::max(1.0, reach), reach * 64.0 * std::numeric_limits<double>::epsilon()));
+}
+
+// The same for a traced section, whose samples are within a ten thousandth of the tolerance or what the coordinates resolve: its fit
+// is asked for no less than 64 times that.
+static double traced_gap(double tolerance, double reach) {
+    const double sampled = std::max(tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon());
+    return std::min(tolerance, std::max(fit_gap(tolerance, reach), 64.0 * sampled));
+}
+
+/// First and second derivatives of a section and its two pcurves along the world arc.
+struct SectionJet {
+    Vector world_first, world_second, a_first, a_second, b_first, b_second;
+};
+
+/// The two surfaces, each given by its point and derivatives, fix the tangent and each the curvature along its own normal, so no neighbouring sample is needed.
+bool section_jet(const std::vector<Vector>& a, const std::vector<Vector>& b, const Vector& forward, SectionJet& jet) {
+    if (a.size() != 6 || b.size() != 6)
+        return false;
+    const auto in_surface = [](const Vector& su, const Vector& sv, const Vector& along, Vector& result) {
+        const double uu = su.dot(su), uv = su.dot(sv), vv = sv.dot(sv);
+        const double determinant = uu * vv - uv * uv;
+        if (!(determinant > 0.0))
+            return false;
+        const double p = along.dot(su), q = along.dot(sv);
+        result = Vector((p * vv - q * uv) / determinant, (q * uu - p * uv) / determinant, 0.0);
+        return true;
+    };
+    const auto bending = [](const std::vector<Vector>& s, const Vector& first) {
+        return s[5] * (first[0] * first[0]) + s[4] * (2.0 * first[0] * first[1]) + s[2] * (first[1] * first[1]);
+    };
+    Vector na = a[3].cross(a[1]);
+    Vector nb = b[3].cross(b[1]);
+    if (!na.normalize_self() || !nb.normalize_self())
+        return false;
+    Vector tangent = na.cross(nb);
+    if (tangent.magnitude() < 1e-3 || !tangent.normalize_self())
+        return false;
+    if (tangent.dot(forward) < 0.0)
+        tangent *= -1.0;
+    Vector a_first, b_first, a_second, b_second;
+    if (!in_surface(a[3], a[1], tangent, a_first) || !in_surface(b[3], b[1], tangent, b_first))
+        return false;
+    const Vector a_bend = bending(a, a_first);
+    const Vector b_bend = bending(b, b_first);
+    const Vector across_b = nb.cross(tangent);
+    const Vector across_a = tangent.cross(na);
+    const double volume = na.dot(across_b);
+    if (std::abs(volume) < 1e-6)
+        return false;
+    const Vector second = (across_b * a_bend.dot(na) + across_a * b_bend.dot(nb)) * (1.0 / volume);
+    if (!in_surface(a[3], a[1], second - a_bend, a_second) || !in_surface(b[3], b[1], second - b_bend, b_second))
+        return false;
+    jet = {tangent, second, a_first, a_second, b_first, b_second};
+    return true;
+}
+
+/// The arc of each quintic piece between two points with their jets, summed into parameters on 0 to 1 and the length of the whole.
+/// The curves of a section share t only if t runs with the true arc: a chord's error here is a fourth order error in the fit.
+bool section_arcs(const std::vector<Point>& points, const std::vector<SectionJet>& starts, const std::vector<SectionJet>& ends,
+    std::vector<double>& along, double& speed) {
+    std::vector<double> arcs(points.size(), 0.0);
+    for (size_t i = 1; i < points.size(); ++i) {
+        arcs[i] = points[i - 1].distance(points[i]);
+        for (int pass = 0; pass < 3; ++pass) {
+            const NurbsCurve trial = nurbs_hermite::quintic({{0.0, 1.0, points[i - 1], points[i], starts[i].world_first * arcs[i],
+                ends[i].world_first * arcs[i], starts[i].world_second * (arcs[i] * arcs[i]), ends[i].world_second * (arcs[i] * arcs[i])}});
+            if (!trial.is_valid())
+                return false;
+            arcs[i] = trial.length();
+        }
+    }
+    speed = std::accumulate(arcs.begin(), arcs.end(), 0.0);
+    along.assign(points.size(), 0.0);
+    for (size_t i = 1; i < points.size(); ++i)
+        along[i] = i + 1 == points.size() ? 1.0 : along[i - 1] + arcs[i] / speed;
+    return true;
+}
+
+/// One curve of a section through its values at the arc parameters: a point with one jet joins C2.
+NurbsCurve section_track(const std::vector<Point>& values, const std::vector<double>& along, double speed,
+    const std::vector<SectionJet>& starts, const std::vector<SectionJet>& ends, Vector SectionJet::*first, Vector SectionJet::*second) {
+    std::vector<nurbs_hermite::QuinticSpan> spans;
+    for (size_t i = 1; i < values.size(); ++i)
+        spans.push_back({along[i - 1], along[i], values[i - 1], values[i], starts[i].*first * speed, ends[i].*first * speed,
+            starts[i].*second * (speed * speed), ends[i].*second * (speed * speed)});
+    return nurbs_hermite::quintic(spans);
+}
+
+/// Newton along the line of constant uv[axis] onto the zero set, as far as polish goes.
+bool polish_on_line(const SurfacePlaneField& field, Point& uv, int axis) {
+    double along = uv[1 - axis];
+    for (int iteration = 0; iteration < 8; ++iteration) {
+        double value, gu, gv;
+        if (axis == 0)
+            field.value_and_gradient(uv[0], along, value, gu, gv);
+        else
+            field.value_and_gradient(along, uv[1], value, gu, gv);
+        if (std::abs(value) <= std::min(1e-12, field.tolerance * 0.1)) {
+            uv[1 - axis] = along;
+            return true;
+        }
+        const double slope = axis == 0 ? gv : gu;
+        if (std::abs(slope) < 1e-14)
+            break;
+        along -= value / slope;
+    }
+    return false;
+}
+
+/// Nodes of a sixth order fit, chosen among samples until its measured gap is small enough. A sample's role is 0, 1 for a node, 2 for a node
+/// where the fit is not smooth. `fit` builds the fit on the nodes and gives their parameters, `gap` measures it at a parameter, `between`
+/// adds a sample before the one given.
+template <class Fit, class Gap, class Between>
+bool even_nodes(std::vector<int>& role, double enough, const Fit& fit, const Gap& gap, const Between& between) {
+    for (int pass = 0; pass < 24; ++pass) {
+        std::vector<size_t> nodes;
+        for (size_t i = 0; i < role.size(); ++i)
+            if (role[i])
+                nodes.push_back(i);
+        std::vector<double> along;
+        if (!fit(nodes, along))
+            return false;
+        // The parts each piece asks for: at sixth order the sixth root of its gap over the gap allowed.
+        std::vector<double> need(nodes.size(), 0.0);
+        bool fits = true;
+        for (size_t k = 1; k < nodes.size(); ++k) {
+            double off = 0.0;
+            for (double fraction : {0.25, 0.5, 0.75}) {
+                const double measured = gap(along[k - 1] + fraction * (along[k] - along[k - 1]));
+                off = std::isfinite(measured) ? std::max(off, measured) : std::numeric_limits<double>::infinity();
+            }
+            fits = fits && off <= enough;
+            need[k] = std::clamp(std::pow(off / enough, 1.0 / 6.0), 0.25, 8.0);
+        }
+        if (fits)
+            return true;
+        for (size_t last = nodes.size() - 1, first; last > 0; last = first) {
+            for (first = last - 1; role[nodes[first]] == 1;)
+                --first;
+            double total = 0.0;
+            bool off = false;
+            for (size_t k = first + 1; k <= last; ++k) {
+                total += need[k];
+                off = off || need[k] > 1.0;
+            }
+            if (!off)
+                continue;
+            const size_t parts = static_cast<size_t>(std::ceil(total * 1.1));
+            if (pass < 3 && parts <= nodes[last] - nodes[first]) {
+                // Between two creases the nodes move to where every piece carries the same share of the gap.
+                for (size_t k = first + 1; k < last; ++k)
+                    role[nodes[k]] = 0;
+                double before = 0.0;
+                for (size_t part = 1, k = first + 1; part < parts; ++part) {
+                    const double share = total * part / parts;
+                    for (; before + need[k] < share && k < last; ++k)
+                        before += need[k];
+                    const double within = std::min((share - before) / need[k], 1.0);
+                    if (const size_t node = nodes[k - 1] + std::llround((nodes[k] - nodes[k - 1]) * within); role[node] == 0)
+                        role[node] = 1;
+                }
+                continue;
+            }
+            // Then a piece still off is cut where it is, between two neighbours once no sample is left.
+            for (size_t k = last; k > first; --k) {
+                if (!(need[k] > 1.0))
+                    continue;
+                const size_t cuts = std::min(static_cast<size_t>(std::ceil(std::max(need[k], 2.0))), nodes[k] - nodes[k - 1]);
+                for (size_t cut = 1; cut < cuts; ++cut)
+                    role[nodes[k - 1] + (nodes[k] - nodes[k - 1]) * cut / cuts] = 1;
+                if (cuts > 1)
+                    continue;
+                if (!between(nodes[k]))
+                    return false;
+                role.insert(role.begin() + nodes[k], 1);
+            }
+        }
+    }
+    return false;
+}
+
+/// World curve and pcurve of a plane section as quintic pieces from its exact jets, sixth order where a spline through the samples is fourth.
+/// The pieces join C2, but where the pcurve crosses a knot of the surface, and take nodes until the lift keeps to the world curve.
+bool quintic_plane_piece(const SurfacePlaneField& field, std::vector<Point> uv, bool loop, NurbsCurve& crv3, NurbsCurve& pcurve) {
+    const NurbsSurface& surface = field.surface;
+    const double hair = 1e-9;
+    const auto apart = [hair](const Point& a, const Point& b) { return std::max(std::abs(a[0] - b[0]), std::abs(a[1] - b[1])) > hair; };
+    if (loop)
+        uv.back() = uv.front();
+    // 0 a sample, 1 a node of the fit, 2 a node where the pcurve is not smooth: an end, or a knot of the surface crossed.
+    std::vector<int> role(uv.size(), 0);
+    const std::array<std::vector<double>, 2> knots = {surface.get_span_vector(0), surface.get_span_vector(1)};
+    for (size_t i = 1; i < uv.size(); ++i)
+        for (int axis = 0; axis < 2; ++axis)
+            for (size_t k = 1; k + 1 < knots[axis].size(); ++k) {
+                const double before = uv[i - 1][axis] - knots[axis][k], after = uv[i][axis] - knots[axis][k];
+                if (after == 0.0)
+                    role[i] = 2;
+                if (!(before * after < 0.0))
+                    continue;
+                Point crossing = uv[i - 1] + (uv[i] - uv[i - 1]) * (before / (before - after));
+                const double chord = crossing[1 - axis];
+                crossing[axis] = knots[axis][k];
+                // A crossing is taken between its two samples only: near a tangency Newton can leave for another.
+                if (!polish_on_line(field, crossing, axis) ||
+                    std::abs(crossing[1 - axis] - chord) > std::abs(uv[i][1 - axis] - uv[i - 1][1 - axis]) + std::abs(before - after))
+                    continue;
+                uv.insert(uv.begin() + i, crossing);
+                role.insert(role.begin() + i, 2);
+            }
+    // Samples a hair apart are one, a crossing or the end kept: between them the fit would get a span of no length.
+    size_t kept = 0;
+    for (size_t i = 1; i < uv.size(); ++i) {
+        if (apart(uv[i], uv[kept]))
+            ++kept;
+        else if (kept == 0 || (role[i] != 2 && i + 1 != uv.size()))
+            continue;
+        uv[kept] = uv[i];
+        role[kept] = role[i];
+    }
+    uv.resize(kept + 1);
+    role.resize(kept + 1);
+    if (uv.size() < (loop ? 4u : 2u))
+        return false;
+    role.front() = role.back() = 2;
+    // The fit puts nodes where its error asks for them: a closed piece starts from four parts, or it has no chord to start from.
+    for (size_t part = 1; loop && part < 4; ++part)
+        if (const size_t node = (uv.size() - 1) * part / 4; role[node] == 0)
+            role[node] = 1;
+    double reach = 0.0;
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j) {
+            const Point point = surface.get_cv(i, j);
+            reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
+        }
+    // The plane as a surface: its point and derivatives in the order of evaluate, with no bending.
+    Vector across = field.pn.cross(std::abs(field.pn[0]) < 0.5 ? Vector(1.0, 0.0, 0.0) : Vector(0.0, 1.0, 0.0));
+    if (!across.normalize_self())
+        return false;
+    const std::vector<Vector> flat = {Vector(), field.pn.cross(across), Vector(), across, Vector(), Vector()};
+    // One-sided where the pcurve is not smooth: a rounding off the node towards the sample on that side.
+    const auto jet = [&](size_t node, int side, SectionJet& result) {
+        const Point& at = uv[node];
+        const Point& to = uv[node + side];
+        const bool crease = role[node] == 2;
+        const std::vector<Vector> s = surface.evaluate(crease ? std::nextafter(at[0], to[0]) : at[0],
+            crease ? std::nextafter(at[1], to[1]) : at[1], 2);
+        return s.size() == 6 && section_jet(s, flat, (s[3] * (to[0] - at[0]) + s[1] * (to[1] - at[1])) * side, result);
+    };
+    const auto fit = [&](const std::vector<size_t>& nodes, std::vector<double>& along) {
+        const size_t count = nodes.size();
+        std::vector<Point> points(count), values(count);
+        std::vector<SectionJet> starts(count), ends(count);
+        for (size_t k = 0; k < count; ++k) {
+            values[k] = uv[nodes[k]];
+            points[k] = field.point({values[k][0], values[k][1]});
+            if (k > 1 && role[nodes[k - 1]] == 1)
+                starts[k] = ends[k - 1];
+            else if (k > 0 && !jet(nodes[k - 1], 1, starts[k]))
+                return false;
+            if (k > 0 && !jet(nodes[k], -1, ends[k]))
+                return false;
+        }
+        double speed;
+        if (!section_arcs(points, starts, ends, along, speed))
+            return false;
+        crv3 = section_track(points, along, speed, starts, ends, &SectionJet::world_first, &SectionJet::world_second);
+        pcurve = section_track(values, along, speed, starts, ends, &SectionJet::a_first, &SectionJet::a_second);
+        return crv3.is_valid() && pcurve.is_valid();
+    };
+    const auto gap = [&](double t) {
+        const Point lifted = evaluate_valid_curve(pcurve, t);
+        return evaluate_valid_curve(crv3, t).distance(field.point({lifted[0], lifted[1]}));
+    };
+    // The middle of the chord of two neighbours, back on the section.
+    const auto between = [&](size_t index) {
+        Point middle = uv[index - 1] + (uv[index] - uv[index - 1]) * 0.5;
+        if (!field.polish(middle[0], middle[1]) || !apart(middle, uv[index - 1]) || !apart(middle, uv[index]))
+            return false;
+        uv.insert(uv.begin() + index, middle);
+        return true;
+    };
+    return even_nodes(role, traced_gap(field.tolerance, reach), fit, gap, between);
+}
+
 /// Refine intervals whose world and parameter-space fits disagree.
 bool refine_plane_fit(
     const SurfacePlaneField& field,
@@ -2897,22 +3186,8 @@ bool piece_curves(
         for (int axis = 0; axis < 2; ++axis) {
             if (!closed[axis] || (uv[axis] != bounds[2 * axis] && uv[axis] != bounds[2 * axis + 1]))
                 continue;
-            double along = uv[1 - axis];
-            for (int iteration = 0; iteration < 8; ++iteration) {
-                double value, gu, gv;
-                if (axis == 0)
-                    field.value_and_gradient(uv[0], along, value, gu, gv);
-                else
-                    field.value_and_gradient(along, uv[1], value, gu, gv);
-                if (std::abs(value) <= std::min(1e-12, field.tolerance * 0.1)) {
-                    uv[1 - axis] = along;
-                    return true;
-                }
-                const double slope = axis == 0 ? gv : gu;
-                if (std::abs(slope) < 1e-14)
-                    break;
-                along -= value / slope;
-            }
+            if (polish_on_line(field, uv, axis))
+                return true;
         }
         return false;
     };
@@ -2923,6 +3198,9 @@ bool piece_curves(
         if (!field.polish(pts_uv[i][0], pts_uv[i][1]))
             throw std::runtime_error("Native plane section point did not converge");
     }
+    // Near a tangency the jets are not to be had, and the spline through the samples stands.
+    if (quintic_plane_piece(field, pts_uv, piece.is_loop, crv3, pcurve))
+        return true;
     for (int iteration = 0; iteration < 20 && pts_uv.size() <= 32768; ++iteration) {
         pts_uv.erase(std::unique(pts_uv.begin(), pts_uv.end(), [](const Point& a, const Point& b) {
             return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
@@ -7388,9 +7666,15 @@ static NurbsCurve quintic_run_proposal(const PullbackRun& samples, const std::ve
         }
     }
     const auto jets = [&](size_t i, size_t toward, Vector& first, Vector& second) {
-        const double t = std::nextafter(parameters[i], parameters[toward]);
-        const double u = std::nextafter(values[i][0], values[toward][0]);
-        const double v = std::nextafter(values[i][1], values[toward][1]);
+        // Off the ends, the chart cuts and the world's knots the pullback is smooth: one jet serves both sides and the join is C2.
+        const bool crease = i == 0 || i + 1 == parameters.size() ||
+            std::find(cuts.begin(), cuts.end(), parameters[i]) != cuts.end() ||
+            std::find(world.m_nurbsknot.begin(), world.m_nurbsknot.end(), parameters[i]) != world.m_nurbsknot.end();
+        // One-sided at a crease, a little inside the span: a crossing sample can sit a rounding beyond its knot.
+        const double inside = crease ? 1e-10 : 0.0;
+        const double t = parameters[i] + (parameters[toward] - parameters[i]) * inside;
+        const double u = values[i][0] + (values[toward][0] - values[i][0]) * inside;
+        const double v = values[i][1] + (values[toward][1] - values[i][1]) * inside;
         const auto w = world.evaluate(t, 2), s = surface.evaluate(u, v, 2);
         if (w.size() < 3 || s.size() < 6)
             return false;
@@ -7554,33 +7838,28 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
             const Point point = world.get_cv(i);
             reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
         }
-        const double tight = std::min(tolerance, std::max(tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon()));
-        // The certificate proves the model tolerance and stays mandatory; the measured gap only chooses how many spans are enough.
-        const auto gap = [&surface, &world](const NurbsCurve& candidate) {
+        const double enough = fit_gap(tolerance, reach);
+        // The certificate proves the model tolerance and stays mandatory; the measured gap only chooses which spans are halved.
+        const auto gap = [&surface, &world](const NurbsCurve& candidate, double from, double to) {
             double worst = 0.0;
-            const std::vector<double> spans = candidate.get_span_vector();
-            for (size_t i = 1; i < spans.size(); ++i)
-                for (int k = 0; k < 8; ++k) {
-                    const double t = spans[i - 1] + (spans[i] - spans[i - 1]) * (k + 0.5) / 8.0;
-                    const Point uv = candidate.point_at(t);
-                    worst = std::max(worst, surface.point_at(uv[0], uv[1]).distance(world.point_at(t)));
-                }
+            for (int k = 0; k < 8; ++k) {
+                const double t = from + (to - from) * (k + 0.5) / 8.0;
+                const Point uv = candidate.point_at(t);
+                worst = std::max(worst, surface.point_at(uv[0], uv[1]).distance(world.point_at(t)));
+            }
             return worst;
         };
-        // From a few given samples, so that the measured gap and not the marching step sets the size of the curve.
-        PullbackRun run;
-        const size_t stride = std::max<size_t>((samples.ts.size() - 1) / 2, 1);
-        for (size_t i = 0; i < samples.ts.size(); i += stride) {
-            run.ts.push_back(samples.ts[i]);
-            run.uv.push_back(samples.uv[i]);
-        }
-        if (run.ts.back() != samples.ts.back()) {
-            run.ts.push_back(samples.ts.back());
-            run.uv.push_back(samples.uv.back());
-        }
+        // A node between two given samples is projected from them, so its seed is never far from the curve.
+        const auto at = [&](double t) {
+            const size_t i = static_cast<size_t>(std::lower_bound(samples.ts.begin(), samples.ts.end(), t) - samples.ts.begin());
+            if (samples.ts[i] == t)
+                return samples.uv[i];
+            const double f = (t - samples.ts[i - 1]) / (samples.ts[i] - samples.ts[i - 1]);
+            return pullback_proposal(surface, world, t, samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * f, samples.uv[i - 1], samples.uv[i]);
+        };
         // The parameters are only as smooth as the surface's knots, so the spans end where the curve crosses them.
         const std::vector<double> knots = pullback_breaks(surface, world, tolerance);
-        // The fit breaks at the samples, the world's knots and the crossings: any two a hair apart are one,
+        // The fit breaks at the world's knots and the crossings: any two a hair apart are one,
         // the world's own knot kept, or the fit gets a span of no length.
         const double hair = 1e-9 * (world.domain_end() - world.domain_start());
         const std::vector<double>& world_knots = world.m_nurbsknot;
@@ -7598,38 +7877,41 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
             }
             breaks.push_back(t);
         }
-        for (int pass = 0; pass < 7 && run.ts.size() <= 129; ++pass) {
-            PullbackRun apart;
-            for (size_t i = 0; i < run.ts.size(); ++i) {
-                const bool end = i == 0 || i + 1 == run.ts.size();
-                const bool near = std::any_of(breaks.begin(), breaks.end(), [&](double knot) {
-                    return knot != run.ts[i] && std::abs(knot - run.ts[i]) <= hair;
-                });
-                if (end || !near) {
-                    apart.ts.push_back(run.ts[i]);
-                    apart.uv.push_back(run.uv[i]);
-                }
-            }
-            const NurbsCurve proposal = quintic_run_proposal(apart, breaks, surface, world);
-            if (proposal.is_valid() && proposal.domain() == world.domain() && gap(proposal) <= tight &&
-                curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
-                    curve_surface_intersection::ParameterMatch::Matched)
-                return proposal;
-            PullbackRun finer;
-            finer.ts.push_back(run.ts.front());
-            finer.uv.push_back(run.uv.front());
-            for (size_t i = 1; i < run.ts.size(); ++i) {
-                const double middle = std::midpoint(run.ts[i - 1], run.ts[i]);
-                if (middle == run.ts[i - 1] || middle == run.ts[i])
-                    break;
-                finer.ts.push_back(middle);
-                finer.uv.push_back(pullback_proposal(surface, world, middle, run.uv[i - 1] + (run.uv[i] - run.uv[i - 1]) * .5, run.uv[i - 1], run.uv[i]));
-                finer.ts.push_back(run.ts[i]);
-                finer.uv.push_back(run.uv[i]);
-            }
-            if (finer.ts.size() != 2 * run.ts.size() - 1)
+        // From the ends and the breaks alone, so that the measured gap and not the marching step sets the size of the curve.
+        PullbackRun run;
+        run.ts.push_back(samples.ts.front());
+        run.ts.insert(run.ts.end(), breaks.begin(), breaks.end());
+        run.ts.push_back(samples.ts.back());
+        for (double t : run.ts)
+            run.uv.push_back(at(t));
+        for (int pass = 0; pass < 16 && run.ts.size() <= 129; ++pass) {
+            const NurbsCurve proposal = quintic_run_proposal(run, breaks, surface, world);
+            if (!proposal.is_valid() || proposal.domain() != world.domain())
                 break;
-            run = std::move(finer);
+            const std::vector<double> spans = proposal.get_span_vector();
+            std::vector<double> halved;
+            for (size_t i = 1; i < spans.size(); ++i)
+                if (gap(proposal, spans[i - 1], spans[i]) > enough)
+                    halved.push_back(std::midpoint(spans[i - 1], spans[i]));
+            if (halved.empty()) {
+                if (curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
+                        curve_surface_intersection::ParameterMatch::Matched)
+                    return proposal;
+                // The gap is probed, the certificate is not: what it refuses is halved everywhere.
+                for (size_t i = 1; i < spans.size(); ++i)
+                    halved.push_back(std::midpoint(spans[i - 1], spans[i]));
+            }
+            bool room = true;
+            for (double t : halved) {
+                const size_t i = static_cast<size_t>(std::lower_bound(run.ts.begin(), run.ts.end(), t) - run.ts.begin());
+                room = room && i > 0 && i < run.ts.size() && t - run.ts[i - 1] > hair && run.ts[i] - t > hair;
+                if (!room)
+                    break;
+                run.uv.insert(run.uv.begin() + i, at(t));
+                run.ts.insert(run.ts.begin() + i, t);
+            }
+            if (!room)
+                break;
         }
     }
     NurbsCurve first_fit, final_fit;
@@ -11577,100 +11859,57 @@ bool certified_surface_fit(const SurfaceSurfaceField& field,
                field.tolerance) == ParameterMatch::Matched;
 }
 
-/// First and second derivatives of a section and its two pcurves along the world arc.
-struct SectionJet {
-    Vector world_first, world_second, a_first, a_second, b_first, b_second;
-};
-
-/// The two surfaces fix the tangent and each the curvature along its own normal, so no neighbouring sample is needed.
 bool section_jet(const SurfaceSurfaceField& field, const std::array<double, 4>& x, const Vector& forward, SectionJet& jet) {
-    const std::vector<Vector> a = field.a.evaluate(field.wrap(0, x[0]), field.wrap(1, x[1]), 2);
-    const std::vector<Vector> b = field.b.evaluate(field.wrap(2, x[2]), field.wrap(3, x[3]), 2);
-    if (a.size() != 6 || b.size() != 6)
-        return false;
-    const auto in_surface = [](const Vector& su, const Vector& sv, const Vector& along, Vector& result) {
-        const double uu = su.dot(su), uv = su.dot(sv), vv = sv.dot(sv);
-        const double determinant = uu * vv - uv * uv;
-        if (!(determinant > 0.0))
-            return false;
-        const double p = along.dot(su), q = along.dot(sv);
-        result = Vector((p * vv - q * uv) / determinant, (q * uu - p * uv) / determinant, 0.0);
-        return true;
-    };
-    const auto bending = [](const std::vector<Vector>& s, const Vector& first) {
-        return s[5] * (first[0] * first[0]) + s[4] * (2.0 * first[0] * first[1]) + s[2] * (first[1] * first[1]);
-    };
-    Vector na = a[3].cross(a[1]);
-    Vector nb = b[3].cross(b[1]);
-    if (!na.normalize_self() || !nb.normalize_self())
-        return false;
-    Vector tangent = na.cross(nb);
-    if (tangent.magnitude() < 1e-3 || !tangent.normalize_self())
-        return false;
-    if (tangent.dot(forward) < 0.0)
-        tangent *= -1.0;
-    Vector a_first, b_first, a_second, b_second;
-    if (!in_surface(a[3], a[1], tangent, a_first) || !in_surface(b[3], b[1], tangent, b_first))
-        return false;
-    const Vector a_bend = bending(a, a_first);
-    const Vector b_bend = bending(b, b_first);
-    const Vector across_b = nb.cross(tangent);
-    const Vector across_a = tangent.cross(na);
-    const double volume = na.dot(across_b);
-    if (std::abs(volume) < 1e-6)
-        return false;
-    const Vector second = (across_b * a_bend.dot(na) + across_a * b_bend.dot(nb)) * (1.0 / volume);
-    if (!in_surface(a[3], a[1], second - a_bend, a_second) || !in_surface(b[3], b[1], second - b_bend, b_second))
-        return false;
-    jet = {tangent, second, a_first, a_second, b_first, b_second};
-    return true;
+    return section_jet(field.a.evaluate(field.wrap(0, x[0]), field.wrap(1, x[1]), 2),
+        field.b.evaluate(field.wrap(2, x[2]), field.wrap(3, x[3]), 2), forward, jet);
 }
 
-/// A quintic Bezier per sample interval from the exact section jets: sixth order, where a spline through the points is fourth.
+/// A quintic piece per sample interval from the exact section jets: sixth order, where a spline through the points is fourth.
+/// The parameters become the arc, so that one jet serves both sides of an inner sample and the join is C2.
 bool quintic_section(
     const SurfaceSurfaceField& field,
     const std::vector<std::array<double, 4>>& samples,
-    const std::vector<double>& parameters,
+    std::vector<double>& parameters,
     std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple
 ) {
-    std::vector<nurbs_hermite::QuinticSpan> world, first, second;
     const double inside = 1e-10;
-    const auto world_point = [&field](const std::array<double, 4>& x) {
-        const std::array<double, 3> p = field.point(x);
-        return Point(p[0], p[1], p[2]);
-    };
-    for (size_t i = 1; i < samples.size(); ++i) {
-        std::array<double, 4> head = samples[i - 1], tail = samples[i];
-        // one-sided at a crease: a little inside the interval
-        for (int k = 0; k < 4; ++k) {
-            head[k] += (samples[i][k] - samples[i - 1][k]) * inside;
-            tail[k] -= (samples[i][k] - samples[i - 1][k]) * inside;
-        }
-        const Point p0 = world_point(samples[i - 1]), p1 = world_point(samples[i]);
-        const Vector forward = p1 - p0;
-        SectionJet s, e;
-        if (!section_jet(field, head, forward, s) || !section_jet(field, tail, forward, e))
-            return false;
-        const double t0 = parameters[i - 1], t1 = parameters[i];
-        // The three curves share t only if t runs with the true arc: a chord's error here is a fourth order error in the fit.
-        double arc = forward.magnitude();
-        for (int pass = 0; pass < 3; ++pass) {
-            const double speed = arc / (t1 - t0);
-            const NurbsCurve trial = nurbs_hermite::quintic({{t0, t1, p0, p1, s.world_first * speed, e.world_first * speed,
-                s.world_second * (speed * speed), e.world_second * (speed * speed)}});
-            if (!trial.is_valid())
-                return false;
-            arc = trial.length();
-        }
-        const double speed = arc / (t1 - t0), bend = speed * speed;
-        world.push_back({t0, t1, p0, p1, s.world_first * speed, e.world_first * speed, s.world_second * bend, e.world_second * bend});
-        first.push_back({t0, t1, Point(samples[i - 1][0], samples[i - 1][1], 0.0), Point(samples[i][0], samples[i][1], 0.0),
-            s.a_first * speed, e.a_first * speed, s.a_second * bend, e.a_second * bend});
-        second.push_back({t0, t1, Point(samples[i - 1][2], samples[i - 1][3], 0.0), Point(samples[i][2], samples[i][3], 0.0),
-            s.b_first * speed, e.b_first * speed, s.b_second * bend, e.b_second * bend});
+    const size_t count = samples.size();
+    std::vector<Point> points(count), first(count), second(count);
+    for (size_t i = 0; i < count; ++i) {
+        const std::array<double, 3> p = field.point(samples[i]);
+        points[i] = Point(p[0], p[1], p[2]);
+        first[i] = Point(samples[i][0], samples[i][1], 0.0);
+        second[i] = Point(samples[i][2], samples[i][3], 0.0);
     }
-    triple = {nurbs_hermite::quintic(world), nurbs_hermite::quintic(first), nurbs_hermite::quintic(second)};
-    return std::get<0>(triple).is_valid() && std::get<1>(triple).is_valid() && std::get<2>(triple).is_valid();
+    std::vector<SectionJet> starts(count), ends(count);
+    for (size_t i = 1; i < count; ++i) {
+        const Vector forward = points[i] - points[i - 1];
+        std::array<double, 4> head = samples[i - 1], tail = samples[i];
+        // one-sided at an end, which may lie on a crease: a little inside the interval
+        for (int k = 0; k < 4; ++k) {
+            if (i == 1)
+                head[k] += (samples[i][k] - samples[i - 1][k]) * inside;
+            if (i + 1 == count)
+                tail[k] -= (samples[i][k] - samples[i - 1][k]) * inside;
+        }
+        if (i > 1)
+            starts[i] = ends[i - 1];
+        else if (!section_jet(field, head, forward, starts[i]))
+            return false;
+        if (!section_jet(field, tail, forward, ends[i]))
+            return false;
+    }
+    std::vector<double> along;
+    double speed;
+    if (!section_arcs(points, starts, ends, along, speed))
+        return false;
+    triple = {section_track(points, along, speed, starts, ends, &SectionJet::world_first, &SectionJet::world_second),
+        section_track(first, along, speed, starts, ends, &SectionJet::a_first, &SectionJet::a_second),
+        section_track(second, along, speed, starts, ends, &SectionJet::b_first, &SectionJet::b_second)};
+    if (!std::get<0>(triple).is_valid() || !std::get<1>(triple).is_valid() || !std::get<2>(triple).is_valid())
+        return false;
+    parameters = std::move(along);
+    return true;
 }
 
 /// Section triple of one seam-free piece with adaptive paired-lift residual checks.
@@ -11694,6 +11933,7 @@ bool piece_triple(
         return false;
 
     SurfaceSurfaceField refined = field;
+    double enough = 0.0;
     if (field.chart_pieces) {
         // Samples far tighter than the tolerance: the volume under a trim moves with the trim's error times its reach.
         double reach = 0.0;
@@ -11704,6 +11944,7 @@ bool piece_triple(
                     reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
                 }
         refined.conv_tol = std::min(field.conv_tol, std::max(field.tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon()));
+        enough = traced_gap(field.tolerance, reach);
     }
     const std::array<double, 3> dummy = {0.0, 0.0, 0.0};
     for (size_t i = 0; i < piece_pts.size(); ++i) {
@@ -11726,20 +11967,36 @@ bool piece_triple(
             throw std::runtime_error("Native surface section point could not be refined");
 
     }
-    // The fit puts samples where its error asks for them: start from few.
-    if (!field.chart_pieces)
-        refine_quad_piece(refined, piece_pts);
-    const std::vector<std::array<double, 4>> marched = piece_pts;
-    if (field.chart_pieces && piece_pts.size() > 17) {
-        std::vector<std::array<double, 4>> sparse;
-        const size_t stride = (piece_pts.size() - 1) / 16;
-        for (size_t i = 0; i + stride < piece_pts.size(); i += stride)
-            sparse.push_back(piece_pts[i]);
-        sparse.push_back(piece_pts.back());
-        piece_pts = std::move(sparse);
+    if (field.chart_pieces) {
+        // The fit puts nodes where its error asks for them, among the marched samples: a closed piece starts from four parts.
+        std::vector<std::array<double, 4>> samples = piece_pts;
+        samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+        std::vector<int> role(samples.size(), 0);
+        role.front() = role.back() = 2;
+        for (size_t part = 1; piece_loop && part < 4; ++part)
+            if (const size_t node = (samples.size() - 1) * part / 4; role[node] == 0)
+                role[node] = 1;
+        const auto fit = [&](const std::vector<size_t>& nodes, std::vector<double>& along) {
+            std::vector<std::array<double, 4>> picked;
+            for (size_t node : nodes)
+                picked.push_back(samples[node]);
+            return quintic_section(refined, picked, along, triple);
+        };
+        const auto between = [&](size_t index) {
+            std::array<double, 4> middle;
+            for (int k = 0; k < 4; ++k)
+                middle[k] = std::midpoint(samples[index - 1][k], samples[index][k]);
+            if (!refined.correct(middle, false, dummy, dummy) || middle == samples[index - 1] || middle == samples[index])
+                return false;
+            samples.insert(samples.begin() + index, middle);
+            return true;
+        };
+        if (samples.size() > (piece_loop ? 3u : 1u) &&
+            even_nodes(role, enough, fit, [&](double t) { return surface_fit_error(field, triple, t); }, between))
+            return true;
     }
-    bool jets = field.chart_pieces;
-    bool chord_refined = !field.chart_pieces;
+    // Near a tangency the jets are not to be had, and the spline through the samples stands.
+    refine_quad_piece(refined, piece_pts);
     for (int iteration = 0; iteration < 20 && piece_pts.size() <= 32768; ++iteration) {
         piece_pts.erase(std::unique(piece_pts.begin(), piece_pts.end()), piece_pts.end());
         if (piece_pts.size() < (piece_loop ? 4u : 2u))
@@ -11760,17 +12017,8 @@ bool piece_triple(
         }
         try {
             ssi_diagnostics::Timer interpolation(ssi_diagnostics::Stage::Interpolation);
-            jets = jets && quintic_section(refined, piece_pts, parameters, triple);
-            if (!jets && !chord_refined) {
-                piece_pts = marched;
-                refine_quad_piece(refined, piece_pts);
-                chord_refined = true;
-                iteration = 0;
-                continue;
-            }
-            if (!jets)
-                triple = {fit_surface_track(pts3, parameters, piece_loop), fit_surface_track(pts_pa, parameters, piece_loop),
-                    fit_surface_track(pts_pb, parameters, piece_loop)};
+            triple = {fit_surface_track(pts3, parameters, piece_loop), fit_surface_track(pts_pa, parameters, piece_loop),
+                fit_surface_track(pts_pb, parameters, piece_loop)};
         } catch (section_fit::Error& error) {
             error.world_samples = pts3;
             error.pcurve_samples = pts_pa;
@@ -11778,8 +12026,7 @@ bool piece_triple(
             throw;
         }
         ssi_diagnostics::Timer refinement(ssi_diagnostics::Stage::Refinement);
-        // Sixth order reaches a trim the volume can not feel; the spline, near a tangency, stops at the tolerance's own share.
-        if (!refine_surface_fit(refined, triple, parameters, piece_pts, jets ? 0.02 : 0.5))
+        if (!refine_surface_fit(refined, triple, parameters, piece_pts, 0.5))
             return true;
     }
     if (certified_surface_fit(field, triple))

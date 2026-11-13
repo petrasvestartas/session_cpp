@@ -3832,3 +3832,79 @@ MINI_TEST("Intersection", "Original Collapsed Pole Endpoints Keep One Sided Meri
     }
 }
 } // namespace session_cpp
+
+namespace session_cpp {
+MINI_TEST("Intersection", "Tilted Plane Through Sphere Keeps Small Pcurves") {
+    // using session_cpp::BRep;
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    const double tolerance = 1e-7;
+    const NurbsSurface sphere = BRep::create_sphere(2).m_surfaces[0];
+    const NurbsSurface plane = bilinear(Point(-3, -3, -0.9), Point(-3, 3, 0.3), Point(3, -3, -0.2), Point(3, 3, 1.0));
+    const auto sections = Intersection::surface_surface(sphere, plane, tolerance);
+    MINI_CHECK(!sections.empty());
+    int control_points = 0;
+    for (const auto& [world, on_sphere, on_plane] : sections) {
+        control_points += on_sphere.cv_count();
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, on_sphere, sphere, tolerance) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        for (int i = 0; i <= 64; ++i) {
+            const double t = world.domain_start() + (world.domain_end() - world.domain_start()) * i / 64.0;
+            const Point uv = on_sphere.point_at(t);
+            MINI_CHECK(sphere.point_at(uv[0], uv[1]).distance(world.point_at(t)) <= tolerance);
+        }
+    }
+    MINI_CHECK(control_points <= 300);
+}
+
+MINI_TEST("Intersection", "Tilted Plane Through Torus Keeps Small Pcurves") {
+    // using session_cpp::BRep;
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+    const double tolerance = 1e-7;
+    const NurbsSurface torus = BRep::create_torus(1.0, 0.3).m_surfaces[0];
+    const NurbsSurface plane = bilinear(Point(-3, -3, -0.9), Point(-3, 3, 0.3), Point(3, -3, -0.2), Point(3, 3, 1.0));
+    const auto sections = Intersection::surface_surface(torus, plane, tolerance);
+    MINI_CHECK(!sections.empty());
+    int control_points = 0;
+    for (const auto& [world, on_torus, on_plane] : sections) {
+        control_points += on_torus.cv_count();
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, on_torus, torus, tolerance) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(world, on_plane, plane, tolerance) ==
+                   curve_surface_intersection::ParameterMatch::Matched);
+        for (int i = 0; i <= 64; ++i) {
+            const double t = world.domain_start() + (world.domain_end() - world.domain_start()) * i / 64.0;
+            const Point uv = on_torus.point_at(t);
+            MINI_CHECK(torus.point_at(uv[0], uv[1]).distance(world.point_at(t)) <= tolerance);
+        }
+    }
+    MINI_CHECK(control_points <= 600);
+}
+
+MINI_TEST("Intersection", "Marched Section Keeps Small Curves") {
+    // using session_cpp::BRep;
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    BRep torus = BRep::create_torus(0.8 * 0.94543090290389953, 0.25 * 0.84966489756479857);
+    BRep cone = BRep::create_cone(0.6 * 1.316637886594981, 1.0689392365980894);
+    cone.transform(Xform::translation(0.33642515733372419, -0.15612716018222272, -0.23085594603326173)
+        * Xform::rotation(Vector(-0.1271026972681284, -0.51114680897444487, -0.38804439967498183), -2.2317521455697715));
+    int control_points = 0;
+    for (const NurbsSurface& side : cone.m_surfaces) {
+        if (side.is_planar(nullptr, 1e-9))
+            continue;
+        // Three control points for each span of a quintic joined C2, where pieces that only meet take five.
+        for (const auto& [world, on_torus, on_cone] : Intersection::surface_surface(torus.m_surfaces[0], side, 1e-8, true)) {
+            control_points += world.cv_count();
+            for (const NurbsCurve* curve : {&world, &on_torus, &on_cone})
+                MINI_CHECK(curve->cv_count() <= 3 * static_cast<int>(curve->get_span_vector().size()));
+        }
+    }
+    MINI_CHECK(control_points > 0 && control_points <= 800);
+}
+} // namespace session_cpp
