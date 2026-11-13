@@ -2856,10 +2856,10 @@ static double fit_gap(double tolerance, double reach) {
 }
 
 // The same for a traced section, whose samples are within a ten thousandth of the tolerance or what the coordinates resolve: its fit
-// is asked for no less than 64 times that.
+// is asked for no less than 16 times that. At 64 times a drill through a wall of radius 2000 loses 1.8e-6 of its volume, at 16 times 5.6e-7.
 static double traced_gap(double tolerance, double reach) {
     const double sampled = std::max(tolerance * 1e-4, reach * 64.0 * std::numeric_limits<double>::epsilon());
-    return std::min(tolerance, std::max(fit_gap(tolerance, reach), 64.0 * sampled));
+    return std::min(tolerance, std::max(fit_gap(tolerance, reach), 16.0 * sampled));
 }
 
 /// First and second derivatives of a section and its two pcurves along the world arc.
