@@ -6,6 +6,7 @@
 #include "nurbssurface.h"
 #include "curve_self_intersection.h"
 #include <array>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -39,8 +40,21 @@ struct SelfIntersectionError : std::invalid_argument {
     double tolerance;
     SelfIntersectionError(const NurbsCurve& geometry, const NurbsCurve& uv,
         const curve_self_intersection::Result& result, size_t index, int edge, int identity, double tol)
-        : std::invalid_argument(result.failure), world(geometry), pcurve(uv), events(result),
+        : std::invalid_argument(describe(uv, result, edge, identity, tol)), world(geometry), pcurve(uv), events(result),
           source(index), source_edge(edge), section(identity), tolerance(tol) {}
+
+    /// The failure with the curve it is about: which source, its shape, how far the search got and where it stopped.
+    static std::string describe(const NurbsCurve& uv, const curve_self_intersection::Result& result, int edge, int identity, double tol) {
+        std::ostringstream text;
+        text.precision(17);
+        text << result.failure << "; " << (edge >= 0 ? "edge " : "section ") << (edge >= 0 ? edge : identity)
+             << ", pcurve degree " << uv.degree() << (uv.is_rational() ? " rational, " : ", ") << uv.cv_count() << " control points over ["
+             << uv.domain_start() << ", " << uv.domain_end() << "], tolerance " << tol << ", " << result.cells << " cells";
+        if (result.has_failure_pair)
+            text << ", stopped at depth " << result.failure_depth << " on [" << result.failure_pair[0] << ", " << result.failure_pair[1]
+                 << "] against [" << result.failure_pair[2] << ", " << result.failure_pair[3] << "]";
+        return text.str();
+    }
 };
 
 struct DomainError : std::invalid_argument {
