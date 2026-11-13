@@ -12383,6 +12383,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
             surface_section::extrusion_plane(other, surface_mid_plane(planar), tolerance);
         if (!exact)
             exact = surface_section::ruling_plane(other, surface_mid_plane(planar), tolerance);
+        // Across the axis of a cone, sphere or torus the section is one of the surface's own circles: taken as that circle it is the rim it may lie on, bit for bit, where a circle computed afresh is a rounding off it.
+        if (!exact)
+            exact = iso_plane_sections(other, surface_mid_plane(planar), tolerance);
         if (!exact)
             continue;
         std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;

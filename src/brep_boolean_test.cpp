@@ -2030,6 +2030,33 @@ MINI_TEST("BRep Native Boolean", "Cone Arc From Rim To Rim Is No Loop") {
     five_operation_identities(cone, block);
 }
 
+MINI_TEST("BRep Native Boolean", "Round Caps Flush On Box Faces") {
+    // OCCT tests/boolean/bop*_simple ZN5-like and ZF7: a cylinder and a frustum standing in a box, both caps in its faces. A witness of the box face lies in the cap's plane outside the cap, and the frustum's rim is the section itself.
+    const BRep box = BRep::create_box(4, 4, 4).transformed(Xform::translation(2, 2, 2));
+    const std::array<BRep, 2> solids = {BRep::create_cylinder(1, 4), BRep::create_frustum(1, 0.5, 4)};
+    const std::array<double, 2> inner = {Tolerance::PI * 4, Tolerance::PI * 4 * (1 + 0.5 + 0.25) / 3};
+    for (size_t i = 0; i < solids.size(); ++i) {
+        const BRep solid = solids[i].transformed(Xform::translation(2, 2, 0));
+        const BRep joined = box.boolean_union(solid), common = box.boolean_intersection(solid), cut = box.boolean_difference(solid);
+        MINI_CHECK(joined.is_valid() && joined.is_solid() && std::abs(joined.volume_exact() - 64) < 1e-6);
+        MINI_CHECK(common.is_valid() && common.is_solid() && std::abs(common.volume_exact() - inner[i]) < 1e-6);
+        MINI_CHECK(cut.is_valid() && cut.is_solid() && std::abs(cut.volume_exact() - (64 - inner[i])) < 1e-6);
+        MINI_CHECK(solid.boolean_difference(box).face_count() == 0);
+    }
+}
+
+MINI_TEST("BRep Native Boolean", "Frustum Standing On A Box") {
+    // OCCT tests/boolean/bop*_simple/ZF5: box b1 4 4 4; pcone b2 1 0.5 2; ttranslate b2 2 2 4. The base lies in the top face: nothing in common, one solid joined.
+    const BRep box = BRep::create_box(4, 4, 4).transformed(Xform::translation(2, 2, 2));
+    const BRep frustum = BRep::create_frustum(1, 0.5, 2).transformed(Xform::translation(2, 2, 4));
+    const double above = Tolerance::PI * 2 * (1 + 0.5 + 0.25) / 3;
+    const BRep joined = box.boolean_union(frustum), cut = box.boolean_difference(frustum), rest = frustum.boolean_difference(box);
+    MINI_CHECK(box.boolean_intersection(frustum).face_count() == 0);
+    MINI_CHECK(joined.is_valid() && joined.is_solid() && joined.solid_count() == 1 && std::abs(joined.volume_exact() - (64 + above)) < 1e-6);
+    MINI_CHECK(cut.is_valid() && cut.is_solid() && std::abs(cut.volume_exact() - 64) < 1e-6);
+    MINI_CHECK(rest.is_valid() && rest.is_solid() && std::abs(rest.volume_exact() - above) < 1e-6);
+}
+
 MINI_TEST("BRep Native Boolean", "Frustum Across A Cylinder") {
     // OCCT tests/boolean/bop*_simple/ZK5: pcylinder b1 4 8; pcone b2 2 1 10; ttranslate b2 0 0 -1; trotate b2 0 0 4 0 1 0 90.
     const BRep cylinder = BRep::create_cylinder(4, 8);

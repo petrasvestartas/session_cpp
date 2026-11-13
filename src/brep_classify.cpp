@@ -143,11 +143,32 @@ bool append_hit(RayResult& result, const BRep& brep, int face,
     return true;
 }
 
-void intersect_face(RayResult& result, const BRep& brep, int face, const RayFrame& frame) {
+void intersect_face(RayResult& result, const BRep& brep, int face, const RayFrame& frame, const Vector* grazed = nullptr) {
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
     surface_ray::Options options;
     options.include_origin = true;
-    const auto intersections = surface_ray::intersect(surface, frame.origin, frame.direction, frame.tolerance, options);
+    // The origin lies on this face's surface outside its trim: that root is no hit, and at distance zero it can not be isolated. The ray starts where it has left the surface, unless it runs too flat along it to say where that is.
+    double advance = 0.0;
+    if (grazed) {
+        Vector unit = frame.direction;
+        const double across = unit.normalize_self() ? std::abs(unit.dot(*grazed)) : 0.0;
+        if (across < 0.1) {
+            result.complete = false;
+            result.failure = "Unresolved ray along the surface of face " + std::to_string(face);
+            result.unresolved_face = face;
+            return;
+        }
+        advance = 64.0 * frame.tolerance / across;
+    }
+    Vector step = frame.direction;
+    step.normalize_self();
+    auto intersections = surface_ray::intersect(surface, advance > 0.0 ? frame.origin + step * advance : frame.origin,
+        frame.direction, frame.tolerance, options);
+    for (auto& root : intersections.roots) {
+        root.distance += advance;
+        root.distance_enclosure[0] += advance;
+        root.distance_enclosure[1] += advance;
+    }
     if (!intersections.complete) {
         result.complete = false;
         result.failure = "Unresolved ray on face " + std::to_string(face) + ": " + intersections.failure;
@@ -230,7 +251,7 @@ bool near_edge(const BRep& brep, int face, const Point& query, double tolerance)
     return false;
 }
 
-State boundary_state(const BRep& brep, const Point& query, double tolerance) {
+State boundary_state(const BRep& brep, const Point& query, double tolerance, std::vector<std::pair<int, Vector>>* grazed = nullptr) {
     const std::vector<bool> active = active_faces(brep);
     for (int face = 0; face < brep.face_count(); ++face) {
         const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
@@ -250,6 +271,9 @@ State boundary_state(const BRep& brep, const Point& query, double tolerance) {
             return State::Boundary;
         if (trim == State::Unknown)
             return State::Unknown;
+        Vector normal = values[1].cross(values[2]);
+        if (grazed && normal.normalize_self())
+            grazed->push_back({face, normal});
     }
     return State::Outside;
 }
@@ -320,6 +344,26 @@ RayResult ray(const BRep& brep, const Point& origin, const Vector& direction, do
     return result;
 }
 
+namespace {
+/// The ray of `ray` from a point that lies on the surfaces of the grazed faces outside their trims.
+RayResult grazing_ray(const BRep& brep, const Point& origin, const Vector& direction, double tolerance,
+    const std::vector<std::pair<int, Vector>>& grazed) {
+    const RayFrame frame = {origin, direction, tolerance};
+    RayResult result;
+    const std::vector<bool> active = active_faces(brep);
+    for (int face = 0; face < brep.face_count(); ++face) {
+        if (!active[face])
+            continue;
+        const auto found = std::find_if(grazed.begin(), grazed.end(), [face](const auto& item) { return item.first == face; });
+        intersect_face(result, brep, face, frame, found == grazed.end() ? nullptr : &found->second);
+    }
+    std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
+        return a.distance < b.distance;
+    });
+    return result;
+}
+}
+
 State point(const BRep& brep, const Point& query, double tolerance) {
     check_tolerance(tolerance);
     if (!finite(query))
@@ -328,7 +372,8 @@ State point(const BRep& brep, const Point& query, double tolerance) {
         return State::Outside;
     if (!brep.is_solid())
         throw std::invalid_argument("BRep solid classification requires closed oriented solids");
-    const State boundary = boundary_state(brep, query, tolerance);
+    std::vector<std::pair<int, Vector>> grazed;
+    const State boundary = boundary_state(brep, query, tolerance, &grazed);
     if (boundary != State::Outside)
         return boundary;
     const std::array<Vector, 7> directions = {
@@ -337,7 +382,8 @@ State point(const BRep& brep, const Point& query, double tolerance) {
     };
     State previous = State::Unknown;
     for (const Vector& direction : directions) {
-        const State current = ray_state(ray(brep, query, direction, tolerance), tolerance);
+        const State current = ray_state(grazed.empty() ? ray(brep, query, direction, tolerance)
+            : grazing_ray(brep, query, direction, tolerance, grazed), tolerance);
         if (current == State::Boundary)
             return current;
         if (current == State::Unknown)
