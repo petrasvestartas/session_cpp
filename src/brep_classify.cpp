@@ -51,6 +51,34 @@ int crossing(const Point& a, const Point& b, const Point& query) {
 
 State curve_winding(const NurbsCurve& curve, const Point& query, double height, double tolerance, int& winding) {
     const Point ray(query[0], height, 0.0);
+    // A straight piece is the first pass of the loop below, taken on the curve itself.
+    if (curve.order() == 2 && curve.cv_count() == 2) {
+        // Without weights the ends of a valid straight piece are its two control points to the bit.
+        const bool plain = !curve.is_rational() && curve.is_valid();
+        const Point a = plain ? curve.get_cv(0) : curve.point_at_start();
+        const Point b = plain ? curve.get_cv(1) : curve.point_at_end();
+        Point lo = a;
+        Point hi = a;
+        double error = 0.0;
+        for (int i = 0; i < 2; ++i) {
+            const Point p = curve.get_cv(i);
+            if (!finite(p) || !std::isfinite(curve.weight(i)) || !(curve.weight(i) > 0.0))
+                return State::Unknown;
+            for (int d = 0; d < 2; ++d) {
+                lo[d] = std::min(lo[d], p[d]);
+                hi[d] = std::max(hi[d], p[d]);
+            }
+            error = std::max(error, segment_distance(p, a, b));
+        }
+        if (hi[0] < query[0] - tolerance || hi[1] < query[1] - tolerance || lo[1] > query[1] + tolerance)
+            return State::Outside;
+        if (lo[0] <= query[0] + tolerance && error <= tolerance * 0.125 && segment_distance(query, a, b) <= tolerance + error)
+            return State::Boundary;
+        if (lo[0] > query[0] + tolerance || error <= tolerance * 0.125) {
+            winding += crossing(a, b, ray);
+            return State::Outside;
+        }
+    }
     std::vector<CurvePart> work = {{curve, 0}};
     for (size_t iteration = 0; !work.empty() && iteration < 100000; ++iteration) {
         CurvePart part = std::move(work.back());
@@ -292,10 +320,14 @@ State boundary_state(const BRep& brep, const Point& query, double tolerance, std
 double clear_ray_height(const std::vector<const NurbsCurve*>& loop, double height, double tolerance) {
     const auto clear = [&loop](double candidate) {
         const double margin = 64.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(candidate));
-        for (const NurbsCurve* curve : loop)
-            if (std::abs(curve->point_at_start()[1] - candidate) <= margin ||
-                std::abs(curve->point_at_end()[1] - candidate) <= margin)
+        for (const NurbsCurve* curve : loop) {
+            // The ends of a valid straight piece without weights are its two control points to the bit.
+            const bool plain = curve->order() == 2 && curve->cv_count() == 2 && !curve->is_rational() &&
+                curve->dimension() > 1 && curve->is_valid();
+            if (std::abs((plain ? curve->cv(0)[1] : curve->point_at_start()[1]) - candidate) <= margin ||
+                std::abs((plain ? curve->cv(1)[1] : curve->point_at_end()[1]) - candidate) <= margin)
                 return false;
+        }
         return true;
     };
     for (double share : {0.0, 0.25, -0.25, 0.125, -0.125, 0.1875, -0.1875, 0.0625, -0.0625})

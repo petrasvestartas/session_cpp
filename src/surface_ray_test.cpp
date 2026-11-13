@@ -296,6 +296,53 @@ MINI_TEST("Surface Ray", "Bore Supporting Plane Origin Candidates") {
     }
 }
 
+MINI_TEST("Surface Ray", "Flat Patches In Closed Form") {
+    const NurbsSurface surface = plane();
+    const Vector up(0, 0, 1);
+    const auto inside = run("flat_inside", surface, {0.3, -0.2, -1}, up);
+    complete(inside);
+    MINI_CHECK(inside.cells == 1 && inside.roots.size() == 1 && inside.roots[0].crossing == 1);
+    MINI_CHECK(std::abs(inside.roots[0].distance - 3.0) < 1e-12 && inside.roots[0].point.distance({0.3, -0.2, 2}) < 1e-12);
+    verify(surface, {0.3, -0.2, -1}, up, inside.roots[0], 1e-7);
+    const auto outside = run("flat_outside", surface, {1.5, 0, -1}, up);
+    MINI_CHECK(outside.complete && outside.cells == 1 && outside.roots.empty());
+    const auto edge = run("flat_edge", surface, {-1, 0.25, -1}, up);
+    MINI_CHECK(!edge.complete && edge.cells == 1 && edge.roots.empty());
+    const auto corner = run("flat_corner", surface, {1, 1, -1}, up);
+    MINI_CHECK(!corner.complete && corner.cells == 1 && corner.roots.empty());
+    const auto edge_behind = run("flat_edge_behind", surface, {-1, 0.25, 3}, up);
+    MINI_CHECK(edge_behind.complete && edge_behind.roots.empty());
+    const auto in_plane = run("flat_in_plane", surface, {-2, 0, 2}, {1, 0, 0});
+    MINI_CHECK(!in_plane.complete && in_plane.cells == 1);
+    const auto beside = run("flat_beside", surface, {-2, 0, 1}, {1, 0, 0});
+    MINI_CHECK(beside.complete && beside.cells == 1 && beside.roots.empty());
+    const auto on_plane = run("flat_on_plane", surface, {0, 0, 2}, {0.2, 0.3, 1}, 1e-7, {200000, 96, true});
+    complete(on_plane);
+    MINI_CHECK(on_plane.cells == 1 && on_plane.roots.size() == 1);
+    MINI_CHECK(on_plane.roots[0].distance_enclosure[0] <= 0.0 && on_plane.roots[0].distance_enclosure[1] >= 0.0);
+
+    const Xform placed = Xform::translation(2000, -2000, 2000) * Xform::rotation(Vector(1, 2, 3), 0.7);
+    const NurbsSurface turned = surface.transformed(placed);
+    const Point origin = Point(0.3, -0.2, -1).transformed(placed);
+    const Vector direction = Point(0.3, -0.2, 2).transformed(placed) - origin;
+    const auto far = run("flat_far", turned, origin, direction);
+    complete(far);
+    MINI_CHECK(far.cells == 1 && far.roots.size() == 1 && std::abs(far.roots[0].distance - 3.0) < 1e-9);
+    verify(turned, origin, direction, far.roots[0], 1e-7);
+
+    const NurbsSurface triangle = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {{-1, -1, 2}, {0, 1, 2}, {1, -1, 2}, {0, 1, 2}});
+    const auto in_triangle = run("triangle_inside", triangle, {0.1, -0.5, -1}, up);
+    complete(in_triangle);
+    MINI_CHECK(in_triangle.cells == 1 && in_triangle.roots.size() == 1);
+    MINI_CHECK(in_triangle.roots[0].point.distance({0.1, -0.5, 2}) < 1e-12);
+    verify(triangle, {0.1, -0.5, -1}, up, in_triangle.roots[0], 1e-7);
+    const auto off_triangle = run("triangle_outside", triangle, {0.9, 0.5, -1}, up);
+    MINI_CHECK(off_triangle.complete && off_triangle.cells == 1 && off_triangle.roots.empty());
+    const auto triangle_base = run("triangle_base", triangle, {0.25, -1, -1}, up);
+    MINI_CHECK(!triangle_base.complete && triangle_base.cells == 1);
+}
+
 MINI_TEST("Surface Ray", "Invalid Inputs") {
     for (double tolerance : {0.0, -1.0, std::numeric_limits<double>::quiet_NaN()}) {
         bool rejected = false;

@@ -724,4 +724,55 @@ MINI_TEST("CurveIntersection", "Copies Of A Section Overlap On Every Span") {
     MINI_CHECK(events.complete && events.points.empty() && events.overlaps.size() == 1);
     MINI_CHECK(events.overlaps[0].a0 == section.domain_start() && events.overlaps[0].a1 == section.domain_end());
 }
+
+MINI_TEST("CurveIntersection", "Straight Pairs In Closed Form") {
+    const auto segment = [](const Point& p, const Point& q) { return curve_from_points({p, q}); };
+    const NurbsCurve a = segment({0, 0, 0}, {2, 0, 0});
+    const auto crossing = curve_intersection::intersect(a, segment({1, -1, 0}, {1, 1, 0}));
+    MINI_CHECK(crossing.complete && crossing.points.size() == 1 && crossing.overlaps.empty());
+    MINI_CHECK(crossing.points[0].a == 0.5 && crossing.points[0].b == 0.5 && !crossing.points[0].tangent);
+    MINI_CHECK(crossing.points[0].point.distance({1, 0, 0}) == 0.0);
+
+    const auto corner = curve_intersection::intersect(a, segment({2, 0, 0}, {3, 1, 0}));
+    MINI_CHECK(corner.complete && corner.points.size() == 1 && corner.points[0].a == 1.0 && corner.points[0].b == 0.0);
+    const auto end_on_side = curve_intersection::intersect(a, segment({0.5, 0, 0}, {0.5, 1, 0}));
+    MINI_CHECK(end_on_side.points.size() == 1 && end_on_side.points[0].a == 0.25 && end_on_side.points[0].b == 0.0);
+    const auto within = curve_intersection::intersect(a, segment({0.5, 5e-8, 0}, {0.5, 1, 0}));
+    MINI_CHECK(within.complete && within.points.size() == 1 && within.points[0].b == 0.0);
+    const auto beyond = curve_intersection::intersect(a, segment({0.5, 2e-7, 0}, {0.5, 1, 0}));
+    MINI_CHECK(beyond.complete && beyond.points.empty() && beyond.overlaps.empty());
+    const auto apart = curve_intersection::intersect(a, segment({0, 1, 0}, {2, 1, 0}));
+    MINI_CHECK(apart.complete && apart.points.empty() && apart.overlaps.empty());
+
+    const auto shared = curve_intersection::intersect(a, segment({1, 0, 0}, {3, 0, 0}));
+    MINI_CHECK(shared.complete && shared.points.empty() && shared.overlaps.size() == 1);
+    MINI_CHECK(shared.overlaps[0].a0 == 0.5 && shared.overlaps[0].a1 == 1.0 && shared.overlaps[0].b0 == 0.0 && shared.overlaps[0].b1 == 0.5);
+    const auto against = curve_intersection::intersect(a, segment({3, 0, 0}, {1, 0, 0}));
+    MINI_CHECK(against.overlaps.size() == 1 && against.overlaps[0].b0 == 1.0 && against.overlaps[0].b1 == 0.5);
+    const auto inside = curve_intersection::intersect(a, segment({0.5, 0, 0}, {1.5, 0, 0}));
+    MINI_CHECK(inside.points.empty() && inside.overlaps.size() == 1);
+    MINI_CHECK(inside.overlaps[0].a0 == 0.25 && inside.overlaps[0].a1 == 0.75 && inside.overlaps[0].b0 == 0.0 && inside.overlaps[0].b1 == 1.0);
+    const auto in_a_row = curve_intersection::intersect(a, segment({2, 0, 0}, {3, 0, 0}));
+    MINI_CHECK(in_a_row.complete && in_a_row.overlaps.empty() && in_a_row.points.size() == 1);
+    MINI_CHECK(in_a_row.points[0].a == 1.0 && in_a_row.points[0].b == 0.0 && in_a_row.points[0].tangent);
+
+    const auto constant = curve_intersection::intersect(a, segment({1, 0, 0}, {1, 0, 0}));
+    MINI_CHECK(!constant.complete && !constant.failure.empty());
+
+    const Vector far(2000, -2000, 2000);
+    NurbsCurve first = segment(Point(0, 0, 0) + far, Point(2, 0, 0) + far);
+    NurbsCurve second = segment(Point(1, -1, 0) + far, Point(1, 3, 0) + far);
+    MINI_CHECK(first.set_domain(-3, 5) && second.set_domain(10, 14));
+    const auto distant = curve_intersection::intersect(first, second);
+    MINI_CHECK(distant.complete && distant.points.size() == 1 && distant.points[0].a == 1.0 && distant.points[0].b == 11.0);
+    MINI_CHECK(distant.points[0].point.distance(Point(1, 0, 0) + far) < 1e-12);
+    const auto tiny = curve_intersection::intersect(segment({0, 0, 0}, {2e-3, 0, 0}), segment({1e-3, -1e-3, 0}, {1e-3, 1e-3, 0}), 1e-10);
+    MINI_CHECK(tiny.complete && tiny.points.size() == 1 && tiny.points[0].a == 0.5 && tiny.points[0].b == 0.5);
+
+    NurbsCurve weighted = a, flat(2, false, 2, 2);
+    MINI_CHECK(weighted.to_rational() && weighted.set_cv_4d(0, 0, 0, 0, 2) && weighted.set_cv_4d(1, 4, 0, 0, 2));
+    MINI_CHECK(flat.set_nurbsknot(0, 0.0) && flat.set_nurbsknot(1, 1.0) && flat.set_cv(0, {1, -1, 0}) && flat.set_cv(1, {1, 1, 0}));
+    const auto mixed = curve_intersection::intersect(weighted, flat);
+    MINI_CHECK(mixed.complete && mixed.points.size() == 1 && mixed.points[0].a == 0.5 && mixed.points[0].b == 0.5);
+}
 }

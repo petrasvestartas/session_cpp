@@ -801,7 +801,182 @@ Result intersect_once(const NurbsCurve& a, const NurbsCurve& b, double tolerance
 
 }
 
+namespace {
+
+using Triple = std::array<double, 3>;
+
+struct Segment {
+    Triple p0;
+    Triple p1;
+    double t0;
+    double t1;
+};
+
+Triple difference(const Triple& a, const Triple& b) {
+    return {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+}
+
+double product(const Triple& a, const Triple& b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+Triple normal(const Triple& a, const Triple& b) {
+    return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+}
+
+Triple along(const Segment& s, double t) {
+    return {std::lerp(s.p0[0], s.p1[0], t), std::lerp(s.p0[1], s.p1[1], t), std::lerp(s.p0[2], s.p1[2], t)};
+}
+
+double apart(const Triple& a, const Triple& b) {
+    const Triple d = difference(a, b);
+    return std::sqrt(product(d, d));
+}
+
+// A valid curve of two control points on one span, without weights or with equal ones.
+bool straight(const NurbsCurve& curve, Segment& s) {
+    if (curve.m_order != 2 || curve.m_cv_count != 2 || curve.m_dim < 2 || curve.m_dim > 3 ||
+        curve.m_nurbsknot.size() != 2 || curve.m_cv_stride < curve.cv_size() ||
+        static_cast<int>(curve.m_cv.size()) < curve.m_cv_stride + curve.cv_size())
+        return false;
+    s.t0 = curve.m_nurbsknot[0];
+    s.t1 = curve.m_nurbsknot[1];
+    if (!std::isfinite(s.t0) || !std::isfinite(s.t1) || !(s.t0 < s.t1))
+        return false;
+    for (const double value : curve.m_cv)
+        if (!std::isfinite(value))
+            return false;
+    const double* a = &curve.m_cv[0];
+    const double* b = &curve.m_cv[curve.m_cv_stride];
+    const double weight = curve.m_is_rat ? a[curve.m_dim] : 1.0;
+    if (curve.m_is_rat && (!(weight > 0.0) || b[curve.m_dim] != weight))
+        return false;
+    for (int d = 0; d < 3; ++d) {
+        s.p0[d] = d < curve.m_dim ? a[d] / weight : 0.0;
+        s.p1[d] = d < curve.m_dim ? b[d] / weight : 0.0;
+    }
+    return true;
+}
+
+// Two straight pieces in closed form: the answer of the general routine wherever each of its decisions is clear of its threshold by more than rounding, false to leave the pair to it.
+bool straight_pair(const NurbsCurve& first, const NurbsCurve& second, double tolerance, Result& result) {
+    Segment a, b;
+    if (!std::isfinite(tolerance) || tolerance <= 0.0 || !straight(first, a) || !straight(second, b))
+        return false;
+    double magnitude = 0.0;
+    for (const Triple* point : {&a.p0, &a.p1, &b.p0, &b.p1})
+        for (const double value : *point)
+            magnitude = std::max(magnitude, std::abs(value));
+    const double band = epsilon * 16.0 * magnitude;
+    const Triple u = difference(a.p1, a.p0), v = difference(b.p1, b.p0);
+    const double uu = product(u, u), vv = product(v, v);
+    const double la = std::sqrt(uu), lb = std::sqrt(vv);
+    if (tolerance < band * 16.0 || !(std::min(la, lb) >= tolerance * 64.0))
+        return false;
+    const double limit = tolerance + band;
+    const auto parameter = [](const Segment& s, double t) { return std::clamp(s.t0 + t * (s.t1 - s.t0), s.t0, s.t1); };
+    const auto foot = [](const Segment& s, const Triple& d, double dd, const Triple& p, double& t) {
+        t = std::clamp(product(difference(p, s.p0), d) / dd, 0.0, 1.0);
+        return apart(p, along(s, t));
+    };
+    // The four ends on the other piece, as (parameter on a, parameter on b) and the distance.
+    std::array<std::pair<double, double>, 4> ends = {{{0.0, 0.0}, {1.0, 0.0}, {0.0, 0.0}, {0.0, 1.0}}};
+    const std::array<double, 4> off = {foot(b, v, vv, a.p0, ends[0].second), foot(b, v, vv, a.p1, ends[1].second),
+        foot(a, u, uu, b.p0, ends[2].first), foot(a, u, uu, b.p1, ends[3].first)};
+    const double nearest = *std::min_element(off.begin(), off.end());
+    const Triple c = normal(u, v), w = difference(b.p0, a.p0);
+    const double cc = product(c, c);
+    const double sine = std::sqrt(cc / (uu * vv));
+    const auto hit = [&](double ta, double tb, bool tangent) {
+        const Triple pa = along(a, ta), pb = along(b, tb);
+        result.points.push_back({Point(pa[0] + (pb[0] - pa[0]) * 0.5, pa[1] + (pb[1] - pa[1]) * 0.5,
+            pa[2] + (pb[2] - pa[2]) * 0.5), parameter(a, ta), parameter(b, tb), tangent});
+    };
+    if (sine >= 1e-3) {
+        const double s = product(normal(w, v), c) / cc, t = product(normal(w, u), c) / cc;
+        const bool inside = s >= 0.0 && s <= 1.0 && t >= 0.0 && t <= 1.0;
+        if ((inside ? std::min(nearest, std::abs(product(w, c)) / std::sqrt(cc)) : nearest) > limit)
+            return true;
+        // Two ends on the other piece more than a rounding apart on both start the overlap search.
+        for (int i = 0; i < 4; ++i)
+            for (int j = i + 1; j < 4; ++j)
+                if (off[i] <= limit && off[j] <= limit && std::abs(ends[i].first - ends[j].first) > epsilon * 16.0 &&
+                    std::abs(ends[i].second - ends[j].second) > epsilon * 16.0)
+                    return false;
+        // Past an end the general search stops at each parameter clamped on its own, when its Newton step is taken at all.
+        if (!inside && cc < 1e-13)
+            return false;
+        double ta = std::clamp(s, 0.0, 1.0), tb = std::clamp(t, 0.0, 1.0);
+        bool clear = true;
+        const auto within = [&clear](double value, double threshold, double slack) {
+            clear = clear && std::abs(value - threshold) > slack;
+            return value <= threshold;
+        };
+        for (const double ea : {0.0, 1.0})
+            for (const double eb : {0.0, 1.0})
+                if (within(apart(along(a, ea), along(b, eb)), tolerance, band) &&
+                    within(apart(along(a, ta), along(a, ea)), tolerance * 4.0, band) &&
+                    within(apart(along(b, tb), along(b, eb)), tolerance * 4.0, band)) {
+                    ta = ea;
+                    tb = eb;
+                }
+        for (const double end : {0.0, 1.0})
+            if (within(apart(along(a, ta), along(a, end)), band * 4.0, band * 0.25))
+                ta = end;
+        for (const double end : {0.0, 1.0})
+            if (within(apart(along(b, tb), along(b, end)), band * 4.0, band * 0.25))
+                tb = end;
+        const bool met = within(apart(along(a, ta), along(b, tb)), tolerance, band);
+        if (!clear)
+            return false;
+        if (met)
+            hit(ta, tb, false);
+        return true;
+    }
+    if (nearest - std::min(la, lb) * sine > limit)
+        return true;
+    if (sine * std::max(la, lb) > band)
+        return false;
+    // Parallel to rounding: an end lies on the other piece to rounding or clear of it.
+    int count = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (off[i] > band && off[i] <= limit)
+            return false;
+        if (off[i] <= band)
+            ends[count++] = ends[i];
+    }
+    if (count == 0)
+        return false;
+    std::fill(ends.begin() + count, ends.end(), std::pair<double, double>{2.0, 2.0});
+    std::sort(ends.begin(), ends.end());
+    for (int i = 0; i < count; ++i)
+        for (int j = count; j-- > i + 1;) {
+            const double a0 = ends[i].first, a1 = ends[j].first, b0 = ends[i].second, b1 = ends[j].second;
+            if (a1 - a0 <= epsilon * 16.0 || std::abs(b1 - b0) <= epsilon * 16.0)
+                continue;
+            for (const double t : {a0, a1, b0, b1})
+                if (t != 0.0 && t != 1.0 && (t < 1e-9 || t > 1.0 - 1e-9))
+                    return false;
+            if (a1 - a0 < 1e-9 || std::abs(b1 - b0) < 1e-9 || (a1 - a0) * la < tolerance * 64.0)
+                return false;
+            result.overlaps.push_back({parameter(a, a0), parameter(a, a1), parameter(b, b0), parameter(b, b1)});
+            return true;
+        }
+    // Two pieces in a row share one end.
+    const double ea = std::round(ends[0].first), eb = std::round(ends[0].second);
+    for (int i = 0; i < count; ++i)
+        if (std::abs(ends[i].first - ea) > epsilon * 16.0 || std::abs(ends[i].second - eb) > epsilon * 16.0)
+            return false;
+    hit(ea, eb, true);
+    return true;
+}
+
+}
+
 Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
+    Result straight_result;
+    if (straight_pair(a, b, tolerance, straight_result))
+        return straight_result;
     nurbs_memo::Scope* memo = nurbs_memo::Scope::active;
     if (!memo)
         return intersect_once(a, b, tolerance);

@@ -45,6 +45,39 @@ MINI_TEST("Closest", "Curve Point") {
     MINI_CHECK(dist2 < 0.01);
 }
 
+MINI_TEST("Closest", "Curve Point On A Straight Piece") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsCurve;
+    // using session_cpp::Point;
+
+    NurbsCurve crv = NurbsCurve::create(false, 1, {Point(2000.0, 0.0, 0.0), Point(2004.0, 3.0, 0.0)});
+
+    MINI_CHECK(crv.set_domain(2.0, 12.0));
+
+    double t = 0.0;
+    double dist = 0.0;
+    std::tie(t, dist) = Closest::curve_point(crv, Point(2002.0 - 3.0, 1.5 + 4.0, 0.0));
+
+    MINI_CHECK(t == 7.0 && std::abs(dist - 5.0) < 1e-12);
+
+    std::tie(t, dist) = Closest::curve_point(crv, Point(1990.0, 0.0, 1.0));
+
+    MINI_CHECK(t == 2.0 && std::abs(dist - std::sqrt(101.0)) < 1e-12);
+
+    std::tie(t, dist) = Closest::curve_point(crv, Point(2010.0, 3.0, 0.0));
+
+    MINI_CHECK(t == 12.0 && std::abs(dist - 6.0) < 1e-12);
+
+    std::tie(t, dist) = Closest::curve_point(crv, Point(2002.0, 1.5, 0.0), 8.0, 10.0);
+
+    MINI_CHECK(t == 8.0 && std::abs(dist - 0.5) < 1e-12);
+
+    NurbsCurve tiny = NurbsCurve::create(false, 1, {Point(0.0, 0.0, 0.0), Point(1e-6, 0.0, 0.0)});
+
+    MINI_CHECK(tiny.set_domain(0.0, 1.0));
+    MINI_CHECK(std::abs(Closest::curve_point(tiny, Point(2.6e-7, 1e-7, 0.0)).first - 0.26) < 1e-12);
+}
+
 MINI_TEST("Closest", "Curve Curve") {
     // using session_cpp::Closest;
     // using session_cpp::NurbsCurve;
@@ -165,6 +198,38 @@ MINI_TEST("Closest", "Surface Point") {
     const double dist2 = std::get<2>(Closest::surface_point(srf, Point(0.0, 0.0, 0.0)));
 
     MINI_CHECK(dist2 < 0.01);
+}
+
+MINI_TEST("Closest", "Surface Point On A Flat Patch") {
+    // using session_cpp::Closest;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Point;
+
+    NurbsSurface srf = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {Point(2000.0, 0.0, 5.0), Point(2000.0, 2.0, 5.0), Point(2004.0, 0.0, 5.0), Point(2004.0, 2.0, 5.0)});
+
+    MINI_CHECK(srf.set_domain(0, 10.0, 18.0) && srf.set_domain(1, -1.0, 1.0));
+
+    double u = 0.0;
+    double v = 0.0;
+    double dist = 0.0;
+    std::tie(u, v, dist) = Closest::surface_point(srf, Point(2001.0, 1.5, 8.0));
+
+    MINI_CHECK(u == 12.0 && v == 0.5 && dist == 3.0);
+
+    std::tie(u, v, dist) = Closest::surface_point(srf, Point(2007.0, -4.0, 5.0));
+
+    MINI_CHECK(u == 18.0 && v == -1.0 && dist == 5.0);
+
+    std::tie(u, v, dist) = Closest::surface_point(srf, Point(2001.0, 1.5, 5.0), 14.0, 16.0, 0.75, 1.0);
+
+    MINI_CHECK(u == 14.0 && v == 0.75 && std::abs(dist - std::sqrt(1.0625)) < 1e-12);
+
+    const NurbsSurface tiny = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {Point(0.0, 0.0, 0.0), Point(0.0, 1e-4, 0.0), Point(1e-4, 0.0, 0.0), Point(1e-4, 1e-4, 0.0)});
+    std::tie(u, v, dist) = Closest::surface_point(tiny, Point(2.6e-5, 7.3e-5, 1e-5));
+
+    MINI_CHECK(std::abs(u - 0.26) < 1e-12 && std::abs(v - 0.73) < 1e-12 && std::abs(dist - 1e-5) < 1e-15);
 }
 
 MINI_TEST("Closest", "Surface Point Beside A Closed Seam") {

@@ -1662,8 +1662,48 @@ static ParameterMatch same_parameter_once(const NurbsCurve& curve, const NurbsCu
     return finish(same_parameter_impl(local_world, pcurve, local_surface, tolerance, diagnostic, nullptr, failure));
 }
 
+// A straight curve and a straight parameter curve on an unweighted patch of four corners agree when the three controls of the lifted curve do, its two ends and their mean: in plain arithmetic with the rounding bounded, before the key of the memo and the interval certificate. A parameter a rounding past the rim takes the patch's own polynomial, as the worker does.
+static bool straight_on_patch(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurface& surface, double tolerance) {
+    const auto straight = [](const NurbsCurve& curve) { return !curve.m_is_rat && curve.m_order == 2 && curve.m_cv_count == 2; };
+    if (!std::isfinite(tolerance) || tolerance <= 0.0 || !straight(world) || !straight(pcurve) || world.m_dim != 3 ||
+        (pcurve.m_dim != 2 && pcurve.m_dim != 3) || surface.m_is_rat || surface.m_dim != 3 || surface.m_order[0] != 2 ||
+        surface.m_order[1] != 2 || surface.m_cv_count[0] != 2 || surface.m_cv_count[1] != 2 || !world.is_valid() ||
+        !pcurve.is_valid() || !surface.is_valid())
+        return false;
+    std::array<std::array<double, 2>, 2> fraction;
+    for (int i = 0; i < 2; ++i)
+        for (int d = 0; d < 2; ++d) {
+            const double lo = surface.m_nurbsknot[d][0];
+            fraction[i][d] = (pcurve.cv(i)[d] - lo) / (surface.m_nurbsknot[d][1] - lo);
+            if (!(fraction[i][d] >= -1e-9 && fraction[i][d] <= 1.0 + 1e-9))
+                return false;
+        }
+    std::array<double, 3> squared = {0.0, 0.0, 0.0};
+    double magnitude = 0.0;
+    for (int d = 0; d < 3; ++d) {
+        const double c00 = surface.cv(0, 0)[d], c01 = surface.cv(0, 1)[d], c10 = surface.cv(1, 0)[d], c11 = surface.cv(1, 1)[d];
+        const auto lifted = [&](int i, int j) {
+            const double s = fraction[i][0], t = fraction[j][1];
+            return (1.0 - s) * ((1.0 - t) * c00 + t * c01) + s * ((1.0 - t) * c10 + t * c11);
+        };
+        const double a = world.cv(0)[d], b = world.cv(1)[d];
+        const std::array<double, 3> residual = {lifted(0, 0) - a, 0.5 * (lifted(1, 0) + lifted(0, 1)) - 0.5 * (a + b), lifted(1, 1) - b};
+        for (int k = 0; k < 3; ++k)
+            squared[k] += residual[k] * residual[k];
+        magnitude = std::max({magnitude, std::abs(c00), std::abs(c01), std::abs(c10), std::abs(c11), std::abs(a), std::abs(b)});
+    }
+    return std::sqrt(std::max({squared[0], squared[1], squared[2]})) + 128.0 * std::numeric_limits<double>::epsilon() * magnitude <= tolerance;
+}
+
 ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
     const NurbsSurface& surface, double tolerance, std::string* diagnostic, ParameterFailure* failure) {
+    if (straight_on_patch(curve, pcurve, surface, tolerance)) {
+        if (diagnostic)
+            diagnostic->clear();
+        if (failure)
+            *failure = {};
+        return ParameterMatch::Matched;
+    }
     nurbs_memo::Scope* memo = nurbs_memo::Scope::active;
     if (!memo || parameter_diagnostics::active)
         return same_parameter_once(curve, pcurve, surface, tolerance, diagnostic, failure);

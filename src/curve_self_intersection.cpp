@@ -592,6 +592,17 @@ std::string unsupported(const NurbsCurve& curve) {
 
 }
 
+// A straight piece of finite speed cannot meet itself: it is the one pair of the search below, which its direction proves injective.
+static bool straight(const NurbsCurve& curve) {
+    if (curve.order() != 2 || curve.cv_count() != 2 || curve.is_rational())
+        return false;
+    const double lo = curve.m_nurbsknot[0], hi = curve.m_nurbsknot[1], inside = std::midpoint(lo, hi);
+    double squared = 0.0;
+    for (int d = 0; d < curve.dimension(); ++d)
+        squared += (curve.cv(1)[d] - curve.cv(0)[d]) * (curve.cv(1)[d] - curve.cv(0)[d]);
+    return inside > lo && inside < hi && std::isnormal(squared) && std::isnormal(squared / ((hi - lo) * (hi - lo)));
+}
+
 Result intersect(const NurbsCurve& curve, double tolerance, const Options& options) {
     if (!curve.is_valid() || !(tolerance > 0.0) || !std::isfinite(tolerance) ||
         options.max_cells == 0 || options.max_depth < 0)
@@ -600,6 +611,10 @@ Result intersect(const NurbsCurve& curve, double tolerance, const Options& optio
     result.failure = unsupported(curve);
     if (!result.failure.empty()) {
         result.complete = false;
+        return result;
+    }
+    if (straight(curve)) {
+        result.cells = 1;
         return result;
     }
     const auto knots = curve.get_span_vector();

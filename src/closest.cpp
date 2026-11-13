@@ -89,6 +89,32 @@ static double curve_newton(const NurbsCurve& curve, const Point& test_point, dou
     return t;
 }
 
+/// Parameter of the foot of the perpendicular from a point on a straight unweighted span, clamped to [t0, t1].
+static bool segment_foot(const NurbsCurve& curve, const Point& test_point, double t0, double t1, double& t) {
+
+    if (curve.m_order != 2 || curve.m_cv_count != 2 || curve.m_is_rat || !(t0 < t1))
+        return false;
+
+    const double* a = curve.cv(0);
+    const double* b = curve.cv(1);
+    double along = 0.0;
+    double squared = 0.0;
+
+    for (int d = 0; d < std::min(curve.m_dim, 3); d++) {
+        along += (test_point[d] - a[d]) * (b[d] - a[d]);
+        squared += (b[d] - a[d]) * (b[d] - a[d]);
+    }
+
+    const double fraction = along / squared;
+
+    if (!(squared > 0.0) || !std::isfinite(fraction))
+        return false;
+
+    t = std::clamp(std::lerp(curve.m_nurbsknot[0], curve.m_nurbsknot[1], fraction), t0, t1);
+
+    return true;
+}
+
 /// Parameters of the closest pair on dense grids over both domains.
 static std::pair<double, double> curve_curve_seed(const NurbsCurve& curve0, const NurbsCurve& curve1) {
 
@@ -233,6 +259,64 @@ static std::pair<double, double> surface_newton(
     }
 
     return {u, v};
+}
+
+/// Parameters of the foot of the perpendicular on a flat patch of four corners with parallel sides, each clamped to its window: where the Newton above comes to rest.
+static bool parallelogram_foot(
+    const NurbsSurface& surface,
+    const Point& test_point,
+    double u0,
+    double u1,
+    double v0,
+    double v1,
+    double& u,
+    double& v
+) {
+
+    if (surface.m_is_rat || surface.m_dim != 3 || surface.m_order[0] != 2 || surface.m_order[1] != 2
+        || surface.m_cv_count[0] != 2 || surface.m_cv_count[1] != 2 || !(u0 < u1) || !(v0 < v1))
+        return false;
+
+    const double* corner = surface.cv(0, 0);
+    const double* along_u = surface.cv(1, 0);
+    const double* along_v = surface.cv(0, 1);
+    const double* opposite = surface.cv(1, 1);
+    double uu = 0.0;
+    double vv = 0.0;
+    double uv = 0.0;
+    double ru = 0.0;
+    double rv = 0.0;
+    double twist = 0.0;
+    double scale = 0.0;
+
+    for (int d = 0; d < 3; d++) {
+        const double a = along_u[d] - corner[d];
+        const double b = along_v[d] - corner[d];
+        const double r = test_point[d] - corner[d];
+        uu += a * a;
+        vv += b * b;
+        uv += a * b;
+        ru += r * a;
+        rv += r * b;
+        twist = std::max(twist, std::abs(opposite[d] - along_u[d] - b));
+        scale = std::max({scale, std::abs(corner[d]), std::abs(along_u[d]), std::abs(along_v[d]), std::abs(opposite[d])});
+    }
+
+    const double det = uu * vv - uv * uv;
+
+    if (twist > 8.0 * std::numeric_limits<double>::epsilon() * scale || !(det > 1e-12 * uu * vv))
+        return false;
+
+    const double s = (vv * ru - uv * rv) / det;
+    const double t = (uu * rv - uv * ru) / det;
+
+    if (!std::isfinite(s) || !std::isfinite(t))
+        return false;
+
+    u = std::clamp(std::lerp(surface.m_nurbsknot[0][0], surface.m_nurbsknot[0][1], s), u0, u1);
+    v = std::clamp(std::lerp(surface.m_nurbsknot[1][0], surface.m_nurbsknot[1][1], t), v0, v1);
+
+    return true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -939,7 +1023,11 @@ std::pair<double, double> Closest::curve_point(const NurbsCurve& curve, const Po
     t0 = std::max(t0, domain_start);
     t1 = std::min(t1, domain_end);
 
-    double t = curve_newton(curve, test_point, t0, t1, curve_seed(curve, test_point, t0, t1));
+    double t = 0.0;
+
+    if (!segment_foot(curve, test_point, t0, t1, t))
+        t = curve_newton(curve, test_point, t0, t1, curve_seed(curve, test_point, t0, t1));
+
     double final_dist = curve.point(t).distance(test_point);
     const double dist_start = curve.point(t0).distance(test_point);
     const double dist_end = curve.point(t1).distance(test_point);
@@ -1111,6 +1199,12 @@ std::tuple<double, double, double> Closest::surface_point(
     u1 = std::min(u1, domain_u1);
     v0 = std::max(v0, domain_v0);
     v1 = std::min(v1, domain_v1);
+
+    double foot_u = 0.0;
+    double foot_v = 0.0;
+
+    if (parallelogram_foot(surface, test_point, u0, u1, v0, v1, foot_u, foot_v))
+        return {foot_u, foot_v, surface.point_at(foot_u, foot_v).distance(test_point)};
 
     const std::pair<double, double> seed = surface_seed(surface, test_point, u0, u1, v0, v1);
     double u = 0.0;

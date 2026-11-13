@@ -409,6 +409,26 @@ MINI_TEST("Curve Surface Native", "Same Parameter Certificates") {
         curve_surface_intersection::ParameterMatch::Unresolved);
 }
 
+MINI_TEST("Curve Surface Native", "Same Parameter Straight Edge On A Flat Face") {
+    const NurbsSurface face = test_plane().transformed(Xform::translation(2000, -2000, 2000) * Xform::rotation(Vector(1, 2, 3), 0.7));
+    const NurbsCurve pcurve = NurbsCurve::create(false, 1, {{0.1, 0.2, 0}, {0.9, 0.8, 0}});
+    const NurbsCurve edge = NurbsCurve::create(false, 1, {face.point_at(0.1, 0.2), face.point_at(0.9, 0.8)});
+    std::string diagnostic = "stale";
+    MINI_CHECK(curve_surface_intersection::same_parameter(edge, pcurve, face, 1e-7, &diagnostic) ==
+        curve_surface_intersection::ParameterMatch::Matched);
+    MINI_CHECK(diagnostic.empty());
+    const NurbsCurve past_rim = NurbsCurve::create(false, 1, {{1.0000000000000002, 0.2, 0}, {0.9, -8e-18, 0}});
+    const NurbsCurve rim_edge = NurbsCurve::create(false, 1, {face.point_at(1, 0.2), face.point_at(0.9, 0)});
+    MINI_CHECK(curve_surface_intersection::same_parameter(rim_edge, past_rim, face) ==
+        curve_surface_intersection::ParameterMatch::Matched);
+    const NurbsCurve lifted = edge.transformed(Xform::translation(0, 0, 3e-7));
+    MINI_CHECK(curve_surface_intersection::same_parameter(lifted, pcurve, face) ==
+        curve_surface_intersection::ParameterMatch::Mismatched);
+    const NurbsCurve reversed = NurbsCurve::create(false, 1, {face.point_at(0.9, 0.8), face.point_at(0.1, 0.2)});
+    MINI_CHECK(curve_surface_intersection::same_parameter(reversed, pcurve, face) ==
+        curve_surface_intersection::ParameterMatch::Mismatched);
+}
+
 MINI_TEST("Curve Surface Native", "Same Parameter Across Knots And Seams") {
     NurbsSurface surface = test_bowl();
     MINI_CHECK(surface.insert_nurbsknot(0, 0.37, 1));

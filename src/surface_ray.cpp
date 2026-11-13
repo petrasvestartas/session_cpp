@@ -384,6 +384,197 @@ void fail(Result& result, const std::string& reason) {
     result.failure = reason;
 }
 
+// A bilinear patch over a box of the unit square, from its values at (0,0), (0,1), (1,0) and (1,1).
+I bilinear(I c00, I c01, I c10, I c11, I s, I t) {
+    return (I(1.0) - s) * ((I(1.0) - t) * c00 + t * c01) + s * ((I(1.0) - t) * c10 + t * c11);
+}
+
+// A patch of four corners without a search: a triangle (one side collapsed to a point) by the barycentric coordinates of the ray in it, any other by one Krawczyk step from the root of its affine part, which settles a parallelogram. A root at the rim, a twisted patch and a trapezoid are left to the search.
+bool bilinear_roots(const NurbsSurface& surface, const Point& origin, const Vector& direction, double tolerance,
+    const Options& options, Result& result) {
+    if (surface.m_is_rat || surface.m_order[0] != 2 || surface.m_order[1] != 2 || surface.m_cv_count[0] != 2 ||
+        surface.m_cv_count[1] != 2)
+        return false;
+    static const Spans none;
+    const Frame frame = make_frame(origin, direction, none);
+    std::array<std::array<I, 3>, 4> corners;
+    Bounds cell;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            const double* cv = surface.cv(i, j);
+            nurbs_interval::Homogeneous q;
+            for (int d = 0; d < 3; ++d)
+                q[d] = corners[2 * i + j][d] = I(cv[d]) - I(frame.origin_coordinates[d]);
+            q[3] = I(1.0);
+            const Pair value = transverse(q, frame);
+            const I forward = I(frame.sign) * q[frame.dominant];
+            if (!nurbs_interval::finite(value[0]) || !nurbs_interval::finite(value[1]) || !nurbs_interval::finite(forward))
+                return false;
+            for (int d = 0; d < 2; ++d)
+                cell.value[d] = cell.controls.empty() ? value[d] : nurbs_interval::interval_hull(cell.value[d], value[d]);
+            cell.forward = cell.controls.empty() ? forward : nurbs_interval::interval_hull(cell.forward, forward);
+            cell.controls.push_back(value);
+        }
+    if (separated(cell))
+        return true;
+    for (int d = 0; d < 2; ++d)
+        if (cell.value[d].lo == 0.0 && cell.value[d].hi == 0.0) {
+            fail(result, "Surface ray is tangent, coincident or rank deficient");
+            return true;
+        }
+    const std::vector<Pair>& f = cell.controls;
+    const auto same = [&surface](int a, int b) {
+        return std::equal(surface.cv(a / 2, a % 2), surface.cv(a / 2, a % 2) + 3, surface.cv(b / 2, b % 2));
+    };
+    // The box of the unit square holding the root, the sign of the Jacobian there, and whether the root lies on the rim. A value that holds zero or one puts it on that side of the patch; it is there exactly, out of reach of every enclosure, when one coordinate across the ray is zero to the bit at both corners of the side and of one strict sign at the other corners.
+    Pair box;
+    int sign = 0;
+    bool rim = false, exact = true;
+    const auto side = [&f](int a, int b, int c, int d) {
+        for (int k = 0; k < 2; ++k)
+            if (f[a][k].lo == 0.0 && f[a][k].hi == 0.0 && f[b][k].lo == 0.0 && f[b][k].hi == 0.0 &&
+                ((f[c][k].lo > 0.0 && f[d][k].lo > 0.0) || (f[c][k].hi < 0.0 && f[d][k].hi < 0.0)))
+                return true;
+        return false;
+    };
+    // The corners are those of the side at zero and the two beyond it; with a top the side at one is the other pair.
+    const auto on = [&](I value, double margin, const std::array<int, 4>& corners, bool top) {
+        const bool low = value.lo <= 0.0 && value.hi >= 0.0;
+        if (low || (top && value.lo <= 1.0 && value.hi >= 1.0)) {
+            rim = true;
+            exact = exact && (low ? side(corners[0], corners[1], corners[2], corners[3]) : side(corners[2], corners[3], corners[0], corners[1]));
+            return true;
+        }
+        return value.lo > margin && (!top || value.hi < 1.0 - margin);
+    };
+    // Collapsed side, then base start, base end and apex among the corners, the parameter along the base, and whether the apex is at its parameter's start.
+    const std::array<std::array<int, 7>, 4> triangles = {{{1, 3, 0, 2, 1, 0, 0}, {0, 2, 1, 3, 0, 0, 1}, {2, 3, 0, 1, 2, 1, 0}, {0, 1, 2, 3, 0, 1, 1}}};
+    const auto triangle = std::find_if(triangles.begin(), triangles.end(), [&same](const auto& t) { return same(t[0], t[1]); });
+    if (triangle != triangles.end()) {
+        const auto cross = [](const Pair& a, const Pair& b) { return a[0] * b[1] - a[1] * b[0]; };
+        const Pair& start = f[(*triangle)[2]];
+        const Pair base = {f[(*triangle)[3]][0] - start[0], f[(*triangle)[3]][1] - start[1]};
+        const Pair apex = {f[(*triangle)[4]][0] - start[0], f[(*triangle)[4]][1] - start[1]};
+        const Pair back = {I(0.0) - start[0], I(0.0) - start[1]};
+        const I area = cross(base, apex);
+        if (!nurbs_interval::finite(area) || (area.lo <= 0.0 && area.hi >= 0.0))
+            return false;
+        const I along = cross(back, apex) / area, up = cross(base, back) / area, rest = I(1.0) - along - up;
+        if (!nurbs_interval::finite(along) || !nurbs_interval::finite(up) || !nurbs_interval::finite(rest))
+            return false;
+        const double margin = 16.0 * std::max({along.hi - along.lo, up.hi - up.lo, rest.hi - rest.lo}) + 1e-9;
+        if (along.hi < -margin || up.hi < -margin || rest.hi < -margin)
+            return true;
+        // Towards the apex the search meets a singular Jacobian: the last hundredth is left to it.
+        const int b0 = (*triangle)[2], b1 = (*triangle)[3], top = (*triangle)[4];
+        if (!(up.hi < 0.99) || !on(along, margin, {b0, top, b1, b1}, false) || !on(up, margin, {b0, b1, top, top}, false) ||
+            !on(rest, margin, {b1, top, b0, b0}, false))
+            return false;
+        const I height = I(1.0) - up;
+        const bool flipped = (*triangle)[6] != 0;
+        box[(*triangle)[5]] = along / height;
+        box[1 - (*triangle)[5]] = flipped ? height : up;
+        sign = (area.lo > 0.0 ? 1 : -1) * (((*triangle)[5] != 0) != flipped ? -1 : 1);
+    } else {
+        Matrix jacobian;
+        std::array<std::array<double, 2>, 2> middle;
+        for (int d = 0; d < 2; ++d) {
+            jacobian[d][0] = nurbs_interval::interval_hull(f[2][d] - f[0][d], f[3][d] - f[1][d]);
+            jacobian[d][1] = nurbs_interval::interval_hull(f[1][d] - f[0][d], f[3][d] - f[2][d]);
+            for (int k = 0; k < 2; ++k)
+                middle[d][k] = std::midpoint(jacobian[d][k].lo, jacobian[d][k].hi);
+        }
+        const double determinant = middle[0][0] * middle[1][1] - middle[0][1] * middle[1][0];
+        if (!std::isfinite(determinant) || determinant == 0.0)
+            return false;
+        const std::array<std::array<double, 2>, 2> inverse = {{
+            {middle[1][1] / determinant, -middle[0][1] / determinant},
+            {-middle[1][0] / determinant, middle[0][0] / determinant}}};
+        std::array<double, 2> center;
+        for (int i = 0; i < 2; ++i) {
+            center[i] = std::clamp(-inverse[i][0] * std::midpoint(f[0][0].lo, f[0][0].hi)
+                - inverse[i][1] * std::midpoint(f[0][1].lo, f[0][1].hi), 0.0, 1.0);
+            if (!std::isfinite(center[i]))
+                return false;
+        }
+        const Pair at_center = {bilinear(f[0][0], f[1][0], f[2][0], f[3][0], I(center[0]), I(center[1])),
+            bilinear(f[0][1], f[1][1], f[2][1], f[3][1], I(center[0]), I(center[1]))};
+        double contraction = 0.0;
+        bool outside = false, settled = true;
+        for (int i = 0; i < 2; ++i) {
+            I image(center[i]);
+            I row_norm;
+            for (int j = 0; j < 2; ++j) {
+                image = image - I(inverse[i][j]) * at_center[j];
+                I coefficient(i == j ? 1.0 : 0.0);
+                for (int k = 0; k < 2; ++k)
+                    coefficient = coefficient - I(inverse[i][k]) * jacobian[k][j];
+                row_norm = row_norm + I(nurbs_interval::magnitude(coefficient));
+                image = image + coefficient * I((I(0.0) - I(center[j])).lo, (I(1.0) - I(center[j])).hi);
+            }
+            if (!nurbs_interval::finite(image) || !nurbs_interval::finite(row_norm))
+                return false;
+            // The search takes the middle of the cell for its centre: its image is wider by a few roundings.
+            const double margin = 16.0 * (image.hi - image.lo) + 1e-12;
+            contraction = std::max(contraction, row_norm.hi);
+            outside = outside || image.hi < -margin || image.lo > 1.0 + margin;
+            settled = on(image, margin, i == 0 ? std::array<int, 4>{0, 1, 2, 3} : std::array<int, 4>{0, 2, 1, 3}, true) && settled;
+            box[i] = image;
+        }
+        if (outside)
+            return true;
+        const I determinant_r = I(inverse[0][0]) * I(inverse[1][1]) - I(inverse[0][1]) * I(inverse[1][0]);
+        sign = determinant_r.lo > 0.0 ? 1 : (determinant_r.hi < 0.0 ? -1 : 0);
+        if (!settled || !(contraction < 1.0) || sign == 0)
+            return false;
+    }
+    Root root;
+    root.chart = {surface.m_nurbsknot[0][0], surface.m_nurbsknot[0][1], surface.m_nurbsknot[1][0], surface.m_nurbsknot[1][1]};
+    for (int i = 0; i < 2; ++i) {
+        box[i] = {std::max(box[i].lo, 0.0), std::min(box[i].hi, 1.0)};
+        const I parameter = I(root.chart[2 * i]) + (I(root.chart[2 * i + 1]) - I(root.chart[2 * i])) * box[i];
+        root.enclosure[2 * i] = std::max(root.chart[2 * i], parameter.lo);
+        root.enclosure[2 * i + 1] = std::min(root.chart[2 * i + 1], parameter.hi);
+    }
+    root.u = std::midpoint(root.enclosure[0], root.enclosure[1]);
+    root.v = std::midpoint(root.enclosure[2], root.enclosure[3]);
+    root.point = surface.point_at(root.u, root.v);
+    I squared, forward;
+    for (int d = 0; d < 3; ++d) {
+        const I world = bilinear(corners[0][d], corners[1][d], corners[2][d], corners[3][d], box[0], box[1]);
+        squared = squared + square(world - (I(root.point[d]) - I(frame.origin[d])));
+        if (d == frame.dominant)
+            forward = world;
+    }
+    const I error = square_root(squared);
+    const I distance = I(frame.sign) * forward * frame.distance_scale;
+    // A sixteenth of the tolerance keeps the bounds of the search, a few roundings wider, inside it.
+    if (!finite(root.point) || !nurbs_interval::finite(error) || !(error.hi <= tolerance * 0.0625) ||
+        !nurbs_interval::finite(distance) || !((I(distance.hi) - I(distance.lo)).hi <= tolerance * 0.0625))
+        return false;
+    if (rim) {
+        // Behind the origin the search drops the cells around the root; ahead of it it halves them to its depth limit, which here comes before the limits of the parameters and of the work.
+        if (distance.hi < -tolerance)
+            return true;
+        for (int d = 0; d < 2; ++d)
+            if (!(std::ldexp(root.chart[2 * d + 1] - root.chart[2 * d], -(options.max_depth + 1) / 2) > 4.0 *
+                std::numeric_limits<double>::epsilon() * std::max(std::abs(root.chart[2 * d]), std::abs(root.chart[2 * d + 1]))))
+                return false;
+        if (!exact || !(distance.lo > tolerance) || options.max_cells < 65536)
+            return false;
+        fail(result, "Surface ray root isolation depth exceeded");
+        return true;
+    }
+    if (!(options.include_origin || distance.lo > 0.0 || distance.hi < 0.0))
+        return false;
+    root.distance = std::midpoint(distance.lo, distance.hi);
+    root.distance_enclosure = {distance.lo, distance.hi};
+    root.crossing = sign * (frame.dominant % 2 == 0 ? 1 : -1) * static_cast<int>(frame.sign);
+    if (distance.lo > 0.0 || (options.include_origin && distance.hi >= 0.0))
+        result.roots.push_back(std::move(root));
+    return true;
+}
+
 }
 
 Result intersect(const NurbsSurface& surface, const Point& origin, const Vector& direction,
@@ -393,6 +584,10 @@ Result intersect(const NurbsSurface& surface, const Point& origin, const Vector&
         !std::isfinite(tolerance) || tolerance <= 0.0 || options.max_cells == 0 || options.max_depth < 0)
         throw std::invalid_argument("Surface ray requires finite valid geometry, positive tolerance and a work budget");
     Result result;
+    if (bilinear_roots(surface, origin, direction, tolerance, options, result)) {
+        result.cells = 1;
+        return result;
+    }
     for (int i = 0; i < surface.cv_count(0); ++i)
         for (int j = 0; j < surface.cv_count(1); ++j)
             if (!(surface.weight(i, j) > 0.0) || !std::isfinite(surface.weight(i, j)) || !finite(surface.get_cv(i, j))) {
