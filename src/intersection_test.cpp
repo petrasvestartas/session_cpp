@@ -1720,6 +1720,63 @@ MINI_TEST("Intersection", "Surface Surface Plane Torus") {
     }
 }
 
+MINI_TEST("Intersection", "Surface Plane Loop Seeded On The Torus Seam") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+
+    // A plane parallel to the axis cuts an oval about the outer equator, the tube seam: the trace starts on the seam and is cut there too.
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 0.87278740435838708, 0.32987454484682532);
+    Plane wall = Plane::from_point_normal(Point(0.0, 0.98669363572262236, 0.0), Vector(0.0, 1.0, 0.0));
+    std::vector<std::pair<NurbsCurve, NurbsCurve>> sections = Intersection::surface_plane_uv(torus, wall, 1e-8);
+
+    MINI_CHECK(sections.size() == 2);
+
+    for (const std::pair<NurbsCurve, NurbsCurve>& section : sections) {
+        for (int i = 0; i <= 64; ++i) {
+            const double t = section.first.domain_start() + (section.first.domain_end() - section.first.domain_start()) * i / 64.0;
+            const Point world = section.first.point_at(t);
+            const Point uv = section.second.point_at(t);
+            MINI_CHECK(uv[0] >= -1e-9 && uv[0] <= 4.0 + 1e-9 && uv[1] >= -1e-9 && uv[1] <= 4.0 + 1e-9);
+            MINI_CHECK(torus.point_at(uv[0], uv[1]).distance(world) < 1e-7);
+            MINI_CHECK(std::abs(world[1] - 0.98669363572262236) < 1e-7);
+        }
+    }
+}
+
+MINI_TEST("Intersection", "Surface Plane Pieces End On The Torus Seam") {
+    // using session_cpp::Intersection;
+    // using session_cpp::Plane;
+    // using session_cpp::Point;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+
+    // Tilted planes cross both seams: a piece cut on a seam ends on it, not a hair outside the domain.
+    NurbsSurface torus = Primitives::torus_surface(0.0, 0.0, 0.0, 0.87278740435838708, 0.32987454484682532);
+    int pieces = 0;
+
+    for (const Vector& normal : {Vector(0.31, 0.89, 0.33), Vector(-0.52, 0.27, 0.81), Vector(0.12, -0.35, 0.93)}) {
+        Plane cut = Plane::from_point_normal(Point(0.21, -0.08, 0.05), normal);
+
+        for (const std::pair<NurbsCurve, NurbsCurve>& section : Intersection::surface_plane_uv(torus, cut, 1e-8)) {
+            ++pieces;
+            for (double t : {section.second.domain_start(), section.second.domain_end()}) {
+                const Point uv = section.second.point_at(t);
+                MINI_CHECK(uv[0] >= 0.0 && uv[0] <= 4.0 && uv[1] >= 0.0 && uv[1] <= 4.0);
+                MINI_CHECK(torus.point_at(uv[0], uv[1]).distance(section.first.point_at(t)) < 1e-7);
+            }
+        }
+    }
+
+    MINI_CHECK(pieces > 6);
+}
+
 MINI_TEST("Intersection", "Surface Surface Cylinders") {
     // using session_cpp::Intersection;
     // using session_cpp::Primitives;

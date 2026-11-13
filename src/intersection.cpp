@@ -2599,6 +2599,10 @@ std::vector<int> split_at_seams(
     std::vector<int> cross_idx;
     out_pts.push_back(pts[0]);
 
+    // A trace seeded on the seam starts there: a loop is cut at its start as at any other crossing.
+    if (pts.size() > 1 && snap_to_seam(field, pts[1], out_pts.back()))
+        cross_idx.push_back(0);
+
     for (size_t i = 1; i < pts.size(); i++) {
         const std::pair<double, double> pa = pts[i - 1];
         const std::pair<double, double> pb = pts[i];
@@ -2648,16 +2652,33 @@ std::vector<SurfacePlanePiece> seam_pieces(
         return pieces;
     }
 
+    // A loop cut at its start meets that seam point again at its first step and at its close: between two cuts on one point there is no piece.
+    const auto positive = [](const std::vector<std::pair<double, double>>& piece) {
+        double extent = 0.0, size = 1.0;
+
+        for (const std::pair<double, double>& p : piece) {
+            extent = std::max({extent, std::abs(p.first - piece.front().first), std::abs(p.second - piece.front().second)});
+            size = std::max({size, std::abs(p.first), std::abs(p.second)});
+        }
+
+        return extent > size * 1e-9;
+    };
+
     if (is_loop) {
-        for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++)
-            pieces.push_back({{out_pts.begin() + cross_idx[ci], out_pts.begin() + cross_idx[ci + 1] + 1}, false});
+        for (size_t ci = 0; ci + 1 < cross_idx.size(); ci++) {
+            std::vector<std::pair<double, double>> piece(out_pts.begin() + cross_idx[ci], out_pts.begin() + cross_idx[ci + 1] + 1);
+
+            if (positive(piece))
+                pieces.push_back({std::move(piece), false});
+        }
 
         std::vector<std::pair<double, double>> wrap_piece(out_pts.begin() + cross_idx.back(), out_pts.end());
 
         for (int pi = 1; pi <= cross_idx[0]; pi++)
             wrap_piece.push_back({out_pts[pi].first + closure_du, out_pts[pi].second + closure_dv});
 
-        pieces.push_back({wrap_piece, false});
+        if (positive(wrap_piece))
+            pieces.push_back({wrap_piece, false});
 
         return pieces;
     }
@@ -2694,10 +2715,17 @@ std::vector<SurfacePlanePiece> trace_pieces(const SurfacePlaneField& field, cons
     return seam_pieces(out_pts, cross_idx, trace.is_loop, wrap_drift, closure_du, closure_dv);
 }
 
-/// Shift a piece by whole periods so its middle sample lies in the base domain.
+/// Shift a piece by whole periods so the middle of its extent lies in the base domain; a sample may sit on the seam itself.
 void shift_piece_to_domain(const SurfacePlaneField& field, std::vector<std::pair<double, double>>& piece_pts) {
 
-    const std::pair<double, double> mid = piece_pts[piece_pts.size() / 2];
+    std::pair<double, double> lowest = piece_pts.front(), highest = lowest;
+
+    for (const std::pair<double, double>& p : piece_pts) {
+        lowest = {std::min(lowest.first, p.first), std::min(lowest.second, p.second)};
+        highest = {std::max(highest.first, p.first), std::max(highest.second, p.second)};
+    }
+
+    const std::pair<double, double> mid = {std::midpoint(lowest.first, highest.first), std::midpoint(lowest.second, highest.second)};
 
     if (field.closed_u) {
         const int k_u = (int)std::floor((mid.first - field.u0) / field.range_u);
@@ -2853,9 +2881,39 @@ bool piece_curves(
 ) {
     shift_piece_to_domain(field, piece.uv);
     std::vector<Point> pts_uv = densify_piece(field, piece.uv);
-    for (Point& uv : pts_uv)
-        if (!field.polish(uv[0], uv[1]))
+    // An end cut on a seam stays on it: polished freely it leaves the seam by what the cut was off the plane, and the piece ends outside its face while the next starts short of it.
+    const auto polish_on_seam = [&field](Point& uv) {
+        const std::array<double, 4> bounds = {field.u0, field.u1, field.v0, field.v1};
+        const std::array<bool, 2> closed = {field.closed_u, field.closed_v};
+        for (int axis = 0; axis < 2; ++axis) {
+            if (!closed[axis] || (uv[axis] != bounds[2 * axis] && uv[axis] != bounds[2 * axis + 1]))
+                continue;
+            double along = uv[1 - axis];
+            for (int iteration = 0; iteration < 8; ++iteration) {
+                double value, gu, gv;
+                if (axis == 0)
+                    field.value_and_gradient(uv[0], along, value, gu, gv);
+                else
+                    field.value_and_gradient(along, uv[1], value, gu, gv);
+                if (std::abs(value) <= std::min(1e-12, field.tolerance * 0.1)) {
+                    uv[1 - axis] = along;
+                    return true;
+                }
+                const double slope = axis == 0 ? gv : gu;
+                if (std::abs(slope) < 1e-14)
+                    break;
+                along -= value / slope;
+            }
+        }
+        return false;
+    };
+    for (size_t i = 0; i < pts_uv.size(); ++i) {
+        const bool end = i == 0 || i + 1 == pts_uv.size();
+        if (end && !piece.is_loop && polish_on_seam(pts_uv[i]))
+            continue;
+        if (!field.polish(pts_uv[i][0], pts_uv[i][1]))
             throw std::runtime_error("Native plane section point did not converge");
+    }
     for (int iteration = 0; iteration < 20 && pts_uv.size() <= 32768; ++iteration) {
         pts_uv.erase(std::unique(pts_uv.begin(), pts_uv.end(), [](const Point& a, const Point& b) {
             return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
