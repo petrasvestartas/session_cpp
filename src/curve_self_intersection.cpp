@@ -191,6 +191,17 @@ bool injective(const NurbsCurve& curve, Span span, const std::vector<double>& kn
         const Span part{std::max(span.lo, knots[i - 1]), std::min(span.hi, knots[i])};
         if (!(part.hi > part.lo))
             continue;
+        // A part with no parameter inside is one step from end to end: its direction is that step, not a derivative.
+        const double inside = std::midpoint(part.lo, part.hi);
+        if (!(inside > part.lo && inside < part.hi)) {
+            const Vector step = curve.point_at(part.hi) - curve.point_at(part.lo);
+            for (std::size_t a = 0; a < axes.size(); ++a) {
+                const double along = step.dot(axes[a]);
+                signs[a][0] = signs[a][0] && along >= 0.0;
+                signs[a][1] = signs[a][1] && along <= 0.0;
+            }
+            continue;
+        }
         const auto data = derivatives(curve, part);
         if (data.empty())
             return false;
@@ -440,6 +451,10 @@ bool initial(
     const double infinity = std::numeric_limits<double>::infinity();
     for (std::size_t i = 1; i < knots.size(); ++i) {
         const Span span{knots[i - 1], knots[i]};
+        // Two knots one rounding apart hold no parameter between them: the span is its two ends, and each already ends a neighbour.
+        const double inside = std::midpoint(span.lo, span.hi);
+        if (!(inside > span.lo && inside < span.hi))
+            continue;
         Bounds box;
         if (!bounds(curve, span, box))
             return false;
@@ -599,7 +614,10 @@ Result intersect(const NurbsCurve& curve, double tolerance, const Options& optio
         work.pop_back();
         if (injective(curve, {pair.a.lo, pair.b.hi}, knots))
             continue;
-        if (pair.a.hi < pair.b.lo) {
+        // Spans a rounding apart are neighbours across a knot span that holds no parameter of its own.
+        const double between = std::midpoint(pair.a.hi, pair.b.lo);
+        const bool apart = between > pair.a.hi && between < pair.b.lo;
+        if (apart) {
             if (separated(curve, pair, tolerance))
                 continue;
             // The whole stretch from one piece to the other inside the tolerance is a single point at this resolution:
@@ -623,6 +641,20 @@ Result intersect(const NurbsCurve& curve, double tolerance, const Options& optio
                 break;
             }
         }
+        // Neighbours whose whole stretch is inside the tolerance are one point at this resolution, as pieces apart are above.
+        Bounds reach;
+        if (!apart && bounds(curve, {pair.a.lo, pair.b.hi}, reach)) {
+            double extent = 0.0;
+            for (int d = 0; d < 3; ++d)
+                extent = std::max(extent, reach.hi[d] - reach.lo[d]);
+            if (extent <= tolerance)
+                continue;
+        }
+        // Neighbours halved down to single parameters have nothing left between them to meet.
+        const Span& wider = pair.a.hi - pair.a.lo >= pair.b.hi - pair.b.lo ? pair.a : pair.b;
+        const double middle = std::midpoint(wider.lo, wider.hi);
+        if (!(middle > wider.lo && middle < wider.hi))
+            continue;
         result.complete = pair.depth < options.max_depth && work.size() + 3 <= options.max_cells && split(pair, work);
     }
     if (!result.complete && result.failure.empty())

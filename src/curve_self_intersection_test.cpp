@@ -255,3 +255,20 @@ MINI_TEST("Curve Self Intersection", "Stationary Derivative Across Original Knot
         MINI_CHECK(result.points.empty() && result.endpoints.empty() && result.overlaps.empty());
     }
 }
+
+MINI_TEST("Curve Self Intersection", "Knot Span One Rounding Wide") {
+    // A fit can leave two knots one step apart: that span holds no parameter between its ends and cannot cross itself or its neighbours.
+    for (const std::array<double, 4>& knots : {std::array<double, 4>{0.0, 0.5, std::nextafter(0.5, 1.0), 1.0},
+                                               std::array<double, 4>{0.0, 0.5, std::nextafter(1.0, 0.0), 1.0}}) {
+        NurbsCurve curve(3, false, 2, 4);
+        curve.m_nurbsknot.assign(knots.begin(), knots.end());
+        const bool last = knots[2] > 0.75;
+        MINI_CHECK(curve.set_cv(0, Point(0, 0, 0)) && curve.set_cv(1, Point(1, 0.25, 0)));
+        MINI_CHECK(curve.set_cv(2, last ? Point(2, 1, 0) : Point(1 + 1e-16, 0.25, 0)));
+        MINI_CHECK(curve.set_cv(3, last ? Point(2 + 1e-16, 1, 0) : Point(2, 1, 0)));
+        MINI_CHECK(curve.is_valid() && curve.get_span_vector().size() == 4);
+        const auto result = curve_self_intersection::intersect(curve, 1e-9);
+        complete(result);
+        MINI_CHECK(result.points.empty() && result.overlaps.empty());
+    }
+}
