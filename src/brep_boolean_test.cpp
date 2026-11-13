@@ -2475,10 +2475,12 @@ static void check_feature(const BRep& solid, const BRep& tool, double removed, i
         const BRep kept = solid.boolean_difference(tool);
         const BRep common = solid.boolean_intersection(tool);
         const double a = kept.volume_exact(), b = common.volume_exact();
+        // The three volumes round apart: their sum is held to 64 units in the last place of the whole, and to 1e-6 where that is less.
+        const double rounding = std::max(1e-6, 64.0 * (std::nextafter(whole, std::numeric_limits<double>::infinity()) - whole));
         int round_faces = 0;
         for (const BRepFace& face : kept.m_faces)
             round_faces += kept.m_surfaces[face.surface_index].degree(0) > 1 || kept.m_surfaces[face.surface_index].degree(1) > 1 ? 1 : 0;
-        if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > 1e-6
+        if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > rounding
             || kept.face_count() != faces || round_faces < 4 || (removed > 0.0 && std::abs(b - removed) > allowed))
             throw std::runtime_error("faces " + std::to_string(kept.face_count()) + ", round " + std::to_string(round_faces) + ", kept "
                 + std::to_string(a) + ", removed " + std::to_string(b) + " of " + std::to_string(removed) + ", whole " + std::to_string(whole));
