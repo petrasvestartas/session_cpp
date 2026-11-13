@@ -1779,6 +1779,12 @@ void drop_covered_traces(const SurfacePlaneField& field, std::vector<SurfacePlan
     }
 }
 
+/// Whether q lies within a grid cell of an open side of the domain, where snap_trace_end puts a trace end onto that side: such an end left the surface and closes nothing.
+bool ends_on_open_side(const SurfacePlaneField& field, const std::pair<double, double>& q) {
+    return (!field.closed_u && (std::abs(q.first - field.u0) < field.du || std::abs(q.first - field.u1) < field.du)) ||
+        (!field.closed_v && (std::abs(q.second - field.v0) < field.dv || std::abs(q.second - field.v1) < field.dv));
+}
+
 /// Append trace b to the end of trace a, reversed when requested, and close a when it meets itself.
 void append_trace(const SurfacePlaneField& field, SurfacePlaneTrace& a, SurfacePlaneTrace& b, bool reversed) {
 
@@ -1790,7 +1796,8 @@ void append_trace(const SurfacePlaneField& field, SurfacePlaneTrace& a, SurfaceP
     a.uv_trace.insert(a.uv_trace.end(), add.begin(), add.end());
     b.uv_trace.clear();
 
-    if (field.point(a.uv_trace.front()).distance(field.point(a.uv_trace.back())) < field.join_tol) {
+    if (!ends_on_open_side(field, a.uv_trace.front()) && !ends_on_open_side(field, a.uv_trace.back()) &&
+        field.point(a.uv_trace.front()).distance(field.point(a.uv_trace.back())) < field.join_tol) {
         a.is_loop = true;
         a.uv_trace.pop_back();
     }
@@ -1844,7 +1851,9 @@ void close_traces(const SurfacePlaneField& field, std::vector<SurfacePlaneTrace>
         if (t.is_loop || t.uv_trace.size() < 6)
             continue;
 
-        if (field.point(t.uv_trace.front()).distance(field.point(t.uv_trace.back())) < field.join_tol) {
+        // The join distance is a cell and a half, and on a surface of one span a cell is a quarter of it: an arc from one open side to another is no loop, however near its ends lie.
+        if (!ends_on_open_side(field, t.uv_trace.front()) && !ends_on_open_side(field, t.uv_trace.back()) &&
+            field.point(t.uv_trace.front()).distance(field.point(t.uv_trace.back())) < field.join_tol) {
             t.is_loop = true;
             t.uv_trace.pop_back();
             t.uv_unwrapped.pop_back();
@@ -7503,6 +7512,19 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
     for (size_t i = 0; i < samples.ts.size(); ++i)
         if (!std::isfinite(samples.ts[i]) || (i && samples.ts[i] <= samples.ts[i - 1]))
             throw std::runtime_error("Analytic pullback raw parameters are not strictly ordered");
+    // A sample one rounding from its neighbour, as where a seam cut lands beside a sample, would be a span with no parameter inside: the ends stay, the sample between goes.
+    for (size_t i = 1; i < samples.ts.size() && samples.ts.size() > 2;) {
+        const double inside = std::midpoint(samples.ts[i - 1], samples.ts[i]);
+        if (inside > samples.ts[i - 1] && inside < samples.ts[i]) {
+            ++i;
+            continue;
+        }
+        const size_t drop = i + 1 == samples.ts.size() ? i - 1 : i;
+        samples.ts.erase(samples.ts.begin() + drop);
+        samples.uv.erase(samples.uv.begin() + drop);
+        if (drop < i)
+            --i;
+    }
     collapsed_boundary_endpoint_proposal(surface,world,samples,tolerance);
     // Preserve a valid analytic parameter law, including collapsed chart aliases
     // and original endspan extensions, before Closest can replace its proposals.
@@ -9595,6 +9617,8 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k, const
         if (c != k)
             free[j++] = c;
 
+    double accepted = std::numeric_limits<double>::infinity();
+
     for (int it = 0; it < 24; it++) {
         if (chart)
             for (int c = 0; c < 4; ++c)
@@ -9603,11 +9627,17 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k, const
         eval_a(y[0], y[1], sa, sau, sav);
         eval_b(y[2], y[3], sb, sbu, sbv);
         std::vector<double> res = {sa[0] - sb[0], sa[1] - sb[1], sa[2] - sb[2]};
+        const double gap = std::sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2]);
 
-        if (std::sqrt(res[0] * res[0] + res[1] * res[1] + res[2] * res[2]) < conv_tol) {
+        // Inside the tolerance the crossing can still sit a tolerance along the curve from where it meets the seam, and the piece would end beside its own end: step on while a step still halves the gap.
+        if (gap < conv_tol) {
+            if (!(gap < 0.5 * accepted)) {
+                if (gap < accepted)
+                    x = y;
+                return true;
+            }
+            accepted = gap;
             x = y;
-
-            return true;
         }
 
         const Vector cols[4] = {sau, sav, -sbu, -sbv};
@@ -9630,6 +9660,9 @@ bool SurfaceSurfaceField::correct_on_seam(std::array<double, 4>& x, int k, const
 
         clamp_open(y);
     }
+
+    if (std::isfinite(accepted))
+        return true;
 
     if (chart)
         for (int c = 0; c < 4; ++c)
@@ -10755,14 +10788,22 @@ bool march_predict(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m, std
     return true;
 }
 
-/// Whether the step from p_prev to p_cur turns more than acos(0.985) from the previous direction.
-bool march_turns_sharply(const SurfaceSurfaceMarch& m) {
+/// Whether the step from p_prev to p_cur turns more than acos(0.985) from the previous direction, on a first step from its own, or ends where the curve runs back against it. A step is judged from the first one on, as OCCT's IntWalk_PWalking::TestDeflection does: unjudged, a first step of full length lands across a hairpin on the returning leg.
+bool march_turns_sharply(const SurfaceSurfaceField& field, const SurfaceSurfaceMarch& m, double dir_sign) {
 
+    const std::array<double, 3>& from = m.have_prev_d ? m.prev_d : m.d;
     double sd0 = (m.p_cur[0] - m.p_prev[0]) / m.step_len;
     double sd1 = (m.p_cur[1] - m.p_prev[1]) / m.step_len;
     double sd2 = (m.p_cur[2] - m.p_prev[2]) / m.step_len;
 
-    return sd0 * m.prev_d[0] + sd1 * m.prev_d[1] + sd2 * m.prev_d[2] < 0.985;
+    if (sd0 * from[0] + sd1 * from[1] + sd2 * from[2] < 0.985)
+        return true;
+
+    std::array<double, 3> ahead;
+    Vector sa, sau, sav, sbu, sbv;
+
+    return field.tangent(m.xn, dir_sign, ahead, sa, sau, sav, sbu, sbv) &&
+        ahead[0] * m.d[0] + ahead[1] * m.d[1] + ahead[2] * m.d[2] < 0.0;
 }
 
 bool correct_boundary_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
@@ -10778,7 +10819,7 @@ bool correct_boundary_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch
 }
 
 /// Up to seven attempts at one step, halving h after a failed corrector or a sharp turn.
-bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
+bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m, double dir_sign) {
 
     int attempts = 0;
 
@@ -10804,7 +10845,7 @@ bool march_step(const SurfaceSurfaceField& field, SurfaceSurfaceMarch& m) {
         m.p_cur = field.point(m.xn);
         m.step_len = triple_distance(m.p_cur, m.p_prev);
 
-        if (m.have_prev_d && m.step_len > 1e-14 && march_turns_sharply(m) && attempts < 6 && m.boundary < 0) {
+        if (m.step_len > 1e-14 && attempts < 6 && m.boundary < 0 && march_turns_sharply(field, m, dir_sign)) {
             m.why = "angle";
             m.h *= 0.5;
             attempts += 1;
@@ -10855,7 +10896,7 @@ bool trace_dir(
     std::array<double, 3> start_direction = {};
 
     for (int step_i = 0; step_i < field.max_steps; step_i++) {
-        if (!march_direction(field, m, dir_sign) || !march_step(field, m))
+        if (!march_direction(field, m, dir_sign) || !march_step(field, m, dir_sign))
             break;
 
         if (step_i == 0)
@@ -11002,6 +11043,7 @@ bool trace_seed(
         return false;
 
     unwrap_quad(field, quad);
+
     is_loop = fwd_closed;
 
     if (is_loop)

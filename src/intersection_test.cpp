@@ -1777,6 +1777,37 @@ MINI_TEST("Intersection", "Surface Plane Pieces End On The Torus Seam") {
     MINI_CHECK(pieces > 6);
 }
 
+MINI_TEST("Intersection", "Surface Surface Torus Cone Crossing Both Seams") {
+    // using session_cpp::BRep;
+    // using session_cpp::Intersection;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::NurbsCurve;
+
+    // The marched section crosses the torus seams: each crossing is polished onto the curve, or the piece ending there can not be certified up to its own end.
+    BRep torus = BRep::create_torus(0.8 * 0.94543090290389953, 0.25 * 0.84966489756479857);
+    BRep cone = BRep::create_cone(0.6 * 1.316637886594981, 1.0689392365980894);
+    cone.transform(Xform::translation(0.33642515733372419, -0.15612716018222272, -0.23085594603326173)
+        * Xform::rotation(Vector(-0.1271026972681284, -0.51114680897444487, -0.38804439967498183), -2.2317521455697715));
+    int pieces = 0;
+
+    for (const NurbsSurface& a : torus.m_surfaces)
+        for (const NurbsSurface& b : cone.m_surfaces)
+            for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : Intersection::surface_surface(a, b, 1e-8, true)) {
+                ++pieces;
+                for (double t : {std::get<0>(section).domain_start(), std::get<0>(section).domain_end()}) {
+                    const Point world = std::get<0>(section).point_at(t);
+                    const Point ua = std::get<1>(section).point_at(t);
+                    const Point ub = std::get<2>(section).point_at(t);
+                    MINI_CHECK(a.point_at(ua[0], ua[1]).distance(world) < 1e-7);
+                    MINI_CHECK(b.point_at(ub[0], ub[1]).distance(world) < 1e-7);
+                }
+            }
+
+    MINI_CHECK(pieces > 4);
+}
+
 MINI_TEST("Intersection", "Surface Surface Cylinders") {
     // using session_cpp::Intersection;
     // using session_cpp::Primitives;

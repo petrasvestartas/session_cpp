@@ -2002,6 +2002,34 @@ MINI_TEST("BRep Native Boolean", "Section And Pcurve Knots A Rounding Apart") {
     MINI_CHECK(cut.is_valid() && cut.is_solid() && std::abs(cut.volume_exact() - (va - vi)) < 1e-6);
 }
 
+MINI_TEST("BRep Native Boolean", "Sphere Section Turning Back Beside Its Pole") {
+    // The bore of the block cuts the sphere beside a pole, where the section makes a hairpin: the walk's first step is judged like any other, or it lands across the hairpin.
+    const BRep block = BRep::create_block_with_hole(1.2 * 0.84170802859589455, 1.2 * 1.5481386144179852, 1.5598235045559705, 0.3);
+    const BRep sphere = BRep::create_sphere(0.6 * 1.1454732507932932).transformed(
+        Xform::translation(-0.26428989472333342, -0.28393812412396074, -0.014818908716551961)
+        * Xform::rotation(Vector(0.25010916963219643, 0.021657375618815422, -0.12511622160673141), 2.1255293400026858));
+    five_operation_identities(sphere, block);
+}
+
+MINI_TEST("BRep Native Boolean", "Cone Cut By Planes Parallel To Its Axis") {
+    // A box side parallel to the axis cuts a hyperbola that crosses the cone seam at its apex side; the seam cut lands one rounding from a sample of the pcurve fit, and the fit keeps no span between them.
+    const BRep cone = BRep::create_cone(0.6 * 1.3975388618145015, 1.5526146667042293);
+    const BRep box = BRep::create_box(1.4248876423166217, 1.2709414038171074, 0.97973732797664581)
+        .transformed(Xform::translation(-0.011692123688115858, -0.40125375759228554, -0.027971456215258962));
+    five_operation_identities(cone, box);
+}
+
+MINI_TEST("BRep Native Boolean", "Cone Arc From Rim To Rim Is No Loop") {
+    // A tilted face of the block cuts the cone in an arc from the base rim back to it, its ends nearer each other than a cell of the one-span cone: an open arc, not a loop traced there and back.
+    const BRep cone = BRep::create_cone(0.6 * 1.4819729324299926, 0.6270523628347805);
+    const BRep block = BRep::create_block_with_hole(1.2 * 1.5819112356177447, 1.2 * 0.98778585350351233, 0.87125815218067082, 0.3)
+        .transformed(Xform::from_matrix({0.06669239165747555, 0.99468450724756263, 0.078452889919234547, 0,
+            -0.64648349571223906, 0.10296911915467326, -0.75594738591531241, 0,
+            -0.76000737803437768, -0.00030255938980561226, 0.64991437419949916, 0,
+            -0.38361927293972137, -0.40482652664952684, -0.18794412814763461, 1}));
+    five_operation_identities(cone, block);
+}
+
 MINI_TEST("BRep Native Boolean", "Column Head Slots Of Every Measured Node") {
     // The real joint's outlines, sizes, turns and asymmetric nodes, cut with the seam where the column has it and turned into the slot.
     std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/column_head_slots.json");
