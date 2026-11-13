@@ -1941,12 +1941,24 @@ void five_operation_identities(const BRep& a, const BRep& b) {
 }
 }
 
-MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against Tilted Curved Solids") {
-    // A pyramid side is a bilinear patch collapsed at the apex: a plane whose parameters are not affine, cut by conics that leave the triangle.
-    const BRep pyramid = BRep::create_pyramid(1.2, 1.4);
+namespace {
+/// A pyramid side is a bilinear patch collapsed at the apex: a plane whose parameters are not affine, cut by conics that leave the triangle.
+void pyramid_against(const BRep& solid) {
     const Xform placed = Xform::translation(0.15, -0.1, 0.35) * Xform::rotation(Vector(1, 2, 3), 0.7);
-    for (const BRep& solid : {BRep::create_sphere(0.6), BRep::create_cylinder(0.45, 1.1), BRep::create_cone(0.55, 1.2)})
-        five_operation_identities(pyramid, solid.transformed(placed));
+    five_operation_identities(BRep::create_pyramid(1.2, 1.4), solid.transformed(placed));
+}
+}
+
+MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against A Tilted Sphere") {
+    pyramid_against(BRep::create_sphere(0.6));
+}
+
+MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against A Tilted Cylinder") {
+    pyramid_against(BRep::create_cylinder(0.45, 1.1));
+}
+
+MINI_TEST("BRep Native Boolean", "Pyramid Collapsed Faces Against A Tilted Cone") {
+    pyramid_against(BRep::create_cone(0.55, 1.2));
 }
 
 MINI_TEST("BRep Native Boolean", "Sphere Sections Meeting On An Edge Of The Other Solid") {
