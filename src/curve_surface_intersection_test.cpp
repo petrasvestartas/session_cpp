@@ -995,6 +995,50 @@ MINI_TEST("Curve Surface Native", "A Piece Of A Matched Curve Keeps The Certific
     }
 }
 
+MINI_TEST("Curve Surface Native", "A Piece Inherits The Certificate Of Its Whole Within The Rounding Of The Cut") {
+    using curve_surface_intersection::ParameterMatch;
+    NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150, 10, 300).transformed(Xform::rotation_x(0.5 * Tolerance::PI));
+    drill = drill.transformed(Xform::translation(0, 0, 200));
+    const NurbsSurface body = Primitives::cylinder_surface(0, 0, 0, 100, 425);
+    const auto sections = Intersection::surface_surface(body, drill, 1e-7, true);
+    MINI_CHECK(!sections.empty());
+    const NurbsCurve& world = std::get<0>(sections[0]);
+    const NurbsCurve& pcurve = std::get<1>(sections[0]);
+    const double first = std::lerp(world.domain_start(), world.domain_end(), 0.21);
+    const double last = std::lerp(world.domain_start(), world.domain_end(), 0.68);
+    NurbsCurve piece = world, piece_pcurve = pcurve;
+    MINI_CHECK(piece.trim(first, last) && piece_pcurve.trim(first, last));
+    NurbsCurve moved = piece_pcurve;
+    const Point end = moved.get_cv(moved.cv_count() - 1);
+    MINI_CHECK(moved.set_cv(moved.cv_count() - 1, Point(end[0] + 1e-3, end[1] + 1e-3, 0)));
+
+    nurbs_memo::Scope scope;
+    const auto spans = [&scope] {
+        size_t count = 0;
+        for (const auto& [surface, pairs] : scope.spans)
+            count += pairs.size();
+        return count;
+    };
+    MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, body, 1e-7) == ParameterMatch::Matched);
+    const size_t whole = spans();
+    // A moved end is not covered by the whole: its span is left to be asked, and refused.
+    curve_surface_intersection::inherit(piece, moved, world, pcurve, body, 1e-7);
+    MINI_CHECK(curve_surface_intersection::same_parameter(piece, moved, body, 1e-7) != ParameterMatch::Matched);
+    // The two spans the cuts made are covered without a certificate of their own.
+    const size_t before = spans();
+    curve_surface_intersection::inherit(piece, piece_pcurve, world, pcurve, body, 1e-7);
+    MINI_CHECK(spans() > before && spans() >= whole + 2);
+    const size_t inherited = spans();
+    MINI_CHECK(curve_surface_intersection::same_parameter(piece, piece_pcurve, body, 1e-7) == ParameterMatch::Matched && spans() == inherited);
+    // Nothing is inherited below the tolerance the whole reached.
+    NurbsCurve other = world;
+    MINI_CHECK(other.trim(first, std::lerp(world.domain_start(), world.domain_end(), 0.5)));
+    NurbsCurve other_pcurve = pcurve;
+    MINI_CHECK(other_pcurve.trim(first, std::lerp(world.domain_start(), world.domain_end(), 0.5)));
+    curve_surface_intersection::inherit(other, other_pcurve, world, pcurve, body, 1e-30);
+    MINI_CHECK(spans() == inherited);
+}
+
 MINI_TEST("Curve Surface Native", "A Witness On A Knot Line Is Bounded By Both Cells") {
     using curve_surface_intersection::ParameterMatch;
     const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 100, 425);

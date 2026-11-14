@@ -60,6 +60,10 @@ ParameterMatch same_parameter(
     ParameterFailure* failure = nullptr
 );
 
+/// Let a matched certificate of a curve and its pcurve, held by the active memo span by span, cover the spans of a piece cut from them where the rounding of the cut keeps the residual within the tolerance.
+void inherit(const NurbsCurve& piece, const NurbsCurve& piece_pcurve, const NurbsCurve& curve, const NurbsCurve& pcurve,
+             const NurbsSurface& surface, double tolerance);
+
 /// Intersect bounded positive-weight NURBS geometry, retaining original parameters and unresolved status.
 Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance = 1e-7);
 

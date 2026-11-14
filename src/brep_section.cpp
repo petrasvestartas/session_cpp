@@ -635,6 +635,8 @@ void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep&
             curve.interior=in_first==brep_classify::State::Inside && in_second==brep_classify::State::Inside;
             end_on_surface(curve.first_pcurve,first.m_surfaces[first.m_faces[a].surface_index]);
             end_on_surface(curve.second_pcurve,second.m_surfaces[second.m_faces[b].surface_index]);
+            curve_surface_intersection::inherit(curve.world,curve.first_pcurve,world,ua,first.m_surfaces[first.m_faces[a].surface_index],tolerance);
+            curve_surface_intersection::inherit(curve.world,curve.second_pcurve,world,ub,second.m_surfaces[second.m_faces[b].surface_index],tolerance);
             paired(curve,first,second,tolerance);
             curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index],
                                          second.m_surfaces[second.m_faces[b].surface_index],tolerance);

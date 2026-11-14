@@ -823,4 +823,21 @@ MINI_TEST("CurveIntersection", "Spans Apart By Their Control Boxes Are Passed By
     // A line past the circle by more than the tolerance and by less.
     MINI_CHECK(across(std::sqrt(2.0), 2e-7).points.empty() && across(std::sqrt(2.0), 2e-8).points.size() == 1);
 }
+
+MINI_TEST("CurveIntersection", "Ends Away From The Other Curve Are Not Matched And Overlaps Stay") {
+    const NurbsCurve wave = curve_from_points({{0, 0, 0}, {1, 1, 0}, {2, -1, 0}, {3, 1, 0}, {4, 0, 0}}, 3);
+    // Crossed by a line whose ends lie outside the box of the wave, and by one ending inside it but off the curve.
+    const auto crossed = curve_intersection::intersect(wave, curve_from_points({{2, -3, 0}, {2, 3, 0}}), 1e-7);
+    MINI_CHECK(crossed.complete && crossed.overlaps.empty() && crossed.points.size() == 1);
+    const auto inside = curve_intersection::intersect(wave, curve_from_points({{2, -3, 0}, {2, 0.4, 0}}), 1e-7);
+    MINI_CHECK(inside.complete && inside.overlaps.empty() && inside.points.size() == 1);
+    // A piece of the wave, forwards and backwards, overlaps it however its ends lie.
+    for (const bool reversed : {false, true}) {
+        NurbsCurve piece = wave;
+        MINI_CHECK(piece.trim(0.2, 0.7) && (!reversed || piece.reverse()));
+        const auto shared = curve_intersection::intersect(wave, piece, 1e-7);
+        MINI_CHECK(shared.complete && shared.overlaps.size() == 1);
+        MINI_CHECK(std::abs(shared.overlaps[0].a0 - 0.2) < 1e-9 && std::abs(shared.overlaps[0].a1 - 0.7) < 1e-9);
+    }
+}
 }

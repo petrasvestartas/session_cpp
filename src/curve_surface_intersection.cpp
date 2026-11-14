@@ -1959,6 +1959,79 @@ ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
     return match;
 }
 
+// How far a piece cut from a curve lies from it over [lo, hi], where both are one polynomial: their Bezier controls there differ by the rounding of the cut, and two rational pieces differ by the difference of numerators over the piece's weight less the curve times the difference of weights over it. The box of both controls in the first two coordinates holds both pieces.
+static bool deviation(const NurbsCurve& piece, const NurbsCurve& curve, double lo, double hi, const std::array<double, 3>& origin,
+                      nurbs_interval::Interval& bound, std::array<nurbs_interval::Interval, 2>& box) {
+    using nurbs_interval::Interval;
+    const auto p = nurbs_interval::curve_controls(piece, {lo, hi}, origin), c = nurbs_interval::curve_controls(curve, {lo, hi}, origin);
+    if (p.empty() || p.size() != c.size())
+        return false;
+    double numerator = 0.0, weight = 0.0, size = 0.0, least = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < p.size(); ++i) {
+        if (!(p[i][3].lo > 0.0) || !(c[i][3].lo > 0.0))
+            return false;
+        Interval apart, far;
+        for (int d = 0; d < 3; ++d) {
+            apart = apart + Interval(nurbs_interval::magnitude(p[i][d] - c[i][d]));
+            far = far + Interval(nurbs_interval::magnitude(c[i][d]));
+        }
+        for (int d = 0; d < 2; ++d) {
+            const Interval at = nurbs_interval::interval_hull(p[i][d] / p[i][3], c[i][d] / c[i][3]) + Interval(origin[d]);
+            box[d] = i == 0 ? at : nurbs_interval::interval_hull(box[d], at);
+        }
+        numerator = std::max(numerator, apart.hi);
+        weight = std::max(weight, nurbs_interval::magnitude(p[i][3] - c[i][3]));
+        size = std::max(size, (far / Interval(c[i][3].lo)).hi);
+        least = std::min(least, p[i][3].lo);
+    }
+    bound = (Interval(numerator) + Interval(weight) * Interval(size)) / Interval(least);
+    return nurbs_interval::finite(bound) && nurbs_interval::finite(box[0]) && nurbs_interval::finite(box[1]);
+}
+
+void inherit(const NurbsCurve& piece, const NurbsCurve& piece_pcurve, const NurbsCurve& curve, const NurbsCurve& pcurve,
+             const NurbsSurface& surface, double tolerance) {
+    using nurbs_interval::Interval;
+    nurbs_memo::Scope* memo = nurbs_memo::Scope::active;
+    if (!memo || parameter_diagnostics::active || piece.domain() != piece_pcurve.domain() || curve.domain() != pcurve.domain())
+        return;
+    std::string surface_key;
+    nurbs_memo::add(surface_key, surface);
+    const auto spans = memo->spans.find(surface_key);
+    if (spans == memo->spans.end())
+        return;
+    auto& known = spans->second;
+    const std::vector<double> a = piece.get_span_vector(), b = piece_pcurve.get_span_vector();
+    for (const SpanPair& pair : span_pairs(piece, piece_pcurve)) {
+        const double lo = std::max(a[pair.span - 1], b[pair.pcurve_span - 1]), hi = std::min(a[pair.span], b[pair.pcurve_span]);
+        const double middle = std::midpoint(lo, hi);
+        if (known.contains(pair.key) || !(middle > curve.domain_start() && middle < curve.domain_end()))
+            continue;
+        std::string world_key, uv_key, piece_world_key, piece_uv_key;
+        add_span(world_key, curve, middle);
+        add_span(uv_key, pcurve, middle);
+        const auto whole = known.find(world_key + uv_key);
+        if (whole == known.end())
+            continue;
+        add_span(piece_world_key, piece, middle);
+        add_span(piece_uv_key, piece_pcurve, middle);
+        // On the piece the residual is the whole curve's, plus how far the cut moved its world curve and, through the surface's derivatives where the two pcurves run, its pcurve: nothing for a span the cut left as it was.
+        const Point start = piece.get_cv(0);
+        Interval world, uv, speed;
+        std::array<Interval, 2> unused, region;
+        nurbs_interval::SurfaceBounds slope;
+        if ((piece_world_key != world_key && !deviation(piece, curve, lo, hi, {start[0], start[1], start[2]}, world, unused)) ||
+            (piece_uv_key != uv_key && (!deviation(piece_pcurve, pcurve, lo, hi, {0.0, 0.0, 0.0}, uv, region) ||
+             !nurbs_interval::surface_bounds(surface, {region[0].lo, region[0].hi, region[1].lo, region[1].hi}, {0.0, 0.0, 0.0}, slope, true, true))))
+            continue;
+        for (int k = 0; k < 2 && piece_uv_key != uv_key; ++k)
+            for (int d = 0; d < 3; ++d)
+                speed = speed + Interval(nurbs_interval::magnitude(slope.derivative[k][d]));
+        const Interval reached = Interval(whole->second) + world + speed * uv;
+        if (nurbs_interval::finite(reached) && reached.hi <= tolerance)
+            known.emplace(pair.key, reached.hi);
+    }
+}
+
 Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {
     if (!std::isfinite(tolerance) || tolerance <= 0.0 || !curve.is_valid() || !surface.is_valid())
         throw std::invalid_argument("Curve/surface intersection requires valid geometry and a finite positive tolerance");

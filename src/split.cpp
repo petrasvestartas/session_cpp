@@ -810,10 +810,187 @@ bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& p
     return nurbs_interval::finite(squared) && squared.hi <= allowed.lo;
 }
 
+/// Enclosed values along d of the control points of a curve with positive weights, which averages them: it crosses a line across d no more often than its control polygon (variation diminishing), so strictly monotone values make it strictly monotone along d.
+std::vector<nurbs_interval::Interval> along(const NurbsCurve& curve, const std::array<double, 2>& d) {
+    using nurbs_interval::Interval;
+    std::vector<Interval> values;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        const double* cv = curve.cv(i);
+        values.push_back((Interval(d[0]) * cv[0] + Interval(d[1]) * cv[1]) / Interval(curve.is_rational() ? cv[curve.dimension()] : 1.0));
+    }
+    return values;
+}
+
+/// 1 when the values strictly increase, -1 when they strictly decrease, 0 when neither is proved.
+int sense(const std::vector<nurbs_interval::Interval>& values) {
+    bool rising = true, falling = true;
+    for (size_t i = 1; i < values.size(); ++i) {
+        rising = rising && values[i - 1].hi < values[i].lo;
+        falling = falling && values[i].hi < values[i - 1].lo;
+    }
+    return rising ? 1 : falling ? -1 : 0;
+}
+
+/// Directions to try: the parameter axes and the chord of each curve.
+std::vector<std::array<double, 2>> directions(const NurbsCurve& a, const NurbsCurve& b) {
+    std::vector<std::array<double, 2>> result = {{1.0, 0.0}, {0.0, 1.0}};
+    for (const NurbsCurve* curve : {&a, &b}) {
+        const Point first = curve->point_at_start(), last = curve->point_at_end();
+        result.push_back({last[0] - first[0], last[1] - first[1]});
+    }
+    return result;
+}
+
+/// The farthest two points within tolerance can lie apart along d.
+nurbs_interval::Interval reach(const std::array<double, 2>& d, double tolerance) {
+    return (nurbs_interval::Interval(std::abs(d[0])) + nurbs_interval::Interval(std::abs(d[1]))) * nurbs_interval::Interval(tolerance);
+}
+
+/// Two or three coordinates and no interior knot repeated beyond the degree: a curve the self-intersection search takes.
+bool continuous(const NurbsCurve& curve) {
+    const std::vector<double>& knots = curve.m_nurbsknot;
+    for (size_t i = 0, end = 0; i < knots.size(); i = end) {
+        for (end = i + 1; end < knots.size() && knots[end] == knots[i]; ++end) {}
+        if (knots[i] > curve.domain_start() && knots[i] < curve.domain_end() && end - i > static_cast<size_t>(curve.degree()))
+            return false;
+    }
+    return curve.dimension() >= 2 && curve.dimension() <= 3;
+}
+
+/// A clamped curve strictly monotone along a direction with ends apart along it by more than the tolerance meets itself nowhere: every stretch is injective, which is where the self-intersection search reports nothing.
+bool simple(const NurbsCurve& curve, double tolerance) {
+    for (const auto& d : directions(curve, curve)) {
+        const auto values = along(curve, d);
+        if (const int s = sense(values); s != 0 && curve.is_clamped() && ((values.back() - values.front()) * nurbs_interval::Interval(s)).lo > reach(d, tolerance).hi)
+            return true;
+    }
+    return false;
+}
+
+/// A closed curve that meets itself only where it closes: every two neighbouring spans strictly monotone together along a direction (their Bezier controls, the shared one once, are a control polygon of the two), and every two other spans apart along one by more than the tolerance. That is where the self-intersection search reports the closing point alone.
+bool closed_simple(const NurbsCurve& curve, double tolerance) {
+    using nurbs_interval::Interval;
+    using Uv = std::array<Interval, 2>;
+    const Point first = curve.get_cv(0), last = curve.get_cv(curve.cv_count() - 1);
+    const std::vector<double> knots = curve.get_span_vector();
+    if (!curve.is_clamped() || first[0] != last[0] || first[1] != last[1] || knots.size() < 4)
+        return false;
+    std::vector<std::vector<Uv>> spans;
+    std::vector<Uv> boxes;
+    for (size_t i = 1; i < knots.size(); ++i) {
+        const auto controls = nurbs_interval::curve_controls(curve, {knots[i - 1], knots[i]}, {0.0, 0.0, 0.0});
+        if (controls.empty())
+            return false;
+        auto& points = spans.emplace_back();
+        for (const auto& c : controls) {
+            if (!(c[3].lo > 0.0))
+                return false;
+            points.push_back({c[0] / c[3], c[1] / c[3]});
+            boxes.resize(spans.size(), points.back());
+            for (int d = 0; d < 2; ++d)
+                boxes.back()[d] = nurbs_interval::interval_hull(boxes.back()[d], points.back()[d]);
+        }
+    }
+    const size_t n = spans.size();
+    const auto values = [](const std::vector<Uv>& points, const std::array<double, 2>& d, std::vector<Interval>& out) {
+        for (const Uv& p : points)
+            out.push_back(Interval(d[0]) * p[0] + Interval(d[1]) * p[1]);
+    };
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = i + 1; j < n; ++j) {
+            const bool next = j == i + 1, closing = i == 0 && j == n - 1;
+            const double apart = reach({1.0, 0.0}, tolerance).hi;
+            if (!next && !closing && ((boxes[j][0] - boxes[i][0]).lo > apart || (boxes[i][0] - boxes[j][0]).lo > apart ||
+                    (boxes[j][1] - boxes[i][1]).lo > apart || (boxes[i][1] - boxes[j][1]).lo > apart))
+                continue;
+            const std::vector<Uv>& x = closing ? spans[j] : spans[i];
+            const std::vector<Uv>& y = closing ? spans[i] : spans[j];
+            const std::array<double, 2> chord = {(y.back()[0].lo - x.front()[0].lo), (y.back()[1].lo - x.front()[1].lo)};
+            const std::array<double, 2> centers = {boxes[j][0].lo + boxes[j][0].hi - boxes[i][0].lo - boxes[i][0].hi,
+                boxes[j][1].lo + boxes[j][1].hi - boxes[i][1].lo - boxes[i][1].hi};
+            bool proved = false;
+            for (const auto& d : {std::array<double, 2>{1.0, 0.0}, std::array<double, 2>{0.0, 1.0}, chord, centers}) {
+                std::vector<Interval> a, b;
+                values(x, d, a);
+                values(y, d, b);
+                if (next || closing) {
+                    a.back() = nurbs_interval::interval_hull(a.back(), b.front());
+                    a.insert(a.end(), b.begin() + 1, b.end());
+                    proved = sense(a) != 0;
+                } else {
+                    Interval ha = a.front(), hb = b.front();
+                    for (const Interval& v : a) ha = nurbs_interval::interval_hull(ha, v);
+                    for (const Interval& v : b) hb = nurbs_interval::interval_hull(hb, v);
+                    const double gap = reach(d, tolerance).hi;
+                    proved = (hb - ha).lo > gap || (ha - hb).lo > gap;
+                }
+                if (proved)
+                    break;
+            }
+            if (!proved)
+                return false;
+        }
+    return true;
+}
+
+/// Every step of the control polygon within 60 degrees of d, for a polynomial curve or a single rational span: the derivative is a positive combination of the steps (of the differences of later and earlier controls for a rational Bezier span, which are sums of steps), so the curve advances along d at least half its speed.
+bool steep(const NurbsCurve& curve, const std::array<double, 2>& d, int s) {
+    using nurbs_interval::Interval;
+    if (curve.is_rational() && curve.cv_count() != curve.order())
+        return false;
+    const auto at = [&](int i, int k) {
+        const double* cv = curve.cv(i);
+        return Interval(cv[k]) / Interval(curve.is_rational() ? cv[curve.dimension()] : 1.0);
+    };
+    const Interval squared = Interval(d[0]) * Interval(d[0]) + Interval(d[1]) * Interval(d[1]);
+    for (int i = 1; i < curve.cv_count(); ++i) {
+        const Interval x = at(i, 0) - at(i - 1, 0), y = at(i, 1) - at(i - 1, 1);
+        const Interval dot = (Interval(d[0]) * x + Interval(d[1]) * y) * Interval(s);
+        if (!(dot.lo > 0.0 && (Interval(4.0) * dot * dot).lo >= (squared * (x * x + y * y)).hi))
+            return false;
+    }
+    return true;
+}
+
+/// Two curves that meet within the tolerance nowhere, or only beside a node they end on: both strictly monotone along a direction, with ranges apart along it by more than the tolerance, or with the high end of one the low end of the other, one of the nodes, and both steep along it, so every point of one within the tolerance of the other lies within three tolerances of that node.
+bool apart(const NurbsCurve& a, const NurbsCurve& b, double tolerance, const std::vector<Point>& nodes) {
+    for (const auto& d : directions(a, b)) {
+        const auto x = along(a, d), y = along(b, d);
+        const int sx = sense(x), sy = sense(y);
+        if (sx == 0 || sy == 0)
+            continue;
+        const auto& x_lo = sx > 0 ? x.front() : x.back();
+        const auto& x_hi = sx > 0 ? x.back() : x.front();
+        const auto& y_lo = sy > 0 ? y.front() : y.back();
+        const auto& y_hi = sy > 0 ? y.back() : y.front();
+        const double gap = reach(d, tolerance).hi;
+        if ((y_lo - x_hi).lo > gap || (x_lo - y_hi).lo > gap)
+            return true;
+        if (!a.is_clamped() || !b.is_clamped() || !steep(a, d, sx) || !steep(b, d, sy))
+            continue;
+        const Point a_hi = a.get_cv(sx > 0 ? a.cv_count() - 1 : 0), a_lo = a.get_cv(sx > 0 ? 0 : a.cv_count() - 1);
+        const Point b_hi = b.get_cv(sy > 0 ? b.cv_count() - 1 : 0), b_lo = b.get_cv(sy > 0 ? 0 : b.cv_count() - 1);
+        const auto node = [&nodes](const Point& p, const Point& q) {
+            return p[0] == q[0] && p[1] == q[1] && std::any_of(nodes.begin(), nodes.end(), [&p](const Point& n) { return n[0] == p[0] && n[1] == p[1]; });
+        };
+        if (node(a_hi, b_lo) || node(b_hi, a_lo))
+            return true;
+    }
+    return false;
+}
+
 /// Preserve both parameters of every original-curve self event in the affected knot spans.
 void self_events(std::vector<Span>& spans, const std::vector<Source>& sources, double tolerance) {
     for (size_t source = 0; source < sources.size(); ++source) {
-        const auto events = curve_self_intersection::intersect(sources[source].uv, tolerance);
+        const NurbsCurve& uv = sources[source].uv;
+        const bool searchable = continuous(uv);
+        if (searchable && simple(uv, tolerance))
+            continue;
+        curve_self_intersection::Result events;
+        if (searchable && closed_simple(uv, tolerance))
+            events.endpoints.push_back({uv.point_at_start(), uv.domain_start(), uv.domain_end(), false});
+        else
+            events = curve_self_intersection::intersect(uv, tolerance);
         if (!events.complete)
             throw SelfIntersectionError(sources[source].world, sources[source].uv, events,
                 source, sources[source].edge, sources[source].section, tolerance);
@@ -904,7 +1081,9 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
         // A placed cut meets the boundary and the cuts of other families at its ends only; two cuts of one family are sections of the same two surfaces and cross where these touch.
         const Source& first = sources[spans[i].source];
         const Source& second = sources[spans[j].source];
-        if (placed && (first.edge >= 0 || second.edge >= 0 || first.family != second.family))
+        // Two cuts of one family proved apart, or meeting only beside their shared end, which is already a node, add nothing.
+        if (placed && (first.edge >= 0 || second.edge >= 0 || first.family != second.family || apart(span_curve(spans[i], sources), span_curve(spans[j], sources), tolerance,
+                {first.uv.point_at_start(), first.uv.point_at_end(), second.uv.point_at_start(), second.uv.point_at_end()})))
             continue;
         const curve_intersection::Result events = parameter_events(span_curve(spans[i], sources), span_curve(spans[j], sources), tolerance);
         require(events.complete, events.failure);
@@ -961,11 +1140,12 @@ std::vector<double> span_cuts(const Span& span, const NurbsCurve& curve, double 
 
     std::vector<double> cuts = span.cuts;
 
+    // A cut at an end of the span is that end's vertex.
     for (double& t : cuts) {
         t = std::clamp(t, span.a, span.b);
-        if (vertex_interval(curve, span.a, t, curve.point_at(span.a), tolerance))
+        if (t != span.a && vertex_interval(curve, span.a, t, curve.point_at(span.a), tolerance))
             t = span.a;
-        else if (vertex_interval(curve, t, span.b, curve.point_at(span.b), tolerance))
+        else if (t != span.a && t != span.b && vertex_interval(curve, t, span.b, curve.point_at(span.b), tolerance))
             t = span.b;
     }
 

@@ -1712,4 +1712,69 @@ MINI_TEST("Split", "A Hole Inside A Hole Is Nested By One Of Its Points") {
     MINI_CHECK(made.faces.size() == 3 && holed == 2);
     placed_and_intersected(source.brep, source.face, cuts, true, 3);
 }
+
+// A cut of the given parameter-plane controls and degree on the parallelogram face, its world curve the image of its controls.
+split::FaceCut lifted_cut(const BRep& brep, int face, const std::vector<Point>& controls, int degree, bool closed) {
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    split::FaceCut cut;
+    cut.pcurve = NurbsCurve::create(closed, degree, controls);
+    if (closed)
+        MINI_CHECK(cut.pcurve.clamp_end(2) && cut.pcurve.set_cv(cut.pcurve.cv_count() - 1, cut.pcurve.get_cv(0)));
+    cut.world = cut.pcurve;
+    for (int i = 0; i < cut.pcurve.cv_count(); ++i) {
+        const Point uv = cut.pcurve.get_cv(i);
+        MINI_CHECK(cut.world.set_cv(i, surface.point_at(uv[0], uv[1])));
+    }
+    cut.section = 0;
+    cut.placed = true;
+    return cut;
+}
+
+MINI_TEST("Split", "Placed Cut Monotone Along Its Chord Meets Itself Nowhere") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const std::pair<double, double> a = surface.closest_parameters(source.points[0]), b = surface.closest_parameters(source.points[2]);
+    // A wave from one vertex to the other: not monotone along either parameter, monotone along its chord.
+    std::vector<Point> controls;
+    for (int i = 0; i <= 8; ++i) {
+        const double s = i / 8.0, wave = (i % 2 ? 0.08 : -0.08) * (i > 0 && i < 8);
+        controls.emplace_back(std::lerp(a.first, b.first, s) - wave * (b.second - a.second),
+            std::lerp(a.second, b.second, s) + wave * (b.first - a.first), 0.0);
+    }
+    split::FaceCut cut = lifted_cut(source.brep, source.face, controls, 3, false);
+    cut.vertices = {source.vertices[0], source.vertices[2]};
+    placed_and_intersected(source.brep, source.face, {cut}, true, 2);
+}
+
+MINI_TEST("Split", "Placed Closed Cut Of Many Spans Meets Itself Where It Closes") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
+    std::vector<Point> controls;
+    for (int i = 0; i < 24; ++i) {
+        const double angle = 2.0 * Tolerance::PI * i / 24.0, radius = 0.25 + 0.03 * std::cos(5.0 * angle);
+        controls.emplace_back(std::lerp(u.first, u.second, 0.5 + radius * std::cos(angle)),
+            std::lerp(v.first, v.second, 0.5 + radius * std::sin(angle)), 0.0);
+    }
+    const split::FaceCut cut = lifted_cut(source.brep, source.face, controls, 3, true);
+    MINI_CHECK(cut.pcurve.is_closed() && cut.pcurve.span_count() > 16);
+    placed_and_intersected(source.brep, source.face, {cut}, true, 2);
+}
+
+MINI_TEST("Split", "Placed Cuts Of One Family Meeting End To End") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const Point inside = surface.point_at(surface.domain(0).first * 0.6 + surface.domain(0).second * 0.4,
+        surface.domain(1).first * 0.4 + surface.domain(1).second * 0.6);
+    // Two pieces of one section joined away from every edge: they meet at their shared end and nowhere else.
+    split::FaceCut first = placed_line(source.brep, source.face, source.points[0], inside, 0);
+    split::FaceCut second = placed_line(source.brep, source.face, inside, source.points[2], 1);
+    first.placed = second.placed = true;
+    first.family = second.family = 0;
+    first.vertices = {source.vertices[0], -1};
+    first.nodes = {-1, 7};
+    second.vertices = {-1, source.vertices[2]};
+    second.nodes = {7, -1};
+    placed_and_intersected(source.brep, source.face, {first, second}, true, 2);
+}
 } // namespace session_cpp

@@ -250,16 +250,30 @@ bool same_geometry(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {
     return same_parameterization(first, second, tolerance);
 }
 
+/// Farther than the tolerance and the rounding of a point on the curve from the control box that holds it.
+bool beyond(const Bounds& box, const Point& p, double reach) {
+    for (int d = 0; d < 3; ++d)
+        if (p[d] < box.lo[d] - reach || p[d] > box.hi[d] + reach)
+            return true;
+    return false;
+}
+
 std::vector<std::pair<double, double>> endpoint_matches(const Pair& pair, double tolerance) {
     std::vector<std::pair<double, double>> matches;
+    const Bounds first(pair.a), second(pair.b);
+    const double reach = tolerance + epsilon * 1024.0 * std::max(first.magnitude(), second.magnitude());
     for (const double ta : {pair.a.domain_start(), pair.a.domain_end()}) {
         const Point p = pair.a.point_at(ta);
+        if (beyond(second, p, reach))
+            continue;
         const double tb = closest_parameter(pair.b, p);
         if (xyz(p).distance(pair.b.point(tb)) <= tolerance)
             matches.emplace_back(ta, tb);
     }
     for (const double tb : {pair.b.domain_start(), pair.b.domain_end()}) {
         const Point p = pair.b.point_at(tb);
+        if (beyond(first, p, reach))
+            continue;
         const double ta = closest_parameter(pair.a, p);
         if (xyz(p).distance(pair.a.point(ta)) <= tolerance)
             matches.emplace_back(ta, tb);
@@ -625,8 +639,15 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
     Overlap shared{};
     if (!overlap(pair, proof, shared)) {
         // Certified within tolerance along their whole length, two curves overlap however curved they are.
+        // Ends of the two curves apart by more than the tolerance fail the proof at its first or last coefficient.
+        const double reach = tolerance + epsilon * 1024.0 * std::max(a.magnitude(), b.magnitude());
+        const auto ends_meet = [&](bool reverse) {
+            return !pair.a.is_clamped() || !pair.b.is_clamped() ||
+                (pair.a.get_cv(0).distance(pair.b.get_cv(reverse ? pair.b.cv_count() - 1 : 0)) <= reach &&
+                 pair.a.get_cv(pair.a.cv_count() - 1).distance(pair.b.get_cv(reverse ? 0 : pair.b.cv_count() - 1)) <= reach);
+        };
         for (bool reverse : {false, true})
-            if (certified_parameter_range(pair, tolerance, reverse)) {
+            if (ends_meet(reverse) && certified_parameter_range(pair, tolerance, reverse)) {
                 result.overlaps.push_back({pair.a.domain_start(), pair.a.domain_end(),
                     reverse ? pair.b.domain_end() : pair.b.domain_start(),
                     reverse ? pair.b.domain_start() : pair.b.domain_end()});
