@@ -20,6 +20,7 @@
 #include "xform.h"
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -1518,5 +1519,168 @@ MINI_TEST("Split", "Closed Boundary Seam Aliases Require Original Endpoint Ident
     sources[0]={&circle,false,9,9};
     MINI_CHECK(!split::detail::boundary_point_key(event,sources));
     MINI_CHECK(circle.jsondump()==frozen);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+namespace {
+// A box face whose four boundary edges are cut at their middles, for cuts that end on vertices.
+struct PlacedFace {
+    BRep brep;
+    int face = 0;
+    std::array<int, 4> vertices{};
+    std::array<Point, 4> points;
+    Point quarter; // On the last edge, a quarter along it: a boundary point that is no vertex.
+};
+
+PlacedFace placed_face() {
+    const BRep box = BRep::create_box(2, 2, 2);
+    PlacedFace result;
+    std::vector<split::EdgeEvent> events;
+    for (const BRepRef& use : box.wire_edges(box.m_faces[0].wires.front())) {
+        const NurbsCurve& curve = box.m_curves_3d[box.m_edges[use.index].curve_3d_index];
+        events.push_back({use.index, curve.domain_middle(), -1});
+        result.quarter = curve.point_at(curve.domain_start() * 0.75 + curve.domain_end() * 0.25);
+    }
+    const split::FaceSplit cut = split::split_brep_edges_at_events(box, events, 1e-7);
+    for (size_t i = 0; i < 4; ++i)
+        for (const split::EdgeEvent& receipt : cut.edge_events)
+            if (receipt.edge == events[i].edge && receipt.parameter == events[i].parameter) {
+                result.vertices[i] = receipt.vertex;
+                result.points[i] = cut.brep.m_vertices[receipt.vertex].point;
+            }
+    result.brep = cut.brep;
+    return result;
+}
+
+// A straight cut on a planar face and its line in the parameter plane, both over [0, 1].
+split::FaceCut placed_line(const BRep& brep, int face, const Point& from, const Point& to, int section) {
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const std::pair<double, double> a = surface.closest_parameters(from), b = surface.closest_parameters(to);
+    NurbsCurve world = NurbsCurve::create(false, 1, {from, to});
+    NurbsCurve pcurve = NurbsCurve::create(false, 1, {Point(a.first, a.second, 0), Point(b.first, b.second, 0)});
+    world.set_domain(0, 1);
+    pcurve.set_domain(0, 1);
+    return {world, pcurve, section};
+}
+
+// Two models with the same tables, index for index and number for number.
+bool same_model(const BRep& a, const BRep& b) {
+    const auto same_curves = [](const std::vector<NurbsCurve>& x, const std::vector<NurbsCurve>& y) {
+        if (x.size() != y.size())
+            return false;
+        for (size_t i = 0; i < x.size(); ++i)
+            if (x[i].m_cv != y[i].m_cv || x[i].m_nurbsknot != y[i].m_nurbsknot)
+                return false;
+        return true;
+    };
+    if (!same_curves(a.m_curves_3d, b.m_curves_3d) || !same_curves(a.m_curves_2d, b.m_curves_2d) ||
+        a.m_vertices.size() != b.m_vertices.size() || a.m_edges.size() != b.m_edges.size() ||
+        a.m_wires.size() != b.m_wires.size() || a.m_faces.size() != b.m_faces.size())
+        return false;
+    for (size_t i = 0; i < a.m_edges.size(); ++i)
+        if (a.m_edges[i].curve_3d_index != b.m_edges[i].curve_3d_index || a.m_edges[i].start_vertex != b.m_edges[i].start_vertex ||
+            a.m_edges[i].end_vertex != b.m_edges[i].end_vertex)
+            return false;
+    for (size_t i = 0; i < a.m_wires.size(); ++i)
+        if (!(a.m_wires[i].edges == b.m_wires[i].edges))
+            return false;
+    for (size_t i = 0; i < a.m_faces.size(); ++i)
+        if (!(a.m_faces[i].wires == b.m_faces[i].wires))
+            return false;
+    return true;
+}
+
+// Split with the cuts as placed and again with their placement dropped: the second is the intersected arrangement.
+void placed_and_intersected(const BRep& brep, int face, std::vector<split::FaceCut> cuts, bool placed, size_t faces) {
+    const split::FaceSplit read = split::split_brep_face_by_pcurves(brep, face, cuts, 1e-7);
+    for (split::FaceCut& cut : cuts)
+        cut = {cut.world, cut.pcurve, cut.section};
+    const split::FaceSplit intersected = split::split_brep_face_by_pcurves(brep, face, cuts, 1e-7);
+    MINI_CHECK(read.placed == placed && !intersected.placed);
+    MINI_CHECK(read.faces.size() == faces && intersected.faces.size() == faces);
+    MINI_CHECK(read.brep.is_valid() && read.brep.is_solid());
+    MINI_CHECK(same_model(read.brep, intersected.brep));
+}
+} // namespace
+
+MINI_TEST("Split", "Placed Cut Between Two Boundary Vertices") {
+    const PlacedFace source = placed_face();
+    split::FaceCut cut = placed_line(source.brep, source.face, source.points[0], source.points[2], 0);
+    cut.placed = true;
+    cut.vertices = {source.vertices[0], source.vertices[2]};
+    placed_and_intersected(source.brep, source.face, {cut}, true, 2);
+}
+
+MINI_TEST("Split", "Placed Cuts Meeting Inside A Face") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const Point inside = surface.point_at(surface.domain(0).first * 0.625 + surface.domain(0).second * 0.375,
+        surface.domain(1).first * 0.375 + surface.domain(1).second * 0.625);
+    // Two sections with two faces of the other solid, ending where its edge between them pierces this face.
+    split::FaceCut first = placed_line(source.brep, source.face, source.points[0], inside, 0);
+    split::FaceCut second = placed_line(source.brep, source.face, inside, source.points[2], 1);
+    first.placed = second.placed = true;
+    first.family = 0;
+    second.family = 1;
+    first.vertices = {source.vertices[0], -1};
+    first.nodes = {-1, 7};
+    second.vertices = {-1, source.vertices[2]};
+    second.nodes = {7, -1};
+    placed_and_intersected(source.brep, source.face, {first, second}, true, 2);
+}
+
+MINI_TEST("Split", "Placed Cuts Of One Family Crossing Inside A Face") {
+    const PlacedFace source = placed_face();
+    // Two branches of one section crossing where the two surfaces touch: no node lies there, and the two are intersected.
+    split::FaceCut first = placed_line(source.brep, source.face, source.points[0], source.points[2], 0);
+    split::FaceCut second = placed_line(source.brep, source.face, source.points[1], source.points[3], 1);
+    first.placed = second.placed = true;
+    first.family = second.family = 0;
+    first.vertices = {source.vertices[0], source.vertices[2]};
+    second.vertices = {source.vertices[1], source.vertices[3]};
+    placed_and_intersected(source.brep, source.face, {first, second}, true, 4);
+}
+
+MINI_TEST("Split", "Placed Closed Cut That Touches Nothing") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
+    split::FaceCut cut;
+    cut.pcurve = Primitives::circle((u.first + u.second) * 0.5, (v.first + v.second) * 0.5, 0,
+        std::min(u.second - u.first, v.second - v.first) * 0.25);
+    // The face is a parallelogram, so its patch carries each control point of the circle to that of its image.
+    cut.world = cut.pcurve;
+    for (int i = 0; i < cut.pcurve.cv_count(); ++i) {
+        const Point uv = cut.pcurve.get_cv(i);
+        const Point p = surface.point_at(uv[0], uv[1]);
+        const double w = cut.pcurve.weight(i);
+        MINI_CHECK(cut.world.set_cv_4d(i, p[0] * w, p[1] * w, p[2] * w, w));
+    }
+    cut.section = 0;
+    cut.placed = true;
+    placed_and_intersected(source.brep, source.face, {cut}, true, 2);
+}
+
+MINI_TEST("Split", "Cut End Off Its Vertex Is Intersected") {
+    const PlacedFace source = placed_face();
+    // The cut names two vertices but ends a quarter of an edge away from the second: the boundary must be cut there.
+    split::FaceCut cut = placed_line(source.brep, source.face, source.points[0], source.quarter, 0);
+    cut.placed = true;
+    cut.vertices = {source.vertices[0], source.vertices[3]};
+    placed_and_intersected(source.brep, source.face, {cut}, false, 2);
+}
+
+MINI_TEST("Split", "Shared Cut End On The Boundary Is Intersected") {
+    const PlacedFace source = placed_face();
+    // Two cuts name one shared point inside the face, but it lies on the last boundary edge: a crossing nobody placed.
+    split::FaceCut first = placed_line(source.brep, source.face, source.points[0], source.quarter, 0);
+    split::FaceCut second = placed_line(source.brep, source.face, source.quarter, source.points[2], 1);
+    first.placed = second.placed = true;
+    first.vertices = {source.vertices[0], -1};
+    first.nodes = {-1, 7};
+    second.vertices = {-1, source.vertices[2]};
+    second.nodes = {7, -1};
+    placed_and_intersected(source.brep, source.face, {first, second}, false, 3);
 }
 } // namespace session_cpp

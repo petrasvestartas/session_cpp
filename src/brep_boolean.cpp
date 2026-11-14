@@ -36,6 +36,7 @@ struct Partition {
     BRep brep;
     std::vector<split::EdgePiece> pieces;
     int operand;
+    std::vector<std::vector<int>> node_vertices; // The vertices of the model each interference node lies on.
 };
 
 bool occupied(bool a, bool b, Operation operation) {
@@ -225,12 +226,13 @@ void coincident_cuts(
     }
 }
 
-void retain_lineage(Partition& result, split::FaceSplit next) {
+/// Record the ancestry of the edges a split added to the partition's model.
+void retain_lineage(Partition& result, const std::vector<split::EdgePiece>& edges) {
     const size_t old_size = result.pieces.size();
-    result.pieces.resize(next.brep.m_edges.size());
+    result.pieces.resize(result.brep.m_edges.size());
     for (size_t i = old_size; i < result.pieces.size(); ++i)
         result.pieces[i].edge = static_cast<int>(i);
-    for (split::EdgePiece piece : next.edges) {
+    for (split::EdgePiece piece : edges) {
         if (piece.source_edge >= 0) {
             if (piece.source_edge >= static_cast<int>(old_size))
                 throw std::runtime_error("Native Boolean split has an unresolved parent edge");
@@ -240,18 +242,24 @@ void retain_lineage(Partition& result, split::FaceSplit next) {
         }
         result.pieces[piece.edge] = piece;
     }
+}
+
+void retain_lineage(Partition& result, split::FaceSplit next) {
     result.brep = std::move(next.brep);
+    retain_lineage(result, next.edges);
 }
 
 // Canonical graph nodes are materialized separately in each existing topological
 // component. Distinct original vertex identities are never proximity-welded.
-void split_original_events(Partition& partition,const brep_section::FaceResult& inventory,
+bool split_original_events(Partition& partition,const brep_section::FaceResult& inventory,
                            bool second,double tolerance) {
     const auto component=brep_section::detail::active_components(partition.brep,active_faces(partition.brep));
     const auto root=[&](int vertex) { return component[vertex]; };
     const int original_vertices=static_cast<int>(partition.brep.m_vertices.size());
     std::vector<split::EdgeEvent> events;
-    for (const auto& node:inventory.nodes) {
+    partition.node_vertices.assign(inventory.nodes.size(),{});
+    for (size_t node_index=0;node_index<inventory.nodes.size();++node_index) {
+        const auto& node=inventory.nodes[node_index];
         struct LocalNode {
             int vertex=-1;
             std::vector<const brep_section::BoundaryEvent*> events;
@@ -279,10 +287,10 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
         }
         for (auto& [unused,local]:groups) {
             // UV-only incidences preserve their existing vertex without a fake raw t.
-            if (local.events.empty())
-                continue;
-            if (local.vertex<0)
+            if (local.vertex<0 && !local.events.empty())
                 local.vertex=partition.brep.add_vertex(node.point,tolerance);
+            if (local.vertex>=0)
+                partition.node_vertices[node_index].push_back(local.vertex);
             for (const auto* event:local.events)
                 events.push_back({event->edge,event->hit.t,local.vertex});
         }
@@ -292,21 +300,30 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
         return x.edge!=y.edge ? x.edge<y.edge : x.parameter<y.parameter;
     });
     std::vector<split::EdgeEvent> joined;
+    std::vector<std::pair<int,int>> merged;
     for (const auto& event:events) {
         if (!joined.empty() && joined.back().edge==event.edge && !partition.brep.m_edges[event.edge].degenerated) {
             const NurbsCurve& curve=partition.brep.m_curves_3d[partition.brep.m_edges[event.edge].curve_3d_index];
             if (curve.point_at(joined.back().parameter).distance(curve.point_at(event.parameter))<=tolerance) {
                 split::EdgeEvent& kept=joined.back();
+                const int other=kept.vertex;
                 if (event.vertex<original_vertices && kept.vertex>=original_vertices)
                     kept=event;
                 else if (event.vertex>=original_vertices && kept.vertex>=original_vertices)
                     kept.parameter=(kept.parameter+event.parameter)*0.5;
+                merged.push_back({kept.vertex==other?event.vertex:other,kept.vertex});
                 continue;
             }
         }
         joined.push_back(event);
     }
     events=std::move(joined);
+    // A node whose event was joined to another's on one edge lies on that vertex there.
+    for (auto& vertices:partition.node_vertices)
+        for (const auto& [dropped,kept]:merged)
+            if (dropped!=kept && std::find(vertices.begin(),vertices.end(),dropped)!=vertices.end() &&
+                std::find(vertices.begin(),vertices.end(),kept)==vertices.end())
+                vertices.push_back(kept);
     if (!events.empty()) {
         auto partitioned=split::split_brep_edges_at_events(partition.brep,events,tolerance);
         for (const auto& event:events)
@@ -316,6 +333,7 @@ void split_original_events(Partition& partition,const brep_section::FaceResult& 
                 throw std::runtime_error("Original edge event receipt lost its canonical owner-local vertex");
         retain_lineage(partition,std::move(partitioned));
     }
+    return !events.empty();
 }
 
 void observe_partition(const char* path, const BRep& source, const std::vector<split::FaceCut>& cuts,
@@ -354,6 +372,44 @@ void observe_partition(const char* path, const BRep& source, const std::vector<s
         throw std::runtime_error(std::string("Cannot write dodecahedron partition observation: ") + path);
 }
 
+/// Name the ends of a section curve strictly inside its faces for the face split: the boundary vertex its node became, or the node itself where the end is inside the face.
+void place_cut(split::FaceCut& cut, const brep_section::FaceCurve& section,
+               const std::vector<std::vector<int>>& node_vertices, const std::vector<int>& corners) {
+    cut.placed = (section.nodes[0] < 0) == (section.nodes[1] < 0);
+    for (int end = 0; end < 2 && cut.placed; ++end) {
+        if (section.nodes[end] < 0)
+            continue;
+        // A joint of two section curves is no node of an edge: it has no vertex.
+        for (size_t i = 0; section.nodes[end] < static_cast<int>(node_vertices.size()) && i < node_vertices[section.nodes[end]].size(); ++i) {
+            const int vertex = node_vertices[section.nodes[end]][i];
+            if (std::find(corners.begin(), corners.end(), vertex) != corners.end()) {
+                cut.placed = cut.placed && (cut.vertices[end] < 0 || cut.vertices[end] == vertex);
+                cut.vertices[end] = vertex;
+            }
+        }
+        if (cut.vertices[end] < 0)
+            cut.nodes[end] = section.nodes[end];
+    }
+}
+
+/// Mark the edges of a partition that their source and range alone place in an assembly: section curves strictly inside both faces, and original edges that cross the other operand's faces strictly inside them, with no edge of it along them or at their nodes.
+void mark_exact(Partition& result, const BRep& source, const brep_section::FaceResult& sections, bool second) {
+    std::vector<bool> met(source.edge_count(), false);
+    for (int edge : sections.overlapping_edges[second])
+        met[edge] = true;
+    for (const brep_section::PointNode& node : sections.nodes) {
+        bool other = !node.support_points.empty();
+        for (size_t index : node.boundary_events)
+            other = other || sections.boundary_events[index].operand != static_cast<int>(second) || !sections.boundary_events[index].inside;
+        for (size_t index : node.boundary_events)
+            if (other && sections.boundary_events[index].operand == static_cast<int>(second))
+                met[sections.boundary_events[index].edge] = true;
+    }
+    for (split::EdgePiece& piece : result.pieces)
+        piece.exact = piece.section >= 0 ? sections.curves[piece.section].interior
+            : piece.source_edge >= 0 && !met[piece.source_edge];
+}
+
 Partition partition(
     const BRep& source,
     const BRep& other,
@@ -361,21 +417,34 @@ Partition partition(
     bool second,
     double tolerance
 ) {
-    Partition result{source, {}, second ? 1 : 0};
+    Partition result{source, {}, second ? 1 : 0, {}};
     for (int i = 0; i < source.edge_count(); ++i) {
         const BRepEdge& edge = source.m_edges[i];
         const std::pair<double, double> domain = edge.degenerated ? std::pair<double, double>{0, 1}
             : source.m_curves_3d[edge.curve_3d_index].domain();
         result.pieces.push_back({i, -1, i, domain.first, domain.second});
     }
-    split_original_events(result,sections,second,tolerance);
+    // The edge split certifies the whole model; without one the first face split does, and the later ones only what they make.
+    bool validated = split_original_events(result,sections,second,tolerance);
     for (int face : active_faces(source)) {
         std::vector<split::FaceCut> cuts;
+        std::vector<int> corners;
+        for (const BRepRef& wire : result.brep.m_faces[face].wires)
+            for (const BRepRef& edge : result.brep.wire_edges(wire))
+                corners.insert(corners.end(), {result.brep.m_edges[edge.index].start_vertex, result.brep.m_edges[edge.index].end_vertex});
         for (size_t i = 0; i < sections.curves.size(); ++i) {
             const brep_section::FaceCurve& section = sections.curves[i];
-            if (!section.touching && (second ? section.second_face : section.first_face) == face)
-                append_cut(cuts, result.brep, face, {section.world,
-                    second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)}, tolerance);
+            if (section.touching || (second ? section.second_face : section.first_face) != face)
+                continue;
+            split::FaceCut cut{section.world, second ? section.second_pcurve : section.first_pcurve, static_cast<int>(i)};
+            if (!section.interior) {
+                append_cut(cuts, result.brep, face, std::move(cut), tolerance);
+                continue;
+            }
+            // A curve strictly inside both faces lies along no edge and no other cut: it is taken as it is.
+            place_cut(cut, section, result.node_vertices, corners);
+            cut.family = second ? section.first_face : section.second_face;
+            cuts.push_back(std::move(cut));
         }
         coincident_cuts(cuts, result.brep, face, other, sections, second, tolerance);
         join_cut_ends(cuts, result.brep, face, tolerance);
@@ -401,10 +470,14 @@ Partition partition(
                     observe_partition(general, result.brep, cuts, diagnostic, tolerance, "exception", second ? 1 : 0, face);
                     throw;
                 }
-            } else
-                retain_lineage(result, split::split_brep_face_by_pcurves(result.brep, face, cuts, tolerance));
+            } else {
+                const split::FaceSplit next = split::split_brep_face_in_place(result.brep, face, cuts, tolerance, validated);
+                retain_lineage(result, next.edges);
+                validated = validated || next.faces.size() > 1;
+            }
         }
     }
+    mark_exact(result, source, sections, second);
     return result;
 }
 

@@ -1094,3 +1094,142 @@ MINI_TEST("BRep Native Section", "Tangential Line Remains In Shared Inventory") 
     }
     MINI_CHECK(a.jsondump()==before_a && b.jsondump()==before_b);
 }
+
+namespace {
+// How many section curve ends name each node or joint.
+std::vector<int> interference_end_counts(const brep_section::FaceResult& inventory) {
+    std::vector<int> counts(inventory.nodes.size() + inventory.joints.size(), 0);
+    for (const brep_section::FaceCurve& curve : inventory.curves)
+        for (int node : curve.nodes)
+            if (node >= 0)
+                ++counts[node];
+    return counts;
+}
+}
+
+MINI_TEST("BRep Native Section", "Section Curves Name The Node Two Faces Share") {
+    const BRep first = BRep::create_box(2, 2, 2);
+    const BRep second = first.transformed(Xform::translation(0.6, 0.5, 0.4) * Xform::rotation(Vector(1, 2, 3), 0.4));
+    const auto inventory = brep_section::interferences(first, second, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    MINI_CHECK(!inventory.curves.empty() && inventory.joints.empty());
+    MINI_CHECK(inventory.overlapping_edges[0].empty() && inventory.overlapping_edges[1].empty());
+    // An edge of one box pierces a face of the other: the two section curves of its two faces end there, on one node.
+    for (const brep_section::FaceCurve& curve : inventory.curves) {
+        MINI_CHECK(curve.interior && !curve.touching);
+        for (int end = 0; end < 2; ++end) {
+            MINI_CHECK(curve.nodes[end] >= 0 && curve.nodes[end] < static_cast<int>(inventory.nodes.size()));
+            const Point at = end ? curve.world.point_at_end() : curve.world.point_at_start();
+            MINI_CHECK(at.distance(inventory.nodes[curve.nodes[end]].point) <= 1e-7);
+            bool shared = false;
+            for (const brep_section::FaceCurve& other : inventory.curves)
+                for (int node : other.nodes)
+                    shared = shared || (node == curve.nodes[end] &&
+                        (other.first_face != curve.first_face) != (other.second_face != curve.second_face));
+            MINI_CHECK(shared);
+        }
+    }
+    for (int count : interference_end_counts(inventory))
+        MINI_CHECK(count == 0 || count == 2);
+    const double common = first.boolean_intersection(second).volume_exact();
+    const double rest = first.boolean_difference(second).volume_exact();
+    MINI_CHECK(common > 0.1 && std::abs(common + rest - 8.0) < 1e-7);
+}
+
+MINI_TEST("BRep Native Section", "Section Through Original Vertices Ends On Their Nodes") {
+    // The plane z = x + y meets the box [0, 2]^3 in the triangle (0,0,0), (2,0,2), (0,2,2): three face diagonals between three corners.
+    const BRep first = BRep::create_box(2, 2, 2).transformed(Xform::translation(1, 1, 1));
+    const double third = 1.0 / std::sqrt(3.0);
+    const BRep second = BRep::create_box(8, 8, 8).transformed(Xform::translation(-4 * third, -4 * third, 4 * third)
+        * Xform::rotation(Vector(1, -1, 0), std::acos(third)));
+    const auto inventory = brep_section::interferences(first, second, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    size_t diagonals = 0;
+    for (const brep_section::FaceCurve& curve : inventory.curves) {
+        if (curve.touching || curve.world.point_at_start().distance(curve.world.point_at_end()) < 1.0)
+            continue;
+        ++diagonals;
+        for (int node : curve.nodes) {
+            MINI_CHECK(node >= 0 && node < static_cast<int>(inventory.nodes.size()));
+            if (node < 0 || node >= static_cast<int>(inventory.nodes.size()))
+                continue;
+            // The node is a corner of the box: an edge of the box ends on it, with its vertex.
+            bool corner = false;
+            for (size_t index : inventory.nodes[node].boundary_events)
+                corner = corner || (inventory.boundary_events[index].operand == 0 && inventory.boundary_events[index].vertex >= 0);
+            MINI_CHECK(corner);
+        }
+    }
+    MINI_CHECK(diagonals >= 3);
+    MINI_CHECK(std::abs(first.boolean_intersection(second).volume_exact() - 4.0 / 3.0) < 1e-7);
+    MINI_CHECK(std::abs(first.boolean_difference(second).volume_exact() - 20.0 / 3.0) < 1e-7);
+}
+
+MINI_TEST("BRep Native Section", "Section Along An Edge Is Not Interior") {
+    // A face of the second box lies in the plane x = y, which holds two upright edges of the first: identity can not place a cut there.
+    const BRep first = BRep::create_box(2, 2, 2);
+    const double half = std::sqrt(0.5);
+    const BRep second = BRep::create_box(4, 4, 4).transformed(Xform::translation(2 * half, -2 * half, 0)
+        * Xform::rotation_z(std::acos(-1.0) * 0.25));
+    const auto inventory = brep_section::interferences(first, second, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    MINI_CHECK(inventory.overlapping_edges[0].size() == 2);
+    size_t along = 0, across = 0;
+    for (const brep_section::FaceCurve& curve : inventory.curves) {
+        const Point a = curve.world.point_at_start(), b = curve.world.point_at_end();
+        const bool upright = std::abs(a[0] - b[0]) < 1e-7 && std::abs(a[1] - b[1]) < 1e-7;
+        MINI_CHECK(curve.interior == !upright);
+        (upright ? along : across) += 1;
+    }
+    MINI_CHECK(along >= 2 && across == 2);
+    MINI_CHECK(std::abs(first.boolean_intersection(second).volume_exact() - 4.0) < 1e-7);
+    MINI_CHECK(std::abs(first.boolean_difference(second).volume_exact() - 4.0) < 1e-7);
+}
+
+MINI_TEST("BRep Native Section", "Closed Section Away From Every Edge Closes On Its Node") {
+    // A sphere through the top face of a box: a circle that reaches no edge of the box.
+    const BRep first = BRep::create_box(2, 2, 2);
+    const BRep second = BRep::create_sphere(0.5).transformed(Xform::translation(0.1, 0.05, 1.2));
+    const auto inventory = brep_section::interferences(first, second, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    MINI_CHECK(!inventory.curves.empty() && inventory.overlapping_edges[0].empty());
+    for (const brep_section::FaceCurve& curve : inventory.curves) {
+        MINI_CHECK(curve.interior);
+        MINI_CHECK(curve.nodes[0] >= 0 && curve.nodes[1] >= 0);
+    }
+    // The node the circle passes joins two ends: the chain is closed.
+    for (int count : interference_end_counts(inventory))
+        MINI_CHECK(count == 0 || count == 2);
+    for (const brep_section::PointNode& node : inventory.nodes)
+        for (size_t index : node.boundary_events)
+            MINI_CHECK(inventory.boundary_events[index].operand == 1);
+    const double cap = std::acos(-1.0) * 0.7 * 0.7 * (1.5 - 0.7) / 3.0;
+    MINI_CHECK(std::abs(first.boolean_union(second).volume_exact() - (8.0 + cap)) < 1e-6);
+}
+
+MINI_TEST("BRep Native Section", "Marched Section Pieces Meet On Joints") {
+    // A sphere through the side of a cylinder: the section comes in pieces that meet away from every edge.
+    const BRep first = BRep::create_cylinder(0.4, 2);
+    const BRep second = BRep::create_sphere(0.7).transformed(Xform::translation(0.5, 0.1, 1.0));
+    const auto inventory = brep_section::interferences(first, second, 1e-7);
+    if (!inventory.complete)
+        throw std::runtime_error(inventory.failure);
+    MINI_CHECK(!inventory.joints.empty());
+    for (const brep_section::FaceCurve& curve : inventory.curves) {
+        MINI_CHECK(curve.interior);
+        for (int end = 0; end < 2; ++end) {
+            MINI_CHECK(curve.nodes[end] >= 0);
+            const int joint = curve.nodes[end] - static_cast<int>(inventory.nodes.size());
+            if (joint >= 0 && joint < static_cast<int>(inventory.joints.size()))
+                MINI_CHECK((end ? curve.world.point_at_end() : curve.world.point_at_start()).distance(inventory.joints[joint]) <= 1e-7);
+        }
+    }
+    for (int count : interference_end_counts(inventory))
+        MINI_CHECK(count == 0 || count == 2);
+    const double sum = first.boolean_union(second).volume_exact() + first.boolean_intersection(second).volume_exact();
+    MINI_CHECK(std::abs(sum - first.volume_exact() - second.volume_exact()) < 1e-6);
+}

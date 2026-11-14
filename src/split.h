@@ -76,6 +76,10 @@ struct FaceCut {
     NurbsCurve world;
     NurbsCurve pcurve;
     int section = -1;
+    bool placed = false; // The section stage vouches that it meets the boundary and the cuts of other families at its ends only.
+    int family = -1; // Placed cuts of one family, sections with one face of the other solid, can still cross where the two surfaces touch.
+    std::array<int, 2> vertices = {-1, -1}; // Vertex of the model at each end that lies on the face boundary.
+    std::array<int, 2> nodes = {-1, -1}; // Id shared by the cut ends that meet at one point inside the face.
 };
 
 struct CurveError : std::invalid_argument {
@@ -98,6 +102,7 @@ struct EdgePiece {
     int edge = -1;
     double first = 0.0;
     double last = 0.0;
+    bool exact = false; // No edge of the other operand lies along it or crosses it: source and range place it in an assembly.
 };
 
 /// A required parameter on one ORIGINAL owning edge; vertex is an optional existing BRep vertex ID.
@@ -121,6 +126,7 @@ struct FaceSplit {
     std::vector<int> faces;
     std::vector<EdgePiece> edges;
     std::vector<EdgeEvent> edge_events; // ORIGINAL edge/raw parameter -> resolved owner-local vertex receipt.
+    bool placed = false; // The arrangement was read off the ends of placed cuts; false when the curves were intersected.
 };
 
 struct ArrangementParentDiagnostic {
@@ -202,6 +208,12 @@ FaceSplit split_brep_face_by_pcurves(
 FaceSplit split_brep_face_by_pcurves(
     const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
     double tolerance, ArrangementDiagnostic* diagnostic
+);
+
+/// The same partition made in the model itself: FaceSplit::brep stays empty, and a split that throws leaves the model unspecified.
+/// `validated` says the model has passed an earlier split at this tolerance, so only the edges made here are certified.
+FaceSplit split_brep_face_in_place(
+    BRep& brep, int face_index, const std::vector<FaceCut>& cutters, double tolerance, bool validated
 );
 
 // ═══════════════════════════════════════════════════════════════════════════

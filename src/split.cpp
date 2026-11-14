@@ -100,6 +100,7 @@ struct Source {
     NurbsCurve uv; // Curve in surface parameter space.
     int section = -1;
     int first_vertex = -1, last_vertex = -1;
+    int family = -1; // Placed cuts of one family are still intersected with each other.
 };
 
 /// Parameter run along one source curve.
@@ -137,13 +138,25 @@ struct Graph {
     std::vector<ArrangementVertexOwnership> vertex_owned_intervals;
 };
 
-/// Closed loop of runs with its sampled polygon.
+/// Closed loop of runs; its pieces and its sampled polygon are made only when a decision or a nesting test asks.
 struct Cycle {
     double area; // Signed area in parameter space.
+    double margin; // Bound on how far the area is from the sampled one, zero once sampled.
     std::vector<Run> loop; // Runs around the loop.
+    std::vector<Run> runs; // One run per half-edge, in order.
     std::vector<NurbsCurve> curves; // Pieces around the loop.
-    std::vector<Point> points; // Sampled polygon, for areas and diagnostics only.
+    std::vector<Point> points; // Sampled polygon, for diagnostics and for areas too small to decide.
     std::vector<size_t> edges; // Undirected graph edges, sorted by identity.
+};
+
+/// Twice the signed area a graph edge sweeps about the origin from its first point to its last, the sum of its absolute terms, its length, and how far the sampled area may lie from the area beyond rounding.
+struct Swept {
+    double area = 0.0;
+    double gross = 0.0;
+    double length = 0.0;
+    double defect = 0.0;
+    Point first;
+    Point last;
 };
 
 /// New BRep edge cut from a source.
@@ -834,7 +847,7 @@ curve_intersection::Result parameter_events(const NurbsCurve& a, const NurbsCurv
     return curve_intersection::intersect(first, second, tolerance);
 }
 
-std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance, ArrangementDiagnostic* diagnostic) {
+std::vector<Span> compute_spans(const std::vector<Source>& sources, double tolerance, ArrangementDiagnostic* diagnostic, bool& placed) {
 
     std::vector<Span> spans;
 
@@ -849,17 +862,37 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
 
         for (size_t i = 1; i < knots.size(); ++i) {
             require(spans.size() < WORK_LIMIT, "Face split spans exceed the bounded workload");
-            spans.push_back({si, knots[i - 1], knots[i], {knots[i - 1], knots[i]}, interval(sources[si].uv, knots[i - 1], knots[i])});
+            spans.push_back({si, knots[i - 1], knots[i], {knots[i - 1], knots[i]},
+                placed && sources[si].edge >= 0 ? NurbsCurve() : interval(sources[si].uv, knots[i - 1], knots[i])});
         }
     }
 
     require(!spans.empty(), "Face split requires nonempty spans");
+    // Every end of a placed source is a node.
+    if (placed)
+        for (Span& span : spans)
+            for (const double end : {sources[span.source].uv.domain_start(), sources[span.source].uv.domain_end()})
+                if (end == span.a || end == span.b)
+                    span.events.push_back(end);
     self_events(spans, sources, tolerance);
     for (const auto& [i, j] : span_candidates(sources, spans, tolerance, diagnostic)) {
         if (spans[i].source == spans[j].source)
             continue;
+        // A placed cut meets the boundary and the cuts of other families at its ends only; two cuts of one family are sections of the same two surfaces and cross where these touch.
+        const Source& first = sources[spans[i].source];
+        const Source& second = sources[spans[j].source];
+        if (placed && (first.edge >= 0 || second.edge >= 0 || first.family != second.family))
+            continue;
         const curve_intersection::Result events = parameter_events(spans[i].curve, spans[j].curve, tolerance);
         require(events.complete, events.failure);
+        // Two placed cuts along each other for more than a point are not what the section stage vouched for: everything is intersected.
+        if (placed && std::any_of(events.overlaps.begin(), events.overlaps.end(), [&](const curve_intersection::Overlap& overlap) {
+                return !vertex_interval(first.uv, std::min(overlap.a0, overlap.a1), std::max(overlap.a0, overlap.a1),
+                    first.uv.point_at(overlap.a0), tolerance);
+            })) {
+            placed = false;
+            return compute_spans(sources, tolerance, diagnostic, placed);
+        }
         if (diagnostic && (sources[spans[i].source].edge < 0) != (sources[spans[j].source].edge < 0)) {
             ArrangementPairDiagnostic row;
             row.first_source = spans[i].source;
@@ -1345,7 +1378,8 @@ Graph compute_graph(
     const std::vector<Source>& sources,
     const brep_face_boundary::Result& boundary,
     double tolerance,
-    ArrangementDiagnostic* diagnostic
+    ArrangementDiagnostic* diagnostic,
+    bool placed
 ) {
 
     Graph graph;
@@ -1383,7 +1417,7 @@ Graph compute_graph(
 
             auto state = brep_classify::State::Inside;
             Point query;
-            if (source.edge < 0) {
+            if (source.edge < 0 && !placed) {
                 query = source.uv.point_at(std::midpoint(lo, hi));
                 state = brep_classify::face_uv(boundary, query, tolerance);
                 if (state == brep_classify::State::Unknown)
@@ -1413,7 +1447,7 @@ Graph compute_graph(
             if (a == b && vertex_interval(source.uv, lo, hi, vertices[a], tolerance * 4.0))
                 continue;
 
-            if (common_arc(graph, sources, a, b, {span.source, lo, hi}, tolerance, common_budget))
+            if (!placed && common_arc(graph, sources, a, b, {span.source, lo, hi}, tolerance, common_budget))
                 continue;
 
             const size_t index = graph.edges.size();
@@ -1460,17 +1494,110 @@ bool continuation(const Graph& graph, size_t vertex, const Run& previous, const 
         previous.b == next.a && (previous.b > previous.a) == (next.b > next.a);
 }
 
+/// Gauss-Legendre nodes and weights on [-1, 1], by Newton steps on the Legendre recurrence.
+const std::vector<std::array<double, 2>>& gauss(int count) {
+
+    static thread_local std::map<int, std::vector<std::array<double, 2>>> rules;
+    std::vector<std::array<double, 2>>& rule = rules[count];
+
+    for (int i = static_cast<int>(rule.size()); i < count; ++i) {
+        double x = std::cos(std::acos(-1.0) * (i + 0.75) / (count + 0.5));
+        double slope = 1.0;
+        for (int step = 0; step < 64; ++step) {
+            double previous = 1.0;
+            double value = x;
+            for (int k = 2; k <= count; ++k)
+                previous = std::exchange(value, ((2 * k - 1) * x * value - (k - 1) * previous) / k);
+            slope = count * (x * value - previous) / (x * x - 1.0);
+            const double next = x - value / slope;
+            if (next == x)
+                break;
+            x = next;
+        }
+        rule.push_back({x, 2.0 / ((1.0 - x * x) * slope * slope)});
+    }
+
+    return rule;
+}
+
+/// The integral of u dv - v du along a curve interval, span by span. For a polynomial curve of degree p the integrand has degree 2p - 2, which p nodes integrate exactly; a rational curve takes 16 nodes and the 12-node rule measures what they leave.
+/// The sampled area is exact too up to degree 5; beyond it, and on a rational curve, its five nodes per flat piece can be off by the flatness, here `slack`, times the length.
+Swept swept(const NurbsCurve& curve, double lo, double hi, double slack) {
+
+    Swept result;
+    result.first = curve.point_at(lo);
+    result.last = curve.point_at(hi);
+    const std::vector<double> spans = curve.get_span_vector();
+    const std::array<int, 2> counts = {curve.is_rational() ? 16 : std::max(1, curve.degree()), 12};
+    const bool inexact = curve.is_rational() || curve.degree() > 5;
+
+    for (size_t i = 1; i < spans.size(); ++i) {
+        const double a = std::max(lo, spans[i - 1]);
+        const double b = std::min(hi, spans[i]);
+        if (!(a < b))
+            continue;
+        std::array<double, 2> sums = {0.0, 0.0};
+        double length = 0.0;
+        for (size_t pass = 0; pass < (curve.is_rational() ? 2u : 1u); ++pass)
+            for (const std::array<double, 2>& node : gauss(counts[pass])) {
+                const std::vector<Vector> d = curve.evaluate(0.5 * (a + b + node[0] * (b - a)), 1);
+                sums[pass] += node[1] * (d[0][0] * d[1][1] - d[0][1] * d[1][0]);
+                if (pass == 0) {
+                    result.gross += node[1] * (std::abs(d[0][0] * d[1][1]) + std::abs(d[0][1] * d[1][0])) * 0.5 * (b - a);
+                    length += node[1] * std::hypot(d[1][0], d[1][1]) * 0.5 * (b - a);
+                }
+            }
+        result.area += sums[0] * 0.5 * (b - a);
+        result.length += length;
+        if (curve.is_rational())
+            result.defect += std::abs(sums[0] - sums[1]) * 0.5 * (b - a);
+        if (inexact)
+            result.defect += slack * length;
+    }
+
+    return result;
+}
+
+/// The pieces of a cycle, one per half-edge, each along the loop.
+void cut_pieces(Cycle& cycle, const std::vector<Source>& sources) {
+
+    for (size_t i = cycle.curves.size(); i < cycle.runs.size(); ++i) {
+        const Run& run = cycle.runs[i];
+        NurbsCurve part = interval(sources[run.source].uv, std::min(run.a, run.b), std::max(run.a, run.b));
+
+        if (run.b < run.a)
+            require(part.reverse(), "Kernel refused to reverse a trim fragment");
+
+        cycle.curves.push_back(std::move(part));
+    }
+}
+
+/// The area of a cycle from its sampled polygon and the areas under its chords: it decides where the closed form is within its margin of a threshold.
+void sample(Cycle& cycle, const std::vector<Source>& sources, double tolerance) {
+
+    if (!cycle.points.empty())
+        return;
+    cut_pieces(cycle, sources);
+    double chords = 0.0;
+
+    for (const NurbsCurve& part : cycle.curves) {
+        const std::vector<Point> poly = polygon(part, tolerance, chords);
+        cycle.points.insert(cycle.points.end(), poly.begin(), poly.end());
+    }
+
+    cycle.area = signed_area(cycle.points) + chords;
+    cycle.margin = 0.0;
+}
+
 /// Loop traced from one half-edge by turning to the previous outgoing half-edge at each vertex.
 Cycle trace_cycle(
     const Graph& graph,
-    const std::vector<Source>& sources,
+    const std::vector<Swept>& areas,
     size_t initial,
-    std::vector<bool>& used,
-    double tolerance
+    std::vector<bool>& used
 ) {
 
-    Cycle cycle{0.0, {}, {}, {}, {}};
-    double chords = 0.0;
+    Cycle cycle{0.0, 0.0, {}, {}, {}, {}, {}};
     size_t edge = initial;
 
     while (!used[edge]) {
@@ -1483,19 +1610,22 @@ Cycle trace_cycle(
             cycle.loop.push_back(run);
         else
             cycle.loop.back().b = run.b;
-        NurbsCurve part = interval(sources[run.source].uv, std::min(run.a, run.b), std::max(run.a, run.b));
-
-        if (run.b < run.a)
-            require(part.reverse(), "Kernel refused to reverse a trim fragment");
-
-        const std::vector<Point> poly = polygon(part, tolerance, chords);
-        cycle.points.insert(cycle.points.end(), poly.begin(), poly.end());
-        cycle.curves.push_back(std::move(part));
+        cycle.runs.push_back(run);
+        const Swept& part = areas[edge / 2];
+        cycle.area += run.b < run.a ? -part.area : part.area;
+        // The sampled area adds thousands of products of this size, each a rounding off.
+        cycle.margin += 1e-9 * part.gross + part.defect;
         const std::vector<size_t>& options = graph.outgoing[item.b];
         const std::vector<size_t>::const_iterator at = std::find(options.begin(), options.end(), edge ^ 1);
         require(at != options.end(), "Invalid trim graph adjacency");
         const size_t slot = static_cast<size_t>(at - options.begin());
         edge = options[(slot + options.size() - 1) % options.size()];
+        // Two pieces meet at a node within its radius, not in one point: the straight step between them closes the loop. The sampled polygon steps from inside the piece instead, which can differ by the step times the piece.
+        const Point& from = run.b < run.a ? part.first : part.last;
+        const Swept& next = areas[edge / 2];
+        const Point& to = graph.edges[edge].run.b < graph.edges[edge].run.a ? next.last : next.first;
+        cycle.area += from[0] * to[1] - from[1] * to[0];
+        cycle.margin += from.distance(to) * part.length;
     }
 
     require(edge == initial, "Invalid trim graph cycle");
@@ -1504,7 +1634,7 @@ Cycle trace_cycle(
         cycle.loop.front().a = cycle.loop.back().a;
         cycle.loop.pop_back();
     }
-    cycle.area = signed_area(cycle.points) + chords;
+    cycle.area *= 0.5;
     std::sort(cycle.edges.begin(), cycle.edges.end());
     return cycle;
 }
@@ -1546,12 +1676,25 @@ std::vector<Cycle> compute_cycles(
 
     std::vector<Cycle> cycles;
     std::vector<bool> used(graph.edges.size(), false);
+    std::vector<Swept> areas;
+    std::vector<double> slack;
+
+    // A sampled piece is flat within a quarter of the tolerance or of a ten-thousandth of its box, and its box is inside its source's.
+    for (const Source& source : sources)
+        slack.push_back(std::max(tolerance, Bounds(source.uv).diagonal() * 1e-4));
+
+    for (size_t edge = 0; edge < graph.edges.size(); edge += 2) {
+        const Run& run = graph.edges[edge].run;
+        areas.push_back(swept(sources[run.source].uv, run.a, run.b, slack[run.source]));
+    }
 
     for (size_t initial = 0; initial < graph.edges.size(); ++initial) {
         if (used[initial])
             continue;
 
-        const Cycle cycle = trace_cycle(graph, sources, initial, used, tolerance);
+        Cycle cycle = trace_cycle(graph, areas, initial, used);
+        if (diagnostic || !(std::abs(cycle.area) > tolerance * tolerance + cycle.margin))
+            sample(cycle, sources, tolerance);
 
         ArrangementCycleDiagnostic observed;
         if (diagnostic) {
@@ -1604,7 +1747,12 @@ bool shared_edge(const Cycle& first, const Cycle& second) {
 }
 
 /// Regions as outer loops, each hole nested in the smallest outer loop around it.
-std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>& cycles, double tolerance, ArrangementDiagnostic* diagnostic) {
+std::vector<std::vector<std::vector<Run>>> nest_cycles(
+    std::vector<Cycle>& cycles,
+    const std::vector<Source>& sources,
+    double tolerance,
+    ArrangementDiagnostic* diagnostic
+) {
 
     std::vector<std::vector<std::vector<Run>>> result;
     std::vector<size_t> positive;
@@ -1616,24 +1764,37 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>&
         }
     }
 
-    for (const Cycle& cycle : cycles) {
+    for (Cycle& cycle : cycles) {
         if (cycle.area >= 0.0)
             continue;
 
         size_t parent = result.size();
-        double smallest = std::numeric_limits<double>::infinity();
 
         for (size_t i = 0; i < positive.size(); ++i) {
-            const Cycle& outer = cycles[positive[i]];
+            Cycle& outer = cycles[positive[i]];
             const bool shared = shared_edge(cycle, outer);
-            const bool eligible = !shared && outer.area > std::abs(cycle.area) + tolerance * tolerance && outer.area < smallest;
+            // Two areas nearer than their margins are compared as sampled.
+            const auto undecided = [&](double gap, const Cycle& other) {
+                return std::abs(gap) <= outer.margin + other.margin;
+            };
+            if (!shared && (undecided(outer.area - std::abs(cycle.area) - tolerance * tolerance, cycle) ||
+                    (parent < result.size() && undecided(outer.area - cycles[positive[parent]].area, cycles[positive[parent]])))) {
+                sample(outer, sources, tolerance);
+                sample(cycle, sources, tolerance);
+                if (parent < result.size())
+                    sample(cycles[positive[parent]], sources, tolerance);
+            }
+            const bool eligible = !shared && outer.area > std::abs(cycle.area) + tolerance * tolerance &&
+                (parent == result.size() || outer.area < cycles[positive[parent]].area);
+            if (eligible) {
+                sample(cycle, sources, tolerance);
+                cut_pieces(outer, sources);
+            }
             const bool contained = eligible && inside(cycle.points[0], outer.curves, tolerance);
             if (diagnostic)
                 diagnostic->parent_tests.push_back({static_cast<size_t>(&cycle - cycles.data()), positive[i], shared, eligible, eligible, contained});
-            if (contained) {
+            if (contained)
                 parent = i;
-                smallest = outer.area;
-            }
         }
 
         require(parent < result.size(), "Unowned interior trim loop");
@@ -1643,21 +1804,77 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(const std::vector<Cycle>&
     return result;
 }
 
+/// True when the section stage placed every cut and each end falls where it says: on a boundary vertex, on the point it shares with other cut ends, or on the cut's own closing point. The arrangement is then read off the ends.
+bool placed_ends(const std::vector<Source>& sources, const std::vector<FaceCut>& cutters,
+                 const brep_face_boundary::Result& boundary, double tolerance) {
+
+    // The radius within which the graph merges points.
+    const double reach = tolerance * 4.0;
+    std::vector<std::pair<Point, int>> corners;
+    std::vector<std::pair<Point, int>> inner;
+
+    for (size_t i = 0; i + cutters.size() < sources.size(); ++i) {
+        corners.push_back({sources[i].uv.point_at_start(), sources[i].first_vertex});
+        corners.push_back({sources[i].uv.point_at_end(), sources[i].last_vertex});
+    }
+
+    const auto corner = [&](const Point& uv, int vertex) {
+        return std::any_of(corners.begin(), corners.end(), [&](const std::pair<Point, int>& item) {
+            return (vertex < 0 || item.second == vertex) && item.first.distance(uv) <= reach;
+        });
+    };
+
+    for (size_t i = 0; i < cutters.size(); ++i) {
+        const FaceCut& cut = cutters[i];
+        if (!cut.placed)
+            return false;
+        const bool loop = cut.vertices[0] < 0 && cut.vertices[1] < 0 && cut.nodes[0] < 0 && cut.nodes[1] < 0;
+        for (int end = 0; end < 2; ++end) {
+            const Point uv = end ? cut.pcurve.point_at_end() : cut.pcurve.point_at_start();
+            if (cut.vertices[end] >= 0 ? !corner(uv, cut.vertices[end]) : corner(uv, -1))
+                return false;
+            // A closed cut that touches nothing shares its closing point with itself alone.
+            if (cut.vertices[end] < 0 && (loop || cut.nodes[end] >= 0))
+                inner.push_back({uv, loop ? -1 - static_cast<int>(i) : cut.nodes[end]});
+            else if (cut.vertices[end] < 0)
+                return false;
+        }
+    }
+
+    // Ends that share a point are within reach of each other, ends that do not are apart, no end is alone, and every shared point is strictly inside the face: an end on the boundary that names no vertex is a crossing the section stage did not place.
+    for (size_t i = 0; i < inner.size(); ++i) {
+        bool met = false;
+        for (size_t j = 0; j < inner.size(); ++j) {
+            if (i == j)
+                continue;
+            const bool near = inner[i].first.distance(inner[j].first) <= reach;
+            if (near != (inner[i].second == inner[j].second))
+                return false;
+            met = met || near;
+        }
+        if (!met || brep_classify::face_uv(boundary, inner[i].first, tolerance) != brep_classify::State::Inside)
+            return false;
+    }
+
+    return true;
+}
+
 /// Regions of the planar arrangement of the sources inside the original loops.
 std::vector<std::vector<std::vector<Run>>> arrange(
     const std::vector<Source>& sources,
     const std::vector<std::vector<NurbsCurve>>& original_loops,
     const brep_face_boundary::Result& boundary,
     double tolerance,
-    ArrangementDiagnostic* diagnostic
+    ArrangementDiagnostic* diagnostic,
+    bool& placed
 ) {
 
-    const std::vector<Span> spans = compute_spans(sources, tolerance, diagnostic);
-    const Graph graph = compute_graph(spans, sources, boundary, tolerance, diagnostic);
+    const std::vector<Span> spans = compute_spans(sources, tolerance, diagnostic, placed);
+    const Graph graph = compute_graph(spans, sources, boundary, tolerance, diagnostic, placed);
     if (diagnostic)
         diagnostic->vertex_owned_intervals=graph.vertex_owned_intervals;
-    const std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance, diagnostic);
-    const std::vector<std::vector<std::vector<Run>>> regions = nest_cycles(cycles, tolerance, diagnostic);
+    std::vector<Cycle> cycles = compute_cycles(graph, sources, original_loops, tolerance, diagnostic);
+    const std::vector<std::vector<std::vector<Run>>> regions = nest_cycles(cycles, sources, tolerance, diagnostic);
     if (diagnostic) {
         diagnostic->sources = sources.size();
         diagnostic->spans = spans.size();
@@ -1959,8 +2176,8 @@ std::vector<std::vector<NurbsCurve>> boundary_loops(
     return loops;
 }
 
-/// Replace every use of a cut boundary edge in the wires by its pieces in order.
-void replace_wires(BRep& result, const BRep& brep, const std::vector<Source>& sources, const std::vector<Piece>& pieces) {
+/// Replace every use of a cut boundary edge in the first wires of a model by its pieces in order.
+void replace_wires(BRep& result, const BRep& brep, const std::vector<Source>& sources, const std::vector<Piece>& pieces, size_t wires) {
 
     std::map<int, std::vector<std::pair<double, int>>> replacements;
 
@@ -1968,7 +2185,7 @@ void replace_wires(BRep& result, const BRep& brep, const std::vector<Source>& so
         if (sources[piece.source].edge >= 0)
             replacements[sources[piece.source].edge].push_back({piece.lo, piece.edge});
 
-    for (size_t wi = 0; wi < brep.m_wires.size(); ++wi) {
+    for (size_t wi = 0; wi < wires; ++wi) {
         std::vector<BRepRef> refs;
 
         for (const BRepRef& er : brep.m_wires[wi].edges) {
@@ -2097,18 +2314,30 @@ void observe_failed_split(const char* path, const BRep& input, const BRep& parti
         throw std::runtime_error(std::string("Cannot close split failure observation: ") + path);
 }
 
-/// Reject a split that opens a shell, leaves a wire open or moves an edge off its vertices or trims.
-void validate(const BRep& result, const BRep& original, double tolerance) {
+/// The shells of a model that are closed.
+std::vector<bool> closed_shells(const BRep& brep) {
+
+    std::vector<bool> closed;
+
+    for (size_t s = 0; s < brep.m_shells.size(); ++s)
+        closed.push_back(brep.is_closed(static_cast<int>(s)));
+
+    return closed;
+}
+
+/// Reject a split that opens a shell, leaves a wire open or moves an edge off its vertices or trims. The edges before first_edge are those of a model that passed this check and are not asked again.
+void validate(const BRep& result, const std::vector<bool>& closed, double tolerance, size_t first_edge = 0) {
 
     require(result.is_valid(), "Split produced invalid BRep references");
 
-    for (size_t s = 0; s < original.m_shells.size(); ++s)
-        if (original.is_closed(static_cast<int>(s)))
+    for (size_t s = 0; s < closed.size(); ++s)
+        if (closed[s])
             require(result.is_closed(static_cast<int>(s)), "Split would open a joined shell");
 
     check_wires(result);
 
-    for (const BRepEdge& edge : result.m_edges) {
+    for (size_t index = first_edge; index < result.m_edges.size(); ++index) {
+        const BRepEdge& edge = result.m_edges[index];
         if (edge.degenerated)
             continue;
 
@@ -2124,7 +2353,10 @@ void validate(const BRep& result, const BRep& original, double tolerance) {
 
                 const NurbsCurve& uv = result.m_curves_2d[ci];
                 const double limit = std::max(tolerance, edge.tolerance) * 8.0;
-                validate_trim(world, uv, result.m_surfaces[pc.surface_index], limit);
+                // A match at the tolerance is a match at the wider limit: a section curve holds one already, and the assembly asks for no other.
+                if (curve_surface_intersection::same_parameter(world, uv, result.m_surfaces[pc.surface_index], tolerance) !=
+                    curve_surface_intersection::ParameterMatch::Matched)
+                    validate_trim(world, uv, result.m_surfaces[pc.surface_index], limit);
             }
     }
 }
@@ -2447,8 +2679,8 @@ FaceSplit split_brep_edges_at_events(const BRep& brep, const std::vector<EdgeEve
         required_edge_pieces(split.brep, brep, sources.back(), sources.size() - 1, ordered, pieces,
                              split.edge_events, tolerance);
     }
-    replace_wires(split.brep, brep, sources, pieces);
-    validate(split.brep, brep, tolerance);
+    replace_wires(split.brep, brep, sources, pieces, brep.m_wires.size());
+    validate(split.brep, closed_shells(brep), tolerance);
     require_event_vertex_links(brep, split.brep);
     for (const auto& piece : pieces)
         split.edges.push_back({sources[piece.source].edge, -1, piece.edge, piece.lo, piece.hi});
@@ -2469,9 +2701,12 @@ FaceSplit split_brep_face_by_pcurves(
     return split_brep_face_by_pcurves(brep, face_index, cutters, tolerance, nullptr);
 }
 
-FaceSplit split_brep_face_by_pcurves(
-    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
-    double tolerance, ArrangementDiagnostic* diagnostic
+namespace {
+
+/// Partition a face inside its model. `before` is the model as it was, when the caller kept it; `validated` says the model passed validate at this tolerance, so only the edges made here are certified.
+FaceSplit split_face(
+    BRep& brep, const BRep* before, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic, bool validated
 ) {
     if (diagnostic)
         *diagnostic = ArrangementDiagnostic{};
@@ -2480,7 +2715,7 @@ FaceSplit split_brep_face_by_pcurves(
     require(brep.is_valid(), "Split requires a valid BRep");
     require(face_index >= 0 && face_index < brep.face_count(), "Select one BRep face to split");
     require(!cutters.empty(), "Select at least one cutter");
-    const BRepFace& face = brep.m_faces[face_index];
+    const BRepFace face = brep.m_faces[face_index];
     const NurbsSurface& surface = brep.m_surfaces[face.surface_index];
     check_surface(surface);
 
@@ -2494,26 +2729,36 @@ FaceSplit split_brep_face_by_pcurves(
     for (const FaceCut& cutter : cutters) {
         check_curve(cutter.world);
         check_curve(cutter.pcurve);
-        sources.push_back({-1, cutter.world, cutter.pcurve, cutter.section});
+        sources.push_back({-1, cutter.world, cutter.pcurve, cutter.section, -1, -1, cutter.family});
     }
 
-    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, boundary, uv_tolerance, diagnostic);
+    bool placed = !diagnostic && placed_ends(sources, cutters, boundary, uv_tolerance);
+    const std::vector<std::vector<std::vector<Run>>> regions = arrange(sources, original_loops, boundary, uv_tolerance, diagnostic, placed);
 
+    FaceSplit split;
+    split.faces.push_back(face_index);
+    split.placed = placed;
     if (regions.size() < 2)
-        return {brep, {face_index}, {}};
+        return split;
 
-    BRep result = brep;
+    const char* observation = std::getenv("SESSION_SPLIT_FAILURE_OBSERVATION");
+    std::optional<BRep> kept;
+    if (!before && observation && *observation)
+        before = &kept.emplace(brep);
+    const std::vector<bool> closed = closed_shells(brep);
+    const size_t edges = brep.m_edges.size();
+    const size_t wires = brep.m_wires.size();
+    const int faces = brep.face_count();
     std::vector<Piece> pieces;
-    const std::vector<std::vector<BRepRef>> new_wires = region_wires(result, pieces, brep, face.surface_index, sources, regions, tolerance);
-    replace_wires(result, brep, sources, pieces);
-    add_faces(result, face, face_index, new_wires);
+    const std::vector<std::vector<BRepRef>> new_wires = region_wires(brep, pieces, brep, face.surface_index, sources, regions, tolerance);
+    replace_wires(brep, brep, sources, pieces, wires);
+    add_faces(brep, face, face_index, new_wires);
     try {
-        validate(result, brep, tolerance);
+        validate(brep, closed, tolerance, validated ? edges : 0);
     } catch (const std::exception& failure) {
-        const char* observation = std::getenv("SESSION_SPLIT_FAILURE_OBSERVATION");
         if (observation && *observation)
             try {
-                observe_failed_split(observation, brep, result, face_index, cutters, sources, pieces,
+                observe_failed_split(observation, *before, brep, face_index, cutters, sources, pieces,
                     regions, tolerance, uv_tolerance, failure.what());
             } catch (const std::exception& capture_error) {
                 std::fprintf(stderr, "Split failure observation failed: %s\n", capture_error.what());
@@ -2525,14 +2770,29 @@ FaceSplit split_brep_face_by_pcurves(
         throw;
     }
 
-    FaceSplit split;
-    split.faces.push_back(face_index);
-    for (int i = brep.face_count(); i < result.face_count(); ++i)
+    for (int i = faces; i < brep.face_count(); ++i)
         split.faces.push_back(i);
     for (const Piece& piece : pieces)
         split.edges.push_back({sources[piece.source].edge, sources[piece.source].section, piece.edge, piece.lo, piece.hi});
+    return split;
+}
+
+} // namespace
+
+FaceSplit split_brep_face_by_pcurves(
+    const BRep& brep, int face_index, const std::vector<FaceCut>& cutters,
+    double tolerance, ArrangementDiagnostic* diagnostic
+) {
+    BRep result = brep;
+    FaceSplit split = split_face(result, &brep, face_index, cutters, tolerance, diagnostic, false);
     split.brep = std::move(result);
     return split;
+}
+
+FaceSplit split_brep_face_in_place(
+    BRep& brep, int face_index, const std::vector<FaceCut>& cutters, double tolerance, bool validated
+) {
+    return split_face(brep, nullptr, face_index, cutters, tolerance, nullptr, validated);
 }
 
 BRep split_surface_by_curves(

@@ -41,6 +41,8 @@ struct FaceCurve {
     NurbsCurve first_pcurve;
     NurbsCurve second_pcurve;
     bool touching = false; // The surfaces part again either side: a section locus that bounds no material.
+    bool interior = false; // Strictly inside both faces at its middle: it lies along no edge of either operand.
+    std::array<int, 2> nodes = {-1, -1}; // The node its start and its end lie on, joint j as nodes.size() + j, -1 where it ends on none.
 };
 
 /// Legacy coincidence candidate; whole-domain qualification and trim-area handling are separate.
@@ -85,6 +87,7 @@ struct BoundaryEvent {
     std::vector<EdgeUse> uses;
     std::vector<CurveOwnership> owners;
     bool isolated = true;
+    bool inside = false; // The edge crosses the other face strictly inside it: no edge of that face is met here.
 };
 
 struct SupportPoint {
@@ -173,6 +176,8 @@ struct FaceResult {
     std::vector<UnresolvedIncidence> unresolved_incidences;
     std::vector<size_t> curve_representatives; // Public view; never erases incidences.
     std::vector<size_t> curve_representative; // Each incidence -> proved whole-range representative.
+    std::array<std::vector<int>, 2> overlapping_edges; // Original edges of each operand lying along a surface of the other, sorted.
+    std::vector<Point> joints; // Where curves of one face pair meet end to end away from every edge.
     size_t expected_pairs = 0;
     bool boundary_ownership_complete = false;
     // Compatibility execution status only. This is NOT an original-domain theorem.

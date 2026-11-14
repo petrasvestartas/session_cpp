@@ -171,11 +171,15 @@ void sort_parameters(std::vector<double>& parameters) {
     }), parameters.end());
 }
 
-bool retained(const BRep& brep, int face, const NurbsCurve& pcurve, double t, double tolerance) {
+brep_classify::State trim_state(const BRep& brep, int face, const NurbsCurve& pcurve, double t, double tolerance) {
     const brep_classify::State state = brep_classify::face_uv(brep, face, pcurve.point_at(t), tolerance);
     if (state == brep_classify::State::Unknown)
         throw std::runtime_error("Native section could not classify a trimming interval");
-    return state != brep_classify::State::Outside;
+    return state;
+}
+
+bool retained(const BRep& brep, int face, const NurbsCurve& pcurve, double t, double tolerance) {
+    return trim_state(brep, face, pcurve, t, tolerance) != brep_classify::State::Outside;
 }
 
 NurbsCurve trimmed(const NurbsCurve& curve, double first, double last) {
@@ -620,10 +624,15 @@ void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep&
                 throw std::runtime_error("Interference trim interval has no interior representative");
             if (!whole_short && point_sized(world,cuts[i-1],cuts[i],tolerance))
                 continue;
-            if (!retained(first,a,ua,mid,ta) || !retained(second,b,ub,mid,tb))
+            const auto in_first=trim_state(first,a,ua,mid,ta);
+            if (in_first==brep_classify::State::Outside)
+                continue;
+            const auto in_second=trim_state(second,b,ub,mid,tb);
+            if (in_second==brep_classify::State::Outside)
                 continue;
             FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
                 exact_trim(ua,cuts[i-1],cuts[i]),exact_trim(ub,cuts[i-1],cuts[i])};
+            curve.interior=in_first==brep_classify::State::Inside && in_second==brep_classify::State::Inside;
             end_on_surface(curve.first_pcurve,first.m_surfaces[first.m_faces[a].surface_index]);
             end_on_surface(curve.second_pcurve,second.m_surfaces[second.m_faces[b].surface_index]);
             paired(curve,first,second,tolerance);
@@ -760,24 +769,36 @@ bool original_boundary_overlap(curve_surface_intersection::Result& result, const
     return !result.overlaps.empty();
 }
 
+// An edge meets a surface of the other operand once, whichever of its faces asks: operand, edge and surface name the result.
+using EdgeHits=std::map<std::array<int,3>,curve_surface_intersection::Result>;
+
 // This pass preserves every original edge use; it does not choose one owning face.
 void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a,int b,
-                   int operand,double tolerance) {
+                   int operand,double tolerance,EdgeHits& met) {
     const BRep& source=operand?second:first;
     const BRep& other=operand?first:second;
     const int own_face=operand?b:a, other_face=operand?a:b;
-    const auto& surface=other.m_surfaces[other.m_faces[other_face].surface_index];
+    const int support=other.m_faces[other_face].surface_index;
+    const auto& surface=other.m_surfaces[support];
     const double uv_tol=uv_tolerance(surface,tolerance);
     for (const auto& [edge_index,uses]:edge_uses(source,own_face)) {
         const auto& edge=source.m_edges[edge_index];
         const auto& world=source.m_curves_3d[edge.curve_3d_index];
-        curve_surface_intersection::Result events;
-        if (!original_boundary_overlap(events,source,edge,world,surface,tolerance))
-            events=curve_surface_intersection::intersect(world,surface,tolerance);
+        auto found=met.find({operand,edge_index,support});
+        if (found==met.end()) {
+            curve_surface_intersection::Result hits;
+            if (!original_boundary_overlap(hits,source,edge,world,surface,tolerance))
+                hits=curve_surface_intersection::intersect(world,surface,tolerance);
+            found=met.emplace(std::array<int,3>{operand,edge_index,support},std::move(hits)).first;
+        }
+        const curve_surface_intersection::Result& events=found->second;
         if (!events.complete) {
             observe_boundary_failure(source,surface,a,b,operand,edge_index,uses,tolerance,events.failure);
             throw std::runtime_error(events.failure);
         }
+        auto& along=result.overlapping_edges[operand];
+        if (!events.overlaps.empty() && !std::binary_search(along.begin(),along.end(),edge_index))
+            along.insert(std::upper_bound(along.begin(),along.end(),edge_index),edge_index);
         const auto append_point=[&](double t,const Point& uv,bool tangent) {
             if (!std::isfinite(t) || t<world.domain_start() || t>world.domain_end() ||
                 !std::isfinite(uv[0]) || !std::isfinite(uv[1]))
@@ -798,7 +819,8 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
             const int vertex=t==world.domain_start()?edge.start_vertex:
                 t==world.domain_end()?edge.end_vertex:-1;
             result.boundary_events.push_back({operand,edge_index,vertex,
-                {world.point_at(t),other_face,t,uv[0],uv[1],tangent},uses,{},true});
+                {world.point_at(t),other_face,t,uv[0],uv[1],tangent},uses,{},true,
+                state==brep_classify::State::Inside && !tangent});
         };
         for (const auto& hit:events.points)
             append_point(hit.t,{hit.u,hit.v,0},hit.tangent);
@@ -1020,6 +1042,9 @@ void group_curves(FaceResult& result,double tolerance) {
         bool grouped=false;
         size_t representative=i;
         for (size_t previous:result.curve_representatives) {
+            // A curve strictly inside both of its faces shares its whole range with no other: that would put it on an edge.
+            if (result.curves[i].interior || result.curves[previous].interior)
+                continue;
             const auto& x=result.curves[i].world;
             const auto& y=result.curves[previous].world;
             const auto events=curve_intersection::intersect(x,y,tolerance);
@@ -1072,6 +1097,25 @@ void support_nodes(FaceResult& result,double tolerance) {
     }
 }
 
+// Every knot span of a curve proved farther than a radius from a point.
+bool curve_clear(const NurbsCurve& curve,const Point& point,double radius) {
+    const std::vector<double> spans=curve.get_span_vector();
+    const I allowed=I(radius)*I(radius);
+    for (size_t i=1;i<spans.size();++i) {
+        nurbs_interval::CurveBounds bounds;
+        if (!nurbs_interval::curve_bounds(curve,{spans[i-1],spans[i]},{point[0],point[1],point[2]},bounds))
+            return false;
+        I lower;
+        for (const I coordinate:bounds.point) {
+            const double nearest=coordinate.lo>0?coordinate.lo:coordinate.hi<0?-coordinate.hi:0;
+            lower=lower+I(nearest)*I(nearest);
+        }
+        if (!nurbs_interval::finite(lower) || !(lower.lo>allowed.hi))
+            return false;
+    }
+    return true;
+}
+
 void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolerance) {
     MetCurves met;
     for (size_t i=0;i<result.boundary_events.size();++i) {
@@ -1079,6 +1123,21 @@ void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolera
         const auto& source=event_source(point,a,b);
         for (size_t curve_index=0;curve_index<result.curves.size();++curve_index) {
             const auto& curve=result.curves[curve_index];
+            // A hit of the edge on this curve near the event lies within the event's cap and the hit residual of the point: a curve clear of twice the tolerance owns nothing here.
+            if (curve_excludes(curve.world,point.hit.point,tolerance) || curve_clear(curve.world,point.hit.point,2.*tolerance))
+                continue;
+            // Where the edge crosses strictly inside the other face and the curve lies along no edge, the event is a point of the curve: its place there is an end of the curve or its projection, certified by the ball.
+            if (point.inside && curve.interior) {
+                double at=curve.world.domain_start();
+                if (!detail::owns_point(curve.world,at,point.hit.point,tolerance) &&
+                    !detail::owns_point(curve.world,at=curve.world.domain_end(),point.hit.point,tolerance))
+                    at=Closest::curve_point(curve.world,point.hit.point).first;
+                if (detail::owns_point(curve.world,at,point.hit.point,tolerance)) {
+                    point.owners.push_back({curve_index,point.hit.t,at});
+                    point.isolated=false;
+                    continue;
+                }
+            }
             const auto& events=met({point.operand,point.edge,2,static_cast<int>(curve_index)},source,curve.world,tolerance);
             if (!events.complete)
                 throw std::runtime_error(events.failure);
@@ -1106,6 +1165,10 @@ void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolera
         }
         size_t node=result.nodes.size();
         for (size_t n=0;n<result.nodes.size();++n) {
+            // An event joins a node only inside the quarter ball of its centre: no other node is asked.
+            if (!nurbs_interval::curve_within_ball(source,{point.hit.t,point.hit.t},
+                {result.nodes[n].point[0],result.nodes[n].point[1],result.nodes[n].point[2]},tolerance*.25))
+                continue;
             bool same=false;
             for (size_t j:result.nodes[n].boundary_events)
                 same=same || boundary_equivalent(point,result.boundary_events[j],a,b,tolerance,met);
@@ -1120,8 +1183,6 @@ void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolera
                      (point.hit.t==source.domain_end() && projective_cv(source,source.cv_count()-1,support.event.exact_witness))))
                     same=true;
             }
-            same=same && nurbs_interval::curve_within_ball(source,{point.hit.t,point.hit.t},
-                {result.nodes[n].point[0],result.nodes[n].point[1],result.nodes[n].point[2]},tolerance*.25);
             if (same) {
                 node=n;
                 break;
@@ -1194,11 +1255,61 @@ void retain_unrepresented_uv_uses(FaceResult& result,const BRep& first,const BRe
     }
 }
 
+// The node each end of a section curve lies on: the one node whose centre the end is certified within tolerance of. Ends left over that meet another end of the same face pair share a joint.
+void curve_nodes(FaceResult& result,double tolerance) {
+    struct End {
+        FaceCurve* curve;
+        int end;
+        double t;
+        Point at;
+    };
+    std::vector<End> open;
+    for (auto& curve:result.curves)
+        for (int end=0;end<2;++end) {
+            const double t=end?curve.world.domain_end():curve.world.domain_start();
+            const Point at=curve.world.point_at(t);
+            int found=-1,count=0;
+            for (size_t n=0;n<result.nodes.size();++n)
+                if (at.distance(result.nodes[n].point)<=tolerance &&
+                    detail::owns_point(curve.world,t,result.nodes[n].point,tolerance)) {
+                    found=static_cast<int>(n);
+                    ++count;
+                }
+            if (count==1)
+                curve.nodes[end]=found;
+            else if (count==0)
+                open.push_back({&curve,end,t,at});
+        }
+    for (size_t i=0;i<open.size();++i) {
+        if (open[i].curve->nodes[open[i].end]>=0)
+            continue;
+        const int joint=static_cast<int>(result.nodes.size()+result.joints.size());
+        for (size_t j=i+1;j<open.size();++j)
+            if (open[j].curve->nodes[open[j].end]<0 && open[j].curve->first_face==open[i].curve->first_face &&
+                open[j].curve->second_face==open[i].curve->second_face && open[j].at.distance(open[i].at)<=tolerance &&
+                detail::owns_point(open[j].curve->world,open[j].t,open[i].at,tolerance))
+                open[j].curve->nodes[open[j].end]=open[i].curve->nodes[open[i].end]=joint;
+        if (open[i].curve->nodes[open[i].end]>=0)
+            result.joints.push_back(open[i].at);
+    }
+    // Two interior curves of one face pair can be one curve found twice only between the same two nodes, and then each passes the middle of the other: identity does not place such a pair.
+    for (size_t i=0;i<result.curves.size();++i)
+        for (size_t j=i+1;j<result.curves.size();++j) {
+            auto& x=result.curves[i];
+            auto& y=result.curves[j];
+            if (x.interior && y.interior && x.first_face==y.first_face && x.second_face==y.second_face &&
+                std::minmax(x.nodes[0],x.nodes[1])==std::minmax(y.nodes[0],y.nodes[1]) &&
+                !curve_clear(x.world,y.world.point_at(std::midpoint(y.world.domain_start(),y.world.domain_end())),4.*tolerance))
+                x.interior=y.interior=false;
+        }
+}
+
 void finalize_inventory(FaceResult& result,const BRep& a,const BRep& b,double tolerance) {
     point_boundary_events(result,a,b,tolerance);
-    group_curves(result,tolerance);
     support_nodes(result,tolerance);
     boundary_nodes(result,a,b,tolerance);
+    curve_nodes(result,tolerance);
+    group_curves(result,tolerance);
     retain_unrepresented_uv_uses(result,a,b);
 }
 
@@ -1210,6 +1321,7 @@ FaceResult interferences(const BRep& first,const BRep& second,double tolerance) 
     FaceResult result;
     const auto af=active_faces(first),bf=active_faces(second);
     result.expected_pairs=af.size()*bf.size();
+    EdgeHits met;
     try {
         for (int face:af)
             validate_boundary_policy(first,face,0);
@@ -1260,8 +1372,8 @@ FaceResult interferences(const BRep& first,const BRep& second,double tolerance) 
                     // Original boundary incidences are materialized below from exact endpoint witnesses.
                     continue;
                 }
-                boundary_pair(result,first,second,a,b,0,tolerance);
-                boundary_pair(result,first,second,a,b,1,tolerance);
+                boundary_pair(result,first,second,a,b,0,tolerance,met);
+                boundary_pair(result,first,second,a,b,1,tolerance,met);
             }
         finalize_inventory(result,first,second,tolerance);
         result.boundary_ownership_complete=result.unrepresented_uv_incidences.empty();

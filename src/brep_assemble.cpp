@@ -65,6 +65,7 @@ struct Source {
     int operand = -1;
     int original = -1;
     int section = -1;
+    bool exact = false; // No other source lies along it or crosses it, but one cut from the same section curve.
     std::vector<double> cuts;
     std::vector<Piece> pieces;
     std::vector<ParameterRelation> parameters;
@@ -79,6 +80,8 @@ struct Surface {
 struct Canonical {
     size_t source;
     int edge;
+    double first;
+    double last;
 };
 
 struct PcurveUse {
@@ -129,6 +132,7 @@ void add_source(Assembly& assembly, const FaceUse& face, int edge) {
             if (piece.edge == edge) {
                 source.original = piece.source_edge;
                 source.section = piece.section;
+                source.exact = piece.exact;
                 break;
             }
 
@@ -166,7 +170,18 @@ void synchronize(Assembly& assembly) {
         for (size_t j = i + 1; j < assembly.sources.size(); ++j) {
             require(++work < 2000000, "edge interference work limit exceeded");
             Source& b = assembly.sources[j];
-            if (degenerated(b) || !bounds.overlaps(Bounds(world(b)), assembly.tolerance))
+            if (degenerated(b))
+                continue;
+            // Two exact sources meet at their ends only, unless both are cut from one section curve: then each takes the other's ends, parameter for parameter.
+            if (a.exact && b.exact) {
+                if (a.section >= 0 && a.section == b.section)
+                    for (const auto& [from, to] : {std::pair<Source*, Source*>{&a, &b}, std::pair<Source*, Source*>{&b, &a}})
+                        for (const double t : {world(*from).domain_start(), world(*from).domain_end()})
+                            if (t > world(*to).domain_start() && t < world(*to).domain_end())
+                                to->cuts.push_back(t);
+                continue;
+            }
+            if (!bounds.overlaps(Bounds(world(b)), assembly.tolerance))
                 continue;
 
             const curve_intersection::Result intersections = curve_intersection::intersect(world(a), world(b), assembly.tolerance);
@@ -314,7 +329,17 @@ bool equivalent(const NurbsCurve& a, const NurbsCurve& b, double tolerance, bool
 Piece add_piece(Assembly& assembly, size_t index, double a, double b) {
     const Source& source = assembly.sources[index];
     const NurbsCurve curve = interval(world(source), a, b);
-    for (int pass = 0; pass < 2; ++pass)
+    // An exact piece is the edge already made from the same section curve over the same range, or a new edge: nothing is intersected unless ranges disagree.
+    bool placed = source.exact;
+    for (const Canonical& candidate : assembly.canonical) {
+        const Source& other = assembly.sources[candidate.source];
+        if (!source.exact || !other.exact || source.section < 0 || source.section != other.section)
+            continue;
+        if (candidate.first == a && candidate.last == b)
+            return {candidate.edge, a, b, false};
+        placed = placed && !(candidate.first < b && a < candidate.last);
+    }
+    for (int pass = 0; pass < 2 && !placed; ++pass)
         for (const Canonical& candidate : assembly.canonical) {
             const bool identity = same_identity(source, assembly.sources[candidate.source]);
             if (identity != (pass == 0))
@@ -333,7 +358,7 @@ Piece add_piece(Assembly& assembly, size_t index, double a, double b) {
     const int last = vertex(assembly, curve.point_at_end());
     const double tolerance = std::max(assembly.tolerance, source.brep->m_edges[source.edge].tolerance);
     const int edge = assembly.result.add_edge(assembly.result.add_curve_3d(curve), first, last, tolerance);
-    assembly.canonical.push_back({index, edge});
+    assembly.canonical.push_back({index, edge, a, b});
     return {edge, a, b, false};
 }
 
