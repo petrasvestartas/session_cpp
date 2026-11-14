@@ -29,7 +29,7 @@ struct Bounds {
 
     explicit Bounds(const NurbsCurve& curve) : lo(curve.get_cv(0)), hi(lo) {
         for (int i = 1; i < curve.cv_count(); ++i) {
-            const Point p = curve.get_cv(i);
+            const xyz p = curve.control(i);
             for (int d = 0; d < 3; ++d) {
                 lo[d] = std::min(lo[d], p[d]);
                 hi[d] = std::max(hi[d], p[d]);
@@ -144,9 +144,13 @@ void add_source(Assembly& assembly, const FaceUse& face, int edge) {
 }
 
 void collect(Assembly& assembly, const std::vector<FaceUse>& faces) {
+    std::vector<const BRep*> checked;
     for (size_t i = 0; i < faces.size(); ++i) {
         const FaceUse& face = faces[i];
-        require(face.brep && face.brep->is_valid(), "invalid source BRep");
+        if (std::find(checked.begin(), checked.end(), face.brep) == checked.end()) {
+            require(face.brep && face.brep->is_valid(), "invalid source BRep");
+            checked.push_back(face.brep);
+        }
         require(face.face >= 0 && face.face < face.brep->face_count(), "invalid selected face");
         for (size_t j = 0; j < i; ++j)
             require(faces[j].brep != face.brep || faces[j].face != face.face, "duplicate selected face");

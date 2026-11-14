@@ -165,11 +165,12 @@ NurbsSurface::NurbsSurface(int dimension, bool is_rational, int order0, int orde
     create_raw(dimension, is_rational, order0, order1, cv_count0, cv_count1);
 }
 
-NurbsSurface::NurbsSurface(const NurbsSurface& other) {
-
-    initialize();
-    deep_copy_from(other);
-}
+NurbsSurface::NurbsSurface(const NurbsSurface& other)
+    : name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), width(other.width), pointcolors(other.pointcolors),
+      facecolors(other.facecolors), linecolors(other.linecolors), m_dim(other.m_dim), m_is_rat(other.m_is_rat),
+      m_order{other.m_order[0], other.m_order[1]}, m_cv_count{other.m_cv_count[0], other.m_cv_count[1]},
+      m_cv_stride{other.m_cv_stride[0], other.m_cv_stride[1]}, m_nurbsknot{other.m_nurbsknot[0], other.m_nurbsknot[1]}, m_cv(other.m_cv),
+      m_mesh(other.m_mesh), m_mesh_key(other.m_mesh_key) {}
 
 NurbsSurface& NurbsSurface::operator=(const NurbsSurface& other) {
 
@@ -179,9 +180,7 @@ NurbsSurface& NurbsSurface::operator=(const NurbsSurface& other) {
     return *this;
 }
 
-NurbsSurface::~NurbsSurface() {
-    destroy();
-}
+NurbsSurface::~NurbsSurface() = default;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -504,14 +503,6 @@ bool NurbsSurface::is_closed(int dir) const {
 
     const int last = m_cv_count[dir] - 1;
 
-    // The control points get_cv returns, as plain triples.
-    const auto control = [this](int i, int j) {
-        const double* h = cv(i, j);
-        const double w = (m_is_rat && h[m_dim] != 0.0) ? h[m_dim] : 1.0;
-
-        return xyz{h[0] / w, m_dim > 1 ? h[1] / w : 0.0, m_dim > 2 ? h[2] / w : 0.0};
-    };
-
     for (int k = 0; k < m_cv_count[1 - dir]; k++) {
         const xyz a = dir ? control(k, 0) : control(0, k);
         const xyz b = dir ? control(k, last) : control(last, k);
@@ -703,13 +694,19 @@ const double* NurbsSurface::cv(int i, int j) const {
 }
 
 Point NurbsSurface::get_cv(int i, int j) const {
+    return Point(control(i, j));
+}
+
+xyz NurbsSurface::control(int i, int j) const {
 
     const double* cv_ptr = cv(i, j);
 
     if (!cv_ptr)
-        return Point(0, 0, 0);
+        return {0.0, 0.0, 0.0};
 
-    return dehomogenize(cv_ptr);
+    const double w = (m_is_rat && cv_ptr[m_dim] != 0.0) ? cv_ptr[m_dim] : 1.0;
+
+    return {cv_ptr[0] / w, m_dim > 1 ? cv_ptr[1] / w : 0.0, m_dim > 2 ? cv_ptr[2] / w : 0.0};
 }
 
 bool NurbsSurface::get_cv_4d(int i, int j, double& x, double& y, double& z, double& w) const {
@@ -885,18 +882,10 @@ bool NurbsSurface::set_domain(int dir, double t0, double t1) {
 
 std::vector<double> NurbsSurface::get_span_vector(int dir) const {
 
-    std::vector<double> spans;
-
     if (dir < 0 || dir > 1 || !is_valid())
-        return spans;
+        return {};
 
-    spans.push_back(m_nurbsknot[dir][m_order[dir] - 2]);
-
-    for (int i = m_order[dir] - 1; i < m_cv_count[dir]; i++)
-        if (m_nurbsknot[dir][i] > spans.back())
-            spans.push_back(m_nurbsknot[dir][i]);
-
-    return spans;
+    return nurbsknot::span_vector(m_order[dir], m_cv_count[dir], m_nurbsknot[dir]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1401,16 +1390,15 @@ bool NurbsSurface::swap_coordinates(int axis_i, int axis_j) {
 }
 
 bool NurbsSurface::trim(int dir, const std::pair<double, double>& domain_pair) {
+    return dir >= 0 && dir <= 1 && is_valid() && trim_valid(dir, domain_pair);
+}
 
-    if (dir < 0 || dir > 1 || !is_valid())
-        return false;
+bool NurbsSurface::trim_valid(int dir, const std::pair<double, double>& domain_pair) {
 
+    // A valid surface makes a valid curve.
     NurbsCurve crv = to_curve(dir);
 
-    if (!crv.trim(domain_pair.first, domain_pair.second))
-        return false;
-
-    return from_curve(crv, dir);
+    return crv.trim_valid(domain_pair.first, domain_pair.second) && from_curve(crv, dir);
 }
 
 std::pair<NurbsSurface, NurbsSurface> NurbsSurface::split(int dir, double c) const {
@@ -1428,7 +1416,7 @@ std::pair<NurbsSurface, NurbsSurface> NurbsSurface::split(int dir, double c) con
     NurbsSurface lo = *this;
     NurbsSurface hi = *this;
 
-    if (!lo.trim(dir, {t0, c}) || !hi.trim(dir, {c, t1}))
+    if (!lo.trim_valid(dir, {t0, c}) || !hi.trim_valid(dir, {c, t1}))
         return {NurbsSurface(), NurbsSurface()};
 
     return {lo, hi};
@@ -1955,13 +1943,6 @@ bool NurbsSurface::set_periodic_uniform_nurbsknot_vector(int dir, double delta) 
     return !m_nurbsknot[dir].empty();
 }
 
-Point NurbsSurface::dehomogenize(const double* h) const {
-
-    const double w = (m_is_rat && h[m_dim] != 0.0) ? h[m_dim] : 1.0;
-
-    return Point(h[0] / w, m_dim > 1 ? h[1] / w : 0.0, m_dim > 2 ? h[2] / w : 0.0);
-}
-
 int NurbsSurface::find_span(int dir, double t) const {
     return nurbsknot::find_span(m_order[dir], m_cv_count[dir], m_nurbsknot[dir], t);
 }
@@ -2085,23 +2066,16 @@ Mesh NurbsSurface::mesh_planar() const {
 
 NurbsCurve NurbsSurface::to_curve(int dir) const {
 
+    // Every caller has checked the surface, so the nurbsknots of dir are the curve's.
     const int other = 1 - dir;
     const int size = cv_size();
     NurbsCurve crv(size * m_cv_count[other], false, m_order[dir], m_cv_count[dir]);
+    crv.m_nurbsknot = m_nurbsknot[dir];
+    double* dst = crv.m_cv.data();
 
-    for (int i = 0; i < crv.nurbsknot_count(); i++)
-        crv.set_nurbsknot(i, nurbsknot(dir, i));
-
-    for (int i = 0; i < m_cv_count[dir]; i++) {
-        double* dst = crv.cv(i);
-
-        for (int j = 0; j < m_cv_count[other]; j++) {
-            const double* src = dir ? cv(j, i) : cv(i, j);
-
-            for (int d = 0; d < size; d++)
-                dst[j * size + d] = src[d];
-        }
-    }
+    for (int i = 0; i < m_cv_count[dir]; i++)
+        for (int j = 0; j < m_cv_count[other]; j++, dst += size)
+            std::copy_n(&m_cv[dir ? j * m_cv_stride[0] + i * m_cv_stride[1] : i * m_cv_stride[0] + j * m_cv_stride[1]], size, dst);
 
     return crv;
 }
@@ -2110,38 +2084,33 @@ bool NurbsSurface::from_curve(const NurbsCurve& crv, int dir) {
 
     const int other = 1 - dir;
     const int size = cv_size();
+    const int count = crv.m_cv_count;
 
-    if (crv.m_is_rat || crv.m_dim != size * m_cv_count[other])
+    if (crv.m_is_rat || crv.m_dim != size * m_cv_count[other] || m_dim < 1 || crv.m_order < 2 || count < crv.m_order
+        || m_order[other] < 2 || m_cv_count[other] < m_order[other])
         return false;
 
-    NurbsSurface srf;
-    const bool created = dir == 0
-        ? srf.create_raw(m_dim, m_is_rat != 0, crv.m_order, m_order[1], crv.m_cv_count, m_cv_count[1])
-        : srf.create_raw(m_dim, m_is_rat != 0, m_order[0], crv.m_order, m_cv_count[0], crv.m_cv_count);
+    // The layout create_raw gives: v controls next to each other, u rows of them.
+    const int row = size * (dir ? count : m_cv_count[1]);
+    std::vector<double> cvs(static_cast<std::size_t>(count) * m_cv_count[other] * size);
 
-    if (!created)
-        return false;
-
-    srf.m_nurbsknot[dir] = crv.m_nurbsknot;
-    srf.m_nurbsknot[other] = m_nurbsknot[other];
-
-    for (int i = 0; i < crv.m_cv_count; i++) {
+    for (int i = 0; i < count; i++) {
         const double* src = crv.cv(i);
 
         for (int j = 0; j < m_cv_count[other]; j++) {
-            double* dst = dir ? srf.cv(j, i) : srf.cv(i, j);
+            double* dst = &cvs[dir ? j * row + i * size : i * row + j * size];
 
             for (int d = 0; d < size; d++)
                 dst[d] = src[j * size + d];
         }
     }
 
-    m_order[dir] = srf.m_order[dir];
-    m_cv_count[dir] = srf.m_cv_count[dir];
-    m_cv_stride[0] = srf.m_cv_stride[0];
-    m_cv_stride[1] = srf.m_cv_stride[1];
-    m_nurbsknot[dir] = srf.m_nurbsknot[dir];
-    m_cv = srf.m_cv;
+    m_order[dir] = crv.m_order;
+    m_cv_count[dir] = count;
+    m_cv_stride[0] = row;
+    m_cv_stride[1] = size;
+    m_nurbsknot[dir] = crv.m_nurbsknot;
+    m_cv = std::move(cvs);
 
     return true;
 }

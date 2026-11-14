@@ -1180,8 +1180,8 @@ std::tuple<double, double, double> Closest::surface_point(
     double domain_u1 = 0.0;
     double domain_v0 = 0.0;
     double domain_v1 = 0.0;
-    std::tie(domain_u0, domain_u1) = surface.domain(0);
-    std::tie(domain_v0, domain_v1) = surface.domain(1);
+    std::tie(domain_u0, domain_u1) = nurbsknot::get_domain(surface.order(0), surface.cv_count(0), surface.m_nurbsknot[0]);
+    std::tie(domain_v0, domain_v1) = nurbsknot::get_domain(surface.order(1), surface.cv_count(1), surface.m_nurbsknot[1]);
 
     if (u0 <= 0.0)
         u0 = domain_u0;
@@ -1214,7 +1214,7 @@ std::tuple<double, double, double> Closest::surface_point(
 
     // On a closed surface a seed on the seam stands for both ends of the domain, and Newton from the wrong end stays clamped there.
     const auto on_seam = [&](int dir, double at, double low, double high) {
-        const std::pair<double, double> domain = surface.domain(dir);
+        const std::pair<double, double> domain = nurbsknot::get_domain(surface.order(dir), surface.cv_count(dir), surface.m_nurbsknot[dir]);
         return low == domain.first && high == domain.second
             && std::min(at - low, high - at) <= (high - low) * 1e-9 && surface.is_closed(dir);
     };

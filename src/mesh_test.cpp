@@ -2471,6 +2471,18 @@ MINI_TEST("Mesh", "Default Attributes") {
     MINI_CHECK(mesh.default_edge_attributes["weight"] == 1.0);
 }
 
+MINI_TEST("Mesh", "Default And Copied Attributes") {
+    const std::map<std::string, double> position = {{"x", 0.0}, {"y", 0.0}, {"z", 0.0}};
+    Mesh mesh = Mesh::create_box(1.0, 1.0, 1.0);
+    mesh.update_default_edge_attributes({{"weight", 1.0}});
+    mesh.name = "box";
+    const Mesh copy(mesh);
+
+    MINI_CHECK(Mesh().default_vertex_attributes == position);
+    MINI_CHECK(copy == mesh && copy.name == "box" && copy.default_vertex_attributes == position);
+    MINI_CHECK(copy.default_edge_attributes == mesh.default_edge_attributes && copy.number_of_faces() == mesh.number_of_faces());
+}
+
 MINI_TEST("Mesh", "Vertex Attribute") {
     // using session_cpp::Mesh;
 

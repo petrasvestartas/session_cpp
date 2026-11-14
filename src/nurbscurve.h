@@ -260,6 +260,9 @@ public:
     /// Return the Euclidean CV (divided by weight when rational).
     Point get_cv(int cv_index) const;
 
+    /// Return the CV of get_cv as a plain triple, without allocation.
+    xyz control(int cv_index) const;
+
     /// Get the homogeneous CV (x, y, z, w) through out-parameters.
     bool get_cv_4d(int cv_index, double& x, double& y, double& z, double& w) const;
 
@@ -445,6 +448,9 @@ public:
     /// Keep [t0, t1] by nurbsknot insertion.
     bool trim(double t0, double t1);
 
+    /// trim on a curve known to be valid.
+    bool trim_valid(double t0, double t1);
+
     /// Approximate the signed offset along tangent cross normal with native adaptive residual checks.
     NurbsCurve offset(double distance, const Vector& normal, double tolerance = 1e-7) const;
 
@@ -629,6 +635,9 @@ private:
 
     /// insert_nurbsknot on a curve known to be valid, at a finite value.
     bool insert_valid_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity);
+
+    /// clamp_end on a curve known to be valid.
+    bool clamp_valid_end(int end);
 
     /// True when the last degree CVs repeat the first and the nurbsknot spacing repeats every period.
     bool is_wrapped() const;

@@ -373,4 +373,9 @@ MINI_TEST("NurbsKnot", "Solve Banded SPD") {
     MINI_CHECK(!nurbsknot::solve_banded_spd(std::numeric_limits<int>::max(), 2, 1, singular, value));
 }
 
+MINI_TEST("NurbsKnot", "Span Vector") {
+    const std::vector<double> nurbsknots = {0.0, 0.0, 0.0, 1.0, 1.0, 2.5, 3.0, 3.0, 3.0};
+
+    MINI_CHECK((nurbsknot::span_vector(4, 7, nurbsknots) == std::vector<double>{0.0, 1.0, 2.5, 3.0}));
+}
 } // namespace session_cpp

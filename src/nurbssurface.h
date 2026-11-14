@@ -258,6 +258,9 @@ public:
     /// Return the Euclidean CV (divided by weight when rational), origin when out of range.
     Point get_cv(int i, int j) const;
 
+    /// Return the CV of get_cv as a plain triple, without allocation.
+    xyz control(int i, int j) const;
+
     /// Return the homogeneous CV (x, y, z, w), w = 1 when non-rational.
     bool get_cv_4d(int i, int j, double& x, double& y, double& z, double& w) const;
 
@@ -383,6 +386,9 @@ public:
     /// Restrict dir to the sub-domain.
     bool trim(int dir, const std::pair<double, double>& domain);
 
+    /// trim on a surface known to be valid, dir 0 or 1.
+    bool trim_valid(int dir, const std::pair<double, double>& domain);
+
     /// Approximate a normal offset with native adaptive residual checks.
     NurbsSurface offset(double distance, double tolerance = 1e-7) const;
 
@@ -499,9 +505,6 @@ private:
 
     /// Fill the nurbsknot vector in dir with periodic uniform values of the given spacing.
     bool set_periodic_uniform_nurbsknot_vector(int dir, double delta = 1.0);
-
-    /// Return the Euclidean point of a homogeneous CV or blend.
-    Point dehomogenize(const double* h) const;
 
     /// Array sizes an evaluation reads, in constant time: unlike is_valid() it leaves the values to the caller.
     bool has_evaluation_tables() const;

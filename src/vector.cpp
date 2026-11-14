@@ -72,33 +72,7 @@ std::string& Vector::guid() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
-double& Vector::operator[](int index) {
-
-    _has_magnitude = false;
-
-    if (index == 0)
-        return _x;
-
-    if (index == 1)
-        return _y;
-
-    if (index == 2)
-        return _z;
-
-    throw std::out_of_range("Index out of range");
-}
-
-const double& Vector::operator[](int index) const {
-
-    if (index == 0)
-        return _x;
-
-    if (index == 1)
-        return _y;
-
-    if (index == 2)
-        return _z;
-
+void Vector::index_out_of_range() {
     throw std::out_of_range("Index out of range");
 }
 

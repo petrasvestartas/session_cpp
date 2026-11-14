@@ -11,6 +11,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace session_proto {
@@ -26,6 +27,9 @@ private:
     double _x = 0.0; // X coordinate.
     double _y = 0.0; // Y coordinate.
     double _z = 0.0; // Z coordinate.
+
+    /// Throw std::out_of_range for operator[], out of line so the operator inlines.
+    [[noreturn]] static void index_out_of_range();
 
 public:
     std::string name = "my_point"; // Point name.
@@ -85,10 +89,24 @@ public:
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the mutable coordinate by index (0=x, 1=y, 2=z).
-    double& operator[](int index);
+    double& operator[](int index) {
+        return const_cast<double&>(std::as_const(*this)[index]);
+    }
 
     /// Return the coordinate by index (0=x, 1=y, 2=z).
-    const double& operator[](int index) const;
+    const double& operator[](int index) const {
+
+        if (index == 0)
+            return _x;
+
+        if (index == 1)
+            return _y;
+
+        if (index != 2)
+            index_out_of_range();
+
+        return _z;
+    }
 
     /// Compare name, coordinates, width and color within rounding.
     bool operator==(const Point& other) const;

@@ -1599,4 +1599,30 @@ MINI_TEST("NurbsCurve", "Divide By Count Stations Are Equal Arcs On Long Curves"
         }
     }
 }
+
+MINI_TEST("NurbsCurve", "Validation At Entry") {
+    const NurbsCurve curve = NurbsCurve::create(false, 3, {Point(0, 0, 0), Point(1, 2, 0), Point(3, 2, 1), Point(4, 0, 0), Point(5, 1, 2)});
+    NurbsCurve checked = curve;
+    NurbsCurve unchecked = curve;
+    NurbsCurve not_finite = curve;
+    not_finite.m_cv[4] = std::numeric_limits<double>::quiet_NaN();
+    NurbsCurve unsorted = curve;
+    std::swap(unsorted.m_nurbsknot[2], unsorted.m_nurbsknot[3]);
+
+    for (int i = 0; i < curve.cv_count(); ++i)
+        MINI_CHECK(Point(curve.control(i)) == curve.get_cv(i));
+    MINI_CHECK(checked.trim(0.5, 2.0) && unchecked.trim_valid(0.5, 2.0));
+    MINI_CHECK(checked.m_cv == unchecked.m_cv && checked.m_nurbsknot == unchecked.m_nurbsknot);
+    for (const NurbsCurve& bad : {not_finite, unsorted}) {
+        NurbsCurve trimmed = bad;
+        NurbsCurve clamped = bad;
+        NurbsCurve left;
+        NurbsCurve right;
+        MINI_CHECK(!bad.is_valid());
+        MINI_CHECK(bad.get_span_vector().empty());
+        MINI_CHECK(!bad.split(1.0, left, right));
+        MINI_CHECK(!trimmed.trim(0.5, 1.5));
+        MINI_CHECK(!clamped.clamp_end(2));
+    }
+}
 } // namespace session_cpp

@@ -31,6 +31,10 @@ Point& Point::operator=(const Point& other) {
     return *this;
 }
 
+void Point::index_out_of_range() {
+    throw std::out_of_range("Index out of range");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Accessors
 // ═══════════════════════════════════════════════════════════════════════════
@@ -57,34 +61,6 @@ void Point::refresh_guid() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Operators
 // ═══════════════════════════════════════════════════════════════════════════
-double& Point::operator[](int index) {
-
-    if (index == 0)
-        return _x;
-
-    if (index == 1)
-        return _y;
-
-    if (index == 2)
-        return _z;
-
-    throw std::out_of_range("Index out of range");
-}
-
-const double& Point::operator[](int index) const {
-
-    if (index == 0)
-        return _x;
-
-    if (index == 1)
-        return _y;
-
-    if (index == 2)
-        return _z;
-
-    throw std::out_of_range("Index out of range");
-}
-
 bool Point::operator==(const Point& other) const {
 
     return name == other.name && is_visible == other.is_visible && is_locked == other.is_locked &&

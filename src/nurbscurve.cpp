@@ -33,11 +33,10 @@ NurbsCurve::NurbsCurve(int dimension, bool is_rational, int order, int cv_count)
     create(dimension, is_rational, order, cv_count);
 }
 
-NurbsCurve::NurbsCurve(const NurbsCurve& other) {
-
-    initialize();
-    deep_copy_from(other);
-}
+NurbsCurve::NurbsCurve(const NurbsCurve& other)
+    : name(other.name), is_visible(other.is_visible), is_locked(other.is_locked), width(other.width), pointcolors(other.pointcolors),
+      linecolors(other.linecolors), arrowhead(other.arrowhead), m_dim(other.m_dim), m_is_rat(other.m_is_rat), m_order(other.m_order),
+      m_cv_count(other.m_cv_count), m_cv_stride(other.m_cv_stride), m_nurbsknot(other.m_nurbsknot), m_cv(other.m_cv) {}
 
 NurbsCurve& NurbsCurve::operator=(const NurbsCurve& other) {
 
@@ -47,9 +46,7 @@ NurbsCurve& NurbsCurve::operator=(const NurbsCurve& other) {
     return *this;
 }
 
-NurbsCurve::~NurbsCurve() {
-    destroy();
-}
+NurbsCurve::~NurbsCurve() = default;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Static constructors
@@ -800,22 +797,26 @@ const double* NurbsCurve::cv(int cv_index) const {
 }
 
 Point NurbsCurve::get_cv(int cv_index) const {
+    return Point(control(cv_index));
+}
+
+xyz NurbsCurve::control(int cv_index) const {
 
     const double* cv_ptr = cv(cv_index);
 
     if (!cv_ptr)
-        return Point(0, 0, 0);
+        return {0.0, 0.0, 0.0};
 
     if (m_is_rat) {
         const double w = cv_ptr[m_dim];
 
         if (w == 0.0)
-            return Point(0, 0, 0);
+            return {0.0, 0.0, 0.0};
 
-        return Point(cv_ptr[0] / w, m_dim > 1 ? cv_ptr[1] / w : 0.0, m_dim > 2 ? cv_ptr[2] / w : 0.0);
+        return {cv_ptr[0] / w, m_dim > 1 ? cv_ptr[1] / w : 0.0, m_dim > 2 ? cv_ptr[2] / w : 0.0};
     }
 
-    return Point(cv_ptr[0], m_dim > 1 ? cv_ptr[1] : 0.0, m_dim > 2 ? cv_ptr[2] : 0.0);
+    return {cv_ptr[0], m_dim > 1 ? cv_ptr[1] : 0.0, m_dim > 2 ? cv_ptr[2] : 0.0};
 }
 
 bool NurbsCurve::get_cv_4d(int cv_index, double& x, double& y, double& z, double& w) const {
@@ -1173,18 +1174,10 @@ bool NurbsCurve::set_domain(double t0, double t1) {
 
 std::vector<double> NurbsCurve::get_span_vector() const {
 
-    std::vector<double> spans;
-
     if (!is_valid())
-        return spans;
+        return {};
 
-    spans.push_back(m_nurbsknot[m_order - 2]);
-
-    for (int i = m_order - 1; i < m_cv_count; i++)
-        if (m_nurbsknot[i] > spans.back())
-            spans.push_back(m_nurbsknot[i]);
-
-    return spans;
+    return nurbsknot::span_vector(m_order, m_cv_count, m_nurbsknot);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1923,8 +1916,12 @@ bool NurbsCurve::swap_coordinates(int axis_i, int axis_j) {
 }
 
 bool NurbsCurve::trim(double t0, double t1) {
+    return is_valid() && trim_valid(t0, t1);
+}
 
-    if (!is_valid() || !std::isfinite(t0) || !std::isfinite(t1) || t0 >= t1)
+bool NurbsCurve::trim_valid(double t0, double t1) {
+
+    if (!std::isfinite(t0) || !std::isfinite(t1) || t0 >= t1)
         return false;
 
     const double d0 = domain_start();
@@ -1961,13 +1958,17 @@ bool NurbsCurve::trim(double t0, double t1) {
     if (t0 >= t1)
         return false;
 
-    if ((t0 == d0 && !clamp_end(0)) || (t1 == d1 && !clamp_end(1)))
+    // A clamp sets end knots to the domain knot and rewrites the controls of its end span: the rest stays valid.
+    const std::size_t span = static_cast<std::size_t>(m_order - 1) * m_cv_stride + cv_size();
+    const auto finite = [&](int first) { return nurbsknot::all_finite(&m_cv[static_cast<std::size_t>(first) * m_cv_stride], span); };
+
+    if (t0 == d0 && !(clamp_valid_end(0) && finite(0)))
         return false;
 
-    // Clamping rewrites knots and controls; an insertion keeps a valid curve valid.
-    if ((t0 == d0 || t1 == d1) && !is_valid())
+    if (t1 == d1 && !(clamp_valid_end(1) && finite(m_cv_count - m_order)))
         return false;
 
+    // An insertion keeps a valid curve valid.
     if (trim_start && !insert_valid_nurbsknot(t0, p))
         return false;
 
@@ -1993,10 +1994,10 @@ bool NurbsCurve::split(double t, NurbsCurve& left_curve, NurbsCurve& right_curve
     left_curve.arrowhead = arrowhead_piece(arrowhead, true, false);
     right_curve.arrowhead = arrowhead_piece(arrowhead, false, true);
 
-    if (!left_curve.trim(t0, t))
+    if (!left_curve.trim_valid(t0, t))
         return false;
 
-    if (!right_curve.trim(t, t1))
+    if (!right_curve.trim_valid(t, t1))
         return false;
 
     return true;
@@ -2119,9 +2120,10 @@ bool NurbsCurve::to_non_rational(bool force) {
 }
 
 bool NurbsCurve::clamp_end(int end) {
+    return is_valid() && clamp_valid_end(end);
+}
 
-    if (!is_valid())
-        return false;
+bool NurbsCurve::clamp_valid_end(int end) {
 
     if (end < 0 || end > 2)
         return false;

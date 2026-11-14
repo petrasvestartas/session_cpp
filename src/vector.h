@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace session_proto {
@@ -35,6 +36,9 @@ private:
 
     /// Return the magnitude scaled to stay finite for large components.
     double compute_magnitude() const;
+
+    /// Throw std::out_of_range for operator[], out of line so the operator inlines.
+    [[noreturn]] static void index_out_of_range();
 
 public:
     std::string name = "my_vector"; // Vector name.
@@ -101,10 +105,27 @@ public:
     // Operators
     // ═══════════════════════════════════════════════════════════════════════════
     /// Return the mutable component by index (0=x, 1=y, 2=z), dropping the cached magnitude.
-    double& operator[](int index);
+    double& operator[](int index) {
+
+        _has_magnitude = false;
+
+        return const_cast<double&>(std::as_const(*this)[index]);
+    }
 
     /// Return the component by index (0=x, 1=y, 2=z).
-    const double& operator[](int index) const;
+    const double& operator[](int index) const {
+
+        if (index == 0)
+            return _x;
+
+        if (index == 1)
+            return _y;
+
+        if (index != 2)
+            index_out_of_range();
+
+        return _z;
+    }
 
     /// Compare components within rounding.
     bool operator==(const Vector& other) const;

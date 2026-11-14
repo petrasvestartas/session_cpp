@@ -1529,4 +1529,38 @@ MINI_TEST("NurbsSurface", "Exact Crease Orientation Across Coordinate Ranges") {
     MINI_CHECK(exact_orientation::orient2d(0, 0, smallest, 0, 0, smallest) == smallest);
     MINI_CHECK(exact_orientation::orient2d(0, 0, 2, 0, 0, 3) == 6);
 }
+
+MINI_TEST("NurbsSurface", "Validation At Entry") {
+    std::vector<Point> points;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            points.push_back(Point(i, j, (i * j) % 3));
+    const NurbsSurface surface = NurbsSurface::create(false, false, 3, 3, 4, 4, points);
+    NurbsSurface checked = surface;
+    NurbsSurface unchecked = surface;
+    surface.mesh();
+    const NurbsSurface copy = surface;
+    NurbsSurface not_finite = surface;
+    not_finite.m_cv[5] = std::numeric_limits<double>::quiet_NaN();
+    NurbsSurface unsorted = surface;
+    std::swap(unsorted.m_nurbsknot[1][0], unsorted.m_nurbsknot[1][3]);
+
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            MINI_CHECK(Point(surface.control(i, j)) == surface.get_cv(i, j));
+    MINI_CHECK(checked.trim(0, {0.25, 0.75}) && unchecked.trim_valid(0, {0.25, 0.75}));
+    MINI_CHECK(checked.m_cv == unchecked.m_cv && checked.m_nurbsknot[0] == unchecked.m_nurbsknot[0]);
+    MINI_CHECK(checked.m_cv_count[0] == unchecked.m_cv_count[0] && checked.m_cv_stride[0] == unchecked.m_cv_stride[0]);
+    MINI_CHECK(copy.name == surface.name && copy.m_cv == surface.m_cv && copy.m_mesh_key == surface.m_mesh_key);
+    MINI_CHECK(copy.m_mesh.number_of_vertices() > 0 && copy.m_mesh == surface.m_mesh);
+    for (const NurbsSurface& bad : {not_finite, unsorted}) {
+        NurbsSurface trimmed = bad;
+        MINI_CHECK(!bad.is_valid());
+        MINI_CHECK(bad.point_at(0.5, 0.5) == Point(0, 0, 0));
+        MINI_CHECK(bad.evaluate(0.5, 0.5, 1).empty());
+        MINI_CHECK(bad.get_span_vector(0).empty());
+        MINI_CHECK(!bad.split(0, 0.5).first.is_valid());
+        MINI_CHECK(!trimmed.trim(0, {0.25, 0.75}));
+    }
+}
 } // namespace session_cpp

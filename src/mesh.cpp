@@ -155,14 +155,17 @@ static double signed_area_2d(const std::vector<std::pair<double, double>>& pts) 
 // ═══════════════════════════════════════════════════════════════════════════
 Mesh::Mesh() {
 
-    default_vertex_attributes["x"] = 0.0;
-    default_vertex_attributes["y"] = 0.0;
-    default_vertex_attributes["z"] = 0.0;
+    static const std::map<std::string, double> position = {{"x", 0.0}, {"y", 0.0}, {"z", 0.0}};
+    default_vertex_attributes = position;
 }
 
-Mesh::Mesh(const Mesh& other) {
-    *this = other;
-}
+Mesh::Mesh(const Mesh& other)
+    : _guid(other._guid), pointcolors(other.pointcolors), facecolors(other.facecolors), linecolors(other.linecolors), widths(other.widths),
+      objectcolor(other.objectcolor), max_vertex(other.max_vertex), max_face(other.max_face), triangulation(other.triangulation),
+      halfedge(other.halfedge), vertex(other.vertex), face(other.face), face_holes(other.face_holes), facedata(other.facedata),
+      edgedata(other.edgedata), default_vertex_attributes(other.default_vertex_attributes),
+      default_face_attributes(other.default_face_attributes), default_edge_attributes(other.default_edge_attributes), name(other.name),
+      is_visible(other.is_visible), is_locked(other.is_locked), color_mode(other.color_mode) {}
 
 Mesh& Mesh::operator=(const Mesh& other) {
 

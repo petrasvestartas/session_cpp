@@ -322,6 +322,17 @@ int span_count(int order, int cv_count, const std::vector<double>& nurbsknot) {
     return count;
 }
 
+std::vector<double> span_vector(int order, int cv_count, const std::vector<double>& nurbsknot) {
+
+    std::vector<double> spans{nurbsknot[order - 2]};
+
+    for (int i = order - 1; i < cv_count; i++)
+        if (nurbsknot[i] > spans.back())
+            spans.push_back(nurbsknot[i]);
+
+    return spans;
+}
+
 int find_span(int order, int cv_count, const std::vector<double>& nurbsknot, double t, int, int) {
 
     if (order < 2 || cv_count < order || !std::isfinite(t))

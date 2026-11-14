@@ -56,7 +56,7 @@ bool finite(const Vector& value) {
     return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]);
 }
 
-bool finite(const Point& value) {
+bool finite(const xyz& value) {
     return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]);
 }
 
@@ -305,8 +305,10 @@ Krawczyk krawczyk(const NurbsSurface& surface, const Frame& frame, const Rectang
 bool polish(const NurbsSurface& surface, const Frame& frame, const Rectangle& chart,
     double tolerance, double& u, double& v) {
     for (int iteration = 0; iteration < 32; ++iteration) {
-        const auto values = surface.evaluate(u, v, 1);
-        if (values.size() != 3 || !finite(values[0]) || !finite(values[1]) || !finite(values[2]))
+        std::array<xyz, 6> jet;
+        surface.jet(u, v, 1, jet);
+        const std::array<Vector, 3> values = {Vector(jet[0]), Vector(jet[1]), Vector(jet[2])};
+        if (!finite(values[0]) || !finite(values[1]) || !finite(values[2]))
             return false;
         const Vector residual = Point(values[0][0], values[0][1], values[0][2]) - frame.origin;
         std::array<double, 2> f;
@@ -347,7 +349,7 @@ bool root_value(const NurbsSurface& surface, const Frame& frame, const Rectangle
         double u = std::midpoint(enclosure[0], enclosure[1]);
         double v = std::midpoint(enclosure[2], enclosure[3]);
         if (polish(surface, frame, chart, tolerance, u, v)) {
-            const Point point = surface.point_at(u, v);
+            const Point point(surface.point(u, v));
             nurbs_interval::SurfaceBounds world;
             if (finite(point) && nurbs_interval::surface_bounds(surface, enclosure, frame.origin_coordinates, world, false)) {
                 I squared;
@@ -559,7 +561,7 @@ bool bilinear_roots(const NurbsSurface& surface, const Point& origin, const Vect
     }
     root.u = std::midpoint(root.enclosure[0], root.enclosure[1]);
     root.v = std::midpoint(root.enclosure[2], root.enclosure[3]);
-    root.point = surface.point_at(root.u, root.v);
+    root.point = Point(surface.point(root.u, root.v));
     I squared, forward;
     for (int d = 0; d < 3; ++d) {
         const I world = bilinear(corners[0][d], corners[1][d], corners[2][d], corners[3][d], box[0], box[1]);
@@ -787,10 +789,11 @@ bool form_roots(const NurbsSurface& surface, std::optional<Form>& slot, const Po
                 if (!proof.unique)
                     return false;
                 // About the polished root a box a tolerance across on the surface: its enclosure is narrow enough for root_value at once.
-                const std::vector<Vector> jet = surface.evaluate(uv[0], uv[1], 1);
+                std::array<xyz, 6> jet;
+                surface.jet(uv[0], uv[1], 1, jet);
                 Rectangle box = chart;
-                for (int d = 0; d < 2 && jet.size() == 3; ++d) {
-                    const double reach = tolerance / jet[2 - d].magnitude();
+                for (int d = 0; d < 2; ++d) {
+                    const double reach = tolerance / Vector(jet[2 - d]).magnitude();
                     if (std::isfinite(reach)) {
                         box[2 * d] = std::max(chart[2 * d], uv[d] - reach);
                         box[2 * d + 1] = std::min(chart[2 * d + 1], uv[d] + reach);
@@ -848,13 +851,15 @@ bool form_roots(const NurbsSurface& surface, std::optional<Form>& slot, const Po
 }
 
 std::array<double, 3> centre(const NurbsSurface& surface) {
-    std::array<double, 3> lo = {surface.get_cv(0, 0)[0], surface.get_cv(0, 0)[1], surface.get_cv(0, 0)[2]}, hi = lo;
+    xyz lo = surface.control(0, 0), hi = lo;
     for (int i = 0; i < surface.cv_count(0); ++i)
-        for (int j = 0; j < surface.cv_count(1); ++j)
+        for (int j = 0; j < surface.cv_count(1); ++j) {
+            const xyz p = surface.control(i, j);
             for (int k = 0; k < 3; ++k) {
-                lo[k] = std::min(lo[k], surface.get_cv(i, j)[k]);
-                hi[k] = std::max(hi[k], surface.get_cv(i, j)[k]);
+                lo[k] = std::min(lo[k], p[k]);
+                hi[k] = std::max(hi[k], p[k]);
             }
+        }
     return {std::midpoint(lo[0], hi[0]), std::midpoint(lo[1], hi[1]), std::midpoint(lo[2], hi[2])};
 }
 
@@ -913,11 +918,12 @@ Result intersect(const NurbsSurface& surface, const Point& origin, const Vector&
     }
     for (int i = 0; i < surface.cv_count(0); ++i)
         for (int j = 0; j < surface.cv_count(1); ++j)
-            if (!(surface.weight(i, j) > 0.0) || !std::isfinite(surface.weight(i, j)) || !finite(surface.get_cv(i, j))) {
+            if (!(surface.weight(i, j) > 0.0) || !std::isfinite(surface.weight(i, j)) || !finite(surface.control(i, j))) {
                 fail(result, "Surface ray requires finite positive rational weights");
                 return result;
             }
-    const Spans spans = {surface.get_span_vector(0), surface.get_span_vector(1)};
+    const Spans spans = {nurbsknot::span_vector(surface.order(0), surface.cv_count(0), surface.m_nurbsknot[0]),
+        nurbsknot::span_vector(surface.order(1), surface.cv_count(1), surface.m_nurbsknot[1])};
     if (spans[0].size() < 2 || spans[1].size() < 2 ||
         spans[0].size() - 1 > options.max_cells / (spans[1].size() - 1)) {
         fail(result, "Surface ray initial knot cells exceed the work limit");

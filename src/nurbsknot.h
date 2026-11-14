@@ -80,6 +80,9 @@ int multiplicity(int order, int cv_count, const std::vector<double>& nurbsknot, 
 /// Return the number of non-empty spans, or zero for invalid arguments.
 int span_count(int order, int cv_count, const std::vector<double>& nurbsknot);
 
+/// Return the distinct nurbsknots of the domain, its ends included, of a nurbsknot vector known to be valid.
+std::vector<double> span_vector(int order, int cv_count, const std::vector<double>& nurbsknot);
+
 /// Return the index of the span containing finite parameter t in a valid nondecreasing nurbsknot vector.
 int find_span(int order, int cv_count, const std::vector<double>& nurbsknot, double t, int side = 0, int hint = 0);
 

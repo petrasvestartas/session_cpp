@@ -434,10 +434,10 @@ Solid::Solid(const BRep& model, bool boundaries) : brep(model), solid(model.is_s
     forms.resize(boxes.size());
     for (size_t k = 0; k < boxes.size(); ++k) {
         const NurbsSurface& surface = brep.m_surfaces[k];
-        xyz lo = surface.get_cv(0, 0), hi = lo;
+        xyz lo = surface.control(0, 0), hi = lo;
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j) {
-                const xyz p = surface.get_cv(i, j);
+                const xyz p = surface.control(i, j);
                 for (int d = 0; d < 3; ++d) {
                     lo[d] = std::min(lo[d], p[d]);
                     hi[d] = std::max(hi[d], p[d]);
