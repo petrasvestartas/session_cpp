@@ -85,6 +85,45 @@ inline Bernstein product(const Bernstein& a, const Bernstein& b) {
     return result;
 }
 
+/// The derivative along the first (direction 0) or second parameter of the square.
+inline Bernstein derivative(const Bernstein& f, int direction) {
+    const int count = direction ? f.n : f.m;
+    Bernstein result(std::max(f.m - (direction == 0), 0), std::max(f.n - (direction == 1), 0));
+    double size = 0.0;
+    for (int i = 0; count > 0 && i <= result.m; ++i)
+        for (int j = 0; j <= result.n; ++j) {
+            const double step = f.at(i + (direction == 0), j + (direction == 1)) - f.at(i, j);
+            result.at(i, j) = count * step;
+            size = std::max(size, std::abs(step));
+        }
+    result.error = count * (2.0 * f.error + 2.0 * rounding * size);
+    return result;
+}
+
+/// w (h_u x h_v) - w_v (h_u x h) - w_u (h x h_v) of a patch in homogeneous coordinates (x w, y w, z w, w): w cubed times the cross product of the derivatives of its points, so the normal itself where w is positive.
+inline std::array<Bernstein, 3> normal(const std::array<Bernstein, 4>& h) {
+    const auto cross = [](const std::array<Bernstein, 4>& a, const std::array<Bernstein, 4>& b) {
+        std::array<Bernstein, 3> result;
+        for (int d = 0; d < 3; ++d) {
+            const Bernstein first = product(a[(d + 1) % 3], b[(d + 2) % 3]), second = product(a[(d + 2) % 3], b[(d + 1) % 3]);
+            result[d] = sum({{1.0, &first}, {-1.0, &second}});
+        }
+        return result;
+    };
+    std::array<Bernstein, 4> hu, hv;
+    for (int d = 0; d < 4; ++d) {
+        hu[d] = derivative(h[d], 0);
+        hv[d] = derivative(h[d], 1);
+    }
+    const std::array<Bernstein, 3> tangents = cross(hu, hv), first = cross(hu, h), second = cross(h, hv);
+    std::array<Bernstein, 3> result;
+    for (int d = 0; d < 3; ++d) {
+        const Bernstein along = product(h[3], tangents[d]), across = product(hv[3], first[d]), back = product(hu[3], second[d]);
+        result[d] = sum({{1.0, &along}, {-1.0, &across}, {-1.0, &back}});
+    }
+    return result;
+}
+
 /// A plane, sphere, cylinder, cone or torus as the zero set of a polynomial: kind 1 to 5, a point (on the plane, the centre, on the axis, the apex), the unit normal or axis, the radius (half angle of a cone, major radius of a torus) and the minor radius.
 struct Implicit {
     int kind = 0;

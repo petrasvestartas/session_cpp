@@ -2,12 +2,15 @@
 #include "closest.h"
 #include "nurbs_coincidence.h"
 #include "curve_surface_intersection.h"
+#include "nurbs_hermite.h"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include "fmt/core.h"
 #include <fstream>
+#include <functional>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -29,7 +32,7 @@ enum class StepTag {
     Ref, // Entity reference.
     Num, // Real or integer.
     Str, // Quoted string.
-    Enum, // Enum literal or bare identifier.
+    Enum, // Enum literal or bare identifier; a typed value TYPE(x) keeps x in list.
     List, // Parenthesised list.
     Null, // Unset or derived value.
 };
@@ -304,7 +307,7 @@ static StepParam parse_param(Cursor& c, int depth) {
         skip_ws(c);
 
         if (c.p < c.end && c.s[c.p] == '(')
-            parse_params(c, depth + 1);
+            r.list = parse_params(c, depth + 1);
     } else {
         c.p++;
     }
@@ -341,10 +344,11 @@ static void skip_statement(Cursor& c) {
     }
 }
 
-/// Fill sf from the DATA section of a STEP text.
+/// Fill sf from the DATA sections of a STEP text: entity instances between DATA; and ENDSEC; only.
 static void parse_step_string(const std::string& content, StepFile& sf) {
 
     Cursor c{content, 0, content.size()};
+    bool data = false;
 
     while (c.p < c.end) {
         skip_ws(c);
@@ -352,10 +356,13 @@ static void parse_step_string(const std::string& content, StepFile& sf) {
         if (c.p >= c.end)
             break;
 
-        if (c.s[c.p] != '#') {
-            while (c.p < c.end && c.s[c.p] != '\n')
-                c.p++;
+        if (c.s[c.p] != '#' || !data) {
+            const std::string keyword = parse_ident(c);
 
+            if (keyword == "DATA" || keyword == "ENDSEC")
+                data = keyword == "DATA";
+
+            skip_statement(c);
             continue;
         }
 
@@ -398,16 +405,20 @@ static void parse_step_string(const std::string& content, StepFile& sf) {
     }
 }
 
-/// Remove /* */ comments from the raw text.
+/// Remove /* */ comments outside strings from the raw text.
 static std::string strip_comments(const std::string& raw) {
 
     std::string text;
     text.reserve(raw.size());
 
     size_t i = 0;
+    bool in_str = false;
 
     while (i < raw.size()) {
-        if (i + 1 < raw.size() && raw[i] == '/' && raw[i + 1] == '*') {
+        if (raw[i] == '\'')
+            in_str = !in_str;
+
+        if (!in_str && i + 1 < raw.size() && raw[i] == '/' && raw[i + 1] == '*') {
             i += 2;
 
             while (i + 1 < raw.size() && !(raw[i] == '*' && raw[i + 1] == '/'))
@@ -434,23 +445,7 @@ static StepFile parse_step_file(const std::string& filepath) {
     std::stringstream buf;
     buf << in.rdbuf();
 
-    const std::string text = strip_comments(buf.str());
-    const size_t lo = text.find("DATA");
-
-    if (lo == std::string::npos)
-        return sf;
-
-    const size_t semi = text.find(';', lo);
-
-    if (semi == std::string::npos)
-        return sf;
-
-    const size_t endsec = text.find("ENDSEC", semi);
-
-    if (endsec == std::string::npos)
-        return sf;
-
-    parse_step_string(text.substr(semi + 1, endsec - semi - 1), sf);
+    parse_step_string(strip_comments(buf.str()), sf);
 
     return sf;
 }
@@ -586,18 +581,54 @@ struct SurfaceParams {
     std::vector<double> v_knots; // Distinct knot values in v.
 };
 
-/// B_SPLINE_CURVE_WITH_KNOTS parameters, simple or split across a complex instance; none when missing, short or empty.
+/// Multiplicities and values of the knots a B-spline subtype implies for n control points: clamped uniform, Bezier or uniform.
+static std::pair<std::vector<int>, std::vector<double>> implicit_knots(const StepEntity& e, const std::string& kind, int degree, int n) {
+
+    std::vector<int> mults;
+    std::vector<double> knots;
+
+    if (e.has("UNIFORM_" + kind)) {
+        for (int i = 0; i < n + degree + 1; i++) {
+            mults.push_back(1);
+            knots.push_back(i - degree);
+        }
+    } else if (e.has("QUASI_UNIFORM_" + kind) || e.has("BEZIER_" + kind)) {
+        const int spans = e.has("BEZIER_" + kind) ? 1 : n - degree;
+
+        for (int i = 0; i <= spans; i++) {
+            mults.push_back(i == 0 || i == spans ? degree + 1 : 1);
+            knots.push_back(i);
+        }
+    }
+
+    return {mults, knots};
+}
+
+/// B_SPLINE_CURVE_WITH_KNOTS parameters, simple or split across a complex instance, knots implied by a uniform, quasi-uniform or Bezier subtype; none when missing, short or empty.
 static std::optional<CurveParams> curve_params(const StepEntity& e) {
 
     const StepSubEntity* bsc = e.find("B_SPLINE_CURVE_WITH_KNOTS");
-
-    if (!bsc)
-        return std::nullopt;
-
     const StepSubEntity* base = e.find("B_SPLINE_CURVE");
     CurveParams cp;
 
-    if (!base) {
+    if (!bsc) {
+        const StepSubEntity* simple = base ? base : e.find("QUASI_UNIFORM_CURVE");
+
+        if (!simple)
+            simple = e.find("BEZIER_CURVE");
+
+        if (!simple)
+            simple = e.find("UNIFORM_CURVE");
+
+        const size_t at = base ? 0 : 1;
+
+        if (!simple || simple->params.size() < at + 2)
+            return std::nullopt;
+
+        cp.degree = (int)simple->params[at].num;
+        cp.pt_refs = all_refs(simple->params[at + 1].list);
+        std::tie(cp.mults, cp.knots) = implicit_knots(e, "CURVE", cp.degree, (int)cp.pt_refs.size());
+    } else if (!base) {
         const std::vector<StepParam>& pp = bsc->params;
 
         if (pp.size() < 8)
@@ -626,18 +657,37 @@ static std::optional<CurveParams> curve_params(const StepEntity& e) {
     return cp;
 }
 
-/// B_SPLINE_SURFACE_WITH_KNOTS parameters, simple or split across a complex instance; none when missing, short or empty.
+/// B_SPLINE_SURFACE_WITH_KNOTS parameters, simple or split across a complex instance, knots implied by a uniform, quasi-uniform or Bezier subtype; none when missing, short or empty.
 static std::optional<SurfaceParams> surface_params(const StepEntity& e) {
 
     const StepSubEntity* bss = e.find("B_SPLINE_SURFACE_WITH_KNOTS");
-
-    if (!bss)
-        return std::nullopt;
-
     const StepSubEntity* base = e.find("B_SPLINE_SURFACE");
     SurfaceParams sp;
 
-    if (!base) {
+    if (!bss) {
+        const StepSubEntity* simple = base ? base : e.find("QUASI_UNIFORM_SURFACE");
+
+        if (!simple)
+            simple = e.find("BEZIER_SURFACE");
+
+        if (!simple)
+            simple = e.find("UNIFORM_SURFACE");
+
+        const size_t at = base ? 0 : 1;
+
+        if (!simple || simple->params.size() < at + 3)
+            return std::nullopt;
+
+        sp.u_deg = (int)simple->params[at].num;
+        sp.v_deg = (int)simple->params[at + 1].num;
+        sp.ctrl_pts = ref_list_list(simple->params[at + 2]);
+
+        if (sp.ctrl_pts.empty())
+            return std::nullopt;
+
+        std::tie(sp.u_mults, sp.u_knots) = implicit_knots(e, "SURFACE", sp.u_deg, (int)sp.ctrl_pts.size());
+        std::tie(sp.v_mults, sp.v_knots) = implicit_knots(e, "SURFACE", sp.v_deg, (int)sp.ctrl_pts[0].size());
+    } else if (!base) {
         const std::vector<StepParam>& pp = bss->params;
 
         if (pp.size() < 12)
@@ -740,9 +790,9 @@ struct Axis2 {
     bool ok = false; // Whether the frame was read.
 };
 
-/// Parameter projector of a surface: a plane or a cylinder on the quarter-arc chart.
+/// Affine parameter projector of a plane or a bilinear patch.
 struct Proj {
-    int kind = 0; // 0 none, 1 plane, 2 cylinder.
+    int kind = 0; // 0 none, 1 affine.
     Axis2 a; // Surface frame.
     double u0 = 0.0;
     double v0 = 0.0;
@@ -871,6 +921,13 @@ static std::tuple<double, double, bool> an_st_of(const AnFace& an, const Point& 
     if (an.kind == 4)
         return {s, std::atan2(z, rho), radial_ok};
 
+    // A spindle torus (minor radius beyond the major one) also reaches a point from the opposite side of the axis.
+    const double outer = std::abs((rho - an.radius) * (rho - an.radius) + z * z - an.r2 * an.r2);
+    const double inner = std::abs((rho + an.radius) * (rho + an.radius) + z * z - an.r2 * an.r2);
+
+    if (inner < outer)
+        return {s + PI, std::atan2(z, -rho - an.radius), radial_ok};
+
     return {s, std::atan2(z, rho - an.radius), radial_ok};
 }
 
@@ -957,6 +1014,37 @@ static NurbsSurface build_analytic_nurbs(const AnFace& an, int su0, int nsu, dou
     return srf;
 }
 
+/// Rational surface of revolution of a profile about the frame's z axis: four quarter arcs in u from angle phi0, the profile in v.
+static NurbsSurface revolution_nurbs(const Axis2& a, const NurbsCurve& profile, double phi0) {
+
+    std::vector<double> ca;
+    std::vector<double> sa;
+    std::vector<double> cw;
+    std::tie(ca, sa, cw) = arc_nodes(phi0 / PI_2, 4);
+    const int nv = profile.cv_count();
+    NurbsSurface srf(3, true, 3, profile.order(), 9, nv);
+    srf.m_nurbsknot[0] = quarter_knots(4);
+    srf.m_nurbsknot[1] = profile.m_nurbsknot;
+
+    for (int j = 0; j < nv; j++) {
+        const Point p = profile.get_cv(j);
+        const double w = profile.weight(j);
+        const Point o = a.origin + a.az * (p - a.origin).dot(a.az);
+        const Vector r = p - o;
+        const Vector q = a.az.cross(r);
+
+        for (int i = 0; i < 9; i++) {
+            const Point c = o + r * ca[i] + q * sa[i];
+            const double wij = cw[i] * w;
+
+            if (!srf.set_cv_4d(i, j, wij * c[0], wij * c[1], wij * c[2], wij))
+                return NurbsSurface();
+        }
+    }
+
+    return srf.is_valid() ? srf : NurbsSurface();
+}
+
 /// Bilinear patch of the plane with axis a over [u0, u1] x [v0, v1].
 static NurbsSurface plane_surface(const Axis2& a, double u0, double u1, double v0, double v1) {
 
@@ -970,54 +1058,12 @@ static NurbsSurface plane_surface(const Axis2& a, double u0, double u1, double v
     return ok ? out : NurbsSurface();
 }
 
-/// Rational cylinder patch on the quarter-arc chart (1 unit = 90 degrees) over [u0, u1] x [v0, v1]; a span of 4 closes it.
-static NurbsSurface cylinder_surface(const Axis2& a, double radius, double u0, double u1, double v0, double v1) {
-
-    const bool closed = std::abs((u1 - u0) - 4.0) < 0.2;
-    const int n_spans = closed ? 4 : std::max(1, (int)std::ceil(std::abs(u1 - u0) - 1e-9));
-
-    if (closed)
-        u1 = u0 + 4.0;
-
-    const int n_u = 2 * n_spans + 1;
-    NurbsSurface out(3, true, 3, 2, n_u, 2);
-    std::vector<double> knots = {u0, u0};
-
-    for (int s = 1; s < n_spans; s++) {
-        knots.push_back(u0 + s);
-        knots.push_back(u0 + s);
-    }
-
-    knots.push_back(u1);
-    knots.push_back(u1);
-    out.m_nurbsknot[0] = knots;
-    out.m_nurbsknot[1] = {v0, v1};
-
-    std::vector<double> ca;
-    std::vector<double> sa;
-    std::vector<double> cw;
-    std::tie(ca, sa, cw) = arc_nodes(u0, n_spans);
-
-    for (int i = 0; i < n_u; i++)
-        for (int j = 0; j < 2; j++) {
-            const Point p = axis_point(a, radius * ca[i], radius * sa[i], j == 0 ? v0 : v1);
-
-            if (!out.set_cv_4d(i, j, cw[i] * p[0], cw[i] * p[1], cw[i] * p[2], cw[i]))
-                return NurbsSurface();
-        }
-
-    return out;
-}
-
-/// Parameter-space image of a 3D point: plane coordinates, or cylinder (angle in quarter turns, height).
+/// Parameter-space image of a 3D point under an affine projector.
 static std::pair<double, double> project(const Proj& pr, const Point& pt) {
 
     const Vector d = pt - pr.a.origin;
 
-    if (pr.kind == 1)
-        return {pr.u0 + d.dot(pr.a.ax), pr.v0 + d.dot(pr.a.ay)};
-
-    return {std::atan2(d.dot(pr.a.ay), d.dot(pr.a.ax)) * 2.0 / PI, d.dot(pr.a.az)};
+    return {pr.u0 + d.dot(pr.a.ax), pr.v0 + d.dot(pr.a.ay)};
 }
 
 /// Require an exact Cartesian parallelogram before proposing an affine inverse.
@@ -1124,12 +1170,14 @@ static NurbsCurve polyline_nurbs(const std::vector<Point>& pts, int dim) {
     return nc;
 }
 
-/// Exact rational arc on the circle (axis a, radius rad) from vs to ve, the full circle when they coincide.
+/// Exact rational arc on the circle (axis a, radius rad) or the ellipse (radii rad, rad2) from vs to ve, the full curve when they coincide.
 static NurbsCurve circle_nurbs(const Axis2& a, double rad, const Point& vs, const Point& ve,
-                               int requested_spans = 0, bool force_open = false) {
+                               int requested_spans = 0, bool force_open = false, double rad2 = 0.0) {
 
-    const double sa = angle_of(a, vs);
-    double ea = angle_of(a, ve);
+    const double ry = rad2 > 0.0 ? rad2 : rad;
+    const auto angle = [&](const Point& p) { return std::atan2((p - a.origin).dot(a.ay) / ry, (p - a.origin).dot(a.ax) / rad); };
+    const double sa = angle(vs);
+    double ea = angle(ve);
 
     if (force_open && ea == sa)
         return NurbsCurve(); // Distinct Cartesian trims with unresolved angular extent.
@@ -1161,12 +1209,29 @@ static NurbsCurve circle_nurbs(const Axis2& a, double rad, const Point& vs, cons
         const bool mid = i % 2 == 1;
         const double ang = sa + (i / 2 + (mid ? 0.5 : 0.0)) * span / ns;
         const double w = mid ? wm : 1.0;
-        const double r2 = mid ? rad / wm : rad;
-        const Point p = a.origin + (a.ax * std::cos(ang) + a.ay * std::sin(ang)) * r2;
+        const Point p = a.origin + (a.ax * (rad * std::cos(ang)) + a.ay * (ry * std::sin(ang))) * (1.0 / (mid ? wm : 1.0));
 
         if (!crv.set_cv_4d(i, w * p[0], w * p[1], w * p[2], w))
             return NurbsCurve();
     }
+
+    return crv;
+}
+
+/// Exact rational arc of the hyperbola (axis a, semi-axes ra, rb) from vs to ve: one conic span, weight cosh of half the parameter span.
+static NurbsCurve hyperbola_nurbs(const Axis2& a, double ra, double rb, const Point& vs, const Point& ve) {
+
+    const double t0 = std::asinh((vs - a.origin).dot(a.ay) / rb);
+    const double t1 = std::asinh((ve - a.origin).dot(a.ay) / rb);
+    const double h = 0.5 * (t1 - t0);
+    const double w = std::cosh(h);
+    const Point m = a.origin + (a.ax * (ra * std::cosh(t0 + h)) + a.ay * (rb * std::sinh(t0 + h))) * (1.0 / w);
+    NurbsCurve crv(3, true, 3, 3);
+    crv.m_nurbsknot = {0, 0, 1, 1};
+
+    if (!(h != 0.0) || !crv.set_cv_4d(0, vs[0], vs[1], vs[2], 1.0) || !crv.set_cv_4d(1, w * m[0], w * m[1], w * m[2], w) ||
+        !crv.set_cv_4d(2, ve[0], ve[1], ve[2], 1.0))
+        return NurbsCurve();
 
     return crv;
 }
@@ -1204,19 +1269,6 @@ static NurbsCurve exact_pcurve(const Proj& proj, const NurbsCurve& c3) {
     }
 
     return p2.is_valid() ? p2 : NurbsCurve();
-}
-
-/// Keep consecutive cylinder samples on one branch of the quarter-arc chart (period 4).
-static void unwrap_seam(std::vector<Point>& uv) {
-
-    for (size_t k = 1; k < uv.size(); k++) {
-        const double du = uv[k][0] - uv[k - 1][0];
-
-        if (du > 2.0)
-            uv[k][0] -= 4.0;
-        else if (du < -2.0)
-            uv[k][0] += 4.0;
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1290,6 +1342,24 @@ public:
 
     /// Construct over a parsed file.
     explicit StepReader(const StepFile& s) : sf(s) {}
+
+    /// Radians per plane angle unit of the first GLOBAL_UNIT_ASSIGNED_CONTEXT: its CONVERSION_BASED_UNIT factor (degrees), else 1.
+    double angle_unit() const {
+
+        for (int id : sf.ids_of_type("GLOBAL_UNIT_ASSIGNED_CONTEXT"))
+            for (int unit : list_refs(get(id)->find("GLOBAL_UNIT_ASSIGNED_CONTEXT")->params)) {
+                const StepEntity* u = get(unit);
+                const StepSubEntity* conversion = u && u->has("PLANE_ANGLE_UNIT") ? u->find("CONVERSION_BASED_UNIT") : nullptr;
+                const StepEntity* measure = conversion ? get(first_ref(conversion->params)) : nullptr;
+                const StepSubEntity* with_unit = measure ? measure->find("PLANE_ANGLE_MEASURE_WITH_UNIT") : nullptr;
+                const std::vector<double> factor = with_unit && !with_unit->params.empty() ? nums(with_unit->params[0].list) : std::vector<double>();
+
+                if (u && u->has("PLANE_ANGLE_UNIT"))
+                    return factor.empty() ? 1.0 : factor[0];
+            }
+
+        return 1.0;
+    }
 
     /// Return the entity with this id, or null.
     const StepEntity* get(int id) const {
@@ -1472,14 +1542,22 @@ public:
         return srf.is_valid() ? srf : NurbsSurface();
     }
 
-    /// The 3D basis curve behind a SURFACE_CURVE or SEAM_CURVE, the id itself otherwise.
-    int basis_curve_of(int curve_id) const {
+    /// The SURFACE_CURVE, SEAM_CURVE or INTERSECTION_CURVE part of a curve entity, or null.
+    const StepSubEntity* surface_curve(int curve_id) const {
 
         const StepEntity* e = get(curve_id);
-        const StepSubEntity* sc = e ? e->find("SURFACE_CURVE") : nullptr;
 
-        if (e && !sc)
-            sc = e->find("SEAM_CURVE");
+        for (const char* type : {"SURFACE_CURVE", "SEAM_CURVE", "INTERSECTION_CURVE"})
+            if (const StepSubEntity* sc = e ? e->find(type) : nullptr)
+                return sc;
+
+        return nullptr;
+    }
+
+    /// The 3D basis curve behind a SURFACE_CURVE, SEAM_CURVE or INTERSECTION_CURVE, the id itself otherwise.
+    int basis_curve_of(int curve_id) const {
+
+        const StepSubEntity* sc = surface_curve(curve_id);
 
         const int ref = sc ? first_ref(sc->params) : -1;
 
@@ -1548,50 +1626,68 @@ public:
         Proj pr;
         const StepEntity* e = get(surface_id);
         const StepSubEntity* plane = e ? e->find("PLANE") : nullptr;
-        const StepSubEntity* cyl = e ? e->find("CYLINDRICAL_SURFACE") : nullptr;
-        const StepSubEntity* sub = plane ? plane : cyl;
-        const int ref = sub ? first_ref(sub->params) : -1;
+        const int ref = plane ? first_ref(plane->params) : -1;
 
         if (ref < 0)
             return pr;
 
         pr.a = get_axis2(ref);
-        pr.kind = plane ? 1 : 2;
+        pr.kind = 1;
 
         return pr;
     }
 
-    /// Kernel surface of a surface entity: the B-spline itself, or a plane or cylinder patch over the padded uv window.
+    /// Kernel surface of a surface entity: the B-spline itself, or a plane patch over the padded uv window.
     NurbsSurface fill_surface(int id, double u0, double u1, double v0, double v1) {
 
         const StepEntity* e = get(id);
 
-        if (!e)
-            return NurbsSurface();
-
-        if (e->has("B_SPLINE_SURFACE_WITH_KNOTS"))
+        if (e && surface_params(*e))
             return get_nurbs_surface(id);
 
-        const StepSubEntity* plane = e->find("PLANE");
-        const StepSubEntity* cyl = e->find("CYLINDRICAL_SURFACE");
-        const StepSubEntity* sub = plane ? plane : cyl;
-        const int ax_ref = sub ? first_ref(sub->params) : -1;
+        const StepSubEntity* plane = e ? e->find("PLANE") : nullptr;
+        const int ax_ref = plane ? first_ref(plane->params) : -1;
         const Axis2 a = get_axis2(ax_ref);
 
         if (ax_ref < 0 || !a.ok)
             return NurbsSurface();
 
+        const double pad_u = std::max(1e-6, 0.01 * (u1 - u0));
         const double pad_v = std::max(1e-6, 0.01 * (v1 - v0));
 
-        if (plane) {
-            const double pad_u = std::max(1e-6, 0.01 * (u1 - u0));
+        return plane_surface(a, u0 - pad_u, u1 + pad_u, v0 - pad_v, v1 + pad_v);
+    }
 
-            return plane_surface(a, u0 - pad_u, u1 + pad_u, v0 - pad_v, v1 + pad_v);
+    /// Axis of a SURFACE_OF_REVOLUTION as a frame (origin on the axis, ax toward the swept B-spline's first control point off the axis, az along the axis) with that B-spline; none otherwise.
+    std::optional<std::pair<Axis2, NurbsCurve>> revolution(int id) {
+
+        const StepEntity* e = get(id);
+        const StepSubEntity* sub = e ? e->find("SURFACE_OF_REVOLUTION") : nullptr;
+        const std::vector<int> refs = sub ? all_refs(sub->params) : std::vector<int>();
+        const StepSubEntity* axis = refs.size() > 1 && get(refs[1]) ? get(refs[1])->find("AXIS1_PLACEMENT") : nullptr;
+        const std::vector<int> ax_refs = axis ? all_refs(axis->params) : std::vector<int>();
+        const NurbsCurve profile = ax_refs.size() > 1 ? get_nurbs_curve(refs[0]) : NurbsCurve();
+
+        if (!profile.is_valid())
+            return std::nullopt;
+
+        Axis2 a;
+        a.origin = get_point(ax_refs[0]);
+        a.az = get_direction(ax_refs[1]);
+        a.az = a.az * (1.0 / a.az.magnitude());
+
+        for (int j = 0; j < profile.cv_count() && !a.ok; j++) {
+            const Vector r = profile.get_cv(j) - a.origin;
+            const Vector radial = r - a.az * r.dot(a.az);
+
+            if (radial.magnitude() > 1e-9 * (1.0 + r.magnitude())) {
+                a.ax = radial * (1.0 / radial.magnitude());
+                a.ay = a.az.cross(a.ax);
+                a.ok = true;
+            }
         }
 
-        const std::vector<double> rr = nums(sub->params);
-
-        return cylinder_surface(a, rr.empty() ? 1.0 : rr[0], u0, u1, v0 - pad_v, v1 + pad_v);
+        return a.ok ? std::optional<std::pair<Axis2, NurbsCurve>>({a, profile}) : std::nullopt;
     }
 
     /// CYLINDRICAL, CONICAL, SPHERICAL or TOROIDAL_SURFACE as an analytic face; kind 0 otherwise.
@@ -1625,7 +1721,7 @@ public:
             const std::vector<double> rr = nums(sub->params);
             an.kind = (int)i + 2;
             an.radius = rr.empty() ? 0.0 : rr[0];
-            an.r2 = rr.size() > 1 ? rr[1] : 0.0;
+            an.r2 = rr.size() > 1 ? rr[1] * (an.kind == 3 ? angle_unit() : 1.0) : 0.0;
 
             return an;
         }
@@ -1689,11 +1785,55 @@ public:
         return result.is_valid() ? result : NurbsCurve();
     }
 
+    /// Point and scaled direction of a LINE (its VECTOR's orientation times magnitude); none otherwise.
+    std::optional<std::pair<Point, Vector>> line_of(int id) {
+        const StepEntity* e = get(id);
+        const StepSubEntity* line = e ? e->find("LINE") : nullptr;
+        const std::vector<int> refs = line ? all_refs(line->params) : std::vector<int>();
+        const StepEntity* v = refs.size() > 1 ? get(refs[1]) : nullptr;
+        const StepSubEntity* vector = v ? v->find("VECTOR") : nullptr;
+        const std::vector<double> magnitude = vector ? nums(vector->params) : std::vector<double>();
+        if (!vector || magnitude.empty()) return std::nullopt;
+        const StepEntity* d = get(first_ref(vector->params));
+        const std::vector<double> xyz = d && d->find("DIRECTION") ? coords(d->find("DIRECTION")->params) : std::vector<double>();
+        if (xyz.size() < 2) return std::nullopt;
+        return std::make_pair(get_point(refs[0]), Vector(xyz[0], xyz[1], xyz.size() > 2 ? xyz[2] : 0.0) * magnitude[0]);
+    }
+
+    /// A 2D LINE pcurve over the parameters its edge's 3D basis takes at the world curve's ends (a SURFACE_CURVE shares one parameter).
+    NurbsCurve source_line_pcurve(int geometry_id, int pcurve_id, const NurbsCurve& world) {
+        const int basis = basis_curve_of(geometry_id);
+        const auto image = line_of(pcurve_id);
+        const auto line3 = line_of(basis);
+        const auto parameter = [&](const Point& p) {
+            if (line3) return (p - line3->first).dot(line3->second) / line3->second.dot(line3->second);
+            const NurbsCurve c = get_nurbs_curve(basis);
+            return c.is_valid() ? c.closest_parameter(p) : NAN;
+        };
+        const double t0 = parameter(world.point_at_start()), t1 = parameter(world.point_at_end());
+        if (!image || !std::isfinite(t0) || !std::isfinite(t1) || t0 == t1) return NurbsCurve();
+        return NurbsCurve::create(false, 1, {image->first + image->second * t0, image->first + image->second * t1});
+    }
+
+    /// A 2D TRIMMED_CURVE of a B-spline or LINE between PARAMETER_VALUE trims; invalid otherwise.
+    NurbsCurve trimmed_pcurve(int id) {
+        const StepEntity* e = get(id);
+        const StepSubEntity* trim = e ? e->find("TRIMMED_CURVE") : nullptr;
+        if (!trim || trim->params.size() < 4) return NurbsCurve();
+        double t[2] = {NAN, NAN};
+        for (int k = 0; k < 2; ++k)
+            for (const StepParam& item : trim->params[2 + k].list)
+                if (item.str == "PARAMETER_VALUE" && !item.list.empty()) t[k] = item.list[0].num;
+        const int basis = first_ref(trim->params);
+        NurbsCurve c = get_nurbs_curve(basis);
+        if (const auto line = line_of(basis)) c = NurbsCurve::create(false, 1, {line->first + line->second * t[0], line->first + line->second * t[1]});
+        else if (!c.is_valid() || !std::isfinite(t[0] + t[1]) || !c.trim(std::min(t[0], t[1]), std::max(t[0], t[1])) || (t[0] > t[1] && !c.reverse())) return NurbsCurve();
+        return c;
+    }
+
     /// All original NURBS pcurves on this exact support, including like-seams.
     std::vector<NurbsCurve> original_pcurves(int geometry_id, int surface_id, const NurbsCurve& world) {
-        const StepEntity* entity = get(geometry_id);
-        const StepSubEntity* source = entity ? entity->find("SURFACE_CURVE") : nullptr;
-        if (!source && entity) source = entity->find("SEAM_CURVE");
+        const StepSubEntity* source = surface_curve(geometry_id);
         std::vector<NurbsCurve> curves;
         if (!source) return curves;
         for (int associated : list_refs(source->params)) {
@@ -1703,53 +1843,16 @@ public:
             if (references.size() < 2 || references[0] != surface_id) continue;
             const StepEntity* representation = get(references[1]);
             const StepSubEntity* definition = representation ? representation->find("DEFINITIONAL_REPRESENTATION") : nullptr;
+            if (definition && definition->params.empty()) definition = representation->find("REPRESENTATION");
             const auto items = definition ? list_refs(definition->params) : std::vector<int>();
             if (items.empty()) continue;
             NurbsCurve curve = get_nurbs_curve(items.front());
+            if (!curve.is_valid()) curve = trimmed_pcurve(items.front());
             if (!curve.is_valid()) curve = source_circle_pcurve(geometry_id, items.front(), world);
+            if (!curve.is_valid()) curve = source_line_pcurve(geometry_id, items.front(), world);
             if (curve.is_valid()) curves.push_back(std::move(curve));
         }
         return curves;
-    }
-
-    /// Canonical (s, t) samples of the pcurve an edge carries on a surface; a SEAM_CURVE holds two, the second for the reversed use.
-    std::vector<Point> pcurve_st_samples(int ec_geom_id, int surface_ref, bool forward_use, int n) {
-
-        const StepEntity* e = get(ec_geom_id);
-        const StepSubEntity* sc = e ? e->find("SURFACE_CURVE") : nullptr;
-        const bool is_seam = e && !sc && e->has("SEAM_CURVE");
-
-        if (is_seam)
-            sc = e->find("SEAM_CURVE");
-
-        if (!sc)
-            return {};
-
-        std::vector<int> mine;
-
-        for (int pid : list_refs(sc->params)) {
-            const StepEntity* pe = get(pid);
-            const StepSubEntity* pc = pe ? pe->find("PCURVE") : nullptr;
-            const std::vector<int> refs = pc ? all_refs(pc->params) : std::vector<int>();
-
-            if (refs.size() >= 2 && refs[0] == surface_ref)
-                mine.push_back(refs[1]);
-        }
-
-        if (mine.empty())
-            return {};
-
-        const int pick = is_seam && mine.size() > 1 && !forward_use ? 1 : 0;
-        const StepEntity* dr = get(mine[pick]);
-        const StepSubEntity* drs = dr ? dr->find("DEFINITIONAL_REPRESENTATION") : nullptr;
-        const std::vector<int> c2_refs = drs ? list_refs(drs->params) : std::vector<int>();
-
-        if (c2_refs.empty())
-            return {};
-
-        const NurbsCurve c2 = get_nurbs_curve(c2_refs[0]);
-
-        return c2.is_valid() ? sample_nurbs(c2, n) : std::vector<Point>();
     }
 };
 
@@ -1837,7 +1940,8 @@ struct LoopEdge {
     std::vector<Point> uv; // Sampled uv points.
     NurbsCurve pc2d; // Parameter-space curve.
     bool exact = false; // Whether pc2d is exact rather than sampled.
-    bool source_pcurve = false; // Certified original chart; never shift only its UV samples.
+    bool source_pcurve = false; // Original chart; never shift only its UV samples.
+    double error = INFINITY; // Deviation of a file pcurve that is not certified, the fit's fallback.
 };
 
 /// One face loop with its edge uses in traversal order.
@@ -1964,11 +2068,8 @@ static std::optional<double> loop_ucenter(const Loop& lp) {
     return sum / cnt;
 }
 
-/// Periods of the parameter chart: 4 in u for the analytic cylinder, the domain span of each closed direction of a B-spline surface, 0 when open.
-static std::pair<double, double> surface_periods(const Proj& proj, const NurbsSurface& proj_srf) {
-
-    if (proj.kind == 2)
-        return {4.0, 0.0};
+/// Periods of a B-spline surface: the domain span of each closed direction, 0 when open.
+static std::pair<double, double> surface_periods(const NurbsSurface& proj_srf) {
 
     if (!proj_srf.is_valid())
         return {0.0, 0.0};
@@ -2029,6 +2130,56 @@ static void chain_loops(std::vector<Loop>& loops, double tau_u, double tau_v) {
     }
 }
 
+/// Seam aliases on a closed chart: when both uses of an edge in one loop lie on one branch, one moves by a period, the use whose other neighbour then meets it, else the use running in +v (+u) to the larger u (smaller v).
+static void split_seams(std::vector<Loop>& loops, double tau_u, double tau_v) {
+
+    const auto first = [](const LoopEdge& le) { return le.reversed ? le.uv.back() : le.uv.front(); };
+    const auto last = [](const LoopEdge& le) { return le.reversed ? le.uv.front() : le.uv.back(); };
+
+    for (Loop& lp : loops) {
+        const size_t n = lp.edges.size();
+
+        for (size_t i = 0; i < n; i++)
+            for (size_t j = i + 1; j < n; j++) {
+                LoopEdge& a = lp.edges[i];
+                LoopEdge& b = lp.edges[j];
+
+                if (a.edge_idx != b.edge_idx || a.uv.size() < 2 || b.uv.size() < 2 || a.source_pcurve || b.source_pcurve)
+                    continue;
+
+                const Vector run = last(a) - first(a);
+                const int fixed = std::abs(run[0]) <= std::abs(run[1]) ? 0 : 1;
+                const double tau = fixed == 0 ? tau_u : tau_v;
+
+                if (!(tau > 0.0) || std::abs(a.uv[0][fixed] - b.uv[0][fixed]) > 0.5 * tau)
+                    continue;
+
+                int shift = 0;
+                LoopEdge* moved = nullptr;
+
+                for (const auto& [k, other] : {std::make_pair(i, j), std::make_pair(j, i)}) {
+                    const LoopEdge& next = lp.edges[(k + 1) % n];
+                    const LoopEdge& prev = lp.edges[(k + n - 1) % n];
+                    const int to_next = (k + 1) % n == other ? 0 : (int)std::round((first(next)[fixed] - last(lp.edges[k])[fixed]) / tau);
+                    const int to_prev = (k + n - 1) % n == other ? 0 : (int)std::round((last(prev)[fixed] - first(lp.edges[k])[fixed]) / tau);
+
+                    if (!moved && (to_next != 0 || to_prev != 0)) {
+                        moved = &lp.edges[k];
+                        shift = to_next != 0 ? to_next : to_prev;
+                    }
+                }
+
+                if (!moved) {
+                    moved = (fixed == 0) == (run[1 - fixed] > 0.0) ? &a : &b;
+                    shift = 1;
+                }
+
+                for (Point& p : moved->uv)
+                    p[fixed] += shift * tau;
+            }
+    }
+}
+
 /// Shift each inner loop by whole u periods onto the outer loop's u window.
 static void center_inner_loops(std::vector<Loop>& loops, double tau_u) {
 
@@ -2070,14 +2221,8 @@ static std::vector<PendingEdge> pending_of(const Loop& lp) {
     for (const LoopEdge& le : lp.edges) {
         NurbsCurve crv2d = le.pc2d;
 
-        if (!le.exact || (le.reversed && !crv2d.reverse())) {
-            std::vector<Point> uv = le.uv;
-
-            if (le.reversed)
-                std::reverse(uv.begin(), uv.end());
-
-            crv2d = polyline_nurbs(uv, 2);
-        }
+        if (le.reversed && !crv2d.reverse())
+            throw std::runtime_error("STEP pcurve could not be reversed");
 
         pl.push_back({le.edge_idx, le.reversed, crv2d});
     }
@@ -2231,6 +2376,19 @@ static std::optional<Window> analytic_window(const std::vector<Loop>& loops, con
             return std::nullopt;
     } else if (tmax - tmin < 1e-12) {
         return std::nullopt;
+    } else {
+        bool interior = false;
+
+        for (const Loop& lp : loops)
+            for (const LoopEdge& le : lp.edges)
+                for (const Point& p : le.uv)
+                    interior = interior || p[1] > std::max(le.uv.front()[1], le.uv.back()[1]) + 1e-12 * (tmax - tmin) ||
+                        p[1] < std::min(le.uv.front()[1], le.uv.back()[1]) - 1e-12 * (tmax - tmin);
+
+        const double pad = interior ? 0.01 * (tmax - tmin) : 0.0;
+        const double apex = an.kind == 3 && std::sin(an.r2) != 0.0 ? -an.radius / std::sin(an.r2) : NAN;
+        w.t0 = apex <= tmin && apex > tmin - pad ? apex : tmin - pad;
+        w.t1 = apex >= tmax && apex < tmax + pad ? apex : tmax + pad;
     }
 
     return w;
@@ -2293,6 +2451,443 @@ static std::vector<Point> st_unwrapped(
     return st;
 }
 
+/// (EDGE_CURVE id, reversed) of each edge of a bound in wire order on the surface: the loop runs backwards when its orientation differs from the face's same_sense, the face then carrying the sense (StepToTopoDS_TranslateFace).
+static std::vector<std::pair<int, bool>> bound_uses(const StepReader& r, const Bound& b, bool same_sense) {
+
+    const bool flip = b.orient != same_sense;
+    std::vector<std::pair<int, bool>> uses;
+
+    for (int oe_id : b.oe_refs) {
+        const std::pair<int, bool> oe = oriented_edge(r, oe_id);
+        uses.push_back({oe.first, oe.second == flip});
+    }
+
+    if (flip)
+        std::reverse(uses.begin(), uses.end());
+
+    return uses;
+}
+
+/// Uv on a surface chart of a world point, on the branch next to a guess.
+using Preimage = std::function<Point(const Point&, const Point&)>;
+
+/// First and second derivatives of the preimage of a world curve at t: the surface jets solved in least squares; false where the chart is singular.
+static bool uv_jets(const NurbsCurve& world, const NurbsSurface& srf, double t, const Point& uv, Vector& d1, Vector& d2) {
+
+    const std::vector<Vector> c = world.evaluate(t, 2);
+    const std::vector<Vector> s = srf.evaluate(uv[0], uv[1], 2);
+
+    if (c.size() < 3 || s.size() < 6)
+        return false;
+
+    const double a = s[3].dot(s[3]);
+    const double b = s[3].dot(s[1]);
+    const double d = s[1].dot(s[1]);
+    const double det = a * d - b * b;
+
+    if (!(det > 1e-20 * a * d))
+        return false;
+
+    const auto solve = [&](const Vector& r) {
+        return Vector((d * s[3].dot(r) - b * s[1].dot(r)) / det, (a * s[1].dot(r) - b * s[3].dot(r)) / det, 0.0);
+    };
+    d1 = solve(c[1]);
+    d2 = solve(c[2] - s[5] * (d1[0] * d1[0]) - s[4] * (2.0 * d1[0] * d1[1]) - s[2] * (d1[1] * d1[1]));
+
+    return std::isfinite(d1[0] + d1[1] + d2[0] + d2[1]);
+}
+
+/// Point of a quintic Hermite piece at fraction f.
+static Point quintic_at(const nurbs_hermite::QuinticSpan& s, double f) {
+
+    const double h = s.last - s.first;
+    std::array<Point, 6> c = {s.start, s.start + s.start_derivative * (h / 5), s.start + s.start_derivative * (2 * h / 5) + s.start_second * (h * h / 20),
+        s.end - s.end_derivative * (2 * h / 5) + s.end_second * (h * h / 20), s.end - s.end_derivative * (h / 5), s.end};
+
+    for (int level = 5; level > 0; level--)
+        for (int k = 0; k < level; k++)
+            c[k] = c[k] + (c[k + 1] - c[k]) * f;
+
+    return c[0];
+}
+
+/// Two clamped curves of one degree joined where the first ends and the second starts, the second's weights scaled to meet the first's; invalid otherwise.
+static NurbsCurve joined(const NurbsCurve& a, const NurbsCurve& b) {
+
+    const int p = a.degree();
+    const int na = a.cv_count();
+    const int nb = b.cv_count();
+    NurbsCurve c(3, a.is_rational() || b.is_rational(), p + 1, na + nb - 1);
+
+    if (b.degree() != p || !(b.weight(0) > 0.0))
+        return NurbsCurve();
+
+    c.m_nurbsknot = a.m_nurbsknot;
+
+    for (size_t k = p; k < b.m_nurbsknot.size(); k++)
+        c.m_nurbsknot.push_back(b.m_nurbsknot[k] - b.domain_start() + a.domain_end());
+
+    const double scale = a.weight(na - 1) / b.weight(0);
+
+    for (int i = 0; i < na + nb - 1; i++) {
+        const bool first = i < na;
+        double x = 0.0;
+        double y = 0.0;
+        double z = 0.0;
+        double w = 0.0;
+        std::tie(x, y, z, w) = first ? a.get_cv_4d(i) : b.get_cv_4d(i - na + 1);
+        const double f = first ? 1.0 : scale;
+
+        if (!c.set_cv_4d(i, x * f, y * f, z * f, w * f))
+            return NurbsCurve();
+    }
+
+    return c.is_valid() ? c : NurbsCurve();
+}
+
+/// Pcurve of a world curve on a surface in the world's own parameter, its ends at the preimages of first and last: rational linear pieces where the preimage keeps one coordinate (an iso line or circle, exact), else quintic Hermite pieces of the preimage and its jets; both split at the world's knots and at the surface knot lines crossed, the quintic ones halved until within tolerance / 64 of the preimage, or 1/64 of the curve's distance from the surface where that is larger. Seeds are uv guesses at equal world parameter steps; error is the deviation from the world curve reached, its distance from the surface included.
+static NurbsCurve fit_pcurve(const NurbsCurve& world, const NurbsSurface& srf, const Preimage& pre, const std::vector<Point>& seeds,
+                             const Point& first, const Point& last, double tol, double& error) {
+
+    const double a = world.domain_start();
+    const double b = world.domain_end();
+    const auto value = [&](double t) {
+        const double f = std::clamp((t - a) / (b - a), 0.0, 1.0) * (seeds.size() - 1);
+        const size_t i = std::min((size_t)f, seeds.size() - 2);
+
+        return pre(t == a ? first : t == b ? last : world.point_at(t), seeds[i] + (seeds[i + 1] - seeds[i]) * (f - i));
+    };
+    std::vector<double> breaks = world.get_span_vector();
+
+    for (size_t i = 1, n = breaks.size(); i < n; i++) {
+        double t0 = breaks[i - 1];
+        Point p0 = value(t0);
+
+        for (int k = 1; k <= 16; k++) {
+            const double t1 = breaks[i - 1] + (breaks[i] - breaks[i - 1]) * k / 16;
+            const Point p1 = value(t1);
+
+            for (int dir = 0; dir < 2; dir++)
+                for (double knot : srf.get_span_vector(dir)) {
+                    if (!((p0[dir] - knot) * (p1[dir] - knot) < 0))
+                        continue;
+
+                    double lo = t0;
+                    double hi = t1;
+
+                    for (int it = 0; it < 80 && std::nextafter(lo, hi) < hi; it++) {
+                        const double m = 0.5 * (lo + hi);
+                        ((value(m)[dir] - knot) * (p0[dir] - knot) > 0 ? lo : hi) = m;
+                    }
+
+                    breaks.push_back(0.5 * (lo + hi));
+                }
+
+            t0 = t1;
+            p0 = p1;
+        }
+    }
+
+    std::sort(breaks.begin(), breaks.end());
+    breaks.erase(std::unique(breaks.begin(), breaks.end(), [&](double x, double y) { return y - x <= (b - a) * 1e-5; }), breaks.end());
+    breaks.back() = b;
+
+    std::vector<Point> at;
+    std::vector<Point> mid;
+
+    for (size_t i = 0; i < breaks.size(); i++) {
+        at.push_back(value(breaks[i]));
+
+        if (i > 0)
+            mid.push_back(value(0.5 * (breaks[i - 1] + breaks[i])));
+    }
+
+    // At a pole the collapsed coordinate of an end follows the curve leaving it.
+    for (Point* end : {&at.front(), &at.back()}) {
+        const std::vector<Vector> d = srf.evaluate((*end)[0], (*end)[1], 1);
+        const Point near = value(end == &at.front() ? a + (b - a) * 1e-7 : b - (b - a) * 1e-7);
+
+        for (int dir = 0; dir < 2 && d.size() == 3; dir++)
+            if (d[2 - dir].magnitude() <= 1e-9 * d[1 + dir].magnitude())
+                (*end)[dir] = near[dir];
+    }
+
+    const auto deviation = [&](const NurbsCurve& pc, double t0, double t1) {
+        double e = 0.0;
+
+        for (int k = 1; k < 8; k++) {
+            const Point q = pc.point_at(t0 + (t1 - t0) * k / 8.0);
+            e = std::max(e, srf.point_at(q[0], q[1]).distance(world.point_at(t0 + (t1 - t0) * k / 8.0)));
+        }
+
+        return e;
+    };
+
+    for (int fixed = 0; fixed < 2; fixed++) {
+        const int moving = 1 - fixed;
+        const double c = at[0][fixed];
+        bool iso = true;
+
+        for (const std::vector<Point>* points : {&at, &mid})
+            for (const Point& p : *points)
+                iso = iso && std::abs(p[fixed] - c) <= 1e-13 * (1.0 + std::abs(c));
+
+        NurbsCurve pc(3, true, 2, (int)breaks.size());
+        pc.m_nurbsknot = breaks;
+        double w = 1.0;
+
+        for (size_t i = 0; iso && i < breaks.size(); i++) {
+            if (i > 0)
+                w *= (mid[i - 1][moving] - at[i - 1][moving]) / (at[i][moving] - mid[i - 1][moving]);
+
+            Point q = at[i];
+            q[fixed] = c;
+            iso = w > 0.0 && std::isfinite(w) && pc.set_cv_4d((int)i, q[0] * w, q[1] * w, 0.0, w);
+        }
+
+        error = 0.0;
+
+        for (size_t i = 1; iso && i < breaks.size(); i++)
+            error = std::max(error, deviation(pc, breaks[i - 1], breaks[i]));
+
+        if (iso && pc.is_valid() && error <= tol / 64)
+            return pc;
+    }
+
+    // One-sided jets inside the span toward t + h: the surface jets solved where the world curve is on the surface, else fourth-order differences of the preimage.
+    const auto jets = [&](double t, double h, Vector& d1, Vector& d2) {
+        const double inside = t + h * 1e-9;
+        const Point p = value(inside);
+
+        if (srf.point_at(p[0], p[1]).distance(world.point_at(inside)) <= tol * 1e-3 && uv_jets(world, srf, inside, p, d1, d2))
+            return true;
+
+        std::array<Point, 5> f;
+
+        for (int k = 0; k < 5; k++)
+            f[k] = value(t + h * 0.01 * k);
+
+        const double step = h * 0.01;
+        d1 = ((f[1] - f[0]) * 48.0 - (f[2] - f[0]) * 36.0 + (f[3] - f[0]) * 16.0 - (f[4] - f[0]) * 3.0) * (1.0 / (12.0 * step));
+        d2 = ((f[1] - f[0]) * -104.0 + (f[2] - f[0]) * 114.0 - (f[3] - f[0]) * 56.0 + (f[4] - f[0]) * 11.0) * (1.0 / (12.0 * step * step));
+
+        return std::isfinite(d1[0] + d1[1] + d2[0] + d2[1]);
+    };
+    std::vector<nurbs_hermite::QuinticSpan> spans;
+    error = 0.0;
+    std::function<bool(double, double, const Point&, const Point&, int)> fill = [&](double t0, double t1, const Point& p0, const Point& p1, int depth) {
+        nurbs_hermite::QuinticSpan s{t0, t1, p0, p1, Vector(), Vector(), Vector(), Vector()};
+
+        if (!jets(t0, t1 - t0, s.start_derivative, s.start_second) || !jets(t1, t0 - t1, s.end_derivative, s.end_second))
+            return false;
+
+        double e = 0.0;
+        double gap = 0.0;
+
+        for (int k = 1; k < 8; k++) {
+            const Point q = quintic_at(s, k / 8.0);
+            const Point p = value(t0 + (t1 - t0) * k / 8.0);
+            const Point on = srf.point_at(p[0], p[1]);
+            e = std::max(e, srf.point_at(q[0], q[1]).distance(on));
+            gap = std::max(gap, on.distance(world.point_at(t0 + (t1 - t0) * k / 8.0)));
+        }
+
+        if (e > std::max(tol / 64, gap / 64) && depth < 30 && spans.size() < 4000) {
+            const double tm = 0.5 * (t0 + t1);
+            const Point pm = value(tm);
+
+            return fill(t0, tm, p0, pm, depth + 1) && fill(tm, t1, pm, p1, depth + 1);
+        }
+
+        error = std::max(error, e + gap);
+        spans.push_back(s);
+
+        return true;
+    };
+
+    bool filled = true;
+
+    for (size_t i = 1; filled && i < breaks.size(); i++)
+        filled = fill(breaks[i - 1], breaks[i], at[i - 1], at[i], 0);
+
+    const NurbsCurve quintic = filled ? nurbs_hermite::quintic(spans) : NurbsCurve();
+
+    if (quintic.is_valid() && error <= 1e3 * tol)
+        return quintic;
+
+    // Where the preimage does not settle (a curve far off its surface) a polyline of it in the world's parameter bounds the error instead.
+    std::vector<double> knots;
+    std::vector<Point> points;
+
+    for (int k = 0; k <= 1024; k++) {
+        knots.push_back(a + (b - a) * k / 1024.0);
+        points.push_back(value(knots.back()));
+    }
+
+    NurbsCurve line = NurbsCurve::create(false, 1, points);
+    line.m_nurbsknot = knots;
+    double line_error = 0.0;
+
+    for (int k = 0; k < 1024 && line.is_valid(); k++)
+        line_error = std::max(line_error, deviation(line, knots[k], knots[k + 1]));
+
+    if (quintic.is_valid() && error <= line_error)
+        return quintic;
+
+    error = line_error;
+
+    return line;
+}
+
+/// Closest uv of p on a surface by Newton from a guess, on the guess's branch of the periods tau_u, tau_v (0 when open).
+static Point newton_uv(const NurbsSurface& srf, const Point& p, const Point& guess, double tau_u, double tau_v) {
+
+    const std::pair<double, double> du = srf.domain(0);
+    const std::pair<double, double> dv = srf.domain(1);
+    const double su = tau_u > 0.0 ? tau_u * std::floor((guess[0] - du.first) / tau_u) : 0.0;
+    const double sv = tau_v > 0.0 ? tau_v * std::floor((guess[1] - dv.first) / tau_v) : 0.0;
+    double u = std::clamp(guess[0] - su, du.first, du.second);
+    double v = std::clamp(guess[1] - sv, dv.first, dv.second);
+
+    for (int it = 0; it < 50; it++) {
+        const std::vector<Vector> s = srf.evaluate(u, v, 2);
+
+        if (s.size() < 6)
+            break;
+
+        const Vector r = s[0] - Vector(p[0], p[1], p[2]);
+        const double a = s[3].dot(s[3]);
+        const double b = s[3].dot(s[1]);
+        const double d = s[1].dot(s[1]);
+        const double det = a * d - b * b;
+
+        if (!(det > 0.0))
+            break;
+
+        const double nu = std::clamp(u - (d * s[3].dot(r) - b * s[1].dot(r)) / det, du.first, du.second);
+        const double nv = std::clamp(v - (a * s[1].dot(r) - b * s[3].dot(r)) / det, dv.first, dv.second);
+        const bool done = std::abs(nu - u) <= 1e-15 * (du.second - du.first) && std::abs(nv - v) <= 1e-15 * (dv.second - dv.first);
+        u = nu;
+        v = nv;
+
+        if (done)
+            break;
+    }
+
+    return Point(u + su, v + sv, 0.0);
+}
+
+/// Chart uv of p on an analytic window, on the turn next to the guess; at a pole or apex the guess's u.
+static Point analytic_uv(const AnFace& an, const Window& w, const Point& p, const Point& guess) {
+
+    double s = 0.0;
+    double t = 0.0;
+    bool radial = false;
+    std::tie(s, t, radial) = an_st_of(an, p);
+    Point q = chart_point(an, w, Point(s, t, 0.0));
+    q[0] = radial ? q[0] + 4.0 * std::round((guess[0] - q[0]) / 4.0) : guess[0];
+
+    if (an.kind == 5)
+        q[1] += 4.0 * std::round((guess[1] - q[1]) / 4.0);
+
+    return q;
+}
+
+/// Face ids of a CLOSED_SHELL in sets joined by shared edges, one solid each (as OCCT splits a shell of disjoint parts), or of an OPEN_SHELL in one set; none for anything else.
+static std::vector<std::vector<int>> shell_parts(const StepReader& r, int shell_id) {
+
+    const StepEntity* sent = r.get(shell_id);
+    const StepSubEntity* shell = sent ? sent->find("CLOSED_SHELL") : nullptr;
+    const std::vector<int> faces = shell ? list_refs(shell->params) : sent && sent->find("OPEN_SHELL") ? list_refs(sent->find("OPEN_SHELL")->params) : std::vector<int>();
+
+    if (!shell || faces.empty())
+        return faces.empty() ? std::vector<std::vector<int>>() : std::vector<std::vector<int>>{faces};
+
+    std::vector<int> part(faces.size());
+    std::unordered_map<int, int> edge_part;
+
+    for (size_t i = 0; i < faces.size(); i++)
+        part[i] = (int)i;
+
+    const auto root = [&](int i) {
+        while (part[i] != i)
+            i = part[i] = part[part[i]];
+
+        return i;
+    };
+
+    for (size_t i = 0; i < faces.size(); i++) {
+        const StepEntity* face = r.get(faces[i]);
+        const StepSubEntity* sub = face ? face->find("ADVANCED_FACE") : nullptr;
+
+        if (face && !sub)
+            sub = face->find("FACE_SURFACE");
+
+        for (int bid : sub ? list_refs(sub->params) : std::vector<int>())
+            if (const std::optional<Bound> b = bound_loop(r, bid))
+                for (int oe : b->oe_refs) {
+                    const int ec = oriented_edge(r, oe).first;
+                    const auto it = edge_part.emplace(ec, (int)i).first;
+                    part[root((int)i)] = root(it->second);
+                }
+    }
+
+    std::map<int, std::vector<int>> sets;
+
+    for (size_t i = 0; i < faces.size(); i++)
+        sets[root((int)i)].push_back(faces[i]);
+
+    std::vector<std::vector<int>> out;
+
+    for (const auto& kv : sets)
+        out.push_back(kv.second);
+
+    return out;
+}
+
+/// Faces of a closed shell oriented consistently (ShapeFix_Shell): within each set of faces joined by edges used twice, the faces whose uses repeat a neighbour's direction are flipped, the larger part keeping the file's orientation.
+static void orient_shell(const BRep& brep, std::vector<BRepRef>& faces) {
+
+    std::vector<std::vector<std::pair<int, int>>> uses(brep.m_edges.size());
+
+    for (int k = 0; k < (int)faces.size(); k++)
+        for (const BRepRef& wr : brep.m_faces[faces[k].index].wires)
+            for (const BRepRef& er : brep.wire_edges(wr))
+                if (!brep.m_edges[er.index].degenerated)
+                    uses[er.index].push_back({k, brep_compose(faces[k].orientation, er.orientation) == BRepOrientation::Forward ? 1 : -1});
+
+    std::vector<std::vector<std::pair<int, int>>> adjacent(faces.size());
+
+    for (const std::vector<std::pair<int, int>>& u : uses)
+        if (u.size() == 2 && u[0].first != u[1].first) {
+            adjacent[u[0].first].push_back({u[1].first, u[0].second == u[1].second});
+            adjacent[u[1].first].push_back({u[0].first, u[0].second == u[1].second});
+        }
+
+    std::vector<int> flip(faces.size(), -1);
+
+    for (int seed = 0; seed < (int)faces.size(); seed++) {
+        if (flip[seed] >= 0)
+            continue;
+
+        std::vector<int> part{seed};
+        flip[seed] = 0;
+
+        for (size_t i = 0; i < part.size(); i++)
+            for (const std::pair<int, int>& next : adjacent[part[i]])
+                if (flip[next.first] < 0) {
+                    flip[next.first] = flip[part[i]] ^ next.second;
+                    part.push_back(next.first);
+                }
+
+        const size_t flipped = std::count_if(part.begin(), part.end(), [&](int k) { return flip[k] == 1; });
+
+        for (int k : part)
+            if (flip[k] == (2 * flipped > part.size() ? 0 : 1))
+                faces[k].orientation = brep_reverse(faces[k].orientation);
+    }
+}
+
 /// BRep of one STEP shell, built face by face.
 class BRepBuilder {
     StepReader& r; // Entity reader.
@@ -2301,21 +2896,12 @@ class BRepBuilder {
     std::unordered_map<int, int> vmap; // Brep vertex by VERTEX_POINT id.
     std::unordered_map<int, int> emap; // Brep edge by EDGE_CURVE id.
     std::vector<BRepRef> face_refs; // Face references in file order.
+    std::map<int, std::tuple<int, int, double>> splits; // Edge split for a missing seam: its pieces and the normalized parameter of the cut.
 
 public:
 
     /// Construct over an entity reader.
     BRepBuilder(StepReader& reader, double precision) : r(reader), tolerance(precision) {}
-
-    /// Existing vertex within tol of q, else a new one.
-    int vertex_at(const Point& q, double tol) {
-
-        for (size_t i = 0; i < brep.m_vertices.size(); i++)
-            if (brep.m_vertices[i].point.distance(q) <= tol)
-                return (int)i;
-
-        return brep.add_vertex(q);
-    }
 
     /// The second use of an edge on the same surface is a seam: the forward use keeps curve_2d_index, the reversed one curve_2d_index_2.
     void attach_pcurve(int edge, int si, int c2, bool reversed_use) {
@@ -2337,8 +2923,36 @@ public:
         brep.add_pcurve(edge, si, c2);
     }
 
-    /// Face from its surface and loops (outer first), oriented in the shell by reversed_face.
-    void finish_face(int si, bool reversed_face, const std::vector<std::vector<PendingEdge>>& loops) {
+    /// Face from its surface and loops (outer first), oriented in the shell by reversed_face; when the closed outer loop runs clockwise on the surface (an inconsistent file) every loop is turned around (ShapeFix_Face::FixOrientation).
+    void finish_face(int si, bool reversed_face, std::vector<std::vector<PendingEdge>> loops) {
+
+        if (loops.empty() || loops.front().empty())
+            throw std::runtime_error("face has no edge loop");
+
+        double area = 0.0;
+        double size = 0.0;
+
+        for (const PendingEdge& pe : loops.front())
+            for (int k = 0; k < 16; k++) {
+                const double t0 = pe.c2d.domain_start();
+                const double t1 = pe.c2d.domain_end();
+                const Point a = pe.c2d.point_at(t0 + (t1 - t0) * k / 16.0);
+                const Point b = pe.c2d.point_at(t0 + (t1 - t0) * (k + 1) / 16.0);
+                area += a[0] * b[1] - b[0] * a[1];
+                size = std::max(size, a.distance(loops.front().front().c2d.point_at_start()));
+            }
+
+        if (area < 0.0 && loops.front().back().c2d.point_at_end().distance(loops.front().front().c2d.point_at_start()) <= 1e-6 * size)
+            for (std::vector<PendingEdge>& lp : loops) {
+                std::reverse(lp.begin(), lp.end());
+
+                for (PendingEdge& pe : lp) {
+                    pe.reversed = !pe.reversed;
+
+                    if (!pe.c2d.reverse())
+                        throw std::runtime_error("pcurve could not be reversed");
+                }
+            }
 
         std::vector<BRepRef> wires;
 
@@ -2370,7 +2984,12 @@ public:
         if (it != vmap.end())
             return it->second;
 
-        return vmap[vp_id] = brep.add_vertex(r.get_vertex_point(vp_id).value_or(Point(0, 0, 0)));
+        const std::optional<Point> p = r.get_vertex_point(vp_id);
+
+        if (!p)
+            throw std::runtime_error("vertex #" + std::to_string(vp_id) + " is not a VERTEX_POINT");
+
+        return vmap[vp_id] = brep.add_vertex(*p);
     }
 
     /// Cartesian trim selectors of a circle are physical bounds, not disposable wrappers.
@@ -2428,39 +3047,98 @@ public:
         return result;
     }
 
-    /// Exact 3D curve of an edge basis: the B-spline itself or a rational arc of a CIRCLE, invalid otherwise.
-    NurbsCurve edge_curve(int curve_id, const Point& vs, const Point& ve, bool edge_sense) {
+    /// The part of a basis B-spline between the edge vertices, the whole curve when its ends are already there.
+    NurbsCurve trimmed_to(NurbsCurve c, const Point& vs, const Point& ve) const {
+
+        const double t0 = c.closest_parameter(vs);
+        const double t1 = c.closest_parameter(ve);
+        const double span = c.domain_end() - c.domain_start();
+
+        if ((std::abs(t0 - c.domain_start()) <= 1e-9 * span && std::abs(t1 - c.domain_end()) <= 1e-9 * span) ||
+            (vs.distance(ve) <= tolerance && c.point_at_start().distance(c.point_at_end()) <= tolerance))
+            return c;
+
+        const double first = !(t0 < t1) && c.point_at_start().distance(vs) <= tolerance ? c.domain_start() : t0;
+        const double last = !(first < t1) && c.point_at_end().distance(ve) <= tolerance ? c.domain_end() : t1;
+        NurbsCurve head = c;
+        NurbsCurve tail = c;
+
+        if (!(first < last) && c.point_at_start().distance(c.point_at_end()) <= tolerance && head.trim(t0, c.domain_end()) &&
+            tail.trim(c.domain_start(), t1))
+            return joined(head, tail);
+
+        if (!(first < last) || !c.trim(first, last))
+            throw std::runtime_error("edge vertices do not bound a part of its B-spline curve");
+
+        return c;
+    }
+
+    /// Exact 3D curve of an edge from vs to ve on its basis: line, polyline, circle, ellipse, hyperbola or B-spline, trimmed to the vertices; throws for any other curve.
+    NurbsCurve edge_curve(int curve_id, const Point& vs, const Point& ve, bool edge_sense, int depth = 0) {
 
         const StepEntity* e = r.get(curve_id);
 
-        if (!e)
-            return NurbsCurve();
+        if (!e || depth > MAX_DEPTH)
+            throw std::runtime_error("edge curve #" + std::to_string(curve_id) + " is missing");
 
-        if (e->has("B_SPLINE_CURVE_WITH_KNOTS"))
-            return r.get_nurbs_curve(curve_id);
+        if (const StepSubEntity* trim = e->find("TRIMMED_CURVE")) {
+            const NurbsCurve arc = trimmed_circle(*trim, vs, ve, edge_sense);
 
-        if (const StepSubEntity* trim = e->find("TRIMMED_CURVE"))
-            return trimmed_circle(*trim, vs, ve, edge_sense);
+            return arc.is_valid() ? arc : edge_curve(r.basis_curve_of(first_ref(trim->params)), vs, ve, edge_sense, depth + 1);
+        }
 
-        const StepSubEntity* circle = e->find("CIRCLE");
+        if (e->has("LINE"))
+            return NurbsCurve::create(false, 1, {vs, ve});
 
-        if (!circle)
-            return NurbsCurve();
+        if (const StepSubEntity* polyline = e->find("POLYLINE")) {
+            std::vector<Point> pts;
 
-        const int ax_ref = first_ref(circle->params);
-        const std::vector<double> rr = nums(circle->params);
-        const double rad = rr.empty() ? 0.0 : rr[0];
-        const Axis2 a = r.get_axis2(ax_ref);
+            for (int id : list_refs(polyline->params))
+                pts.push_back(r.get_point(id));
 
-        if (ax_ref < 0 || rad <= 0 || !a.ok)
-            return NurbsCurve();
+            if (!edge_sense)
+                std::reverse(pts.begin(), pts.end());
 
-        NurbsCurve result = edge_sense ? circle_nurbs(a, rad, vs, ve) : circle_nurbs(a, rad, ve, vs);
-        if (!edge_sense && !result.reverse()) return NurbsCurve();
-        return result;
+            return NurbsCurve::create(false, 1, pts);
+        }
+
+        if (curve_params(*e)) {
+            NurbsCurve c = r.get_nurbs_curve(curve_id);
+
+            if (!c.is_valid() || (!edge_sense && !c.reverse()))
+                throw std::runtime_error("B-spline curve #" + std::to_string(curve_id) + " is invalid");
+
+            return trimmed_to(c, vs, ve);
+        }
+
+        for (const char* type : {"CIRCLE", "ELLIPSE", "HYPERBOLA"}) {
+            const StepSubEntity* conic = e->find(type);
+
+            if (!conic)
+                continue;
+
+            const Axis2 a = r.get_axis2(first_ref(conic->params));
+            const std::vector<double> rr = nums(conic->params);
+
+            if (!a.ok || rr.empty() || !(rr[0] > 0.0) || (std::string(type) != "CIRCLE" && (rr.size() < 2 || !(rr[1] > 0.0))))
+                throw std::runtime_error(std::string(type) + " #" + std::to_string(curve_id) + " is invalid");
+
+            if (e->has("HYPERBOLA"))
+                return hyperbola_nurbs(a, rr[0], rr[1], vs, ve);
+
+            const double r2 = e->has("ELLIPSE") ? rr[1] : 0.0;
+            NurbsCurve arc = edge_sense ? circle_nurbs(a, rr[0], vs, ve, 0, false, r2) : circle_nurbs(a, rr[0], ve, vs, 0, false, r2);
+
+            if (!edge_sense && !arc.reverse())
+                return NurbsCurve();
+
+            return arc;
+        }
+
+        throw std::runtime_error("curve #" + std::to_string(curve_id) + " " + (e->parts.empty() ? "" : e->parts[0].type) + " is not supported");
     }
 
-    /// BRep edge of an EDGE_CURVE, made once: exact curve when possible, else a sampled polyline.
+    /// BRep edge of an EDGE_CURVE with its exact curve, made once.
     int get_edge(int ec_id) {
 
         const auto it = emap.find(ec_id);
@@ -2471,171 +3149,333 @@ public:
         const std::vector<int> refs = edge_refs(r, ec_id);
 
         if (refs.size() < 3)
-            return -1;
+            throw std::runtime_error("edge #" + std::to_string(ec_id) + " is not an EDGE_CURVE");
 
         const int sv = get_vertex(refs[0]);
         const int ev = get_vertex(refs[1]);
-        const int curve_id = r.basis_curve_of(refs[2]);
-        const Point vs = brep.m_vertices[sv].point;
-        const Point ve = brep.m_vertices[ev].point;
-        const StepEntity* entity = r.get(ec_id);
-        const StepSubEntity* edge = entity ? entity->find("EDGE_CURVE") : nullptr;
-        const bool edge_sense = edge ? last_flag(edge->params, true) : true;
-        NurbsCurve crv3d = edge_curve(curve_id, vs, ve, edge_sense);
+        const bool edge_sense = last_flag(r.get(ec_id)->find("EDGE_CURVE")->params, true);
+        const NurbsCurve crv3d = edge_curve(r.basis_curve_of(refs[2]), brep.m_vertices[sv].point, brep.m_vertices[ev].point, edge_sense);
 
         if (!crv3d.is_valid())
-            crv3d = polyline_nurbs(r.sample_curve(curve_id, vs, ve, 16), 3);
+            throw std::runtime_error("edge #" + std::to_string(ec_id) + " has no valid curve");
 
         return emap[ec_id] = brep.add_edge(brep.add_curve_3d(crv3d), sv, ev);
     }
 
-    /// Projection fallback: 3D samples of an edge mapped to canonical (s, t), branch-unwrapped along the loop traversal.
-    std::vector<Point> st_projected(const AnFace& an, int geom_id, int edge_idx, bool rev, const Loop& lp) {
+    /// Pcurve of an edge use on srf, fitted from uv seeds in the edge direction (its ends at the vertices where the curve reaches them within tolerance), or the file's pcurve with deviation file_error where that is closer; returned in the traversal direction, the edge tolerance carrying the deviation.
+    NurbsCurve use_pcurve(int edge, bool reversed, const NurbsSurface& srf, const Preimage& pre, const std::vector<Point>& seeds,
+                          const NurbsCurve& file = NurbsCurve(), double file_error = INFINITY) {
 
-        const BRepEdge& be = brep.m_edges[edge_idx];
-        std::vector<Point> ordered =
-            r.sample_curve(geom_id, brep.m_vertices[be.start_vertex].point, brep.m_vertices[be.end_vertex].point, 48);
+        const BRepEdge& be = brep.m_edges[edge];
+        const NurbsCurve& world = brep.m_curves_3d[be.curve_3d_index];
+        const Point& vs = brep.m_vertices[be.start_vertex].point;
+        const Point& ve = brep.m_vertices[be.end_vertex].point;
+        double error = 0.0;
+        NurbsCurve pc = fit_pcurve(world, srf, pre, seeds, world.point_at_start().distance(vs) <= tolerance ? vs : world.point_at_start(),
+                                   world.point_at_end().distance(ve) <= tolerance ? ve : world.point_at_end(), tolerance, error);
 
-        if (ordered.size() < 2)
-            return {};
+        if (!pc.is_valid() || file_error < error) {
+            pc = file;
+            error = file_error;
+        }
 
-        if (rev)
+        if (!pc.is_valid() || (reversed && !pc.reverse()))
+            throw std::runtime_error("edge pcurve could not be fitted");
+
+        brep.m_edges[edge].tolerance = std::max(be.tolerance, error);
+
+        return pc;
+    }
+
+    /// Canonical (s, t) samples of an edge use in curve order, unwrapped along the traversal after the uses already in lp.
+    std::vector<Point> use_st(const AnFace& an, const Loop& lp, int edge, bool reversed) {
+
+        std::vector<Point> ordered = sample_nurbs(brep.m_curves_3d[brep.m_edges[edge].curve_3d_index], 48);
+
+        if (reversed)
             std::reverse(ordered.begin(), ordered.end());
 
         double ps = 0.0;
         double pt = 0.0;
         bool have_prev = false;
         std::tie(ps, pt, have_prev) = st_start(an, lp, ordered);
-
         std::vector<Point> st = st_unwrapped(an, ordered, ps, pt, have_prev);
 
-        if (rev)
+        if (!std::get<2>(an_st_of(an, ordered[0])))
+            st[0][0] = st[1][0];
+
+        if (reversed)
             std::reverse(st.begin(), st.end());
 
         return st;
     }
 
-    /// Loops of an analytic face with canonical (s, t) samples from the file pcurves or from projection.
-    bool analytic_loops(
-        const std::vector<int>& bound_refs,
-        int surface_ref,
-        const AnFace& an,
-        std::vector<Loop>& loops
-    ) {
+    /// Seam from pa to pb at one angle of a turned surface: the generator of a cylinder or cone, the meridian arc of a sphere or torus.
+    static NurbsCurve seam_curve(const AnFace& an, const Point& pa, const Point& pb) {
+
+        if (an.kind == 2 || an.kind == 3)
+            return NurbsCurve::create(false, 1, {pa, pb});
+
+        const double s = std::get<0>(an_st_of(an, pa));
+        Axis2 meridian;
+        meridian.ax = an.a.ax * std::cos(s) + an.a.ay * std::sin(s);
+        meridian.origin = an.kind == 4 ? an.a.origin : an.a.origin + meridian.ax * an.radius;
+        meridian.ay = an.a.az * (std::get<1>(an_st_of(an, pb)) >= std::get<1>(an_st_of(an, pa)) ? 1.0 : -1.0);
+        meridian.az = meridian.ax.cross(meridian.ay);
+        meridian.ok = true;
+
+        return circle_nurbs(meridian, an.kind == 4 ? an.radius : an.r2, pa, pb, 0, true);
+    }
+
+    /// Split the edge of a loop that crosses angle s (about the axis of an) there, for this loop and, through splits, for every other use.
+    void split_at_angle(Loop& lp, const AnFace& an, double s) {
+
+        for (size_t k = 0; k < lp.edges.size(); k++) {
+            const LoopEdge le = lp.edges[k];
+            const NurbsCurve world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index];
+            const auto off = [&](double t) { return std::remainder(std::get<0>(an_st_of(an, world.point_at(t))) - s, 2.0 * PI); };
+            const int n = (int)le.uv.size() - 1;
+
+            for (int i = 0; i < n; i++) {
+                double lo = world.domain_start() + (world.domain_end() - world.domain_start()) * i / n;
+                double hi = world.domain_start() + (world.domain_end() - world.domain_start()) * (i + 1) / n;
+
+                if (!(off(lo) * off(hi) < 0.0) || std::abs(off(lo) - off(hi)) > PI)
+                    continue;
+
+                for (int it = 0; it < 80 && std::nextafter(lo, hi) < hi; it++)
+                    (off(0.5 * (lo + hi)) * off(lo) > 0.0 ? lo : hi) = 0.5 * (lo + hi);
+
+                const double t = 0.5 * (lo + hi);
+                NurbsCurve head = world;
+                NurbsCurve tail = world;
+
+                if (!(t > world.domain_start()) || !(t < world.domain_end()) || !head.trim(world.domain_start(), t) || !tail.trim(t, world.domain_end()))
+                    return;
+
+                const BRepEdge e = brep.m_edges[le.edge_idx];
+                const int p = brep.add_vertex(world.point_at(t));
+                const int e1 = brep.add_edge(brep.add_curve_3d(head), e.start_vertex, p);
+                const int e2 = brep.add_edge(brep.add_curve_3d(tail), p, e.end_vertex);
+                splits[le.edge_idx] = {e1, e2, (t - world.domain_start()) / (world.domain_end() - world.domain_start())};
+                LoopEdge a = le;
+                LoopEdge b = le;
+                a.edge_idx = le.reversed ? e2 : e1;
+                b.edge_idx = le.reversed ? e1 : e2;
+                lp.edges[k] = a;
+                lp.edges.insert(lp.edges.begin() + k + 1, b);
+
+                return;
+            }
+        }
+    }
+
+    /// The edge, or its two pieces in the traversal order of the use once it has been split.
+    std::vector<int> pieces(int edge, bool reversed) const {
+
+        const auto it = splits.find(edge);
+
+        if (it == splits.end())
+            return {edge};
+
+        return reversed ? std::vector<int>{std::get<1>(it->second), std::get<0>(it->second)} : std::vector<int>{std::get<0>(it->second), std::get<1>(it->second)};
+    }
+
+    /// Every other use of a split edge replaced by its two pieces, its pcurves cut at the same normalized parameter.
+    void apply_splits() {
+
+        for (BRepWire& w : brep.m_wires)
+            for (size_t k = 0; k < w.edges.size(); k++) {
+                const auto it = splits.find(w.edges[k].index);
+
+                if (it == splits.end())
+                    continue;
+
+                const bool reversed = w.edges[k].orientation == BRepOrientation::Reversed;
+                const int first = reversed ? std::get<1>(it->second) : std::get<0>(it->second);
+                const int second = reversed ? std::get<0>(it->second) : std::get<1>(it->second);
+                w.edges[k].index = first;
+                w.edges.insert(w.edges.begin() + k + 1, {second, w.edges[k].orientation});
+            }
+
+        for (const auto& [edge, pieces] : splits)
+            for (const BRepCurveOnSurface& pc : std::vector<BRepCurveOnSurface>(brep.m_edges[edge].pcurves)) {
+                int images[2][2] = {{-1, -1}, {-1, -1}};
+
+                for (int side = 0; side < 2; side++) {
+                    const int c = side == 0 ? pc.curve_2d_index : pc.curve_2d_index_2;
+
+                    if (c < 0)
+                        continue;
+
+                    const NurbsCurve whole = brep.m_curves_2d[c];
+                    const double t = whole.domain_start() + (whole.domain_end() - whole.domain_start()) * std::get<2>(pieces);
+                    NurbsCurve head = whole;
+                    NurbsCurve tail = whole;
+
+                    if (head.trim(whole.domain_start(), t) && tail.trim(t, whole.domain_end())) {
+                        images[0][side] = brep.add_curve_2d(head);
+                        images[1][side] = brep.add_curve_2d(tail);
+                    }
+                }
+
+                for (int piece = 0; piece < 2; piece++)
+                    if (images[piece][0] >= 0)
+                        brep.add_pcurve(piece == 0 ? std::get<0>(pieces) : std::get<1>(pieces), pc.surface_index, images[piece][0], images[piece][1]);
+            }
+    }
+
+    /// Two loops of a face on a turned surface that each close around the axis with no seam (as some exporters write them) joined into one through a seam (generator or meridian) from a vertex of the first to the second at the same angle (split there when it has no vertex), used both ways (ShapeFix_Face::FixMissingSeam); unchanged otherwise.
+    void join_seamless(std::vector<Loop>& loops, const AnFace& an) {
+
+        if (loops.size() != 2)
+            return;
+
+        const auto start = [&](const LoopEdge& le) { return le.reversed ? brep.m_edges[le.edge_idx].end_vertex : brep.m_edges[le.edge_idx].start_vertex; };
+
+        for (const Loop& lp : loops) {
+            const double turn = (lp.edges.back().reversed ? lp.edges.back().uv.front() : lp.edges.back().uv.back())[0] -
+                (lp.edges.front().reversed ? lp.edges.front().uv.back() : lp.edges.front().uv.front())[0];
+
+            if (std::abs(std::abs(turn) - 2.0 * PI) > 1e-6)
+                return;
+        }
+
+        if (!std::any_of(loops[1].edges.begin(), loops[1].edges.end(), [&](const LoopEdge& le) {
+                return std::abs(std::remainder(std::get<0>(an_st_of(an, brep.m_vertices[start(le)].point)) -
+                    std::get<0>(an_st_of(an, brep.m_vertices[start(loops[0].edges[0])].point)), 2.0 * PI)) * an.radius <= tolerance; }))
+            split_at_angle(loops[1], an, std::get<0>(an_st_of(an, brep.m_vertices[start(loops[0].edges[0])].point)));
+
+        for (size_t i = 0; i < loops[0].edges.size(); i++)
+            for (size_t j = 0; j < loops[1].edges.size(); j++) {
+                const int va = start(loops[0].edges[i]);
+                const int vb = start(loops[1].edges[j]);
+                const Point& pa = brep.m_vertices[va].point;
+                const Point& pb = brep.m_vertices[vb].point;
+                const double gap = std::remainder(std::get<0>(an_st_of(an, pa)) - std::get<0>(an_st_of(an, pb)), 2.0 * PI);
+
+                if (std::abs(gap) * an.radius > tolerance)
+                    continue;
+
+                LoopEdge seam;
+                seam.edge_idx = brep.add_edge(brep.add_curve_3d(seam_curve(an, pa, pb)), va, vb);
+                std::vector<LoopEdge> uses(loops[0].edges.begin() + i, loops[0].edges.end());
+                uses.insert(uses.end(), loops[0].edges.begin(), loops[0].edges.begin() + i);
+                uses.push_back(seam);
+                uses.insert(uses.end(), loops[1].edges.begin() + j, loops[1].edges.end());
+                uses.insert(uses.end(), loops[1].edges.begin(), loops[1].edges.begin() + j);
+                seam.reversed = true;
+                uses.push_back(seam);
+
+                Loop joined;
+                joined.is_outer = joined.projected = true;
+
+                for (LoopEdge le : uses) {
+                    le.uv = use_st(an, joined, le.edge_idx, le.reversed);
+                    joined.edges.push_back(le);
+                }
+
+                loops = {joined};
+
+                return;
+            }
+    }
+
+    /// Loops of an analytic face, each edge use with canonical (s, t) samples of its curve unwrapped along the traversal; inner loops shifted by whole turns onto the outer one.
+    std::vector<Loop> analytic_loops(const std::vector<int>& bound_refs, bool same_sense, const AnFace& an) {
+
+        std::vector<Loop> loops;
 
         for (int bid : bound_refs) {
             const std::optional<Bound> b = bound_loop(r, bid);
 
             if (!b)
-                continue;
+                throw std::runtime_error("bound #" + std::to_string(bid) + " is not an edge loop");
 
             Loop lp;
             lp.is_outer = b->is_outer;
+            lp.projected = true;
 
-            for (int oe_id : b->oe_refs) {
-                int ec_ref = -1;
-                bool oe_orient = true;
-                std::tie(ec_ref, oe_orient) = oriented_edge(r, oe_id);
-
-                const int edge_idx = ec_ref < 0 ? -1 : get_edge(ec_ref);
-
-                if (edge_idx < 0)
-                    continue;
-
-                const int geom_id = edge_geom_id(r, ec_ref);
-                LoopEdge le;
-                le.edge_idx = edge_idx;
-                le.reversed = oe_orient != b->orient;
-
-                if (geom_id >= 0)
-                    le.uv = r.pcurve_st_samples(geom_id, surface_ref, oe_orient, 48);
-
-                if (le.uv.size() < 2) {
-                    lp.projected = true;
-                    le.uv = st_projected(an, geom_id, edge_idx, le.reversed, lp);
-
-                    if (le.uv.empty())
-                        return false;
+            for (const std::pair<int, bool>& use : bound_uses(r, *b, same_sense))
+                for (int edge : pieces(get_edge(use.first), use.second)) {
+                    LoopEdge le;
+                    le.edge_idx = edge;
+                    le.reversed = use.second;
+                    le.uv = use_st(an, lp, le.edge_idx, le.reversed);
+                    lp.edges.push_back(le);
                 }
 
-                lp.edges.push_back(le);
-            }
-
-            if (!lp.edges.empty())
-                loops.push_back(lp);
-
-            pick_outer_loop(loops);
+            loops.push_back(lp);
         }
 
-        return !loops.empty();
+        join_seamless(loops, an);
+        pick_outer_loop(loops);
+        split_seams(loops, 2.0 * PI, an.kind == 5 ? 2.0 * PI : 0.0);
+        center_inner_loops(loops, 2.0 * PI);
+
+        return loops;
     }
 
-    /// Pending edges of one loop in the chart, plus a degenerated edge across each pole or apex gap between consecutive edges.
-    std::vector<PendingEdge> analytic_pending(const Loop& lp, const AnFace& an, const Window& w, double scale3) {
+    /// Fitted pcurves of one loop in the chart, plus a degenerated edge across each pole or apex gap between consecutive edges.
+    std::vector<PendingEdge> analytic_pending(const Loop& lp, const AnFace& an, const Window& w, const NurbsSurface& srf) {
 
         const std::vector<std::vector<Point>> chains = analytic_chains(lp, an, w);
+        const Preimage pre = [&](const Point& p, const Point& guess) { return analytic_uv(an, w, p, guess); };
         std::vector<PendingEdge> pl;
 
         for (size_t k = 0; k < lp.edges.size(); k++) {
-            if (chains[k].size() < 2)
-                continue;
+            std::vector<Point> seeds = chains[k];
 
-            pl.push_back({lp.edges[k].edge_idx, lp.edges[k].reversed, polyline_nurbs(chains[k], 2)});
+            if (lp.edges[k].reversed)
+                std::reverse(seeds.begin(), seeds.end());
 
-            const std::vector<Point>& nxt = chains[(k + 1) % chains.size()];
-
-            if (nxt.empty())
-                continue;
-
-            const Point a2 = chains[k].back();
-            const Point b2 = nxt.front();
-
-            if (std::abs(a2[0] - b2[0]) + std::abs(a2[1] - b2[1]) <= 1e-7)
-                continue;
-
-            const Point p3a = chart_eval(an, w, a2);
-            const Point p3b = chart_eval(an, w, b2);
-
-            if (p3a.distance(p3b) >= scale3 * 1e-6)
-                continue;
-
-            const int vd = vertex_at(p3a, scale3 * 1e-6);
-            pl.push_back({brep.add_edge(-1, vd, vd), false, polyline_nurbs({a2, b2}, 2)});
+            pl.push_back({lp.edges[k].edge_idx, lp.edges[k].reversed, use_pcurve(lp.edges[k].edge_idx, lp.edges[k].reversed, srf, pre, seeds)});
         }
 
-        return pl;
+        std::vector<PendingEdge> out;
+
+        for (size_t k = 0; k < pl.size(); k++) {
+            out.push_back(pl[k]);
+
+            const PendingEdge& next = pl[(k + 1) % pl.size()];
+            const Point a2 = pl[k].c2d.point_at_end();
+            const Point b2 = next.c2d.point_at_start();
+            const BRepEdge& be = brep.m_edges[pl[k].edge];
+            const int vertex = pl[k].reversed ? be.start_vertex : be.end_vertex;
+
+            if (std::abs(a2[0] - b2[0]) + std::abs(a2[1] - b2[1]) <= 1e-12 * (1.0 + std::abs(a2[0]) + std::abs(a2[1])) ||
+                chart_eval(an, w, a2).distance(chart_eval(an, w, b2)) > (an.radius + std::abs(an.r2) + 1.0) * 1e-9)
+                continue;
+
+            out.push_back({brep.add_edge(-1, vertex, vertex), false, polyline_nurbs({a2, b2}, 2)});
+        }
+
+        return out;
     }
 
-    /// Face on a cylinder, cone, sphere or torus: the exact kernel window with the file pcurves bound in it; false falls back to projection.
-    bool add_face_analytic(const std::vector<int>& bound_refs, int surface_ref, bool same_sense, const AnFace& an) {
+    /// Face on a cylinder, cone, sphere or torus: the exact kernel window of its loops with pcurves fitted in it.
+    void add_face_analytic(const std::vector<int>& bound_refs, bool same_sense, const AnFace& an) {
 
-        std::vector<Loop> loops;
-
-        if (!analytic_loops(bound_refs, surface_ref, an, loops))
-            return false;
-
+        std::vector<Loop> loops = analytic_loops(bound_refs, same_sense, an);
         const std::optional<Window> w = analytic_window(loops, an);
 
         if (!w)
-            return false;
+            throw std::runtime_error("analytic face has no chart window");
 
         const NurbsSurface srf = build_analytic_nurbs(an, w->su0, w->nsu, w->t0, w->t1, w->sv0, w->nsv);
 
         if (!srf.is_valid())
-            return false;
+            throw std::runtime_error("analytic surface is invalid");
 
-        const double scale3 = an.radius + std::abs(an.r2) + 1.0;
         const int srf_idx = brep.add_surface(srf);
         outer_first(loops);
 
         std::vector<std::vector<PendingEdge>> pending;
 
         for (const Loop& lp : loops)
-            pending.push_back(analytic_pending(lp, an, *w, scale3));
+            pending.push_back(analytic_pending(lp, an, *w, srf));
 
         finish_face(srf_idx, !same_sense, pending);
-
-        return true;
     }
 
     /// Point of a VERTEX_POINT, far away when missing.
@@ -2801,52 +3641,61 @@ public:
         return ids;
     }
 
-    /// Select the forward boundary of two certified axis-aligned seam aliases.
-    static int forward_source_seam(const std::vector<NurbsCurve>& curves) {
-        if (curves.size() != 2) return -1;
-        for (const auto& curve : curves)
-            if (curve.degree() != 1 || curve.cv_count() != 2) return -1;
+    /// The forward one of two seam aliases: for +v the boundary of larger u, for +u that of smaller v.
+    static int forward_seam(const std::vector<NurbsCurve>& curves) {
         const Point a = curves[0].point_at_start(), b = curves[0].point_at_end();
-        const Point c = curves[1].point_at_start(), d = curves[1].point_at_end();
-        for (int varying = 0; varying < 2; ++varying) {
-            const int fixed = 1 - varying;
-            if (a[fixed] != b[fixed] || c[fixed] != d[fixed] || a[fixed] == c[fixed]) continue;
-            const bool positive = b[varying] > a[varying];
-            if (b[varying] == a[varying] || d[varying] == c[varying] ||
-                (d[varying] > c[varying]) != positive) continue;
-            // For +V the forward boundary has maximal U; for +U minimal V.
-            const bool maximum = (varying == 1) == positive;
-            return (a[fixed] > c[fixed]) == maximum ? 0 : 1;
-        }
-        return -1;
+        const Point m0 = curves[0].point_at(curves[0].domain_middle()), m1 = curves[1].point_at(curves[1].domain_middle());
+        const int varying = std::abs(b[1] - a[1]) > std::abs(b[0] - a[0]) ? 1 : 0;
+        const bool maximum = (varying == 1) == (b[varying] > a[varying]);
+        return (m0[1 - varying] > m1[1 - varying]) == maximum ? 0 : 1;
     }
 
-    /// A source curve is a proposal until the WHOLE original world/support law matches.
-    std::optional<NurbsCurve> certified_source_pcurve(int geometry_id, int surface_id,
-        const NurbsCurve& world, const NurbsSurface& support, bool forward) {
-        if (!world.is_valid() || !support.is_valid()) return std::nullopt;
+    /// The file's pcurve of an edge on a B-spline surface: one certified against the world curve at the tolerance (error 0), else the one of least deviation (error); the forward or reversed seam alias by the use.
+    std::optional<NurbsCurve> source_pcurve(int edge, int geometry_id, int surface_id, const NurbsSurface& support, bool forward, double& error) {
+        const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
         const StepEntity* source = r.get(surface_id);
-        if (!source || !source->has("B_SPLINE_SURFACE_WITH_KNOTS")) return std::nullopt;
-        std::vector<NurbsCurve> accepted;
-        for (NurbsCurve pc : r.original_pcurves(geometry_id, surface_id, world)) {
-            auto match = curve_surface_intersection::same_parameter(world, pc, support, tolerance);
-            if (match != curve_surface_intersection::ParameterMatch::Matched) {
-                if (!pc.reverse()) continue;
-                match = curve_surface_intersection::same_parameter(world, pc, support, tolerance);
+        if (!support.is_valid() || !source || !surface_params(*source)) return std::nullopt;
+        const auto deviation = [&](const NurbsCurve& pc) {
+            double d = 0.0;
+            for (int k = 0; k <= 16; ++k) {
+                const Point q = pc.point_at(pc.domain_start() + (pc.domain_end() - pc.domain_start()) * k / 16.0);
+                d = std::max(d, support.point_at(q[0], q[1]).distance(world.point_at(world.domain_start() + (world.domain_end() - world.domain_start()) * k / 16.0)));
             }
-            if (match != curve_surface_intersection::ParameterMatch::Matched) continue;
-            const bool duplicate = std::any_of(accepted.begin(), accepted.end(), [&](const NurbsCurve& item) {
-                return item.jsondump() == pc.jsondump();
-            });
-            if (!duplicate) accepted.push_back(std::move(pc));
+            return d;
+        };
+        std::vector<NurbsCurve> accepted, loose;
+        const std::pair<double, double> periods = surface_periods(support);
+        for (NurbsCurve pc : r.original_pcurves(geometry_id, surface_id, world)) {
+            const Point middle = pc.point_at(pc.domain_middle());
+            double shift[2] = {0.0, 0.0};
+            for (int d = 0; d < 2; ++d) {
+                const double period = d == 0 ? periods.first : periods.second;
+                const auto domain = support.domain(d);
+                if (period > 0.0 && (middle[d] < domain.first || middle[d] > domain.second))
+                    shift[d] = -period * std::floor((middle[d] - domain.first) / period);
+            }
+            for (int i = 0; i < pc.cv_count() && (shift[0] != 0.0 || shift[1] != 0.0); ++i) {
+                const auto [x, y, z, w] = pc.get_cv_4d(i);
+                pc.set_cv_4d(i, x + shift[0] * w, y + shift[1] * w, z, w);
+            }
+            NurbsCurve flipped = pc;
+            if (!flipped.reverse()) continue;
+            if (deviation(flipped) < deviation(pc)) std::swap(pc, flipped);
+            const bool duplicate = std::any_of(accepted.begin(), accepted.end(), [&](const NurbsCurve& item) { return item.jsondump() == pc.jsondump(); });
+            if (duplicate) continue;
+            if (curve_surface_intersection::same_parameter(world, pc, support, tolerance) == curve_surface_intersection::ParameterMatch::Matched) accepted.push_back(pc);
+            else loose.push_back(pc);
         }
-        if (accepted.size() == 1) return accepted.front();
-        const int selected = forward_source_seam(accepted);
-        if (selected < 0) return std::nullopt;
-        return accepted[forward ? selected : 1 - selected];
+        std::vector<NurbsCurve>& pick = accepted.empty() ? loose : accepted;
+        if (pick.empty()) return std::nullopt;
+        if (pick.size() > 1 && deviation(pick[1]) < deviation(pick[0])) std::swap(pick[0], pick[1]);
+        const int selected = pick.size() == 2 && deviation(pick[1]) <= 2.0 * deviation(pick[0]) + tolerance ? forward_seam(pick) : -1;
+        const NurbsCurve& pc = selected < 0 ? pick.front() : pick[forward ? selected : 1 - selected];
+        error = accepted.empty() ? deviation(pc) : 0.0;
+        return pc;
     }
 
-    /// Loops of a face on a projected surface: uv samples in curve order, exact pcurves under an affine projector.
+    /// Loops of a face on a plane or B-spline surface: uv seeds of each edge use in curve order, exact pcurves under an affine projector or certified from the file.
     void projected_loops(
         const std::vector<int>& bound_refs,
         const Proj& proj,
@@ -2856,75 +3705,47 @@ public:
         std::vector<Loop>& loops
     ) {
 
-        const int n = proj_srf.is_valid() ? 48 : 16;
-        Proj exact;
-
-        if (proj.kind == 1)
-            exact = proj;
-        else if (proj.kind == 0)
-            exact = bilinear_projector(proj_srf);
+        const Proj exact = proj.kind == 1 ? proj : bilinear_projector(proj_srf);
 
         for (int bid : bound_refs) {
             const std::optional<Bound> b = bound_loop(r, bid);
 
             if (!b)
-                continue;
+                throw std::runtime_error("bound #" + std::to_string(bid) + " is not an edge loop");
 
             Loop lp;
             lp.is_outer = b->is_outer;
 
-            for (int oe_id : b->oe_refs) {
-                int ec_ref = -1;
-                bool oe_orient = true;
-                std::tie(ec_ref, oe_orient) = oriented_edge(r, oe_id);
-
-                const int edge_idx = ec_ref < 0 ? -1 : get_edge(ec_ref);
-
-                if (edge_idx < 0)
-                    continue;
-
-                const BRepEdge& be = brep.m_edges[edge_idx];
-                const Point vs = brep.m_vertices[be.start_vertex].point;
-                const Point ve = brep.m_vertices[be.end_vertex].point;
+            for (const std::pair<int, bool>& use : bound_uses(r, *b, same_sense)) {
                 LoopEdge le;
-                le.edge_idx = edge_idx;
-                le.reversed = oe_orient != b->orient;
-                if (be.curve_3d_index >= 0) {
-                    const bool forward = !le.reversed == same_sense;
-                    const auto pc = certified_source_pcurve(edge_geom_id(r, ec_ref), surface_ref,
-                        brep.m_curves_3d[be.curve_3d_index], proj_srf, forward);
-                    if (pc) {
-                        le.pc2d = *pc;
-                        le.exact = le.source_pcurve = true;
-                        le.uv = sample_nurbs(le.pc2d, n);
-                        lp.edges.push_back(std::move(le));
-                        continue;
-                    }
+                le.edge_idx = get_edge(use.first);
+                le.reversed = use.second;
+                const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index];
+                const std::optional<NurbsCurve> pc = source_pcurve(le.edge_idx, edge_geom_id(r, use.first), surface_ref, proj_srf, !le.reversed, le.error);
+
+                if (pc) {
+                    le.pc2d = *pc;
+                    le.exact = le.error == 0.0;
+                    le.source_pcurve = true;
+                    le.uv = sample_nurbs(le.pc2d, 48);
+                    lp.edges.push_back(std::move(le));
+                    continue;
                 }
-                le.uv = uv_of_samples(proj, proj_srf, r.sample_curve(edge_geom_id(r, ec_ref), vs, ve, n));
 
-                if (proj.kind == 2)
-                    unwrap_seam(le.uv);
-
-                if (be.curve_3d_index >= 0)
-                    le.pc2d = exact_pcurve(exact, brep.m_curves_3d[be.curve_3d_index]);
-
-                le.exact = le.pc2d.is_valid();
-                if (le.exact && proj.kind == 0)
-                    le.exact = curve_surface_intersection::same_parameter(
-                        brep.m_curves_3d[be.curve_3d_index], le.pc2d, proj_srf, tolerance) ==
-                        curve_surface_intersection::ParameterMatch::Matched;
+                le.uv = uv_of_samples(proj, proj_srf, sample_nurbs(world, 48));
+                le.pc2d = exact_pcurve(exact, world);
+                le.exact = le.pc2d.is_valid() && (proj.kind == 1 || curve_surface_intersection::same_parameter(world, le.pc2d, proj_srf, tolerance) ==
+                    curve_surface_intersection::ParameterMatch::Matched);
                 lp.edges.push_back(le);
             }
 
-            if (!lp.edges.empty())
-                loops.push_back(lp);
-
-            pick_outer_loop(loops);
+            loops.push_back(lp);
         }
+
+        pick_outer_loop(loops);
     }
 
-    /// Complete only a certified full original boundary span at an existing pole vertex.
+    /// Pending edges of a loop, with a degenerated edge across each axis-aligned uv gap at one vertex that is certified to collapse onto it (a pole).
     std::vector<PendingEdge> projected_pending(const Loop& loop, const NurbsSurface& support) {
         const auto original = pending_of(loop);
         std::vector<PendingEdge> result;
@@ -2941,15 +3762,7 @@ public:
             if (vertex != next_vertex)
                 continue;
             const Point a = current.c2d.point_at_end(), b = next.c2d.point_at_start();
-            bool full_boundary = false;
-            for (int fixed = 0; fixed < 2; ++fixed) {
-                const auto boundary = support.domain(fixed), span = support.domain(1 - fixed);
-                full_boundary |= a[fixed] == b[fixed] &&
-                    (a[fixed] == boundary.first || a[fixed] == boundary.second) &&
-                    ((a[1 - fixed] == span.first && b[1 - fixed] == span.second) ||
-                     (a[1 - fixed] == span.second && b[1 - fixed] == span.first));
-            }
-            if (!full_boundary)
+            if ((a[0] != b[0]) == (a[1] != b[1]) || a.distance(b) <= 1e-9 * (1.0 + std::abs(a[0]) + std::abs(a[1])))
                 continue;
             const NurbsCurve bridge = polyline_nurbs({a, b}, 2);
             NurbsCurve world(3, false, 2, 2);
@@ -2964,18 +3777,66 @@ public:
         return result;
     }
 
-    /// Face projected onto its plane, cylinder chart or B-spline surface, with a filled surface when the projection has none.
+    /// Start angle of a revolution's window: the profile's when an edge is used twice (a seam), else the middle of the widest angular gap between samples of the face's edges.
+    double revolution_start(const std::vector<int>& bound_refs, const Axis2& a) {
+
+        std::vector<double> angles;
+        std::vector<int> seen;
+
+        for (int bid : bound_refs) {
+            const std::optional<Bound> b = bound_loop(r, bid);
+
+            for (int oe_id : b ? b->oe_refs : std::vector<int>()) {
+                const int ec = oriented_edge(r, oe_id).first;
+
+                if (std::find(seen.begin(), seen.end(), ec) != seen.end())
+                    return 0.0;
+
+                seen.push_back(ec);
+
+                for (const Point& p : sample_nurbs(brep.m_curves_3d[brep.m_edges[get_edge(ec)].curve_3d_index], 16))
+                    angles.push_back(angle_of(a, p));
+            }
+        }
+
+        std::sort(angles.begin(), angles.end());
+
+        if (angles.empty())
+            return 0.0;
+
+        double start = angles.back() + 0.5 * (angles.front() + 2.0 * PI - angles.back());
+        double widest = angles.front() + 2.0 * PI - angles.back();
+
+        for (size_t i = 1; i < angles.size(); i++)
+            if (angles[i] - angles[i - 1] > widest) {
+                widest = angles[i] - angles[i - 1];
+                start = 0.5 * (angles[i] + angles[i - 1]);
+            }
+
+        return start;
+    }
+
+    /// Face on a plane, with a padded patch over its loops, on a B-spline surface or on a surface of revolution; pcurves exact, certified from the file or fitted.
     void add_face_projected(const std::vector<int>& bound_refs, int surface_ref, bool same_sense) {
 
         const Proj proj = r.get_projector(surface_ref);
-        const NurbsSurface proj_srf = proj.kind == 0 ? r.fill_surface(surface_ref, 0, 1, 0, 1) : NurbsSurface();
+        const auto rev = r.revolution(surface_ref);
+        const NurbsSurface proj_srf = rev ? revolution_nurbs(rev->first, rev->second, revolution_start(bound_refs, rev->first))
+            : proj.kind == 0 ? r.fill_surface(surface_ref, 0, 1, 0, 1) : NurbsSurface();
+
+        if (proj.kind == 0 && !proj_srf.is_valid()) {
+            const StepEntity* e = r.get(surface_ref);
+            throw std::runtime_error("surface #" + std::to_string(surface_ref) + " " + (e && !e->parts.empty() ? e->parts[0].type : "") + " is not supported");
+        }
+
         std::vector<Loop> loops;
         projected_loops(bound_refs, proj, proj_srf, surface_ref, same_sense, loops);
 
         double tau_u = 0.0;
         double tau_v = 0.0;
-        std::tie(tau_u, tau_v) = surface_periods(proj, proj_srf);
+        std::tie(tau_u, tau_v) = surface_periods(proj_srf);
         chain_loops(loops, tau_u, tau_v);
+        split_seams(loops, tau_u, tau_v);
         center_inner_loops(loops, tau_u);
 
         NurbsSurface srf = proj_srf;
@@ -2986,69 +3847,76 @@ public:
             double vmin = 0.0;
             double vmax = 0.0;
             std::tie(umin, umax, vmin, vmax) = loops_bounds(loops);
-
-            if (umin > umax) {
-                umin = -1.0;
-                umax = 1.0;
-                vmin = -1.0;
-                vmax = 1.0;
-            }
-
             srf = r.fill_surface(surface_ref, umin, umax, vmin, vmax);
         }
 
         const int srf_idx = brep.add_surface(srf);
+        const Preimage pre = [&](const Point& p, const Point& guess) { return newton_uv(srf, p, guess, tau_u, tau_v); };
         outer_first(loops);
 
         std::vector<std::vector<PendingEdge>> pending;
 
-        for (const Loop& lp : loops)
+        for (Loop& lp : loops) {
+            for (LoopEdge& le : lp.edges)
+                if (!le.exact)
+                    le.pc2d = use_pcurve(le.edge_idx, false, srf, pre, le.uv, le.pc2d, le.error);
+
             pending.push_back(projected_pending(lp, srf));
+        }
 
         finish_face(srf_idx, !same_sense, pending);
     }
 
-    /// ADVANCED_FACE: vertex-loop face, analytic face, or projection onto the plane, cylinder chart or B-spline surface.
+    /// ADVANCED_FACE or FACE_SURFACE: vertex-loop face, analytic face, or face on a plane or B-spline surface.
     void add_face(int face_id) {
 
         const StepEntity* fent = r.get(face_id);
         const StepSubEntity* face = fent ? fent->find("ADVANCED_FACE") : nullptr;
 
+        if (fent && !face)
+            face = fent->find("FACE_SURFACE");
+
         if (!face)
-            return;
+            throw std::runtime_error("not an ADVANCED_FACE or FACE_SURFACE");
 
         const std::vector<int> bound_refs = list_refs(face->params);
         const int surface_ref = first_ref(face->params);
         const bool same_sense = last_flag(face->params, true);
         const std::vector<int> vl_ids = vertex_loop_ids(bound_refs);
 
-        if (!vl_ids.empty() && add_face_vertex_loop(vl_ids, surface_ref, same_sense))
+        if (!vl_ids.empty()) {
+            if (!add_face_vertex_loop(vl_ids, surface_ref, same_sense))
+                throw std::runtime_error("vertex-loop face is not a closed sphere- or torus-like surface");
+
             return;
+        }
 
         const AnFace an = r.get_analytic_srf(surface_ref);
 
-        if (an.kind >= 2 && add_face_analytic(bound_refs, surface_ref, same_sense, an))
-            return;
-
-        add_face_projected(bound_refs, surface_ref, same_sense);
+        if (an.kind >= 2)
+            add_face_analytic(bound_refs, same_sense, an);
+        else
+            add_face_projected(bound_refs, surface_ref, same_sense);
     }
 
-    /// BRep of a CLOSED_SHELL (one solid) or OPEN_SHELL (one shell), empty for anything else.
-    BRep build_from_shell(int shell_id) {
+    /// BRep of faces of a CLOSED_SHELL (one solid, its faces oriented consistently) or OPEN_SHELL (one shell) with tolerances raised to the gaps between its curves and vertices; throws naming the first face that cannot be built.
+    BRep build_from_shell(int shell_id, const std::vector<int>& faces) {
 
         const StepEntity* sent = r.get(shell_id);
-        const StepSubEntity* shell = sent ? sent->find("CLOSED_SHELL") : nullptr;
-
-        if (sent && !shell)
-            shell = sent->find("OPEN_SHELL");
-
-        if (!shell)
-            return BRep();
-
         brep.name = "step_brep";
 
-        for (int f : list_refs(shell->params))
-            add_face(f);
+        for (int f : faces) {
+            try {
+                add_face(f);
+            } catch (const std::exception& e) {
+                throw std::runtime_error("STEP face #" + std::to_string(f) + ": " + e.what());
+            }
+        }
+
+        apply_splits();
+
+        if (sent->has("CLOSED_SHELL"))
+            orient_shell(brep, face_refs);
 
         if (!face_refs.empty()) {
             const int sh = brep.add_shell(face_refs);
@@ -3056,6 +3924,8 @@ public:
             if (sent->has("CLOSED_SHELL"))
                 brep.add_solid({{sh, BRepOrientation::Forward}});
         }
+
+        brep.update_tolerances();
 
         return std::move(brep);
     }
@@ -3530,7 +4400,7 @@ public:
         return -1;
     }
 
-    /// Return the ADVANCED_FACE id of a brep face, emitting it once.
+    /// Return the ADVANCED_FACE id of a brep face, emitting it once: the loops run on the surface, so a reversed face's bounds carry .F. as its same_sense does.
     int face_id(int fi, BRepOrientation fo) {
 
         const BRepFace& f = brep.m_faces[fi];
@@ -3540,6 +4410,7 @@ public:
             return -1;
 
         std::vector<int> bounds;
+        const std::string sense = fo == BRepOrientation::Forward ? "T" : "F";
 
         for (size_t wi = 0; wi < f.wires.size(); wi++) {
             const int loop = wire_id(f.wires[wi]);
@@ -3548,14 +4419,12 @@ public:
                 continue;
 
             bounds.push_back(w.write_raw(
-                std::string(wi == 0 ? "FACE_OUTER_BOUND" : "FACE_BOUND") + "('',#" + std::to_string(loop) + ",.T.)"
+                std::string(wi == 0 ? "FACE_OUTER_BOUND" : "FACE_BOUND") + "('',#" + std::to_string(loop) + ",." + sense + ".)"
             ));
         }
 
         if (bounds.empty())
             return -1;
-
-        const std::string sense = fo == BRepOrientation::Forward ? "T" : "F";
 
         return w.write_raw(
             "ADVANCED_FACE(''," + fmt_ref_list(bounds) + ",#" + std::to_string(srf) + ",." + sense + ".)"
@@ -3778,11 +4647,13 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath, double toler
         const StepEntity* sh = r.get(shell_ref);
         const StepSubEntity* os = sh ? sh->find("ORIENTED_CLOSED_SHELL") : nullptr;
         const int inner = os ? first_ref(os->params) : -1;
-        BRepBuilder builder(r, tolerance);
-        BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref);
+        for (const std::vector<int>& faces : shell_parts(r, inner >= 0 ? inner : shell_ref)) {
+            BRepBuilder builder(r, tolerance);
+            BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref, faces);
 
-        if (!b.m_faces.empty())
-            out.push_back(std::move(b));
+            if (!b.m_faces.empty())
+                out.push_back(std::move(b));
+        }
     }
 
     return out;

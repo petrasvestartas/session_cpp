@@ -22,8 +22,9 @@ std::vector<NurbsSurface> read_file_step_nurbssurfaces(const std::string& filepa
 /// Every ADVANCED_FACE on a B-spline surface with its first edge loop sampled as the outer trim.
 std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std::string& filepath);
 
-/// One BRep per shell of every MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS and SHELL_BASED_SURFACE_MODEL, in file order.
-/// Linear tolerance for candidate trim certification, in input-coordinate units.
+/// One BRep per connected part of every shell of every MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS and SHELL_BASED_SURFACE_MODEL, in file order;
+/// throws std::runtime_error naming the first face whose geometry or topology cannot be read, so no face is dropped.
+/// Linear tolerance for pcurve certification and fitting, in input-coordinate units; edge and vertex tolerances carry larger gaps of the file.
 std::vector<BRep> read_file_step_breps(const std::string& filepath, double tolerance = 1e-7);
 
 /// One file holding the curves as bare B_SPLINE_CURVE_WITH_KNOTS entities; false when the file cannot be written.

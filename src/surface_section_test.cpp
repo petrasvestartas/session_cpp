@@ -4,9 +4,11 @@
 #include "curve_surface_intersection.h"
 #include "ssi_diagnostics.h"
 #include "nurbs_interval.h"
+#include "nurbs_implicit.h"
 #include "nurbs_memo.h"
 #include "mini_test.h"
 #include "primitives.h"
+#include "xform.h"
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -1019,4 +1021,159 @@ MINI_TEST("Surface Section Native", "Spheres One Inside The Other Are Apart By T
     // A sphere through the outer one is no such pair.
     const surface_section::Result crossing = surface_section::intersect(outer, Primitives::sphere_surface(0.9, 0, 0, 0.5), 1e-7);
     MINI_CHECK(crossing.complete && !crossing.curves.empty());
+}
+
+MINI_TEST("Surface Section Native", "Patch Normal Is The Weight Cubed Times The Cross Product") {
+    NurbsSurface surface(3, true, 4, 3, 4, 3);
+    surface.m_nurbsknot[0] = {0, 0, 0, 1, 1, 1};
+    surface.m_nurbsknot[1] = {0, 0, 1, 1};
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 3; ++j) {
+            surface.set_cv(i, j, {i * 0.7, j + 0.2 * i * i, std::sin(i + 2.0 * j)});
+            surface.set_weight(i, j, 1.0 + 0.3 * ((i + j) % 3));
+        }
+    const nurbs_implicit::Patches patches(surface, {0.5, 0.5, 0.0});
+    const std::array<nurbs_implicit::Bernstein, 4>& h = *patches.at(0, 0);
+    const std::array<nurbs_implicit::Bernstein, 3> n = nurbs_implicit::normal(h);
+    for (double s : {0.0, 0.3, 1.0})
+        for (double t : {0.0, 0.6, 1.0}) {
+            const std::vector<Vector> jet = surface.evaluate(s, t, 1);
+            const Vector cross = jet[2].cross(jet[1]);
+            const nurbs_interval::Interval w = nurbs_implicit::value(h[3], s, t);
+            const double cube = std::pow(std::midpoint(w.lo, w.hi), 3);
+            for (int d = 0; d < 3; ++d) {
+                const nurbs_interval::Interval value = nurbs_implicit::value(n[d], s, t);
+                MINI_CHECK(std::abs(std::midpoint(value.lo, value.hi) - cube * cross[d]) <= 1e-9 * cube * cross.magnitude());
+            }
+        }
+}
+
+MINI_TEST("Surface Section Native", "Freeform Loop Without The Four Parameter Search") {
+    // A paraboloid cap and a saddle, neither recognised: their section is one closed loop inside both patches, crossing no edge.
+    std::array<double, 25> cap = {}, saddle = {};
+    cap[0] = 0.0;
+    cap[5] = cap[1] = 1.0;
+    cap[10] = cap[2] = -1.0;
+    saddle[0] = 0.4 + 0.025;
+    saddle[5] = saddle[1] = -0.05;
+    saddle[6] = 0.1;
+    const NurbsSurface a = polynomial_surface(cap), b = polynomial_surface(saddle);
+    ssi_diagnostics::Statistics statistics;
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections;
+    {
+        ssi_diagnostics::Capture capture(statistics);
+        sections = Intersection::surface_surface(a, b, 1e-7);
+    }
+    MINI_CHECK(sections.size() == 1 && std::get<0>(sections[0]).is_closed());
+    MINI_CHECK(statistics.cells == 0);
+    for (int i = 0; i <= 256; ++i) {
+        const double t = std::lerp(std::get<0>(sections[0]).domain_start(), std::get<0>(sections[0]).domain_end(), i / 256.0);
+        const Point point = std::get<0>(sections[0]).point_at(t);
+        const Point pa = std::get<1>(sections[0]).point_at(t);
+        const Point pb = std::get<2>(sections[0]).point_at(t);
+        MINI_CHECK(point.distance(a.point_at(pa[0], pa[1])) <= 1e-7 && point.distance(b.point_at(pb[0], pb[1])) <= 1e-7);
+        // z = u + v - u^2 - v^2 meets z = 0.4 + 0.1 (u - 0.5) (v - 0.5): the loop stays inside the square.
+        MINI_CHECK(pa[0] > 0.05 && pa[0] < 0.95 && pa[1] > 0.05 && pa[1] < 0.95);
+    }
+}
+
+MINI_TEST("Surface Section Native", "Freeform Arcs Without The Four Parameter Search") {
+    // A wavy sheet and a tilted cubic sheet cross in open arcs from edge to edge.
+    std::array<double, 25> wave = {}, tilt = {};
+    wave[0] = 0.2;
+    wave[5] = 0.6;
+    wave[15] = -0.9;
+    wave[2] = 0.4;
+    tilt[0] = 0.25;
+    tilt[1] = 0.3;
+    tilt[3] = -0.2;
+    tilt[5] = -0.1;
+    const NurbsSurface a = polynomial_surface(wave), b = polynomial_surface(tilt);
+    ssi_diagnostics::Statistics statistics;
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections;
+    {
+        ssi_diagnostics::Capture capture(statistics);
+        sections = Intersection::surface_surface(a, b, 1e-7);
+    }
+    MINI_CHECK(!sections.empty() && statistics.cells == 0);
+    for (const auto& section : sections) {
+        MINI_CHECK(!std::get<0>(section).is_closed());
+        for (int i = 0; i <= 256; ++i) {
+            const double t = std::lerp(std::get<0>(section).domain_start(), std::get<0>(section).domain_end(), i / 256.0);
+            const Point point = std::get<0>(section).point_at(t);
+            const Point pa = std::get<1>(section).point_at(t);
+            const Point pb = std::get<2>(section).point_at(t);
+            MINI_CHECK(point.distance(a.point_at(pa[0], pa[1])) <= 1e-7 && point.distance(b.point_at(pb[0], pb[1])) <= 1e-7);
+        }
+    }
+}
+
+MINI_TEST("Surface Section Native", "Freeform Pair Kept Apart Where Its Normals Are Parallel") {
+    // A cap and a bowl, tilted, a thousandth apart where both normals are the same: no section, and none of it looked for in four parameters.
+    const auto paraboloid = [](double height, double curvature) {
+        std::vector<Point> points;
+        const double square[3] = {0.25, -0.25, 0.25};
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back({i * 0.5, j * 0.5, height + curvature * (square[i] + square[j])});
+        NurbsSurface surface = NurbsSurface::create(false, false, 2, 2, 3, 3, points);
+        surface.transform(Xform::rotation(Vector(1, 2, 0.5), 0.7));
+        return surface;
+    };
+    ssi_diagnostics::Statistics statistics;
+    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections;
+    {
+        ssi_diagnostics::Capture capture(statistics);
+        sections = Intersection::surface_surface(paraboloid(0.0, -1.0), paraboloid(1e-3, 1.0), 1e-7);
+    }
+    MINI_CHECK(sections.empty() && statistics.cells == 0);
+}
+
+namespace {
+
+NurbsSurface quadratic_patch(double a, double b, double c, double d, double e) {
+    // z = a u + b v + c u v + d u^2 + e (v - 0.375)^2 on the unit square, as a biquadratic Bezier patch.
+    std::vector<Point> points;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            const double u = i / 2.0, v = j / 2.0;
+            // Bernstein coefficients of u, v, u v, u^2, v^2 on [0, 1]: u -> i / 2, v -> j / 2, u v -> i j / 4, u^2 -> [0, 0, 1][i], v^2 -> [0, 0, 1][j].
+            const double uu = i == 2 ? 1.0 : 0.0, vv = j == 2 ? 1.0 : 0.0;
+            points.push_back({u, v, a * u + b * v + c * u * v + d * uu + e * (vv - 0.75 * v + 0.140625)});
+        }
+    return NurbsSurface::create(false, false, 2, 2, 3, 3, points);
+}
+
+NurbsSurface flat_quad(double z) {
+    std::vector<Point> points = {{-1, -1, z}, {-1, 2, z}, {2, -1, z}, {2, 2, z}};
+    return NurbsSurface::create(false, false, 1, 1, 2, 2, points);
+}
+
+}
+
+MINI_TEST("Surface Section Native", "Plane Section Ends Stay On The Edges They Leave Through") {
+    // z = 0.4 u - 0.4 v + 0.1 u v + 0.2 u^2 meets z = -0.35 from (0, 0.875) on one edge to about (0.0963, 1) on the next: both ends lie within a grid cell of the corner, and each stays on its own edge.
+    const NurbsSurface patch = quadratic_patch(0.4, -0.4, 0.1, 0.2, 0.0);
+    const surface_section::Result result = surface_section::intersect(patch, flat_quad(-0.35), 1e-7);
+    MINI_CHECK(result.complete && result.curves.size() == 1);
+    const NurbsCurve& uv = std::get<1>(result.curves[0]);
+    std::array<Point, 2> ends = {uv.point_at(uv.domain_start()), uv.point_at(uv.domain_end())};
+    if (ends[0][0] > ends[1][0])
+        std::swap(ends[0], ends[1]);
+    const double u = (-0.5 + std::sqrt(0.25 + 4 * 0.2 * 0.05)) / (2 * 0.2);
+    MINI_CHECK(std::abs(ends[0][0]) <= 1e-9 && std::abs(ends[0][1] - 0.875) <= 1e-7);
+    MINI_CHECK(std::abs(ends[1][1] - 1.0) <= 1e-9 && std::abs(ends[1][0] - u) <= 1e-7);
+}
+
+MINI_TEST("Surface Section Native", "Plane Section Between Seed Grid Lines Is Found") {
+    // z = 0.3 u + 0.5 (v - 0.375)^2 dips below z = 0.00125 only in a sliver on the edge u = 0 between v = 0.325 and 0.425, no line of the seed grid crossing it: the inventory's search with proof finds it.
+    const NurbsSurface patch = quadratic_patch(0.3, 0.0, 0.0, 0.0, 0.5);
+    const surface_section::Result result = surface_section::intersect(patch, flat_quad(0.00125), 1e-7);
+    MINI_CHECK(result.complete && result.curves.size() == 1);
+    const NurbsCurve& uv = std::get<1>(result.curves[0]);
+    std::array<Point, 2> ends = {uv.point_at(uv.domain_start()), uv.point_at(uv.domain_end())};
+    if (ends[0][1] > ends[1][1])
+        std::swap(ends[0], ends[1]);
+    MINI_CHECK(std::abs(ends[0][0]) <= 1e-9 && std::abs(ends[0][1] - 0.325) <= 1e-7);
+    MINI_CHECK(std::abs(ends[1][0]) <= 1e-9 && std::abs(ends[1][1] - 0.425) <= 1e-7);
 }

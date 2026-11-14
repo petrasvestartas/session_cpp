@@ -940,3 +940,89 @@ MINI_TEST("FileStep", "Noncollapsed Cylinder Boundary Is Not A Pole Bridge") {
         [](const auto& edge) { return edge.degenerated; }));
 }
 }
+
+namespace session_cpp {
+namespace {
+std::string step_fixture(const std::string& name) {
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/step" / name);
+    MINI_CHECK(input.good());
+    return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+std::vector<BRep> step_read_text(const std::string& text, const std::string& name) {
+    const auto path = serialization_path(name);
+    std::ofstream(path) << text;
+    std::vector<BRep> shapes;
+    try {
+        shapes = file_step::read_file_step_breps(path);
+    } catch (...) {
+        std::filesystem::remove(path);
+        throw;
+    }
+    std::filesystem::remove(path);
+    return shapes;
+}
+int step_uncertified_pcurves(const BRep& shape) {
+    int failed = 0;
+    for (const auto& edge : shape.m_edges)
+        for (const auto& image : edge.pcurves)
+            for (int index : {image.curve_2d_index, image.curve_2d_index_2})
+                if (index >= 0 && !edge.degenerated)
+                    failed += curve_surface_intersection::same_parameter(shape.m_curves_3d.at(edge.curve_3d_index), shape.m_curves_2d.at(index),
+                        shape.m_surfaces.at(image.surface_index), 1e-7) != curve_surface_intersection::ParameterMatch::Matched;
+    return failed;
+}
+}
+MINI_TEST("FileStep", "BRep Read Bound And Face Senses") {
+    // DATA in a header string, FACE_BOUND .F. loops, ADVANCED_FACE .F. on inward planes and a FACE_SURFACE
+    const auto shapes = step_read_text(step_fixture("senses_cube.step"), "senses_cube.step");
+    MINI_CHECK(shapes.size() == 1);
+    MINI_CHECK(shapes[0].face_count() == 6);
+    MINI_CHECK(shapes[0].is_valid() && shapes[0].is_solid());
+    MINI_CHECK(std::abs(shapes[0].volume_exact() - 1.0) < 1e-12);
+    MINI_CHECK(step_uncertified_pcurves(shapes[0]) == 0);
+}
+MINI_TEST("FileStep", "BRep Read Unsupported Surface Throws") {
+    std::string text = step_fixture("senses_cube.step");
+    const size_t at = text.rfind("PLANE('',#");
+    const size_t end = text.find(')', at);
+    text.replace(end, 1, ",1.,.F.)");
+    text.replace(at, 5, "OFFSET_SURFACE");
+    bool thrown = false;
+    try {
+        step_read_text(text, "offset_cube.step");
+    } catch (const std::runtime_error&) {
+        thrown = true;
+    }
+    MINI_CHECK(thrown);
+}
+MINI_TEST("FileStep", "BRep Read Ellipse On Cylinder Exact") {
+    const auto shapes = step_read_text(step_fixture("oblique_cylinder.step"), "oblique_cylinder.step");
+    MINI_CHECK(shapes.size() == 1);
+    MINI_CHECK(shapes[0].is_valid() && shapes[0].is_solid());
+    MINI_CHECK(std::abs(shapes[0].volume_exact() - 2.0 * Tolerance::PI) < 1e-12);
+    MINI_CHECK(step_uncertified_pcurves(shapes[0]) == 0);
+}
+MINI_TEST("FileStep", "BRep Read Loose Vertex Carries Tolerance") {
+    std::string text = step_fixture("senses_cube.step");
+    text.replace(text.find("(1.,1.,1.)"), 10, "(1.,1.,1.00001)");
+    const auto shapes = step_read_text(text, "loose_cube.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].is_solid());
+    double edge = 0.0;
+    for (const auto& e : shapes[0].m_edges)
+        edge = std::max(edge, e.tolerance);
+    MINI_CHECK(std::abs(edge - 1e-5) < 1e-12);
+    MINI_CHECK(std::abs(shapes[0].volume_exact() - 1.0) < 1e-12);
+}
+MINI_TEST("FileStep", "BRep Primitives Round Trip Exact") {
+    for (const BRep& shape : {BRep::create_cylinder(1.0, 2.0), BRep::create_cone(1.0, 2.0), BRep::create_sphere(1.5), BRep::create_torus(2.0, 0.5),
+                              BRep::create_block_with_hole(2.0, 2.0, 1.0, 0.3)}) {
+        const std::string path = serialization_path("round_trip_" + shape.name + ".step");
+        MINI_CHECK(file_step::write_file_step_brep(shape, path));
+        const auto read = file_step::read_file_step_breps(path);
+        MINI_CHECK(read.size() == 1 && read[0].is_solid());
+        MINI_CHECK(std::abs(read[0].volume_exact() - shape.volume_exact()) < 1e-12 * shape.volume_exact());
+        MINI_CHECK(step_uncertified_pcurves(read[0]) == 0);
+        std::filesystem::remove(path);
+    }
+}
+}
