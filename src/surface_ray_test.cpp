@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 
 using namespace session_cpp;
@@ -341,6 +342,46 @@ MINI_TEST("Surface Ray", "Flat Patches In Closed Form") {
     MINI_CHECK(off_triangle.complete && off_triangle.cells == 1 && off_triangle.roots.empty());
     const auto triangle_base = run("triangle_base", triangle, {0.25, -1, -1}, up);
     MINI_CHECK(!triangle_base.complete && triangle_base.cells == 1);
+}
+
+MINI_TEST("Surface Ray", "Recognised Forms Beside The Search") {
+    const Xform placed = Xform::translation(3, -2, 1) * Xform::rotation(Vector(1, 2, 3), 0.7);
+    const std::array<BRep, 4> solids = {BRep::create_sphere(0.9), BRep::create_cylinder(0.6, 1.2), BRep::create_cone(0.7, 1.1),
+        BRep::create_torus(0.8, 0.25)};
+    for (int kind = 0; kind < 4; ++kind) {
+        const NurbsSurface surface = solids[kind].m_surfaces[0].transformed(placed);
+        std::optional<surface_ray::Form> form;
+        surface_ray::Options options{200000, 96, true};
+        options.form = &form;
+        size_t roots = 0;
+        for (int k = 0; k < 40; ++k) {
+            const Point origin = Point(0.9 * std::sin(k), 0.9 * std::cos(3.0 * k), 0.4 + 0.5 * std::sin(7.0 * k)).transformed(placed);
+            const Vector direction(std::cos(5.0 * k), std::sin(2.0 * k), std::cos(11.0 * k));
+            const auto search = surface_ray::intersect(surface, origin, direction, 1e-7, {200000, 96, true});
+            const auto found = surface_ray::intersect(surface, origin, direction, 1e-7, options);
+            MINI_CHECK(found.complete == search.complete && found.failure == search.failure && found.roots.size() == search.roots.size());
+            for (size_t i = 0; i < std::min(found.roots.size(), search.roots.size()); ++i) {
+                const surface_ray::Root& a = found.roots[i];
+                const surface_ray::Root& b = search.roots[i];
+                MINI_CHECK(a.crossing == b.crossing);
+                MINI_CHECK(a.distance_enclosure[0] <= b.distance_enclosure[1] && b.distance_enclosure[0] <= a.distance_enclosure[1]);
+                MINI_CHECK(a.point.distance(b.point) <= 1e-7);
+            }
+            roots += found.roots.size();
+        }
+        MINI_CHECK(form && form->implicit.kind == kind + 2 && form->band <= form->gauge * 1e-7);
+        MINI_CHECK(roots >= 10);
+    }
+}
+
+MINI_TEST("Surface Ray", "Controls Clear The Ray") {
+    const NurbsSurface sphere = BRep::create_sphere(1.0).m_surfaces[0];
+    const auto beside = run("controls_beside", sphere, {3, 0, 0}, {0, 1, 0});
+    MINI_CHECK(beside.complete && beside.roots.empty() && beside.cells == 0);
+    const auto behind = run("controls_behind", sphere, {3, 0.1, 0.2}, {1, 0, 0});
+    MINI_CHECK(behind.complete && behind.roots.empty() && behind.cells == 0);
+    const auto through = run("controls_through", sphere, {-3, 0.1, 0.2}, {1, 0, 0});
+    MINI_CHECK(through.complete && through.roots.size() == 2 && through.cells > 0);
 }
 
 MINI_TEST("Surface Ray", "Invalid Inputs") {

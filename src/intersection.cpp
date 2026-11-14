@@ -15117,4 +15117,9 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
     return result;
 }
 
+nurbs_implicit::Implicit nurbs_implicit::recognize(const NurbsSurface& surface, double tolerance) {
+    const RecogSurface recognised = recognize_surface(surface, tolerance);
+    return {static_cast<int>(recognised.kind), recognised.p1, recognised.p2, recognised.r, recognised.r2};
+}
+
 } // namespace session_cpp

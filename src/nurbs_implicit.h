@@ -94,6 +94,9 @@ struct Implicit {
     int degree() const { return kind == 1 ? 1 : kind == 5 ? 4 : 2; }
 };
 
+/// The plane, sphere, cylinder, cone or torus samples of the surface fit within tolerance, kind 0 where none does: a candidate, confirmed only by a bound of its form on the surface.
+Implicit recognize(const NurbsSurface& surface, double tolerance);
+
 /// The implicit polynomial of homogeneous coordinates h = (x w, y w, z w, w) about `origin`, times a power of w: zero exactly where the patch meets the plane, sphere, cylinder, double cone or torus.
 inline Bernstein compose(const std::array<Bernstein, 4>& h, const Implicit& f, const std::array<double, 3>& origin) {
     std::array<Bernstein, 3> d;

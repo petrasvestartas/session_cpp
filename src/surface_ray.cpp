@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 
 namespace session_cpp::surface_ray {
@@ -171,6 +172,26 @@ bool bounds(const NurbsSurface& surface, const Frame& frame, const Rectangle& re
             }
         }
     return !first;
+}
+
+/// Whether the controls alone clear the ray, as the search clears a cell: all behind the origin, or all a tolerance to one side of the ray.
+bool cleared(const NurbsSurface& surface, const Frame& frame, double tolerance) {
+    bool behind = true;
+    std::array<bool, 4> side = {true, true, true, true};
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j) {
+            const double* cv = surface.cv(i, j);
+            const double weight = surface.is_rational() ? cv[3] : 1.0;
+            nurbs_interval::Homogeneous h;
+            for (int d = 0; d < 3; ++d)
+                h[d] = I(cv[d]) - I(frame.origin_coordinates[d]) * I(weight);
+            h[3] = I(weight);
+            const Pair value = transverse(h, frame);
+            const double margin = tolerance * weight;
+            behind = behind && (I(frame.sign) * h[frame.dominant]).hi < -margin;
+            side = {side[0] && value[0].lo > margin, side[1] && value[0].hi < -margin, side[2] && value[1].lo > margin, side[3] && value[1].hi < -margin};
+        }
+    return behind || side[0] || side[1] || side[2] || side[3];
 }
 
 bool separated(const Bounds& value) {
@@ -575,6 +596,308 @@ bool bilinear_roots(const NurbsSurface& surface, const Point& origin, const Vect
     return true;
 }
 
+using Polynomial = std::array<I, 5>; // Coefficients of 1, s, s squared, ...
+
+Polynomial plus(const Polynomial& a, double weight, const Polynomial& b) {
+    Polynomial result;
+    for (int k = 0; k < 5; ++k)
+        result[k] = a[k] + I(weight) * b[k];
+    return result;
+}
+
+Polynomial times(const Polynomial& a, const Polynomial& b) {
+    Polynomial result;
+    for (int i = 0; i < 5; ++i)
+        for (int j = 0; i + j < 5; ++j)
+            result[i + j] = result[i + j] + a[i] * b[j];
+    return result;
+}
+
+I value(const Polynomial& g, I s) {
+    I result = g[4];
+    for (int k = 3; k >= 0; --k)
+        result = result * s + g[k];
+    return result;
+}
+
+/// The implicit form at start + s direction about the origin of the patches, built of the double constants nurbs_implicit::compose takes.
+Polynomial along_line(const nurbs_implicit::Implicit& f, const std::array<double, 3>& origin, const std::array<I, 3>& start, const Vector& direction) {
+    Polynomial along, square, constant;
+    for (int k = 0; k < 3; ++k) {
+        const Polynomial e = {start[k] + I(origin[k] - f.point[k]), I(direction[k])};
+        along = plus(along, f.axis[k], e);
+        square = plus(square, 1.0, times(e, e));
+    }
+    constant[0] = I(1.0);
+    const Polynomial height = times(along, along);
+    if (f.kind == 1)
+        return along;
+    if (f.kind == 2)
+        return plus(square, -f.radius * f.radius, constant);
+    if (f.kind == 3)
+        return plus(plus(square, -1.0, height), -f.radius * f.radius, constant);
+    if (f.kind == 4) {
+        const double cosine = std::cos(f.radius);
+        return plus(height, -cosine * cosine, square);
+    }
+    const double major = f.radius * f.radius;
+    const Polynomial shell = plus(square, major - f.minor * f.minor, constant);
+    return plus(times(shell, shell), -4.0 * major, plus(square, -1.0, height));
+}
+
+/// The stretches of [near, far] where the polynomial can lie within band of zero, each on a piece it is monotone on and no longer than the band over its least slope there allows. False where a piece is neither cleared nor monotone: a double root.
+bool stretches(const Polynomial& g, double band, double near, double far, std::vector<std::array<double, 2>>& found) {
+    Polynomial slope;
+    for (int k = 1; k < 5; ++k)
+        slope[k - 1] = I(k) * g[k];
+    std::vector<std::array<double, 3>> work = {{near, far, 0.0}};
+    for (int budget = 256; !work.empty(); --budget) {
+        if (budget == 0)
+            return false;
+        const auto [lo, hi, depth] = work.back();
+        work.pop_back();
+        const I rate = value(slope, I(lo, hi)), middle = value(g, I(std::midpoint(lo, hi))) + rate * (I(lo, hi) - I(std::midpoint(lo, hi)));
+        const I range = value(g, I(lo, hi));
+        if (std::max(range.lo, middle.lo) > band || std::min(range.hi, middle.hi) < -band)
+            continue;
+        if (rate.lo > 0.0 || rate.hi < 0.0) {
+            // Monotone: its least and largest values are at the ends.
+            const I first = value(g, I(rate.lo > 0.0 ? lo : hi)), last = value(g, I(rate.lo > 0.0 ? hi : lo));
+            if (first.lo > band || last.hi < -band)
+                continue;
+            double s = std::midpoint(lo, hi);
+            for (int iteration = 0; iteration < 16; ++iteration) {
+                const I at = value(g, I(s)), steep = value(slope, I(s));
+                const double next = std::clamp(s - std::midpoint(at.lo, at.hi) / std::midpoint(steep.lo, steep.hi), lo, hi);
+                if (!std::isfinite(next) || next == s)
+                    break;
+                s = next;
+            }
+            const I reach = (I(band) + I(nurbs_interval::magnitude(value(g, I(s))))) / I(std::min(std::abs(rate.lo), std::abs(rate.hi)));
+            const I low = I(s) - reach, high = I(s) + reach;
+            if (!nurbs_interval::finite(low) || !nurbs_interval::finite(high))
+                return false;
+            found.push_back({std::max(lo, low.lo), std::min(hi, high.hi)});
+            continue;
+        }
+        if (depth >= 64 || !(std::midpoint(lo, hi) > lo && std::midpoint(lo, hi) < hi))
+            return false;
+        work.push_back({std::midpoint(lo, hi), hi, depth + 1});
+        work.push_back({lo, std::midpoint(lo, hi), depth + 1});
+    }
+    return true;
+}
+
+bool meets(const std::array<double, 6>& box, const std::vector<std::array<I, 3>>& stretches) {
+    return std::any_of(stretches.begin(), stretches.end(), [&box](const std::array<I, 3>& stretch) {
+        for (int k = 0; k < 3; ++k)
+            if (box[k] > stretch[k].hi || stretch[k].lo > box[k + 3])
+                return false;
+        return true;
+    });
+}
+
+/// Roots on a surface lying on a recognised form. Every root lies where the form along the ray is within its band of zero: a few short stretches of the ray. A root on a stretch ahead of the origin is found by Newton and held in a Krawczyk chart, and every Bezier cell outside the charts is proved off those stretches. False, leaving the search to decide, where the form is not confirmed, a stretch is not short or lies at the origin, a root is not certified, or a cell is not cleared.
+bool form_roots(const NurbsSurface& surface, std::optional<Form>& slot, const Point& origin, const Vector& direction,
+    double tolerance, const Options& options, Result& result) {
+    if (!slot)
+        slot.emplace(surface, nurbs_implicit::recognize(surface, tolerance));
+    const Form& form = *slot;
+    const nurbs_implicit::Patches& patches = form.patches;
+    if (!(form.band <= form.gauge * tolerance))
+        return false;
+    const double infinity = std::numeric_limits<double>::infinity();
+    std::array<I, 3> start;
+    std::array<double, 6> box = {infinity, infinity, infinity, -infinity, -infinity, -infinity};
+    for (int k = 0; k < 3; ++k) {
+        start[k] = I(origin[k]) - I(patches.origin[k]);
+        for (const std::array<double, 6>& part : form.boxes) {
+            box[k] = std::min(box[k], part[k]);
+            box[k + 3] = std::max(box[k + 3], part[k + 3]);
+        }
+    }
+    double near = -infinity, far = infinity;
+    for (int k = 0; k < 3; ++k) {
+        if (direction[k] == 0.0) {
+            if (start[k].hi < box[k] || start[k].lo > box[k + 3])
+                return true;
+            continue;
+        }
+        const I a = (I(box[k]) - start[k]) / I(direction[k]), b = (I(box[k + 3]) - start[k]) / I(direction[k]);
+        near = std::max(near, std::min(a.lo, b.lo));
+        far = std::min(far, std::max(a.hi, b.hi));
+    }
+    std::vector<std::array<double, 2>> zones;
+    if (near > far)
+        return true;
+    if (!stretches(along_line(form.implicit, patches.origin, start, direction), form.band, near, far, zones))
+        return false;
+    I squared;
+    for (int k = 0; k < 3; ++k)
+        squared = squared + square(I(direction[k]));
+    const I scale = square_root(squared);
+    std::vector<std::array<I, 3>> ahead;
+    for (const std::array<double, 2>& zone : zones) {
+        const I distance = I(zone[0], zone[1]) * scale;
+        if (distance.hi < -2.0 * tolerance)
+            continue;
+        if (!(distance.lo > 2.0 * tolerance))
+            return false;
+        ahead.push_back({});
+        for (int k = 0; k < 3; ++k)
+            ahead.back()[k] = start[k] + I(zone[0], zone[1]) * I(direction[k]);
+    }
+    if (ahead.empty())
+        return true;
+    const Frame frame = make_frame(origin, direction, patches.spans);
+    const Rectangle domain = {patches.spans[0].front(), patches.spans[0].back(), patches.spans[1].front(), patches.spans[1].back()};
+    std::vector<Chart> charts;
+    for (size_t z = 0; z < ahead.size(); ++z) {
+        std::array<double, 3> point;
+        double reach = 16.0 * tolerance;
+        for (int k = 0; k < 3; ++k) {
+            point[k] = patches.origin[k] + std::midpoint(ahead[z][k].lo, ahead[z][k].hi);
+            reach = std::max(reach, 2.0 * (ahead[z][k].hi - ahead[z][k].lo));
+        }
+        for (int i = 0; i < patches.count(0); ++i)
+            for (int j = 0; j < patches.count(1); ++j) {
+                if (!meets(form.boxes[i * patches.count(1) + j], {ahead[z]}))
+                    continue;
+                std::array<double, 2> uv = patches.parameters(i, j, 0.5, 0.5);
+                if (!nurbs_implicit::nearest(patches, point, reach, uv) || !polish(surface, frame, domain, tolerance, uv[0], uv[1]) || std::any_of(charts.begin(), charts.end(),
+                        [&uv](const Chart& chart) { return contains(chart.root.chart, {uv[0], uv[0], uv[1], uv[1]}); }))
+                    continue;
+                Rectangle chart;
+                Krawczyk proof;
+                for (int d = 0, cell; d < 2; ++d) {
+                    cell = std::clamp(static_cast<int>(std::upper_bound(patches.spans[d].begin(), patches.spans[d].end(), uv[d]) - patches.spans[d].begin()) - 1, 0, patches.count(d) - 1);
+                    const double half = (patches.spans[d][cell + 1] - patches.spans[d][cell]) * 0.0625;
+                    chart[2 * d] = std::max(domain[2 * d], uv[d] - half);
+                    chart[2 * d + 1] = std::min(domain[2 * d + 1], uv[d] + half);
+                }
+                for (int attempt = 0; attempt < 6 && !proof.unique; ++attempt) {
+                    if (attempt > 0)
+                        for (int d = 0; d < 2; ++d) {
+                            const double half = (chart[2 * d + 1] - chart[2 * d]) * 0.25;
+                            chart[2 * d] = std::max(domain[2 * d], uv[d] - half);
+                            chart[2 * d + 1] = std::min(domain[2 * d + 1], uv[d] + half);
+                        }
+                    proof = krawczyk(surface, frame, chart);
+                }
+                if (!proof.unique)
+                    return false;
+                // About the polished root a box a tolerance across on the surface: its enclosure is narrow enough for root_value at once.
+                const std::vector<Vector> jet = surface.evaluate(uv[0], uv[1], 1);
+                Rectangle box = chart;
+                for (int d = 0; d < 2 && jet.size() == 3; ++d) {
+                    const double reach = tolerance / jet[2 - d].magnitude();
+                    if (std::isfinite(reach)) {
+                        box[2 * d] = std::max(chart[2 * d], uv[d] - reach);
+                        box[2 * d + 1] = std::min(chart[2 * d + 1], uv[d] + reach);
+                    }
+                }
+                const Krawczyk tight = krawczyk(surface, frame, box);
+                Root root;
+                if (!root_value(surface, frame, chart, tight.unique ? tight.enclosure : proof.enclosure, proof.crossing, tolerance, options.include_origin, root))
+                    return false;
+                for (const std::array<double, 2>& zone : zones) {
+                    const I distance = I(zone[0], zone[1]) * scale;
+                    if (root.distance_enclosure[0] <= distance.hi && distance.lo <= root.distance_enclosure[1] && !(distance.lo > 2.0 * tolerance))
+                        return false;
+                }
+                if (!(root.distance_enclosure[0] > 0.0) || !append(result, charts, std::move(root), options.include_origin))
+                    return false;
+            }
+    }
+    struct Cell {
+        std::array<nurbs_implicit::Bernstein, 4> h;
+        std::array<double, 4> box;
+        int i, j, depth;
+    };
+    std::vector<Cell> work;
+    for (int i = 0; i < patches.count(0); ++i)
+        for (int j = 0; j < patches.count(1); ++j)
+            if (meets(form.boxes[i * patches.count(1) + j], ahead))
+                work.push_back({*patches.at(i, j), {0.0, 1.0, 0.0, 1.0}, i, j, 0});
+    while (!work.empty()) {
+        Cell cell = std::move(work.back());
+        work.pop_back();
+        ++result.cells;
+        Rectangle rectangle;
+        for (int d = 0; d < 2; ++d) {
+            const int index = d ? cell.j : cell.i;
+            const I first(patches.spans[d][index]), width = I(patches.spans[d][index + 1]) - first;
+            rectangle[2 * d] = (first + width * I(cell.box[2 * d])).lo;
+            rectangle[2 * d + 1] = (first + width * I(cell.box[2 * d + 1])).hi;
+        }
+        if (std::any_of(charts.begin(), charts.end(), [&rectangle](const Chart& chart) { return contains(chart.root.chart, rectangle); }) ||
+            (cell.depth > 0 && !meets(nurbs_implicit::hull(cell.h), ahead)))
+            continue;
+        if (cell.depth >= 24 || result.cells >= 512)
+            return false;
+        const int d = cell.depth % 2;
+        Cell low{{}, cell.box, cell.i, cell.j, cell.depth + 1}, high = low;
+        low.box[2 * d + 1] = high.box[2 * d] = std::midpoint(cell.box[2 * d], cell.box[2 * d + 1]);
+        for (int k = 0; k < 4; ++k)
+            nurbs_implicit::halve(cell.h[k], d, low.h[k], high.h[k]);
+        work.push_back(std::move(high));
+        work.push_back(std::move(low));
+    }
+    std::sort(result.roots.begin(), result.roots.end(), [](const Root& a, const Root& b) { return a.distance < b.distance; });
+    return true;
+}
+
+std::array<double, 3> centre(const NurbsSurface& surface) {
+    std::array<double, 3> lo = {surface.get_cv(0, 0)[0], surface.get_cv(0, 0)[1], surface.get_cv(0, 0)[2]}, hi = lo;
+    for (int i = 0; i < surface.cv_count(0); ++i)
+        for (int j = 0; j < surface.cv_count(1); ++j)
+            for (int k = 0; k < 3; ++k) {
+                lo[k] = std::min(lo[k], surface.get_cv(i, j)[k]);
+                hi[k] = std::max(hi[k], surface.get_cv(i, j)[k]);
+            }
+    return {std::midpoint(lo[0], hi[0]), std::midpoint(lo[1], hi[1]), std::midpoint(lo[2], hi[2])};
+}
+
+}
+
+Form::Form(const NurbsSurface& surface, const nurbs_implicit::Implicit& recognised) : implicit(recognised), patches(surface, centre(surface)) {
+    nurbs_implicit::Implicit& f = implicit;
+    const double length = std::hypot(f.axis[0], f.axis[1], f.axis[2]);
+    if (f.kind < 1 || f.kind > 5 || (f.kind != 2 && !(length > 0.0)) || (f.kind != 1 && !(f.radius > 0.0)) ||
+        (f.kind == 5 && !(f.minor > 0.0 && f.minor < f.radius)) || surface.dimension() != 3 ||
+        f.degree() * std::max(surface.degree(0), surface.degree(1)) > nurbs_implicit::degree_limit)
+        return;
+    if (f.kind != 2)
+        for (double& value : f.axis)
+            value /= length;
+    double slack = 0.0, weight = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < patches.count(0); ++i)
+        for (int j = 0; j < patches.count(1); ++j) {
+            const std::array<nurbs_implicit::Bernstein, 4>* h = patches.at(i, j);
+            if (!h)
+                return;
+            boxes.push_back(nurbs_implicit::hull(*h));
+            const nurbs_implicit::Bernstein form = nurbs_implicit::compose(*h, f, patches.origin);
+            slack = std::max(slack, form.peak() + form.error);
+            weight = std::min(weight, *std::min_element((*h)[3].c.begin(), (*h)[3].c.end()) - (*h)[3].error);
+        }
+    if (!(weight > 0.0))
+        return;
+    I power(1.0);
+    for (int k = 0; k < f.degree(); ++k)
+        power = power * I(weight);
+    band = (I(slack) / power).hi;
+    gauge = f.kind == 1 ? 1.0 : f.kind == 5 ? 8.0 * f.radius * (f.radius - f.minor) * f.minor : 2.0 * f.radius;
+    if (f.kind == 4) {
+        double reach = 0.0;
+        for (int k = 0; k < 3; ++k) {
+            double extent = 0.0;
+            for (const std::array<double, 6>& part : boxes)
+                extent = std::max({extent, std::abs(part[k] + patches.origin[k] - f.point[k]), std::abs(part[k + 3] + patches.origin[k] - f.point[k])});
+            reach = std::hypot(reach, extent);
+        }
+        gauge = reach * std::sin(2.0 * f.radius);
+    }
 }
 
 Result intersect(const NurbsSurface& surface, const Point& origin, const Vector& direction,
@@ -608,6 +931,13 @@ Result intersect(const NurbsSurface& surface, const Point& origin, const Vector&
             }
     const Rectangle domain = {spans[0].front(), spans[0].back(), spans[1].front(), spans[1].back()};
     const Frame frame = make_frame(origin, direction, spans);
+    if (cleared(surface, frame, tolerance))
+        return result;
+    if (options.form) {
+        Result found;
+        if (form_roots(surface, *options.form, origin, direction, tolerance, options, found))
+            return found;
+    }
     std::vector<Cell> work;
     for (std::size_t i = 1; i < spans[0].size(); ++i)
         for (std::size_t j = 1; j < spans[1].size(); ++j)

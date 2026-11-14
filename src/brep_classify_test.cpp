@@ -154,6 +154,19 @@ MINI_TEST("BRep Native Classification", "Thin Torus And Cone") {
     MINI_CHECK(brep_classify::point(cone, {0.75, 0, 1}, 1e-7) == brep_classify::State::Outside);
 }
 
+MINI_TEST("BRep Native Classification", "Recognised Forms Kept On The Solid") {
+    const BRep torus = BRep::create_torus(0.8, 0.25);
+    const brep_classify::Solid solid(torus);
+    MINI_CHECK(solid.forms.size() == 1 && !solid.forms[0]);
+    MINI_CHECK(brep_classify::point(solid, {0.8, 0.1, 0.05}, 1e-7) == brep_classify::State::Inside);
+    MINI_CHECK(solid.forms[0] && solid.forms[0]->implicit.kind == 5);
+    const surface_ray::Form* kept = &*solid.forms[0];
+    MINI_CHECK(brep_classify::point(solid, {0.1, 0.1, 0}, 1e-7) == brep_classify::State::Outside);
+    MINI_CHECK(brep_classify::point(solid, {0.3, -0.7, 0.2}, 1e-7) == brep_classify::State::Inside);
+    MINI_CHECK(brep_classify::point(solid, {0.3, -0.7, 0.3}, 1e-7) == brep_classify::State::Outside);
+    MINI_CHECK(&*solid.forms[0] == kept);
+}
+
 MINI_TEST("BRep Native Classification", "Scale And Translation") {
     for (double scale : {0.001, 1.0, 1000.0}) {
         const BRep sphere = BRep::create_sphere(scale);

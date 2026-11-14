@@ -255,6 +255,7 @@ void intersect_face(RayResult& result, const Solid& solid, int face, const RayFr
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
     surface_ray::Options options;
     options.include_origin = true;
+    options.form = &solid.forms[brep.m_faces[face].surface_index];
     // The origin lies on this face's surface outside its trim: that root is no hit, and at distance zero it can not be isolated. The ray starts where it has left the surface, unless it runs too flat along it to say where that is.
     double advance = 0.0;
     if (grazed) {
@@ -408,6 +409,7 @@ Solid::Solid(const BRep& model, bool boundaries) : brep(model), solid(model.is_s
             oriented[face.index] = true;
         }
     boxes.resize(brep.m_surfaces.size());
+    forms.resize(boxes.size());
     for (size_t k = 0; k < boxes.size(); ++k) {
         const NurbsSurface& surface = brep.m_surfaces[k];
         xyz lo = surface.get_cv(0, 0), hi = lo;

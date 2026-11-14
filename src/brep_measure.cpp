@@ -28,6 +28,22 @@ constexpr std::array<double, 4> coarse_nodes = {0.1834346424956498, 0.5255324099
 constexpr std::array<double, 4> coarse_weights = {0.3626837833783620, 0.3137066458778873,
     0.2223810344533745, 0.1012285362903763};
 
+// Kronrod rules of 15 and 21 points, nodes from the middle out, each with the weights of its embedded Gauss rule of 7 or 10 points, zero off that rule's nodes.
+constexpr std::array<double, 8> k15_nodes = {0.0, 0.20778495500789847, 0.40584515137739717, 0.58608723546769113,
+    0.74153118559939444, 0.86486442335976907, 0.94910791234275852, 0.99145537112081264};
+constexpr std::array<double, 8> k15_weights = {0.20948214108472783, 0.20443294007529889, 0.19035057806478541,
+    0.16900472663926790, 0.14065325971552592, 0.10479001032225018, 0.063092092629978553, 0.022935322010529225};
+constexpr std::array<double, 8> g7_weights = {0.41795918367346939, 0.0, 0.38183005050511894, 0.0, 0.27970539148927667, 0.0,
+    0.12948496616886969, 0.0};
+constexpr std::array<double, 11> k21_nodes = {0.0, 0.14887433898163121, 0.29439286270146020, 0.43339539412924719,
+    0.56275713466860468, 0.67940956829902441, 0.78081772658641690, 0.86506336668898451, 0.93015749135570823,
+    0.97390652851717172, 0.99565716302580808};
+constexpr std::array<double, 11> k21_weights = {0.14944555400291691, 0.14773910490133849, 0.14277593857706008,
+    0.13470921731147333, 0.12349197626206585, 0.10938715880229764, 0.093125454583697606, 0.075039674810919953,
+    0.054755896574351996, 0.032558162307964727, 0.011694638867371874};
+constexpr std::array<double, 11> g10_weights = {0.0, 0.29552422471475287, 0.0, 0.26926671930999636, 0.0,
+    0.21908636251598204, 0.0, 0.14945134915058059, 0.0, 0.066671344308688138, 0.0};
+
 // Higher-order inner retry avoids bisecting smooth rational span integrals.
 constexpr std::array<double, 16> higher_nodes = {0.04830766568773831, 0.14447196158279649, 0.23928736225213706,
     0.33186860228212767, 0.42135127613063533, 0.50689990893222936,
@@ -55,6 +71,21 @@ double gauss(const Function& function, double first, double last,
     return half * sum;
 }
 
+/// A Kronrod sum and its embedded Gauss sum from the same values.
+template<typename Function, size_t N>
+std::array<double, 2> kronrod(const Function& function, double first, double last,
+    const std::array<double, N>& points, const std::array<double, N>& coefficients, const std::array<double, N>& embedded) {
+    const double middle = (first + last) * 0.5, half = (last - first) * 0.5;
+    const double centre = function(middle);
+    std::array<double, 2> sum = {coefficients[0] * centre, embedded[0] * centre};
+    for (size_t i = 1; i < N; ++i) {
+        const double pair = function(middle - half * points[i]) + function(middle + half * points[i]);
+        sum[0] += coefficients[i] * pair;
+        sum[1] += embedded[i] * pair;
+    }
+    return {half * sum[0], half * sum[1]};
+}
+
 struct Work {
     size_t total = 0;
     size_t inner = 0;
@@ -66,9 +97,15 @@ struct Work {
     int outer_depth = 0;
 };
 
+/// The quadrature sums of inner integrals by support, v and ends, kept across the passes of one volume: a pass at another tolerance decides on the sums an earlier pass found.
+struct Sums {
+    std::map<std::array<std::uint64_t, 4>, std::array<double, 3>> found;
+    std::array<std::uint64_t, 2> line{}; // Support and v of the inner integrals now asked for.
+};
+
 template<typename Function>
 double integrate(const Function& function, double first, double last,
-                 double tolerance, Work& work, int depth = 0, bool inner = false) {
+                 double tolerance, Work& work, int depth = 0, bool inner = false, Sums* sums = nullptr) {
     if (first == last)
         return 0.0;
     ++(inner ? work.inner : work.outer);
@@ -76,8 +113,16 @@ double integrate(const Function& function, double first, double last,
     maximum_depth = std::max(maximum_depth, depth);
     if (++work.total > 200000)
         throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
-    const double fine = gauss(function, first, last, nodes, weights);
-    const double coarse = gauss(function, first, last, coarse_nodes, coarse_weights);
+    std::array<double, 3>* known = sums ? &sums->found.try_emplace({sums->line[0], sums->line[1], std::bit_cast<std::uint64_t>(first),
+        std::bit_cast<std::uint64_t>(last)}, std::array<double, 3>{NAN, NAN, NAN}).first->second : nullptr;
+    std::array<double, 2> pair;
+    if (known && !std::isnan((*known)[0]))
+        pair = {(*known)[0], (*known)[1]};
+    else
+        pair = inner ? kronrod(function, first, last, k21_nodes, k21_weights, g10_weights) : kronrod(function, first, last, k15_nodes, k15_weights, g7_weights);
+    if (known)
+        std::copy(pair.begin(), pair.end(), known->begin());
+    const double fine = pair[0], coarse = pair[1];
     if (!std::isfinite(fine) || !std::isfinite(coarse))
         throw std::runtime_error("Native BRep volume encountered a nonfinite integrand");
     if (std::abs(fine - coarse) <= tolerance)
@@ -87,7 +132,9 @@ double integrate(const Function& function, double first, double last,
         ++work.inner;
         if (++work.total > 200000)
             throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
-        const double higher = gauss(function, first, last, higher_nodes, higher_weights);
+        const double higher = known && !std::isnan((*known)[2]) ? (*known)[2] : gauss(function, first, last, higher_nodes, higher_weights);
+        if (known)
+            (*known)[2] = higher;
         if (!std::isfinite(higher))
             throw std::runtime_error("Native BRep volume encountered a nonfinite integrand");
         if (std::abs(higher - fine) <= tolerance)
@@ -97,8 +144,8 @@ double integrate(const Function& function, double first, double last,
     const double middle = (first + last) * 0.5;
     if (depth >= 22 || middle == first || middle == last)
         throw std::runtime_error("Native BRep volume did not converge at the requested tolerance");
-    return integrate(function, first, middle, tolerance * 0.5, work, depth + 1, inner) +
-        integrate(function, middle, last, tolerance * 0.5, work, depth + 1, inner);
+    return integrate(function, first, middle, tolerance * 0.5, work, depth + 1, inner, sums) +
+        integrate(function, middle, last, tolerance * 0.5, work, depth + 1, inner, sums);
 }
 
 
@@ -202,18 +249,13 @@ inline void bernstein(int degree, double s, double* value, double* derivative) {
     }
 }
 
-/// z times the z of the normal of a Bezier patch of controls x y z w over cell at (u, v); P and Q above zero are the degrees known at compile time. False where the weight vanishes.
-template <int P, int Q>
-inline bool patch_flux(const double* control, int degree_u, int degree_v, bool rational, const std::array<double, 4>& cell,
-    double u, double v, double& flux) {
-    const int p = P ? P : degree_u, q = Q ? Q : degree_v;
-    const double du = cell[1] - cell[0], dv = cell[3] - cell[2];
-    double bu[patch_order], gu[patch_order], bv[patch_order], gv[patch_order];
-    bernstein(p, (u - cell[0]) / du, bu, gu);
-    bernstein(q, (v - cell[2]) / dv, bv, gv);
-    // The homogeneous point and its partials, rows along v first; x y w is all the normal's z takes.
-    double point[4] = {0.0, 0.0, 0.0, 0.0}, along_u[4] = {0.0, 0.0, 0.0, 0.0}, along_v[4] = {0.0, 0.0, 0.0, 0.0};
-    for (int i = 0; i <= p; ++i) {
+/// The rows of a Bezier patch of controls x y z w over cell, contracted along v at v: each row's point and, in x y w, its slope along v. Q above zero is the degree known at compile time.
+template <int Q>
+inline void patch_rows(const double* control, int degree_u, int degree_v, const std::array<double, 4>& cell, double v, double* rows, double* slopes) {
+    const int q = Q ? Q : degree_v;
+    double bv[patch_order], gv[patch_order];
+    bernstein(q, (v - cell[2]) / (cell[3] - cell[2]), bv, gv);
+    for (int i = 0; i <= degree_u; ++i, rows += 4, slopes += 4) {
         double row[4] = {0.0, 0.0, 0.0, 0.0}, slope[4] = {0.0, 0.0, 0.0, 0.0};
         for (int j = 0; j <= q; ++j, control += 4) {
             for (int d = 0; d < 4; ++d)
@@ -221,11 +263,27 @@ inline bool patch_flux(const double* control, int degree_u, int degree_v, bool r
             for (int d : {0, 1, 3})
                 slope[d] += gv[j] * control[d];
         }
+        std::copy_n(row, 4, rows);
+        std::copy_n(slope, 4, slopes);
+    }
+}
+
+/// z times the z of the normal of the patch at (u, v) from its rows at v; P above zero is the degree known at compile time. False where the weight vanishes.
+template <int P>
+inline bool patch_flux(const double* rows, const double* slopes, int degree_u, bool rational, const std::array<double, 4>& cell,
+    double u, double& flux) {
+    const int p = P ? P : degree_u;
+    const double du = cell[1] - cell[0], dv = cell[3] - cell[2];
+    double bu[patch_order], gu[patch_order];
+    bernstein(p, (u - cell[0]) / du, bu, gu);
+    // The homogeneous point and its partials; x y w is all the normal's z takes.
+    double point[4] = {0.0, 0.0, 0.0, 0.0}, along_u[4] = {0.0, 0.0, 0.0, 0.0}, along_v[4] = {0.0, 0.0, 0.0, 0.0};
+    for (int i = 0; i <= p; ++i, rows += 4, slopes += 4) {
         for (int d = 0; d < 4; ++d)
-            point[d] += bu[i] * row[d];
+            point[d] += bu[i] * rows[d];
         for (int d : {0, 1, 3}) {
-            along_u[d] += gu[i] * row[d];
-            along_v[d] += bu[i] * slope[d];
+            along_u[d] += gu[i] * rows[d];
+            along_v[d] += bu[i] * slopes[d];
         }
     }
     if (!rational) {
@@ -257,6 +315,9 @@ struct SurfaceEvaluator {
     std::array<std::vector<double>, 2> knots;
     std::vector<Cell> cells;
     const Cell* cell = nullptr;
+    const Cell* rows_cell = nullptr;
+    double rows_v = 0.0;
+    std::array<double, 4 * patch_order> rows{}, slopes{};
 
     explicit SurfaceEvaluator(const NurbsSurface& source)
         : surface(source), local(3, source.is_rational(), source.order(0), source.order(1), source.order(0), source.order(1)),
@@ -314,13 +375,14 @@ struct SurfaceEvaluator {
         // One global divergence-one field, F=(0,0,z), for EVERY face/path.
         if (!cell->patch.empty()) {
             const int p = surface.m_order[0] - 1, q = surface.m_order[1] - 1;
-            const bool rational = surface.m_is_rat;
-            const double* control = cell->patch.data();
+            // An inner integral runs along u at one v: the rows at that v serve all its points.
+            if (cell != rows_cell || std::bit_cast<std::uint64_t>(v) != std::bit_cast<std::uint64_t>(rows_v)) {
+                (q == 2 ? patch_rows<2> : q == 1 ? patch_rows<1> : patch_rows<0>)(cell->patch.data(), p, q, cell->sides, v, rows.data(), slopes.data());
+                rows_cell = cell;
+                rows_v = v;
+            }
             double flux;
-            if (p == 2 && q == 2 ? patch_flux<2, 2>(control, p, q, rational, cell->sides, u, v, flux)
-                : p == 2 && q == 1 ? patch_flux<2, 1>(control, p, q, rational, cell->sides, u, v, flux)
-                : p == 1 && q == 2 ? patch_flux<1, 2>(control, p, q, rational, cell->sides, u, v, flux)
-                : patch_flux<0, 0>(control, p, q, rational, cell->sides, u, v, flux))
+            if ((p == 2 ? patch_flux<2> : p == 1 ? patch_flux<1> : patch_flux<0>)(rows.data(), slopes.data(), p, surface.m_is_rat, cell->sides, u, flux))
                 return flux;
             load();
         }
@@ -337,7 +399,7 @@ using PrimitiveKey = std::tuple<int, std::uint64_t, std::uint64_t, std::uint64_t
 using PrimitiveMemo = std::map<PrimitiveKey, double>;
 
 double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance, Work& work,
-    int support, PrimitiveMemo& memo) {
+    int support, PrimitiveMemo& memo, Sums& sums) {
     const bool cacheable = support >= 0 && std::isfinite(u) && std::isfinite(v)
         && std::isfinite(tolerance) && tolerance > 0;
     PrimitiveKey key{};
@@ -350,10 +412,11 @@ double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance
     }
     const size_t before = work.inner;
     const std::vector<double>& knots = surface.knots[0];
+    sums.line = {static_cast<std::uint64_t>(support), std::bit_cast<std::uint64_t>(v)};
     double value = 0.0;
     for (size_t i = 1; i < knots.size() && knots[i - 1] < u; ++i)
         value += integrate([&](double parameter) { return surface.integrand(parameter, v); },
-            knots[i - 1], std::min(u, knots[i]), tolerance / knots.size(), work, 0, true);
+            knots[i - 1], std::min(u, knots[i]), tolerance / knots.size(), work, 0, true, cacheable ? &sums : nullptr);
     // Every stored miss performed charged inner work. Thus memo size is bounded
     // by the unchanged work budget; zero-width/no-work requests are not stored.
     if (cacheable && work.inner != before && std::isfinite(value))
@@ -603,7 +666,7 @@ std::array<double, 4> trim_hull(const BRep& brep, int face, const NurbsSurface& 
     return result;
 }
 
-double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work, PrimitiveMemo& memo) {
+double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work, PrimitiveMemo& memo, Sums& sums) {
     const BRepFace& boundary = brep.m_faces[face];
     const NurbsSurface surface = local_surface(brep.m_surfaces[boundary.surface_index], frame);
     SurfaceEvaluator evaluator(surface);
@@ -673,14 +736,14 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
                         curve.jet(parameter, 1, d);
                         if (d[1][1] == 0.0)
                             return 0.0;
-                        return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work, boundary.surface_index, memo) * d[1][1];
+                        return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work, boundary.surface_index, memo, sums) * d[1][1];
                     }, knots[i - 1], knots[i], allowed, work);
             }
         }
     return value;
 }
 
-double sum_volume(const BRep& brep, const Frame& frame, double tolerance) {
+double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& sums) {
     Work work;
     PrimitiveMemo memo;
     double volume = 0.0;
@@ -693,7 +756,7 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance) {
                 const double sign = orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
                 const Work before = work;
                 try {
-                    volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work, memo);
+                    volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work, memo, sums);
                 } catch (const std::runtime_error& error) {
                     throw std::runtime_error(std::string(error.what()) + "; face=" + std::to_string(face.index)
                         + ", total_work=" + std::to_string(work.total)
@@ -719,11 +782,12 @@ double volume(const BRep& brep, double tolerance) {
     if (!brep.is_valid() || !brep.is_solid())
         throw std::invalid_argument("Native BRep volume requires a closed oriented solid");
     const Frame bounds = frame(brep);
-    const double estimate = sum_volume(brep, bounds, tolerance * 0.01);
+    Sums sums;
+    const double estimate = sum_volume(brep, bounds, tolerance * 0.01, sums);
     const double requested = tolerance * std::abs(estimate) * 0.1;
     if (requested < 64 * std::numeric_limits<double>::epsilon() * std::abs(estimate))
         throw std::runtime_error("Native BRep volume tolerance is below numerical resolution");
-    const double refined = sum_volume(brep, bounds, requested);
+    const double refined = sum_volume(brep, bounds, requested, sums);
     return refined * bounds.scale * bounds.scale * bounds.scale;
 }
 

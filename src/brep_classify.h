@@ -2,7 +2,9 @@
 
 #include "brep.h"
 #include "brep_face_boundary.h"
+#include "surface_ray.h"
 #include <array>
+#include <optional>
 #include <vector>
 
 namespace session_cpp::brep_classify {
@@ -48,6 +50,7 @@ struct Solid {
     bool valid; // BRep::is_valid
     std::vector<Face> faces;
     std::vector<std::array<xyz, 2>> boxes; // Lowest and highest control point of each surface.
+    mutable std::vector<std::optional<surface_ray::Form>> forms; // Each surface's recognised form, made when a ray first needs it.
     explicit Solid(const BRep& model, bool boundaries = true);
 };
 

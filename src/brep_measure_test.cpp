@@ -97,6 +97,17 @@ MINI_TEST("BRep Native Measure", "Analytical Primitive Volumes") {
     }
 }
 
+MINI_TEST("BRep Native Measure", "Passes Share Sums Of One Support Only") {
+    const double pi = Tolerance::PI;
+    BRep pair = BRep::create_sphere(1.0).boolean_union(BRep::create_sphere(2.0).transformed(Xform::translation(5, 0, 0)));
+    MINI_CHECK(pair.is_valid() && pair.is_solid() && pair.m_surfaces.size() == 2);
+    for (double tolerance : {1e-6, 1e-8, 1e-10})
+        MINI_CHECK(std::abs(pair.volume_exact(tolerance) - 12 * pi) <= 12 * pi * tolerance);
+    const BRep torus = BRep::create_torus(3, 0.5).transformed(Xform::translation(0.3, -0.2, 0.1));
+    for (double tolerance : {1e-6, 1e-8, 1e-10})
+        MINI_CHECK(std::abs(torus.volume_exact(tolerance) - 1.5 * pi * pi) <= 1.5 * pi * pi * tolerance);
+}
+
 MINI_TEST("BRep Native Measure", "Translation Scale And Inactive Geometry") {
     const BRep original = BRep::create_sphere(2);
     const double expected = 32 * Tolerance::PI / 3;
