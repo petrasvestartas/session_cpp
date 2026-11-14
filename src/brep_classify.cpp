@@ -335,6 +335,26 @@ State ray_state(const RayResult& result, double tolerance) {
     return winding == 0 ? State::Outside : State::Inside;
 }
 
+/// Whether a point lies more than a distance outside the box of a curve's controls, which holds every point the curve evaluates to where its weights are positive.
+bool beyond(const NurbsCurve& curve, const xyz& point, double distance) {
+    xyz lo = control(curve, 0), hi = lo;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        const xyz p = control(curve, i);
+        if (!finite(p) || !(curve.weight(i) > 0.0))
+            return false;
+        for (int d = 0; d < 3; ++d) {
+            lo[d] = std::min(lo[d], p[d]);
+            hi[d] = std::max(hi[d], p[d]);
+        }
+    }
+    for (int d = 0; d < 3; ++d) {
+        const double margin = distance + 64.0 * std::numeric_limits<double>::epsilon() * std::max(std::abs(lo[d]), std::abs(hi[d]));
+        if (point[d] < lo[d] - margin || point[d] > hi[d] + margin)
+            return true;
+    }
+    return false;
+}
+
 bool near_edge(const BRep& brep, int face, const Point& query, double tolerance) {
     for (const BRepRef& wire : brep.m_faces[face].wires)
         for (const BRepRef& use : brep.wire_edges(wire)) {
@@ -344,6 +364,8 @@ bool near_edge(const BRep& brep, int face, const Point& query, double tolerance)
             if (edge.degenerated)
                 continue;
             const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index];
+            if (beyond(curve, query, 2.0 * tolerance))
+                continue;
             const double parameter = Closest::curve_point(curve, query).first;
             if (curve.point_at(parameter).distance(query) <= tolerance)
                 return true;

@@ -634,14 +634,14 @@ Vector oriented_normal(const BRep& brep, int face, const Point& uv) {
 void select(
     std::vector<brep_assemble::FaceUse>& uses,
     const Partition& partition,
-    const Partition& opposite,
+    const brep_classify::Solid& own,
+    const brep_classify::Solid& solid,
     bool second,
     Operation operation,
     double tolerance
 ) {
     const BRep& source = partition.brep;
-    const BRep& other = opposite.brep;
-    const brep_classify::Solid own(source), solid(other);
+    const BRep& other = solid.brep;
     const std::vector<int> faces = active_faces(source);
     // Faces joined across an edge the other solid's boundary does not meet lie on one side of it: one witness decides them all. Such an edge is an original one with no edge of the other operand along it or at its nodes; a pole joins nothing.
     std::vector<bool> open(source.edge_count(), false), seen(source.edge_count(), false);
@@ -983,9 +983,10 @@ BRep apply(const BRep& first, const BRep& second, Operation operation, double to
     const Partition b = partition(second, first, sections, true, tolerance);
     std::vector<brep_assemble::FaceUse> selected;
     boolean_progress("select_a");
-    select(selected, a, b, false, operation, tolerance);
+    const brep_classify::Solid solid_a(a.brep), solid_b(b.brep);
+    select(selected, a, solid_a, solid_b, false, operation, tolerance);
     boolean_progress("select_b");
-    select(selected, b, a, true, operation, tolerance);
+    select(selected, b, solid_b, solid_a, true, operation, tolerance);
     boolean_progress("assemble");
     try {
         BRep result = joined_edges(brep_assemble::assemble(selected, tolerance), tolerance);

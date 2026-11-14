@@ -1026,4 +1026,23 @@ MINI_TEST("BRepAssemble", "Shells Apart Are Told By Their Boxes And A Cavity By 
     MINI_CHECK(std::abs(apart.volume_exact() - 16.0) < 1e-9 && std::abs(hollow.volume_exact() - 7.0) < 1e-9);
 }
 
+MINI_TEST("BRepAssemble", "Shells Laid Along The Axes Are Oriented Off Their Seams") {
+    const BRep block = BRep::create_box(4, 4, 4), bore = BRep::create_cylinder(0.5, 1);
+    const BRep ball = BRep::create_sphere(0.2).transformed(Xform::translation(0, 0, 0.5));
+    for (bool reverse : {false, true}) {
+        std::vector<brep_assemble::FaceUse> alone, nested;
+        append_faces(alone, bore, reverse);
+        append_faces(nested, block, reverse);
+        append_faces(nested, bore, !reverse);
+        append_faces(nested, ball, reverse);
+        const BRep cylinder = brep_assemble::assemble(alone), result = brep_assemble::assemble(nested);
+        MINI_CHECK(cylinder.is_solid() && std::abs(cylinder.volume_exact() - Tolerance::PI / 4) < 1e-9);
+        MINI_CHECK(result.is_solid() && result.shell_count() == 3 && result.solid_count() == 2);
+        MINI_CHECK(std::abs(result.volume_exact() - (64 - Tolerance::PI / 4 + Tolerance::PI * 0.032 / 3)) < 1e-9);
+        MINI_CHECK(brep_classify::point(result, {0, 0.1, 0.5}, 1e-7) == brep_classify::State::Inside);
+        MINI_CHECK(brep_classify::point(result, {0.4, 0, 0.5}, 1e-7) == brep_classify::State::Outside);
+        MINI_CHECK(brep_classify::point(result, {1.5, 0, 0}, 1e-7) == brep_classify::State::Inside);
+    }
+}
+
 } // namespace session_cpp

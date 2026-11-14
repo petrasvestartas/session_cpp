@@ -482,6 +482,28 @@ MINI_TEST("BRep Native Classification", "One Witness Decides Faces Joined Off Th
     MINI_CHECK(std::abs(outer.boolean_difference(sunk).volume_exact() - 56.0) < 1e-6);
 }
 
+MINI_TEST("BRep Native Classification", "Faces Left Active Answer As Their Shell Alone") {
+    const BRep hollow = BRep::create_box(4, 4, 4).boolean_difference(BRep::create_sphere(1.0).transformed(Xform::translation(0.3, -0.2, 0.1)));
+    MINI_CHECK(hollow.shell_count() == 2);
+    brep_classify::Solid solid(hollow);
+    const std::vector<Point> queries = {{0.3, -0.2, 0.1}, {1.3, -0.2, 0.1}, {1.8, 0, 0}, {2, 0.5, 0.5}, {5, 0, 0}, {0.3, 0.8, 0.1 + 1e-8}};
+    int centre = 0, beside = 0;
+    for (int shell = 0; shell < 2; ++shell) {
+        BRep alone = hollow;
+        alone.m_solids.clear();
+        alone.add_solid({{shell, BRepOrientation::Forward}});
+        for (brep_classify::Face& face : solid.faces)
+            face.active = false;
+        for (const BRepRef& face : hollow.m_shells[shell].faces)
+            solid.faces[face.index].active = true;
+        for (const Point& query : queries)
+            MINI_CHECK(brep_classify::point(solid, query, 1e-7) == brep_classify::point(alone, query, 1e-7));
+        centre += brep_classify::point(solid, queries[0], 1e-7) == brep_classify::State::Inside;
+        beside += brep_classify::point(solid, queries[2], 1e-7) == brep_classify::State::Inside;
+    }
+    MINI_CHECK(centre == 2 && beside == 1);
+}
+
 MINI_TEST("BRep Native Classification", "Knot Inserted In Place As With Fresh Arrays") {
     // Boehm's insertion written out on copies of the arrays: the curve's own insertion gives these bits.
     const auto reference = [](NurbsCurve curve, double value, int times) {

@@ -1058,17 +1058,18 @@ void build_shells(BRep& brep, const std::vector<BRepOrientation>& orientations) 
     }
 }
 
-bool interior_uv(const BRep& brep, int face, const Point& uv) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+bool interior_uv(const brep_classify::Solid& solid, int face, const Point& uv) {
+    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index];
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double scale = std::max({std::abs(u.first), std::abs(u.second), std::abs(v.first),
         std::abs(v.second), u.second - u.first, v.second - v.first});
-    return brep_classify::face_uv(brep, face, uv, epsilon * scale * 128.0) == brep_classify::State::Inside;
+    return brep_classify::face_uv(solid, face, uv, epsilon * scale * 128.0) == brep_classify::State::Inside;
 }
 
 template <typename Probe>
-bool visit_face_parameters(const BRep& brep, int face, Probe&& probe) {
+bool visit_face_parameters(const brep_classify::Solid& solid, int face, Probe&& probe) {
+    const BRep& brep = solid.brep;
     const BRepFace& boundary = brep.m_faces[face];
     const NurbsSurface& surface = brep.m_surfaces[boundary.surface_index];
     const std::pair<double, double> u = surface.domain(0);
@@ -1077,7 +1078,7 @@ bool visit_face_parameters(const BRep& brep, int face, Probe&& probe) {
         for (int j = 1; j < 8; ++j) {
             const Point uv(u.first + (u.second - u.first) * i / 8.0,
                 v.first + (v.second - v.first) * j / 8.0, 0.0);
-            if (interior_uv(brep, face, uv) && probe(uv))
+            if (interior_uv(solid, face, uv) && probe(uv))
                 return true;
         }
     const double scale = std::max(u.second - u.first, v.second - v.first);
@@ -1095,20 +1096,13 @@ bool visit_face_parameters(const BRep& brep, int face, Probe&& probe) {
         for (int i = 0; i < 10; ++i) {
             for (const double sign : {-1.0, 1.0}) {
                 const Point uv = midpoint + normal * (distance * sign);
-                if (interior_uv(brep, face, uv) && probe(uv))
+                if (interior_uv(solid, face, uv) && probe(uv))
                     return true;
             }
             distance *= 0.1;
         }
     }
     return false;
-}
-
-BRep shell_solid(const BRep& brep, int shell) {
-    BRep result = brep;
-    result.m_solids.clear();
-    result.add_solid({{shell, forward}});
-    return result;
 }
 
 std::array<nurbs_interval::Interval, 3> shell_bounds(const BRep& brep, int shell) {
@@ -1158,29 +1152,40 @@ int first_crossing(const brep_classify::RayResult& result, std::string* reason =
     return first->crossing;
 }
 
-bool outward(const BRep& brep, int shell, double tolerance,
-             std::vector<OrientationAttempt>* attempts) {
-    const BRep region = shell_solid(brep, shell);
-    const std::array<nurbs_interval::Interval, 3> bounds = shell_bounds(brep, shell);
+/// Leave the rays of a solid laid out over every shell to one shell's faces.
+void confine(brep_classify::Solid& solid, int shell) {
+    for (brep_classify::Face& face : solid.faces)
+        face.active = false;
+    for (const BRepRef& face : solid.brep.m_shells[shell].faces)
+        solid.faces[face.index].active = true;
+}
+
+/// Whether a shell's faces point away from what it bounds: the first crossing of a ray from just outside its box. The rays run in general directions, as a ray along an axis meets the seam or pole of a surface laid along that axis, where no root is isolated, and start close, as the farther a ray starts the wider the stretches a recognised form has to clear.
+bool outward(const brep_classify::Solid& solid, int shell, const std::array<nurbs_interval::Interval, 3>& bounds,
+             double tolerance, std::vector<OrientationAttempt>* attempts) {
+    const BRep& brep = solid.brep;
+    const std::array<Vector, 3> directions = {Vector(1.0, 0.371, 0.529), Vector(-0.217, 1.0, 0.413), Vector(0.319, -0.271, 1.0)};
+    double reach = tolerance;
+    for (int d = 0; d < 3; ++d)
+        reach = std::max(reach, bounds[d].hi - bounds[d].lo);
     for (const BRepRef& face : brep.m_shells[shell].faces) {
         const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
         bool orientation = false;
-        const bool resolved = visit_face_parameters(brep, face.index, [&](const Point& uv) {
+        const bool resolved = visit_face_parameters(solid, face.index, [&](const Point& uv) {
             const Point target = surface.point_at(uv[0], uv[1]);
             for (int d = 0; d < 3; ++d)
                 for (int side : {-1, 1}) {
-                    const nurbs_interval::Interval span = bounds[d] - nurbs_interval::Interval(bounds[d].lo);
-                    const double margin = std::max(span.hi, tolerance);
-                    const nurbs_interval::Interval exterior = side < 0
-                        ? nurbs_interval::Interval(bounds[d].lo) - nurbs_interval::Interval(margin)
-                        : nurbs_interval::Interval(bounds[d].hi) + nurbs_interval::Interval(margin);
-                    if (!nurbs_interval::finite(exterior))
+                    const Vector toward = directions[d] * side;
+                    double exit = std::numeric_limits<double>::infinity();
+                    for (int k = 0; k < 3; ++k)
+                        exit = std::min(exit, toward[k] > 0.0 ? (target[k] - bounds[k].lo) / toward[k] : (bounds[k].hi - target[k]) / -toward[k]);
+                    const Point origin = target - toward * (exit + reach);
+                    bool exterior = false;
+                    for (int k = 0; k < 3; ++k)
+                        exterior = exterior || origin[k] < bounds[k].lo || origin[k] > bounds[k].hi;
+                    if (!exterior)
                         continue;
-                    Point origin = target;
-                    origin[d] = side < 0 ? exterior.lo : exterior.hi;
-                    if (!(side < 0 ? origin[d] < bounds[d].lo : origin[d] > bounds[d].hi))
-                        continue;
-                    auto ray = brep_classify::ray(region, origin, target - origin, tolerance);
+                    auto ray = brep_classify::ray(solid, origin, target - origin, tolerance);
                     std::string reason;
                     const int crossing = first_crossing(ray, attempts ? &reason : nullptr);
                     if (attempts)
@@ -1205,14 +1210,19 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
     std::vector<std::vector<bool>> inside(count, std::vector<bool>(count, false));
     std::vector<int> depth(count, 0);
     std::vector<std::array<nurbs_interval::Interval, 3>> boxes;
-    for (int i = 0; i < count && count > 1; ++i)
+    for (int i = 0; i < count; ++i)
         boxes.push_back(shell_bounds(brep, i));
+    brep_classify::Solid solid(brep);
     for (int i = 0; i < count; ++i) {
         for (int j = 0; j < count; ++j) {
-            if (i == j)
+            // A shell is outside another whose box its box is clear of: no point is asked.
+            bool apart = false;
+            for (int d = 0; d < 3; ++d)
+                apart = apart || boxes[i][d].hi + 4.0 * tolerance < boxes[j][d].lo || boxes[j][d].hi + 4.0 * tolerance < boxes[i][d].lo;
+            if (i == j || apart)
                 continue;
 
-            const BRep reference = shell_solid(brep, j);
+            confine(solid, j);
             brep_classify::State state = brep_classify::State::Unknown;
             // A point clear of the box of every control of a shell is outside it: no ray is asked.
             const auto clear = [&](const Point& point) {
@@ -1226,9 +1236,9 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
             // strict solid classifier can accept a later interior-face proposal.
             for (const BRepRef& face : brep.m_shells[i].faces) {
                 const NurbsSurface& support = brep.m_surfaces[brep.m_faces[face.index].surface_index];
-                if (visit_face_parameters(brep, face.index, [&](const Point& uv) {
+                if (visit_face_parameters(solid, face.index, [&](const Point& uv) {
                     const Point point = support.point_at(uv[0], uv[1]);
-                    state = clear(point) ? brep_classify::State::Outside : brep_classify::point(reference, point, tolerance);
+                    state = clear(point) ? brep_classify::State::Outside : brep_classify::point(solid, point, tolerance);
                     if (containment)
                         containment->push_back({i, j, face.index, uv, point, state});
                     return state == brep_classify::State::Inside || state == brep_classify::State::Outside;
@@ -1241,15 +1251,19 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
             depth[i] += inside[i][j] ? 1 : 0;
         }
     }
+    std::vector<bool> outer(count);
     for (int i = 0; i < count; ++i) {
         require(!inside[i][i], "cyclic shell containment");
         for (int j = i + 1; j < count; ++j)
             require(!inside[i][j] || !inside[j][i], "intersecting shell interiors");
 
-        if (!outward(brep, i, tolerance, attempts))
+        confine(solid, i);
+        outer[i] = outward(solid, i, boxes[i], tolerance, attempts);
+    }
+    for (int i = 0; i < count; ++i)
+        if (!outer[i])
             for (BRepRef& face : brep.m_shells[i].faces)
                 face.orientation = brep_reverse(face.orientation);
-    }
     brep.m_solids.clear();
     for (int i = 0; i < count; ++i) {
         if (depth[i] % 2 != 0)
