@@ -116,7 +116,7 @@ struct Span {
     double a; // Start parameter.
     double b; // End parameter.
     std::vector<double> cuts; // Cut parameters, span ends included.
-    NurbsCurve curve; // Span of the source uv curve.
+    mutable NurbsCurve curve; // Span of the source uv curve, cut when first asked for.
     std::vector<double> events; // Genuine intersection and overlap parameters.
     std::vector<ArrangementPointIncidence> point_incidence; // Paired original raw point identities.
     std::vector<double> nonpoint_events; // Self/overlap events are not boundary-point aliases.
@@ -219,17 +219,20 @@ void check_surface(const NurbsSurface& surface) {
 /// Copy of a curve trimmed to [a, b], clamped to its domain.
 NurbsCurve interval(const NurbsCurve& curve, double a, double b) {
 
-    NurbsCurve result = curve;
-    result.refresh_guid();
     const double lo = curve.domain_start();
     const double hi = curve.domain_end();
     a = std::clamp(a, lo, hi);
     b = std::clamp(b, lo, hi);
     require(b > a, "Split produced an empty curve interval");
+    NurbsCurve result;
 
-    if (a > lo || b < hi)
-        require(result.trim(a, b), "Kernel refused a split interval");
+    if (!curve_intersection::trim_piece(curve, a, b, result)) {
+        result = curve;
+        if (a > lo || b < hi)
+            require(result.trim(a, b), "Kernel refused a split interval");
+    }
 
+    result.refresh_guid();
     return result;
 }
 
@@ -632,6 +635,22 @@ std::vector<Point> polygon(const NurbsCurve& curve, double tolerance, double& ch
     return result;
 }
 
+/// Outward bounds of the original positive-rational basis controls active on a knot span.
+std::pair<std::array<double, 2>, std::array<double, 2>> span_bounds(const NurbsCurve& curve, double parameter) {
+    const double infinity = std::numeric_limits<double>::infinity();
+    std::array<double, 2> lo = {infinity, infinity}, hi = {-infinity, -infinity};
+    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, parameter);
+    for (int i = first; i < first + curve.order(); ++i) {
+        const Point point = curve.get_cv(i);
+        for (int d = 0; d < 2; ++d) {
+            lo[d] = std::min(lo[d], std::nextafter(point[d], -infinity));
+            hi[d] = std::max(hi[d], std::nextafter(point[d], infinity));
+            require(std::isfinite(lo[d]) && std::isfinite(hi[d]), "Face split bounds exceed floating-point resolution");
+        }
+    }
+    return {lo, hi};
+}
+
 /// Even-odd test in the xy plane: a piece is cut only where the +x ray meets its control box, and a piece all past the point crosses by its ends alone.
 bool inside(const Point& p, const std::vector<NurbsCurve>& loop, double tolerance) {
 
@@ -639,14 +658,23 @@ bool inside(const Point& p, const std::vector<NurbsCurve>& loop, double toleranc
     std::vector<Part> work;
     std::vector<const NurbsCurve*> ends;
 
-    for (const NurbsCurve& curve : loop) {
+    for (const NurbsCurve& curve : loop)
         ends.push_back(&curve);
-        const std::vector<double> spans = curve.get_span_vector();
-        for (size_t i = 1; i < spans.size(); ++i)
-            work.push_back({interval(curve, spans[i - 1], spans[i]), 0});
-    }
 
     const double height = brep_classify::clear_ray_height(ends, p[1], tolerance);
+
+    // A span is cut out only where the ray can meet the box of its controls: the box of the cut piece lies in that box to rounding, and the ray passes such a piece by.
+    for (const NurbsCurve& curve : loop) {
+        const std::vector<double> spans = curve.get_span_vector();
+        for (size_t i = 1; i < spans.size(); ++i) {
+            const auto [lo, hi] = span_bounds(curve, std::midpoint(spans[i - 1], spans[i]));
+            const double slack = 1024.0 * std::numeric_limits<double>::epsilon() *
+                std::max({std::abs(lo[0]), std::abs(hi[0]), std::abs(lo[1]), std::abs(hi[1]), std::abs(height), std::abs(p[0])});
+            if (!(lo[1] - slack > height || hi[1] + slack <= height || hi[0] + slack < p[0]))
+                work.push_back({interval(curve, spans[i - 1], spans[i]), 0});
+        }
+    }
+
     size_t visited = 0;
 
     while (!work.empty()) {
@@ -700,22 +728,6 @@ bool inside_loops(const Point& p, const std::vector<std::vector<NurbsCurve>>& lo
 // ═══════════════════════════════════════════════════════════════════════════
 // Trim arrangement
 // ═══════════════════════════════════════════════════════════════════════════
-/// Outward bounds of the original positive-rational basis controls active on a knot span.
-std::pair<std::array<double, 2>, std::array<double, 2>> span_bounds(const NurbsCurve& curve, double parameter) {
-    const double infinity = std::numeric_limits<double>::infinity();
-    std::array<double, 2> lo = {infinity, infinity}, hi = {-infinity, -infinity};
-    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, parameter);
-    for (int i = first; i < first + curve.order(); ++i) {
-        const Point point = curve.get_cv(i);
-        for (int d = 0; d < 2; ++d) {
-            lo[d] = std::min(lo[d], std::nextafter(point[d], -infinity));
-            hi[d] = std::max(hi[d], std::nextafter(point[d], infinity));
-            require(std::isfinite(lo[d]) && std::isfinite(hi[d]), "Face split bounds exceed floating-point resolution");
-        }
-    }
-    return {lo, hi};
-}
-
 std::vector<std::pair<size_t, size_t>> span_candidates(
     const std::vector<Source>& sources,
     const std::vector<Span>& spans,
@@ -753,12 +765,11 @@ std::vector<std::pair<size_t, size_t>> span_candidates(
 /// True when the whole original interval lies inside one vertex tolerance ball.
 bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& point, double tolerance) {
     const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
-    const auto outside = [&](double parameter) {
+    nurbs_interval::CurveBounds bounds;
+    // The outward bounds of the curve at one parameter, as nurbs_interval::curve_bounds takes them there three times over.
+    const auto at = [&](double parameter) {
         const auto data = nurbs_interval::curve_controls(curve, {parameter, parameter},
             {point[0], point[1], point[2]});
-        if (data.empty())
-            return false;
-        std::array<nurbs_interval::Interval, 3> endpoint;
         bool first = true;
         for (const auto& cv : data) {
             if (!(cv[3].lo > 0.0))
@@ -767,22 +778,28 @@ bool vertex_interval(const NurbsCurve& curve, double a, double b, const Point& p
                 const auto coordinate = cv[d] / cv[3];
                 if (!nurbs_interval::finite(coordinate))
                     return false;
-                endpoint[d] = first ? coordinate : nurbs_interval::interval_hull(endpoint[d], coordinate);
+                bounds.point[d] = first ? coordinate : nurbs_interval::interval_hull(bounds.point[d], coordinate);
             }
             first = false;
         }
+        return !first;
+    };
+    bool taken = false;
+    const auto outside = [&](double parameter) {
+        if (!(taken = at(parameter)))
+            return false;
         nurbs_interval::Interval lower;
-        for (const auto coordinate : endpoint) {
+        for (const auto coordinate : bounds.point) {
             const double nearest = coordinate.lo > 0.0 ? coordinate.lo : coordinate.hi < 0.0 ? -coordinate.hi : 0.0;
             const nurbs_interval::Interval distance(nearest);
             lower = lower + distance * distance;
         }
         return nurbs_interval::finite(lower) && lower.lo > allowed.hi;
     };
-    if (outside(b) || outside(a))
+    if (outside(b) || (a != b && outside(a)))
         return false;
-    nurbs_interval::CurveBounds bounds;
-    if (!nurbs_interval::curve_bounds(curve, {std::min(a, b), std::max(a, b)},
+    // One parameter is asked once: the bounds of the interval are those just taken.
+    if (a == b ? !taken : !nurbs_interval::curve_bounds(curve, {std::min(a, b), std::max(a, b)},
         {point[0], point[1], point[2]}, bounds))
         return false;
     nurbs_interval::Interval squared;
@@ -818,6 +835,13 @@ void self_events(std::vector<Span>& spans, const std::vector<Source>& sources, d
                                     span.nonpoint_events.push_back(parameter);
                             }
     }
+}
+
+/// The span of its source's uv curve.
+const NurbsCurve& span_curve(const Span& span, const std::vector<Source>& sources) {
+    if (span.curve.m_cv.empty())
+        span.curve = interval(sources[span.source].uv, span.a, span.b);
+    return span.curve;
 }
 
 /// Knot spans of every source, cut at their mutual intersections.
@@ -862,8 +886,7 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
 
         for (size_t i = 1; i < knots.size(); ++i) {
             require(spans.size() < WORK_LIMIT, "Face split spans exceed the bounded workload");
-            spans.push_back({si, knots[i - 1], knots[i], {knots[i - 1], knots[i]},
-                placed && sources[si].edge >= 0 ? NurbsCurve() : interval(sources[si].uv, knots[i - 1], knots[i])});
+            spans.push_back({si, knots[i - 1], knots[i], {knots[i - 1], knots[i]}, NurbsCurve()});
         }
     }
 
@@ -883,7 +906,7 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
         const Source& second = sources[spans[j].source];
         if (placed && (first.edge >= 0 || second.edge >= 0 || first.family != second.family))
             continue;
-        const curve_intersection::Result events = parameter_events(spans[i].curve, spans[j].curve, tolerance);
+        const curve_intersection::Result events = parameter_events(span_curve(spans[i], sources), span_curve(spans[j], sources), tolerance);
         require(events.complete, events.failure);
         // Two placed cuts along each other for more than a point are not what the section stage vouched for: everything is intersected.
         if (placed && std::any_of(events.overlaps.begin(), events.overlaps.end(), [&](const curve_intersection::Overlap& overlap) {
@@ -897,8 +920,8 @@ std::vector<Span> compute_spans(const std::vector<Source>& sources, double toler
             ArrangementPairDiagnostic row;
             row.first_source = spans[i].source;
             row.second_source = spans[j].source;
-            row.first = spans[i].curve;
-            row.second = spans[j].curve;
+            row.first = span_curve(spans[i], sources);
+            row.second = span_curve(spans[j], sources);
             row.overlaps = events.overlaps.size();
             for (const auto& hit : events.points) {
                 row.first_hits.push_back(hit.a);
@@ -1357,7 +1380,7 @@ std::optional<ArrangementVertexOwnership> boundary_vertex_interval(
         return std::nullopt;
     const bool nonpoint=graph.nonpoint_events[a] || std::any_of(span.nonpoint_events.begin(),span.nonpoint_events.end(),
         [&](double parameter){return parameter>=lo && parameter<=hi;});
-    const auto key=detail::boundary_vertex_key(span.curve,span.source,original,graph.point_incidence[a],span.events,
+    const auto key=detail::boundary_vertex_key(span_curve(span,sources),span.source,original,graph.point_incidence[a],span.events,
         nonpoint,lo,hi,vertices[a],tolerance,budget,vertex_interval);
     if (!key)
         return std::nullopt;
@@ -1589,6 +1612,23 @@ void sample(Cycle& cycle, const std::vector<Source>& sources, double tolerance) 
     cycle.margin = 0.0;
 }
 
+/// Where the sampled polygon of a cycle starts, without the polygon: the first span of its first piece, halved at its start as polygon halves it until flat.
+Point first_point(Cycle& cycle, const std::vector<Source>& sources, double tolerance) {
+
+    if (!cycle.points.empty())
+        return cycle.points[0];
+    cut_pieces(cycle, sources);
+    const NurbsCurve& curve = cycle.curves[0];
+    tolerance = std::max(tolerance, Bounds(curve).diagonal() * 1e-4);
+    const std::vector<double> spans = curve.get_span_vector();
+    NurbsCurve part = interval(curve, spans[0], spans[1]);
+    for (int depth = 0; !flat(part, tolerance * 0.25); ++depth) {
+        require(depth < 40, "Trim sampling exceeds parameter precision");
+        part = interval(part, part.domain_start(), (part.domain_start() + part.domain_end()) * 0.5);
+    }
+    return part.point_at_start();
+}
+
 /// Loop traced from one half-edge by turning to the previous outgoing half-edge at each vertex.
 Cycle trace_cycle(
     const Graph& graph,
@@ -1786,11 +1826,10 @@ std::vector<std::vector<std::vector<Run>>> nest_cycles(
             }
             const bool eligible = !shared && outer.area > std::abs(cycle.area) + tolerance * tolerance &&
                 (parent == result.size() || outer.area < cycles[positive[parent]].area);
-            if (eligible) {
-                sample(cycle, sources, tolerance);
+            // A hole is placed by one of its points; its area is sampled only where the areas above are too near to compare.
+            if (eligible)
                 cut_pieces(outer, sources);
-            }
-            const bool contained = eligible && inside(cycle.points[0], outer.curves, tolerance);
+            const bool contained = eligible && inside(first_point(cycle, sources, tolerance), outer.curves, tolerance);
             if (diagnostic)
                 diagnostic->parent_tests.push_back({static_cast<size_t>(&cycle - cycles.data()), positive[i], shared, eligible, eligible, contained});
             if (contained)

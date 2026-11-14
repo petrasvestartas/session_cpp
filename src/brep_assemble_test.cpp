@@ -1014,4 +1014,16 @@ MINI_TEST("BRepAssemble", "Material Shell Reconstruction Preserves Exact Boundar
     MINI_CHECK(source.jsondump() == before);
 }
 
+MINI_TEST("BRepAssemble", "Shells Apart Are Told By Their Boxes And A Cavity By Its Rays") {
+    const BRep block = BRep::create_box(2, 2, 2);
+    BRep beside = BRep::create_box(2, 2, 2), within = BRep::create_box(1, 1, 1);
+    beside.transform(Xform::translation(5, 0, 0));
+    within.transform(Xform::translation(0.1, 0.2, 0.3));
+    const BRep apart = block.boolean_union(beside);
+    MINI_CHECK(apart.is_valid() && apart.is_solid() && apart.shell_count() == 2 && apart.solid_count() == 2);
+    const BRep hollow = block.boolean_difference(within);
+    MINI_CHECK(hollow.is_valid() && hollow.is_solid() && hollow.shell_count() == 2 && hollow.solid_count() == 1);
+    MINI_CHECK(std::abs(apart.volume_exact() - 16.0) < 1e-9 && std::abs(hollow.volume_exact() - 7.0) < 1e-9);
+}
+
 } // namespace session_cpp

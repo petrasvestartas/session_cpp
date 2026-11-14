@@ -12,6 +12,8 @@ namespace session_cpp::nurbs_memo {
 struct Scope {
     std::unordered_map<std::string, curve_intersection::Result> curve_pairs;
     std::unordered_set<std::string> matched;
+    /// By surface, then by one span of a curve and one of its pcurve over the same raw range: the bound a matched certificate reached there.
+    std::unordered_map<std::string, std::unordered_map<std::string, double>> spans;
     Scope* outer = active;
     Scope() { active = this; }
     ~Scope() { active = outer; }

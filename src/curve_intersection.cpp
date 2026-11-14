@@ -39,8 +39,10 @@ struct Bounds {
     Point lo;
     Point hi;
 
-    explicit Bounds(const NurbsCurve& curve) : lo(curve.get_cv(0)), hi(lo) {
-        for (int i = 1; i < curve.cv_count(); ++i) {
+    explicit Bounds(const NurbsCurve& curve) : Bounds(curve, 0, curve.cv_count()) {}
+
+    Bounds(const NurbsCurve& curve, int first, int count) : lo(curve.get_cv(first)), hi(lo) {
+        for (int i = first + 1; i < first + count; ++i) {
             const Point p = curve.get_cv(i);
             for (int d = 0; d < 3; ++d) {
                 lo[d] = std::min(lo[d], p[d]);
@@ -121,7 +123,10 @@ bool finite_positive(const NurbsCurve& curve) {
 }
 
 NurbsCurve interval(const NurbsCurve& curve, double a, double b) {
-    NurbsCurve result = curve;
+    NurbsCurve result;
+    if (trim_piece(curve, a, b, result))
+        return result;
+    result = curve;
     if ((a > curve.domain_start() || b < curve.domain_end()) && !result.trim(a, b))
         throw std::runtime_error("Curve intersection could not trim a parameter interval");
 
@@ -645,16 +650,24 @@ bool process(const Pair& pair, double tolerance, size_t& budget, Result& result)
 struct SpanBounds {
     nurbs_interval::CurveBounds box;
     bool valid;
+    bool known;
 };
 
-std::vector<SpanBounds> span_bounds(const NurbsCurve& curve, const std::vector<double>& knots) {
-    std::vector<SpanBounds> result;
-    for (size_t i = 1; i < knots.size(); ++i) {
-        SpanBounds span{};
-        span.valid = nurbs_interval::curve_bounds(curve, {knots[i - 1], knots[i]}, {0, 0, 0}, span.box);
-        result.push_back(span);
-    }
+/// The box of the controls active on each span, which holds the span.
+std::vector<Bounds> span_hulls(const NurbsCurve& curve, const std::vector<double>& knots) {
+    std::vector<Bounds> result;
+    for (size_t i = 1; i < knots.size(); ++i)
+        result.emplace_back(curve, nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot,
+            std::midpoint(knots[i - 1], knots[i])), curve.order());
     return result;
+}
+
+/// The outward bounds of one span, taken when first asked for.
+const SpanBounds& span_bounds(std::vector<SpanBounds>& spans, const NurbsCurve& curve, const std::vector<double>& knots, size_t i) {
+    SpanBounds& span = spans[i - 1];
+    if (!span.known)
+        span = {{}, false, true}, span.valid = nurbs_interval::curve_bounds(curve, {knots[i - 1], knots[i]}, {0, 0, 0}, span.box);
+    return span;
 }
 
 bool separated(const SpanBounds& a, const SpanBounds& b, double tolerance) {
@@ -782,11 +795,15 @@ Result intersect_once(const NurbsCurve& a, const NurbsCurve& b, double tolerance
 
     const std::vector<double> av = first.get_span_vector();
     const std::vector<double> bv = second.get_span_vector();
-    const auto ab = span_bounds(first, av), bb = span_bounds(second, bv);
+    // Two spans whose control boxes are apart by the tolerance and more than the rounding of the outward bounds have separated outward bounds: those are left untaken.
+    const auto ha = span_hulls(first, av), hb = span_hulls(second, bv);
+    const double reach = tolerance + epsilon * 1048576.0 * std::max(bounds_a.magnitude(), bounds_b.magnitude());
+    std::vector<SpanBounds> ab(ha.size(), SpanBounds{}), bb(hb.size(), SpanBounds{});
     size_t budget = 0;
     for (size_t i = 1; i < av.size() && result.complete; ++i)
         for (size_t j = 1; j < bv.size() && result.complete; ++j) {
-            if (separated(ab[i - 1], bb[j - 1], tolerance))
+            if (!ha[i - 1].overlaps(hb[j - 1], reach) ||
+                separated(span_bounds(ab, first, av, i), span_bounds(bb, second, bv, j), tolerance))
                 continue;
             const Pair pair{interval(first, av[i - 1], av[i]), interval(second, bv[j - 1], bv[j])};
             result.complete = budget++ < work_limit && process(pair, tolerance, budget, result);
@@ -971,6 +988,53 @@ bool straight_pair(const NurbsCurve& first, const NurbsCurve& second, double tol
     return true;
 }
 
+}
+
+// NurbsCurve::trim inserts each end as a knot and keeps the range between: every step reads the controls and knots of the span of that end and of no other. On a copy of those spans, with one more span either side so that neither end is an end of the copy, it takes the same steps on the same numbers.
+bool trim_piece(const NurbsCurve& curve, double first, double last, NurbsCurve& piece) {
+    const int p = curve.degree(), n = curve.cv_count(), size = curve.cv_size();
+    const std::vector<double>& knots = curve.m_nurbsknot;
+    if (n <= curve.order() || !curve.is_valid() || !(first < last) || knots.front() != knots[p - 1] || knots[n - 1] != knots.back() ||
+        first < knots.front() || last > knots.back())
+        return false;
+    // Trim takes a parameter this near a knot for the knot, and counts knots this near each other as one: so the two ends, once knots.
+    const double near = 4.0 * epsilon * std::max({std::abs(knots.front()), std::abs(knots.back()), knots.back() - knots.front()});
+    if (!(last - first > near))
+        return false;
+    for (const double t : {first, last}) {
+        const auto above = std::lower_bound(knots.begin(), knots.end(), t);
+        if (*above != t && (*above - t <= near || t - *(above - 1) <= near))
+            return false;
+    }
+    int lo = static_cast<int>(std::upper_bound(knots.begin(), knots.end(), first) - knots.begin());
+    int hi = static_cast<int>(std::lower_bound(knots.begin(), knots.end(), last) - knots.begin());
+    if (lo < p || hi > n - 1 || lo > hi)
+        return false;
+    if (lo > p)
+        do --lo; while (lo > p && !(knots[lo - 1] < knots[lo]));
+    if (hi < n - 1)
+        do ++hi; while (hi < n - 1 && !(knots[hi - 1] < knots[hi]));
+    const int count = hi - lo + p + 1;
+    if (count == n)
+        return false;
+    for (int i = lo - p + 1; i < hi + p; ++i)
+        if (knots[i] > knots[i - 1] && knots[i] - knots[i - 1] <= near)
+            return false;
+    // Neither the curve nor the copy is one whose last controls repeat its first: trim treats that as a closed loop of knots.
+    const auto open = [&](int a, int b) {
+        for (int d = 0; d < size; ++d)
+            if (std::abs(curve.cv(a)[d] - curve.cv(b)[d]) > 1e-9)
+                return true;
+        return false;
+    };
+    if (p > 1 && (!open(0, n - p) || (count >= 2 * p && !open(lo - p, hi - p + 1))))
+        return false;
+    piece = curve;
+    piece.m_cv_count = count;
+    piece.m_nurbsknot.assign(knots.begin() + lo - p, knots.begin() + hi + p);
+    piece.m_cv.assign(curve.m_cv.begin() + (lo - p) * curve.m_cv_stride,
+        curve.m_cv.begin() + std::min<size_t>((hi + 1) * curve.m_cv_stride, curve.m_cv.size()));
+    return piece.trim(first, last);
 }
 
 Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance) {

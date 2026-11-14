@@ -1,5 +1,6 @@
 #include "nurbs_coincidence.h"
 #include "nurbs_interval.h"
+#include "nurbs_memo.h"
 #include "curve_surface_intersection.h"
 #include "brep.h"
 #include "intersection.h"
@@ -945,6 +946,77 @@ MINI_TEST("Curve Surface Native", "Crossing Cylinders Section Stays Small And Ce
             == curve_surface_intersection::ParameterMatch::Matched);
         MINI_CHECK(curve_surface_intersection::same_parameter(std::get<0>(section), std::get<2>(section), drill, 1e-7)
             == curve_surface_intersection::ParameterMatch::Matched);
+    }
+}
+
+MINI_TEST("Curve Surface Native", "A Piece Of A Matched Curve Keeps The Certificate Of Its Spans") {
+    using curve_surface_intersection::ParameterMatch;
+    NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150, 10, 300).transformed(Xform::rotation_x(0.5 * Tolerance::PI));
+    drill = drill.transformed(Xform::translation(0, 0, 200));
+    const NurbsSurface body = Primitives::cylinder_surface(0, 0, 0, 100, 425);
+    const auto sections = Intersection::surface_surface(body, drill, 1e-7, true);
+    MINI_CHECK(!sections.empty());
+    const NurbsCurve& world = std::get<0>(sections[0]);
+    const NurbsCurve& pcurve = std::get<1>(sections[0]);
+    MINI_CHECK(world.domain() == pcurve.domain() && world.span_count() > 8);
+    const double first = std::lerp(world.domain_start(), world.domain_end(), 0.21);
+    const double last = std::lerp(world.domain_start(), world.domain_end(), 0.68);
+    NurbsCurve piece = world, piece_pcurve = pcurve;
+    MINI_CHECK(piece.trim(first, last) && piece_pcurve.trim(first, last) && piece.domain() == piece_pcurve.domain());
+    // An end of the pcurve moved off its place by far more than the tolerance.
+    NurbsCurve moved = piece_pcurve;
+    const Point end = moved.get_cv(moved.cv_count() - 1);
+    MINI_CHECK(moved.set_cv(moved.cv_count() - 1, Point(end[0] + 1e-3, end[1] + 1e-3, 0)));
+    const ParameterMatch off = curve_surface_intersection::same_parameter(piece, moved, body, 1e-7);
+    MINI_CHECK(off != ParameterMatch::Matched);
+
+    nurbs_memo::Scope scope;
+    const auto spans = [&scope] {
+        size_t count = 0;
+        for (const auto& [surface, pairs] : scope.spans)
+            count += pairs.size();
+        return count;
+    };
+    MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, body, 1e-7) == ParameterMatch::Matched);
+    const size_t whole = spans();
+    MINI_CHECK(whole >= static_cast<size_t>(world.span_count()));
+    // A tolerance above one already matched asks nothing new, and neither does the same curve again.
+    MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, body, 1e-6) == ParameterMatch::Matched && spans() == whole);
+    // The piece is certified on the spans its two cuts made and on no other.
+    MINI_CHECK(curve_surface_intersection::same_parameter(piece, piece_pcurve, body, 1e-7) == ParameterMatch::Matched);
+    const size_t cut = spans() - whole;
+    MINI_CHECK(cut > 0 && cut * 2 < whole);
+    // The moved end is asked again and refused as it is without the scope; the spans away from it are not asked.
+    MINI_CHECK(curve_surface_intersection::same_parameter(piece, moved, body, 1e-7) == off && spans() == whole + cut);
+    for (double tolerance : {1e-7, 1e-9, 1e-11}) {
+        const ParameterMatch kept = curve_surface_intersection::same_parameter(world, pcurve, body, tolerance);
+        nurbs_memo::Scope fresh;
+        MINI_CHECK(kept == curve_surface_intersection::same_parameter(world, pcurve, body, tolerance));
+    }
+}
+
+MINI_TEST("Curve Surface Native", "A Witness On A Knot Line Is Bounded By Both Cells") {
+    using curve_surface_intersection::ParameterMatch;
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 100, 425);
+    const int around = cylinder.get_span_vector(0).size() > 2 ? 0 : 1, along = 1 - around;
+    const std::vector<double> turns = cylinder.get_span_vector(around);
+    MINI_CHECK(turns.size() > 2);
+    const std::pair<double, double> height = cylinder.domain(along);
+    // A ruling on an inner knot line and one on the seam, with its straight pcurve; then the same lifted off the surface.
+    for (const double turn : {turns[1], turns.front(), turns.back()}) {
+        const NurbsCurve ruling = cylinder.iso_curve(along, turn);
+        NurbsCurve pcurve(3, false, 2, 2);
+        pcurve.m_nurbsknot = {height.first, height.second};
+        Point start, end;
+        start[around] = end[around] = turn;
+        start[along] = height.first;
+        end[along] = height.second;
+        MINI_CHECK(ruling.domain() == height && pcurve.set_cv(0, start) && pcurve.set_cv(1, end));
+        MINI_CHECK(curve_surface_intersection::same_parameter(ruling, pcurve, cylinder, 1e-7) == ParameterMatch::Matched);
+        const Point foot = ruling.point_at_start();
+        const NurbsCurve lifted = ruling.transformed(Xform::translation(foot[0] * 3e-9, foot[1] * 3e-9, 0));
+        MINI_CHECK(curve_surface_intersection::same_parameter(lifted, pcurve, cylinder, 1e-7) == ParameterMatch::Mismatched);
+        MINI_CHECK(curve_surface_intersection::same_parameter(lifted, pcurve, cylinder, 1e-6) == ParameterMatch::Matched);
     }
 }
 

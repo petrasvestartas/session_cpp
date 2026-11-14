@@ -30,4 +30,7 @@ struct Result {
 /// Intersect bounded positive rational curves, retaining both parameters and oriented overlap intervals.
 Result intersect(const NurbsCurve& a, const NurbsCurve& b, double tolerance = 1e-7);
 
+/// The piece of a curve between two parameters exactly as NurbsCurve::trim leaves it, cut from the spans around them and not from the whole curve; false where the whole curve has to be trimmed.
+bool trim_piece(const NurbsCurve& curve, double first, double last, NurbsCurve& piece);
+
 }

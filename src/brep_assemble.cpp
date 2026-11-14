@@ -1204,6 +1204,9 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
     const int count = brep.shell_count();
     std::vector<std::vector<bool>> inside(count, std::vector<bool>(count, false));
     std::vector<int> depth(count, 0);
+    std::vector<std::array<nurbs_interval::Interval, 3>> boxes;
+    for (int i = 0; i < count && count > 1; ++i)
+        boxes.push_back(shell_bounds(brep, i));
     for (int i = 0; i < count; ++i) {
         for (int j = 0; j < count; ++j) {
             if (i == j)
@@ -1211,6 +1214,13 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
 
             const BRep reference = shell_solid(brep, j);
             brep_classify::State state = brep_classify::State::Unknown;
+            // A point clear of the box of every control of a shell is outside it: no ray is asked.
+            const auto clear = [&](const Point& point) {
+                for (int d = 0; d < 3; ++d)
+                    if (point[d] < boxes[j][d].lo - 2.0 * tolerance || point[d] > boxes[j][d].hi + 2.0 * tolerance)
+                        return true;
+                return false;
+            };
             // As before, containment assumes arranged, noncrossing shell interiors.
             // Shared-boundary probes do not establish a relation; only the existing
             // strict solid classifier can accept a later interior-face proposal.
@@ -1218,7 +1228,7 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
                 const NurbsSurface& support = brep.m_surfaces[brep.m_faces[face.index].surface_index];
                 if (visit_face_parameters(brep, face.index, [&](const Point& uv) {
                     const Point point = support.point_at(uv[0], uv[1]);
-                    state = brep_classify::point(reference, point, tolerance);
+                    state = clear(point) ? brep_classify::State::Outside : brep_classify::point(reference, point, tolerance);
                     if (containment)
                         containment->push_back({i, j, face.index, uv, point, state});
                     return state == brep_classify::State::Inside || state == brep_classify::State::Outside;

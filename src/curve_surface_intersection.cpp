@@ -33,6 +33,17 @@ struct ParameterPart {
     NurbsCurve curve;
     NurbsCurve pcurve;
     int depth = 0;
+    int pair = -1;
+};
+
+// One span of a curve and one span of its pcurve where they overlap on a shared raw domain: the two polynomial pieces a certificate is about, whatever curves they are spans of.
+struct SpanPair {
+    size_t span;
+    size_t pcurve_span;
+    std::string key;
+    double reached = 0.0;
+    bool known = false;
+    bool certified = false;
 };
 
 struct AffinePatch {
@@ -657,7 +668,8 @@ bool certified_composition(
     const NurbsCurve& curve,
     const NurbsCurve& pcurve,
     const NurbsSurface& patch,
-    double tolerance
+    double tolerance,
+    double& reached
 ) {
     if (curve.cv_count() != curve.order() || pcurve.cv_count() != pcurve.order() ||
         patch.cv_count(0) != patch.order(0) || patch.cv_count(1) != patch.order(1))
@@ -691,16 +703,37 @@ bool certified_composition(
             error = std::max(error, std::abs(a[i] - b[i]));
         squared += error * error;
     }
+    // Any tolerance from the reached bound up passes the same test.
+    reached = std::max(reached, std::sqrt(squared) / denominator * (1.0 + 4.0 * std::numeric_limits<double>::epsilon()));
     return std::isfinite(squared) && std::sqrt(squared) <= tolerance * denominator;
 }
 
 std::vector<double> graph_cuts(const NurbsCurve& curve, const NurbsSurface& surface, bool internal_only = false) {
     std::vector<double> cuts = curve.get_span_vector();
     const size_t margin = internal_only ? 1 : 0;
+    // Controls all on one side of a knot line by more than the rounding of a root search put the curve there: it has no root on the line.
+    const auto beside = [&curve](int d, double parameter) {
+        double size = 0.0, nearest = std::numeric_limits<double>::infinity();
+        bool above = false, below = false;
+        for (int i = 0; i < curve.cv_count(); ++i) {
+            const double* cv = curve.cv(i);
+            const double weight = curve.is_rational() ? cv[curve.dimension()] : 1.0;
+            const double value = cv[d] - parameter * weight;
+            for (int k = 0; k < curve.dimension(); ++k)
+                size = std::max(size, std::abs(cv[k]));
+            size = std::max(size, std::abs(parameter * weight));
+            nearest = std::min(nearest, std::abs(value));
+            above = above || value > 0.0;
+            below = below || !(value > 0.0);
+        }
+        return above != below && nearest > 1e-9 * size;
+    };
     for (int d = 0; d < 2; ++d) {
         const std::vector<double> spans = surface.get_span_vector(d);
         for (size_t i = margin; i + margin < spans.size(); ++i) {
             const double parameter = spans[i];
+            if (beside(d, parameter))
+                continue;
             Point origin;
             Vector normal;
             origin[d] = parameter;
@@ -755,10 +788,124 @@ bool parameter_image_bound(
     return nurbs_interval::finite(squared) && squared.hi <= limit.lo;
 }
 
+// The first and the last span of a knot vector that a parameter box reaches into; the two end spans go on past the domain, as their polynomials do.
+bool box_spans(const std::vector<double>& knots, int degree, int count, nurbs_interval::Interval t, std::array<int, 2>& spans) {
+    if (count <= degree || knots.size() != static_cast<size_t>(degree + count - 1) || !nurbs_interval::finite(t))
+        return false;
+    spans[0] = spans[1] = std::clamp(nurbs_interval::padded_upper_bound(knots, t.lo) - 1, degree, count - 1);
+    while (spans[1] < count - 1 && knots[spans[1]] < t.hi)
+        ++spans[1];
+    return true;
+}
+
+// De Boor's steps at an outward parameter on one span: the point is left in the last of the degree + 1 controls.
+bool de_boor(nurbs_interval::Homogeneous* work, const std::vector<double>& knots, int span, int degree, nurbs_interval::Interval t) {
+    using nurbs_interval::Interval;
+    const nurbs_interval::PaddedKnots padded{knots.data()};
+    for (int level = 1; level <= degree; ++level)
+        for (int j = degree; j >= level; --j) {
+            const double left = padded[span - degree + j], right = padded[span + j - level + 1];
+            const Interval width = Interval(right) - Interval(left);
+            if (!(width.lo > 0.0))
+                return false;
+            const Interval alpha = t.lo == t.hi && t.lo == right ? Interval(1.0) : (t - Interval(left)) / width;
+            const nurbs_interval::Factor near(Interval(1.0) - alpha), far(alpha);
+            for (int d = 0; d < 4; ++d)
+                work[j][d] = near * work[j - 1][d] + far * work[j][d];
+        }
+    return true;
+}
+
+bool homogeneous(const double* cv, int dimension, bool rational, const std::array<double, 3>& origin, nurbs_interval::Homogeneous& control) {
+    using nurbs_interval::Interval;
+    const double weight = rational ? cv[dimension] : 1.0;
+    control[3] = weight;
+    for (int d = 0; d < 3; ++d)
+        control[d] = Interval(d < dimension ? cv[d] : 0.0) - Interval(origin[d]) * Interval(weight);
+    return weight > 0.0 && std::isfinite(weight);
+}
+
+bool euclidean(const nurbs_interval::Homogeneous& control, std::array<nurbs_interval::Interval, 3>& point) {
+    if (!(control[3].lo > 0.0))
+        return false;
+    const nurbs_interval::Divisor weight(control[3]);
+    for (int d = 0; d < 3; ++d)
+        if (!nurbs_interval::finite(point[d] = control[d] / weight))
+            return false;
+    return true;
+}
+
+// An outward point of a curve at one parameter, relative to origin: one triangle of de Boor's steps.
+bool curve_point(const NurbsCurve& curve, double t, const std::array<double, 3>& origin, std::array<nurbs_interval::Interval, 3>& point) {
+    const int degree = curve.order() - 1, count = curve.cv_count();
+    const std::vector<double>& knots = curve.m_nurbsknot;
+    std::array<int, 2> spans;
+    if (degree < 1 || curve.dimension() < 1 || curve.dimension() > 3 || !box_spans(knots, degree, count, t, spans) ||
+        t < knots[degree - 1] || t > knots[count - 1])
+        return false;
+    nurbsknot::Scratch<nurbs_interval::Homogeneous, 16> work(degree + 1);
+    // An end the knots are gathered at is its control.
+    if (t == knots.front() || t == knots.back())
+        return homogeneous(curve.cv(t == knots.front() ? 0 : count - 1), curve.dimension(), curve.is_rational(), origin, work.data[0]) &&
+            euclidean(work.data[0], point);
+    for (int i = 0; i <= degree; ++i)
+        if (!homogeneous(curve.cv(spans[0] - degree + i), curve.dimension(), curve.is_rational(), origin, work.data[i]))
+            return false;
+    return de_boor(work.data, knots, spans[0], degree, t) && euclidean(work.data[degree], point);
+}
+
+// Outward bounds of a surface over a parameter box, relative to origin: the polynomial of every knot cell the box reaches into, each over the whole box.
+bool surface_point(const NurbsSurface& surface, nurbs_interval::Interval u, nurbs_interval::Interval v,
+                   const std::array<double, 3>& origin, std::array<nurbs_interval::Interval, 3>& point) {
+    const int p = surface.order(0) - 1, q = surface.order(1) - 1;
+    std::array<int, 2> su, sv;
+    if (surface.dimension() != 3 || p < 1 || q < 1 || !box_spans(surface.m_nurbsknot[0], p, surface.cv_count(0), u, su) ||
+        !box_spans(surface.m_nurbsknot[1], q, surface.cv_count(1), v, sv))
+        return false;
+    nurbsknot::Scratch<nurbs_interval::Homogeneous, 32> work(p + q + 2);
+    nurbs_interval::Homogeneous* row = work.data;
+    nurbs_interval::Homogeneous* column = row + p + 1;
+    bool first = true;
+    for (int a = su[0]; a <= su[1]; ++a)
+        for (int b = sv[0]; b <= sv[1]; ++b) {
+            // A span of no length between two others is a knot repeated: the box reaches no polynomial there.
+            if (surface.m_nurbsknot[0][a - 1] == surface.m_nurbsknot[0][a] || surface.m_nurbsknot[1][b - 1] == surface.m_nurbsknot[1][b])
+                continue;
+            for (int j = 0; j <= q; ++j) {
+                for (int i = 0; i <= p; ++i)
+                    if (!homogeneous(surface.cv(a - p + i, b - q + j), 3, surface.is_rational(), origin, row[i]))
+                        return false;
+                if (!de_boor(row, surface.m_nurbsknot[0], a, p, u))
+                    return false;
+                column[j] = row[p];
+            }
+            std::array<nurbs_interval::Interval, 3> cell;
+            if (!de_boor(column, surface.m_nurbsknot[1], b, q, v) || !euclidean(column[q], cell))
+                return false;
+            for (int d = 0; d < 3; ++d)
+                point[d] = first ? cell[d] : nurbs_interval::interval_hull(point[d], cell[d]);
+            first = false;
+        }
+    return !first;
+}
+
 bool parameter_point_mismatch(const NurbsCurve& curve, double t,
     const NurbsCurve& pcurve, double uv_t, const NurbsSurface& surface, double tolerance) {
     const Point anchor = curve.get_cv(0);
     const std::array<double, 3> origin = {anchor[0], anchor[1], anchor[2]};
+    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
+    // A point proved within the tolerance is no witness: its residual is bounded from above first, by three triangles in place of the blossoms.
+    std::array<nurbs_interval::Interval, 3> on_curve, on_pcurve, on_surface;
+    if (curve_point(curve, t, origin, on_curve) && curve_point(pcurve, uv_t, {0, 0, 0}, on_pcurve) &&
+        surface_point(surface, on_pcurve[0], on_pcurve[1], origin, on_surface)) {
+        nurbs_interval::Interval squared;
+        for (int d = 0; d < 3; ++d) {
+            const nurbs_interval::Interval distance(nurbs_interval::magnitude(on_curve[d] - on_surface[d]));
+            squared = squared + distance * distance;
+        }
+        if (nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.hi <= allowed.lo)
+            return false;
+    }
     nurbs_interval::CurveBounds world, uv;
     nurbs_interval::SurfaceBounds lifted;
     if (!nurbs_interval::curve_bounds(curve, {t, t}, origin, world) ||
@@ -774,8 +921,34 @@ bool parameter_point_mismatch(const NurbsCurve& curve, double t,
         const double lower = residual.lo > 0 ? residual.lo : residual.hi < 0 ? -residual.hi : 0;
         squared = squared + nurbs_interval::Interval(lower) * nurbs_interval::Interval(lower);
     }
-    const auto allowed = nurbs_interval::Interval(tolerance) * nurbs_interval::Interval(tolerance);
     return nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.lo > allowed.hi;
+}
+
+// The bytes of the polynomial piece of a curve on the span around a parameter: its controls and the knots they blend over.
+void add_span(std::string& key, const NurbsCurve& curve, double inside) {
+    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, inside);
+    const int layout[] = {curve.m_dim, curve.m_is_rat, curve.m_order};
+    nurbs_memo::add(key, layout, std::size(layout));
+    nurbs_memo::add(key, &curve.m_nurbsknot[first], 2 * curve.degree());
+    for (int i = 0; i < curve.order(); ++i)
+        nurbs_memo::add(key, curve.cv(first + i), curve.cv_size());
+}
+
+std::vector<SpanPair> span_pairs(const NurbsCurve& curve, const NurbsCurve& pcurve) {
+    const std::vector<double> a = curve.get_span_vector(), b = pcurve.get_span_vector();
+    std::vector<SpanPair> pairs;
+    for (size_t i = 1, j = 1; i < a.size() && j < b.size();) {
+        if (std::max(a[i - 1], b[j - 1]) < std::min(a[i], b[j])) {
+            SpanPair pair{i, j, {}};
+            add_span(pair.key, curve, std::midpoint(a[i - 1], a[i]));
+            add_span(pair.key, pcurve, std::midpoint(b[j - 1], b[j]));
+            pairs.push_back(std::move(pair));
+        }
+        const bool first = a[i] <= b[j], second = b[j] <= a[i];
+        i += first;
+        j += second;
+    }
+    return pairs;
 }
 
 bool parameter_parts(
@@ -784,7 +957,8 @@ bool parameter_parts(
     const NurbsSurface& surface,
     double tolerance,
     std::vector<ParameterPart>& work,
-    std::string* diagnostic
+    std::string* diagnostic,
+    std::vector<SpanPair>& pairs
 ) {
     auto* observation = parameter_diagnostics::active;
     if (observation) ++observation->calls;
@@ -805,12 +979,38 @@ bool parameter_parts(
     if (cuts.size() < 2 || cuts.size() > 4096)
         return false;
 
+    // Every interval between two cuts lies in one span pair, found by the two spans that hold it; where one is not found no pair is used.
+    std::vector<int> owner(cuts.size(), -1);
+    const std::vector<double> pcurve_spans = pcurve.get_span_vector();
+    if (!pairs.empty() && (pairs.back().span + 1 != spans.size() || pairs.back().pcurve_span + 1 != pcurve_spans.size()))
+        pairs.clear();
+    for (size_t i = 1, at = 0; i < cuts.size() && !pairs.empty(); ++i) {
+        const size_t k = std::upper_bound(spans.begin(), spans.end(), cuts[i - 1]) - spans.begin();
+        const size_t l = std::upper_bound(pcurve_spans.begin(), pcurve_spans.end(), cuts[i - 1]) - pcurve_spans.begin();
+        while (at < pairs.size() && (pairs[at].span != k || pairs[at].pcurve_span != l))
+            ++at;
+        if (at == pairs.size() || k >= spans.size() || l >= pcurve_spans.size() || cuts[i] > spans[k] || cuts[i] > pcurve_spans[l])
+            pairs.clear();
+        else
+            owner[i] = static_cast<int>(at);
+    }
+
     for (size_t i = 1; i < cuts.size(); ++i) {
-        NurbsCurve part = curve;
-        NurbsCurve uv = pcurve;
-        if (!part.trim(cuts[i - 1], cuts[i]) || !uv.trim(cuts[i - 1], cuts[i])) {
-            if (parameter_image_bound(curve, pcurve, surface, {cuts[i - 1], cuts[i]}, tolerance))
+        SpanPair* pair = pairs.empty() ? nullptr : &pairs[owner[i]];
+        if (pair && pair->known)
+            continue;
+        if (pair)
+            pair->certified = true;
+        NurbsCurve part, uv;
+        const auto piece = [&](const NurbsCurve& whole, NurbsCurve& cut) {
+            return curve_intersection::trim_piece(whole, cuts[i - 1], cuts[i], cut) || ((cut = whole).trim(cuts[i - 1], cuts[i]));
+        };
+        if (!piece(curve, part) || !piece(pcurve, uv)) {
+            if (parameter_image_bound(curve, pcurve, surface, {cuts[i - 1], cuts[i]}, tolerance)) {
+                if (pair)
+                    pair->reached = std::max(pair->reached, tolerance);
                 continue;
+            }
             if (diagnostic) {
                 std::ostringstream text;
                 text.precision(17);
@@ -820,7 +1020,7 @@ bool parameter_parts(
             return false;
         }
 
-        work.push_back({std::move(part), std::move(uv)});
+        work.push_back({std::move(part), std::move(uv), 0, pairs.empty() ? -1 : owner[i]});
     }
     return true;
 }
@@ -884,7 +1084,8 @@ ParameterMatch parameter_match(
     const NurbsSurface& surface,
     double tolerance,
     std::string* diagnostic,
-    ParameterFailure* failure
+    ParameterFailure* failure,
+    double& reached
 ) {
     if (failure) {
         failure->kind = ParameterFailure::Kind::Bound;
@@ -916,7 +1117,7 @@ ParameterMatch parameter_match(
             parameter_diagnostic("Patch extraction failed", part, patch, diagnostic);
             return ParameterMatch::Unresolved;
         }
-        if (!certified_composition(part.curve, part.pcurve, patch, tolerance)) {
+        if (!certified_composition(part.curve, part.pcurve, patch, tolerance, reached)) {
             parameter_diagnostic("Composition bound unresolved", part, patch, diagnostic);
             return ParameterMatch::Unresolved;
         }
@@ -932,6 +1133,7 @@ bool split_parameters(const ParameterPart& part, std::vector<ParameterPart>& wor
         return false;
 
     a.depth = b.depth = part.depth + 1;
+    a.pair = b.pair = part.pair;
     work.push_back(std::move(a));
     work.push_back(std::move(b));
     return true;
@@ -957,7 +1159,8 @@ bool graph_piece(
                 break;
             }
     }
-    if (!certified_composition(curve, pcurve, patch, tolerance * 0.125))
+    double reached = 0.0;
+    if (!certified_composition(curve, pcurve, patch, tolerance * 0.125, reached))
         return false;
     append_overlap(result, pcurve);
     return true;
@@ -1566,10 +1769,31 @@ static ParameterMatch same_parameter_impl(
             return ParameterMatch::Mismatched;
         }
 
+    // A span pair a matched certificate reached within this tolerance is not certified again: a piece cut from a matched curve, or one whose end was moved, is asked only for the spans the cut or the move made.
+    std::vector<SpanPair> pairs;
+    std::unordered_map<std::string, double>* known = nullptr;
+    if (nurbs_memo::Scope::active && !parameter_diagnostics::active && curve.domain() == pcurve.domain()) {
+        std::string key;
+        nurbs_memo::add(key, surface);
+        known = &nurbs_memo::Scope::active->spans[key];
+        pairs = span_pairs(curve, pcurve);
+        bool all = !pairs.empty();
+        for (SpanPair& pair : pairs) {
+            const auto found = known->find(pair.key);
+            pair.known = found != known->end() && found->second <= tolerance;
+            all = all && pair.known;
+        }
+        if (all) {
+            if (diagnostic)
+                diagnostic->clear();
+            return ParameterMatch::Matched;
+        }
+    }
+
     std::vector<ParameterPart> work;
     if (diagnostic)
         *diagnostic = "Common parameter partition failed";
-    if (!parameter_parts(curve, pcurve, surface, tolerance, work, diagnostic)) {
+    if (!parameter_parts(curve, pcurve, surface, tolerance, work, diagnostic, pairs)) {
         if (failure) failure->kind = ParameterFailure::Kind::Partition;
         return ParameterMatch::Unresolved;
     }
@@ -1577,9 +1801,13 @@ static ParameterMatch same_parameter_impl(
     for (size_t iteration = 0; !work.empty() && iteration < 4096; ++iteration) {
         const ParameterPart part = std::move(work.back());
         work.pop_back();
-        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic, failure);
-        if (match == ParameterMatch::Matched)
+        double reached = 0.0;
+        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic, failure, reached);
+        if (match == ParameterMatch::Matched) {
+            if (part.pair >= 0)
+                pairs[part.pair].reached = std::max(pairs[part.pair].reached, reached);
             continue;
+        }
         if (match == ParameterMatch::Mismatched)
             return match;
         if (part.depth >= 20 || !split_parameters(part, work)) {
@@ -1590,6 +1818,11 @@ static ParameterMatch same_parameter_impl(
     if (work.empty()) {
         if (diagnostic) diagnostic->clear();
         if (failure) *failure = {};
+        for (const SpanPair& pair : pairs)
+            if (pair.certified) {
+                const auto [at, fresh] = known->emplace(pair.key, pair.reached);
+                at->second = std::min(at->second, pair.reached);
+            }
     } else if (failure) {
         failure->kind = ParameterFailure::Kind::WorkLimit;
         failure->has_interval = true;
@@ -1697,7 +1930,7 @@ static bool straight_on_patch(const NurbsCurve& world, const NurbsCurve& pcurve,
 
 ParameterMatch same_parameter(const NurbsCurve& curve, const NurbsCurve& pcurve,
     const NurbsSurface& surface, double tolerance, std::string* diagnostic, ParameterFailure* failure) {
-    if (straight_on_patch(curve, pcurve, surface, tolerance)) {
+    if (straight_on_patch(curve, pcurve, surface, tolerance) || surface_section::on_flat_patch(curve, pcurve, surface, tolerance)) {
         if (diagnostic)
             diagnostic->clear();
         if (failure)

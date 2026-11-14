@@ -775,4 +775,52 @@ MINI_TEST("CurveIntersection", "Straight Pairs In Closed Form") {
     const auto mixed = curve_intersection::intersect(weighted, flat);
     MINI_CHECK(mixed.complete && mixed.points.size() == 1 && mixed.points[0].a == 0.5 && mixed.points[0].b == 0.5);
 }
+
+MINI_TEST("CurveIntersection", "Trim Piece Is The Trim Of The Whole Curve") {
+    std::vector<Point> points;
+    for (int i = 0; i <= 12; ++i)
+        points.push_back(Point(i, std::sin(0.7 * i), 0.1 * i * i));
+    for (const NurbsCurve& curve : {NurbsCurve::create_interpolated(points), Primitives::circle(1, 2, 3, 4), NurbsCurve::create(false, 2, points)}) {
+        const std::vector<double> spans = curve.get_span_vector();
+        MINI_CHECK(spans.size() > 4);
+        const double lo = spans.front(), hi = spans.back();
+        const std::vector<std::pair<double, double>> ranges = {{spans[1], spans[2]}, {std::lerp(spans[1], spans[2], 0.3), spans[2]},
+            {lo, std::lerp(lo, spans[1], 0.5)}, {std::lerp(spans[1], spans[2], 0.25), std::lerp(spans[2], spans[3], 0.75)},
+            {std::lerp(spans[spans.size() - 2], hi, 0.5), hi}};
+        // A piece whose spans and their neighbours are the whole curve is left to it, as on the circle of four spans.
+        size_t made = 0;
+        for (const auto& [first, last] : ranges) {
+            NurbsCurve piece, whole = curve;
+            MINI_CHECK(whole.trim(first, last));
+            if (curve_intersection::trim_piece(curve, first, last, piece)) {
+                MINI_CHECK(piece.m_cv == whole.m_cv && piece.m_nurbsknot == whole.m_nurbsknot && piece.m_cv_count == whole.m_cv_count);
+                ++made;
+            }
+        }
+        MINI_CHECK(made + 1 >= ranges.size());
+        // The whole range has no piece to cut; a cut a rounding off a knot, or off the other cut, is left to the whole curve, where trim takes the two for one.
+        NurbsCurve piece;
+        const double inside = std::lerp(spans[1], spans[2], 0.4);
+        MINI_CHECK(!curve_intersection::trim_piece(curve, lo, hi, piece));
+        MINI_CHECK(!curve_intersection::trim_piece(curve, std::nextafter(spans[1], hi), spans[2], piece));
+        MINI_CHECK(!curve_intersection::trim_piece(curve, inside, std::nextafter(inside, hi), piece));
+    }
+}
+
+MINI_TEST("CurveIntersection", "Spans Apart By Their Control Boxes Are Passed By") {
+    const NurbsCurve circle = Primitives::circle(0, 0, 0, 1);
+    const auto across = [&circle](double sum, double shift) {
+        return curve_intersection::intersect(circle, curve_from_points({{sum + 1 + shift, -1 + shift, 0}, {-1 + shift, sum + 1 + shift, 0}}), 1e-7);
+    };
+    // Outside the control box of every span, inside the box of one span and clear of the circle, on the circle, and through it.
+    for (const auto& [sum, hits] : std::vector<std::pair<double, size_t>>{{2.5, 0}, {1.9, 0}, {1.2, 2}}) {
+        const auto events = across(sum, 0.0);
+        MINI_CHECK(events.complete && events.overlaps.empty() && events.points.size() == hits);
+    }
+    const auto touching = across(std::sqrt(2.0), 0.0);
+    MINI_CHECK(touching.complete && touching.points.size() == 1 && touching.points[0].tangent);
+    MINI_CHECK(touching.points[0].point.distance({std::sqrt(0.5), std::sqrt(0.5), 0}) < 1e-7);
+    // A line past the circle by more than the tolerance and by less.
+    MINI_CHECK(across(std::sqrt(2.0), 2e-7).points.empty() && across(std::sqrt(2.0), 2e-8).points.size() == 1);
+}
 }

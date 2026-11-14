@@ -1683,4 +1683,33 @@ MINI_TEST("Split", "Shared Cut End On The Boundary Is Intersected") {
     second.nodes = {7, -1};
     placed_and_intersected(source.brep, source.face, {first, second}, false, 3);
 }
+
+MINI_TEST("Split", "A Hole Inside A Hole Is Nested By One Of Its Points") {
+    const PlacedFace source = placed_face();
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
+    std::vector<split::FaceCut> cuts;
+    for (const double share : {0.3, 0.15}) {
+        split::FaceCut cut;
+        cut.pcurve = Primitives::circle((u.first + u.second) * 0.5, (v.first + v.second) * 0.5, 0,
+            std::min(u.second - u.first, v.second - v.first) * share);
+        cut.world = cut.pcurve;
+        for (int i = 0; i < cut.pcurve.cv_count(); ++i) {
+            const Point uv = cut.pcurve.get_cv(i);
+            const Point p = surface.point_at(uv[0], uv[1]);
+            const double w = cut.pcurve.weight(i);
+            MINI_CHECK(cut.world.set_cv_4d(i, p[0] * w, p[1] * w, p[2] * w, w));
+        }
+        cut.section = static_cast<int>(cuts.size());
+        cut.placed = true;
+        cuts.push_back(cut);
+    }
+    // The face around both circles and the ring between them have a hole each; read off the ends or intersected, the split is the same.
+    const split::FaceSplit made = split::split_brep_face_by_pcurves(source.brep, source.face, cuts, 1e-7);
+    size_t holed = 0;
+    for (const int face : made.faces)
+        holed += made.brep.m_faces[face].wires.size() == 2;
+    MINI_CHECK(made.faces.size() == 3 && holed == 2);
+    placed_and_intersected(source.brep, source.face, cuts, true, 3);
+}
 } // namespace session_cpp
