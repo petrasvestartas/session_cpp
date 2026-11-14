@@ -3086,21 +3086,10 @@ BRep BRep::create_pyramid(double base, double height) {
     std::vector<BRepRef> faces = {{pb.face(quad_patch(b, fv), fv), F}};
 
     for (int i = 0; i < 4; ++i) {
-        const int a = i;
-        const int c = (i + 1) % 4;
-        const NurbsSurface srf = bilinear_patch(b.m_vertices[a].point, b.m_vertices[c].point, b.m_vertices[v_apex].point, b.m_vertices[v_apex].point);
-        const int si = b.add_surface(srf);
-        const int e_ac = pb.edge(a, c);
-        const int e_c = pb.edge(c, v_apex);
-        const int e_a = pb.edge(a, v_apex);
-        const int e_deg = b.add_edge(-1, v_apex, v_apex);
-        const bool ac_fwd = b.m_edges[e_ac].start_vertex == a;
-        b.add_pcurve(e_ac, si, b.add_curve_2d(ac_fwd ? uv_line(0, 0, 1, 0) : uv_line(1, 0, 0, 0)));
-        b.add_pcurve(e_c, si, b.add_curve_2d(uv_line(1, 0, 1, 1)));
-        b.add_pcurve(e_deg, si, b.add_curve_2d(uv_line(1, 1, 0, 1)));
-        b.add_pcurve(e_a, si, b.add_curve_2d(uv_line(0, 0, 0, 1)));
-        const int wire = b.add_wire({{e_ac, ac_fwd ? F : R}, {e_c, F}, {e_deg, F}, {e_a, R}});
-        faces.push_back({b.add_face(si, {{wire, F}}), F});
+        const Point& a = b.m_vertices[i].point;
+        const Point& c = b.m_vertices[(i + 1) % 4].point;
+        const Vector up = b.m_vertices[v_apex].point - Point::sum(a, c) * 0.5;
+        faces.push_back({pb.face(bilinear_patch(a, c, a + up, c + up), {i, (i + 1) % 4, v_apex}), F});
     }
 
     b.add_solid({{b.add_shell(faces), F}});

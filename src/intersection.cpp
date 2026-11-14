@@ -5872,30 +5872,18 @@ static bool triangle_barycentric_curve(const NurbsSurface& srf, const NurbsCurve
     return true;
 }
 
-/// Parameter ranges of c3d inside the wedge of such a patch from its base to its apex, cut where a side is crossed; false when the patch is no triangle. Past the apex line the triangle chart has no pcurve, and no trim reaches there.
-static bool triangle_clip_ranges(const NurbsSurface& srf, const NurbsCurve& c3d, std::vector<std::pair<double, double>>& ranges) {
+/// Parameter ranges of c3d where every coordinate is positive, cut where one changes sign between 64 samples a span; a range between them stays unless outside proves it away.
+template <size_t N, class Coordinates, class Outside>
+static std::vector<std::pair<double, double>> positive_ranges(const NurbsCurve& c3d, const Coordinates& coordinates, const Outside& outside) {
 
-    NurbsCurve bary;
-    bool along_u, flipped;
-
-    if (!triangle_barycentric_curve(srf, c3d, bary, along_u, flipped))
-        return false;
-
-    // A hair wider than the triangle, so that the trims and not these cuts place the ends: a cut a rounding away from a trim event is neither that event nor another.
-    const double margin = 1e-3;
-    const auto coordinates = [&](double t) {
-        const Point h = bary.point_at(t);
-        const double rest = h[2] - h[1];
-        return std::array<double, 3>{rest - h[0] + margin * rest, h[0] + margin * rest, h[1] + margin * h[2]};
-    };
     const std::vector<double> spans = c3d.get_span_vector();
     std::vector<double> cuts{spans.front(), spans.back()};
 
     for (size_t k = 0; k + 1 < spans.size(); ++k)
         for (int i = 0; i < 64; ++i) {
             const double lo = std::lerp(spans[k], spans[k + 1], i / 64.0), hi = std::lerp(spans[k], spans[k + 1], (i + 1) / 64.0);
-            const std::array<double, 3> a = coordinates(lo), b = coordinates(hi);
-            for (int c = 0; c < 3; ++c) {
+            const std::array<double, N> a = coordinates(lo), b = coordinates(hi);
+            for (size_t c = 0; c < N; ++c) {
                 if (!((a[c] < 0 && b[c] > 0) || (a[c] > 0 && b[c] < 0)))
                     continue;
                 double x = lo, y = hi;
@@ -5909,23 +5897,85 @@ static bool triangle_clip_ranges(const NurbsSurface& srf, const NurbsCurve& c3d,
 
     std::sort(cuts.begin(), cuts.end());
     cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
-    ranges.clear();
+    std::vector<std::pair<double, double>> ranges;
 
     for (size_t k = 0; k + 1 < cuts.size(); ++k) {
-        const std::array<double, 3> m = coordinates(std::midpoint(cuts[k], cuts[k + 1]));
-        if (m[0] >= 0 && m[1] >= 0 && m[2] >= 0)
+        const std::array<double, N> m = coordinates(std::midpoint(cuts[k], cuts[k + 1]));
+        if (std::any_of(m.begin(), m.end(), [](double x) { return x < 0; }) && outside(cuts[k], cuts[k + 1]))
+            continue;
+        if (!ranges.empty() && ranges.back().second == cuts[k])
+            ranges.back().second = cuts[k + 1];
+        else
             ranges.push_back({cuts[k], cuts[k + 1]});
     }
+
+    return ranges;
+}
+
+/// Parameter ranges of c3d inside the wedge of such a patch from its base to its apex, cut where a side is crossed; false when the patch is no triangle. Past the apex line the triangle chart has no pcurve, and no trim reaches there.
+static bool triangle_clip_ranges(const NurbsSurface& srf, const NurbsCurve& c3d, std::vector<std::pair<double, double>>& ranges) {
+
+    NurbsCurve bary;
+    bool along_u, flipped;
+
+    if (!triangle_barycentric_curve(srf, c3d, bary, along_u, flipped))
+        return false;
+
+    // A hair wider than the triangle, so that the trims and not these cuts place the ends: a cut a rounding away from a trim event is neither that event nor another.
+    const double margin = 1e-3;
+    ranges = positive_ranges<3>(c3d, [&](double t) {
+        const Point h = bary.point_at(t);
+        const double rest = h[2] - h[1];
+        return std::array<double, 3>{rest - h[0] + margin * rest, h[0] + margin * rest, h[1] + margin * h[2]};
+    }, [](double, double) { return true; });
 
     return true;
 }
 
-/// Pieces of c3d inside the triangle of such a patch; c3d itself when it stays inside or the patch is no triangle.
-static std::vector<NurbsCurve> clip_curve_to_triangle(const NurbsSurface& srf, const NurbsCurve& c3d) {
+/// Parameter ranges of a curved c3d inside the patch of a planar parallelogram, a hair wider, cut where a side is crossed; a range is left out only when its control points are all past one side. False when the patch is no parallelogram or c3d is straight.
+static bool parallelogram_clip_ranges(const NurbsSurface& srf, const NurbsCurve& c3d, std::vector<std::pair<double, double>>& ranges) {
+
+    if (c3d.degree() < 2 || srf.degree(0) != 1 || srf.degree(1) != 1 || srf.cv_count(0) != 2 || srf.cv_count(1) != 2 || srf.is_rational())
+        return false;
+
+    const FaceFrame f = face_frame(srf);
+
+    if (!is_parallelogram_face(srf, f) || std::abs(f.det) < 1e-18)
+        return false;
+
+    const auto fraction = [&f](const Point& p) {
+        std::array<double, 2> ab;
+        f.fraction(std::array<double, 3>{p[0] - f.o[0], p[1] - f.o[1], p[2] - f.o[2]}, ab[0], ab[1]);
+        return ab;
+    };
+    const double margin = 1e-3;
+    ranges = positive_ranges<4>(c3d, [&](double t) {
+        const std::array<double, 2> ab = fraction(c3d.point_at(t));
+        return std::array<double, 4>{ab[0] + margin, 1 + margin - ab[0], ab[1] + margin, 1 + margin - ab[1]};
+    }, [&](double lo, double hi) {
+        NurbsCurve piece = c3d;
+        if (!piece.trim(lo, hi))
+            return false;
+        std::array<int, 4> past{};
+        for (int i = 0; i < piece.cv_count(); ++i) {
+            if (piece.is_rational() && !(piece.weight(i) > 0))
+                return false;
+            const std::array<double, 2> ab = fraction(piece.get_cv(i));
+            past[0] += ab[0] < 0, past[1] += ab[0] > 1, past[2] += ab[1] < 0, past[3] += ab[1] > 1;
+        }
+        return std::find(past.begin(), past.end(), piece.cv_count()) != past.end();
+    });
+
+    return true;
+}
+
+/// Pieces of c3d inside the triangle or parallelogram of such a patch; c3d itself when it stays inside or the patch is neither.
+static std::vector<NurbsCurve> clip_curve_to_patch(const NurbsSurface& srf, const NurbsCurve& c3d) {
 
     std::vector<std::pair<double, double>> ranges;
 
-    if (!triangle_clip_ranges(srf, c3d, ranges) || (ranges.size() == 1 && ranges[0] == c3d.domain()))
+    if (!(triangle_clip_ranges(srf, c3d, ranges) || parallelogram_clip_ranges(srf, c3d, ranges)) ||
+        (ranges.size() == 1 && ranges[0] == c3d.domain()))
         return {c3d};
 
     std::vector<NurbsCurve> pieces;
@@ -7863,12 +7913,6 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
     const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
     const bool observing = capture && *capture;
     const PullbackRun original_samples = observing ? samples : PullbackRun{};
-    for (size_t i = 0; i < samples.ts.size(); ++i) {
-        const auto before = samples.uv[i ? i - 1 : i],
-                   after = samples.uv[std::min(i + 1, samples.uv.size() - 1)];
-        samples.uv[i] = pullback_proposal(surface, world, samples.ts[i], samples.uv[i], before, after);
-    }
-    const PullbackRun projected_samples = observing ? samples : PullbackRun{};
     // A volume moves with a trim's error times its reach, so a trim within the model tolerance is not yet a measured one.
     {
         double reach = 0.0;
@@ -7887,11 +7931,11 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
             }
             return worst;
         };
-        // A node between two given samples is projected from them, so its seed is never far from the curve.
+        // A node is projected from the given samples around it, so its seed is never far from the curve; only the nodes are projected.
         const auto at = [&](double t) {
             const size_t i = static_cast<size_t>(std::lower_bound(samples.ts.begin(), samples.ts.end(), t) - samples.ts.begin());
             if (samples.ts[i] == t)
-                return samples.uv[i];
+                return pullback_proposal(surface, world, t, samples.uv[i], samples.uv[i ? i - 1 : i], samples.uv[std::min(i + 1, samples.uv.size() - 1)]);
             const double f = (t - samples.ts[i - 1]) / (samples.ts[i] - samples.ts[i - 1]);
             return pullback_proposal(surface, world, t, samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * f, samples.uv[i - 1], samples.uv[i]);
         };
@@ -7922,15 +7966,26 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
         run.ts.push_back(samples.ts.back());
         for (double t : run.ts)
             run.uv.push_back(at(t));
+        std::map<double, double> parents; // Middle of each span halved in the last pass, with that span's gap.
         for (int pass = 0; pass < 16 && run.ts.size() <= 129; ++pass) {
             const NurbsCurve proposal = quintic_run_proposal(run, breaks, surface, world);
             if (!proposal.is_valid() || proposal.domain() != world.domain())
                 break;
             const std::vector<double> spans = proposal.get_span_vector();
             std::vector<double> halved;
-            for (size_t i = 1; i < spans.size(); ++i)
-                if (gap(proposal, spans[i - 1], spans[i]) > enough)
-                    halved.push_back(std::midpoint(spans[i - 1], spans[i]));
+            std::map<double, double> halves;
+            for (size_t i = 1; i < spans.size(); ++i) {
+                const double measured = gap(proposal, spans[i - 1], spans[i]);
+                if (!(measured > enough))
+                    continue;
+                // A half no closer than its whole is held off by the curve leaving the surface, not by the fit: halving it again gains nothing.
+                const auto parent = parents.count(spans[i - 1]) ? parents.find(spans[i - 1]) : parents.find(spans[i]);
+                if (parent != parents.end() && measured >= 0.5 * parent->second)
+                    continue;
+                halved.push_back(std::midpoint(spans[i - 1], spans[i]));
+                halves[halved.back()] = measured;
+            }
+            parents = std::move(halves);
             if (halved.empty()) {
                 if (curve_surface_intersection::same_parameter(world, proposal, surface, tolerance) ==
                         curve_surface_intersection::ParameterMatch::Matched)
@@ -7952,6 +8007,12 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
                 break;
         }
     }
+    for (size_t i = 0; i < samples.ts.size(); ++i) {
+        const auto before = samples.uv[i ? i - 1 : i],
+                   after = samples.uv[std::min(i + 1, samples.uv.size() - 1)];
+        samples.uv[i] = pullback_proposal(surface, world, samples.ts[i], samples.uv[i], before, after);
+    }
+    const PullbackRun projected_samples = observing ? samples : PullbackRun{};
     NurbsCurve first_fit, final_fit;
     bool has_first_fit = false;
     std::vector<nlohmann::ordered_json> history;
@@ -9276,7 +9337,7 @@ static AnalyticResult analytic_ssi(const NurbsSurface& a, const NurbsSurface& b,
             continue;
         std::vector<NurbsCurve> clipped;
         for (const NurbsCurve& curve : c3_list)
-            for (NurbsCurve& piece : clip_curve_to_triangle(*plane, curve))
+            for (NurbsCurve& piece : clip_curve_to_patch(*plane, curve))
                 clipped.push_back(std::move(piece));
         c3_list = std::move(clipped);
     }

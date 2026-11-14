@@ -1942,9 +1942,53 @@ void five_operation_identities(const BRep& a, const BRep& b) {
 }
 
 namespace {
-/// A pyramid side is a bilinear patch collapsed at the apex: a plane whose parameters are not affine, cut by conics that leave the triangle.
+/// A pyramid whose sides are bilinear patches collapsed at the apex, one degenerate edge each.
+BRep collapsed_pyramid(double base, double height) {
+    BRep b;
+    const double h = base * 0.5;
+    const std::array<Point, 5> p = {Point(-h, -h, 0), Point(h, -h, 0), Point(h, h, 0), Point(-h, h, 0), Point(0, 0, height)};
+    for (const Point& q : p)
+        b.add_vertex(q);
+    const auto line = [](const Point& a, const Point& c) {
+        NurbsCurve result = NurbsCurve::create(false, 1, {a, c});
+        result.set_domain(0.0, 1.0);
+        return result;
+    };
+    std::map<std::pair<int, int>, int> edges;
+    const auto face = [&](const std::array<Point, 4>& corners, const std::vector<std::pair<int, Point>>& ring) {
+        NurbsSurface patch(3, false, 2, 2, 2, 2);
+        for (int k = 0; k < 4; ++k)
+            patch.set_cv(k % 2, k / 2, corners[k]);
+        const int surface = b.add_surface(patch);
+        std::vector<BRepRef> wire;
+        for (size_t k = 0; k < ring.size(); ++k) {
+            const auto& [va, ua] = ring[k];
+            const auto& [vb, ub] = ring[(k + 1) % ring.size()];
+            const std::pair<int, int> key = std::minmax(va, vb);
+            if (va != vb && !edges.count(key))
+                edges[key] = b.add_edge(b.add_curve_3d(line(p[key.first], p[key.second])), key.first, key.second);
+            const int edge = va == vb ? b.add_edge(-1, va, va) : edges[key];
+            const bool forward = b.m_edges[edge].start_vertex == va;
+            b.add_pcurve(edge, surface, b.add_curve_2d(forward ? line(ua, ub) : line(ub, ua)));
+            wire.push_back({edge, forward ? BRepOrientation::Forward : BRepOrientation::Reversed});
+        }
+        return BRepRef{b.add_face(surface, {{b.add_wire(wire), BRepOrientation::Forward}}), BRepOrientation::Forward};
+    };
+    std::vector<BRepRef> shell = {face({p[0], p[3], p[1], p[2]}, {{0, Point(0, 0, 0)}, {3, Point(1, 0, 0)}, {2, Point(1, 1, 0)}, {1, Point(0, 1, 0)}})};
+    for (int i = 0; i < 4; ++i)
+        shell.push_back(face({p[i], p[(i + 1) % 4], p[4], p[4]},
+            {{i, Point(0, 0, 0)}, {(i + 1) % 4, Point(1, 0, 0)}, {4, Point(1, 1, 0)}, {4, Point(0, 1, 0)}}));
+    b.add_solid({{b.add_shell(shell), BRepOrientation::Forward}});
+    return b;
+}
+
+/// A pyramid side collapsed at the apex is a plane whose parameters are not affine, cut by conics that leave the triangle; the planar sides of create_pyramid are cut the same way.
 void pyramid_against(const BRep& solid) {
     const Xform placed = Xform::translation(0.15, -0.1, 0.35) * Xform::rotation(Vector(1, 2, 3), 0.7);
+    const BRep collapsed = collapsed_pyramid(1.2, 1.4);
+    MINI_CHECK(collapsed.is_valid() && collapsed.is_solid() && collapsed.edge_count() == 12);
+    MINI_CHECK(std::abs(collapsed.volume_exact() - 1.2 * 1.2 * 1.4 / 3) < 1e-12);
+    five_operation_identities(collapsed, solid.transformed(placed));
     five_operation_identities(BRep::create_pyramid(1.2, 1.4), solid.transformed(placed));
 }
 }

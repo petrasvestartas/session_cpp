@@ -1373,7 +1373,7 @@ namespace session_cpp {
 
         MINI_CHECK(pyr.is_valid());
         MINI_CHECK(pyr.face_count() == 5);
-        MINI_CHECK(pyr.edge_count() == 12);
+        MINI_CHECK(pyr.edge_count() == 8);
         MINI_CHECK(pyr.vertex_count() == 5);
         MINI_CHECK(pyr.is_solid());
         MINI_CHECK(pyr.name == "pyramid");
