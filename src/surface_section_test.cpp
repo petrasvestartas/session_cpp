@@ -927,3 +927,77 @@ MINI_TEST("Surface Section Native", "Bilinear Critical Route Declines Unsupporte
             MINI_CHECK(different.set_cv(i, j, different.get_cv(i, j) + Vector(.125, 0, 0)));
     MINI_CHECK(!surface_section::bilinear_crossing(a, different, 1e-12).has_value());
 }
+
+MINI_TEST("Surface Section Native", "Flat Patch Agreement On The Controls") {
+    using curve_surface_intersection::ParameterMatch;
+    const Point corner(1, 2, 3);
+    const Vector e(2, 0.5, 0.1), f(-0.3, 1.5, 0.4);
+    NurbsSurface patch(3, false, 2, 2, 2, 2);
+    patch.m_nurbsknot[0] = {2, 5};
+    patch.m_nurbsknot[1] = {-1, 1};
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            MINI_CHECK(patch.set_cv(i, j, corner + e * i + f * j));
+    const NurbsCurve pcurve = NurbsCurve::create(false, 3, {{2.2, -0.8, 0}, {3.1, 0.9, 0}, {3.9, -0.6, 0}, {4.4, 0.7, 0}, {4.9, 0.1, 0}, {2.6, 0.5, 0}});
+    NurbsCurve world = pcurve;
+    for (int i = 0; i < pcurve.cv_count(); ++i) {
+        const Point uv = pcurve.get_cv(i);
+        MINI_CHECK(world.set_cv(i, corner + e * ((uv[0] - 2) / 3) + f * ((uv[1] + 1) / 2)));
+    }
+    MINI_CHECK(surface_section::on_flat_patch(world, pcurve, patch, 1e-9));
+    MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, patch, 1e-9) == ParameterMatch::Matched);
+
+    // The same weights on both keep the curve on the patch: an affine patch carries a rational combination to itself.
+    NurbsCurve heavy = world, heavy_uv = pcurve;
+    for (int i : {2, 3}) {
+        const double weight = i == 2 ? 0.4 : 1.7;
+        const Point point = world.get_cv(i), uv = pcurve.get_cv(i);
+        MINI_CHECK(heavy.set_cv_4d(i, point[0] * weight, point[1] * weight, point[2] * weight, weight));
+        MINI_CHECK(heavy_uv.set_cv_4d(i, uv[0] * weight, uv[1] * weight, 0, weight));
+    }
+    MINI_CHECK(surface_section::on_flat_patch(heavy, heavy_uv, patch, 1e-9));
+    MINI_CHECK(curve_surface_intersection::same_parameter(heavy, heavy_uv, patch, 1e-9) == ParameterMatch::Matched);
+    MINI_CHECK(heavy_uv.set_weight(3, 1.5));
+    MINI_CHECK(!surface_section::on_flat_patch(heavy, heavy_uv, patch, 1e-9));
+
+    // A control off the plane, another basis, or a twist of the patch beyond the tolerance is not decided here.
+    NurbsCurve lifted = world;
+    MINI_CHECK(lifted.set_cv(2, world.get_cv(2) + e.cross(f).normalized() * 1e-6));
+    MINI_CHECK(!surface_section::on_flat_patch(lifted, pcurve, patch, 1e-7));
+    MINI_CHECK(curve_surface_intersection::same_parameter(lifted, pcurve, patch, 1e-7) != ParameterMatch::Matched);
+    MINI_CHECK(surface_section::on_flat_patch(lifted, pcurve, patch, 1e-5));
+    NurbsCurve stretched = world;
+    MINI_CHECK(stretched.set_domain(0, 2 * world.domain_end()));
+    MINI_CHECK(!surface_section::on_flat_patch(stretched, pcurve, patch, 1e-9));
+    NurbsSurface twisted = patch;
+    MINI_CHECK(twisted.set_cv(1, 1, patch.get_cv(1, 1) + Vector(0, 0, 1e-6)));
+    MINI_CHECK(!surface_section::on_flat_patch(world, pcurve, twisted, 1e-7));
+    MINI_CHECK(surface_section::on_flat_patch(world, pcurve, twisted, 1e-5));
+    MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, twisted, 1e-5) == ParameterMatch::Matched);
+    MINI_CHECK(!surface_section::on_flat_patch(world, pcurve, Primitives::cylinder_surface(0, 0, 0, 2, 4), 1e-3));
+}
+
+MINI_TEST("Surface Section Native", "Patches Apart Across An Axis Are Excluded") {
+    const auto patch = [](const Point& corner, const Vector& e, const Vector& f) {
+        NurbsSurface surface(3, false, 2, 2, 2, 2);
+        surface.m_nurbsknot[0] = {0, 1};
+        surface.m_nurbsknot[1] = {0, 1};
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j)
+                surface.set_cv(i, j, corner + e * i + f * j);
+        return surface;
+    };
+    const NurbsSurface floor = patch({0, 0, 0}, {1, 0, 0}, {0, 1, 0});
+    // Above the floor, beside it across its plane, and beyond a corner where only an axis across a side of each parts them.
+    const std::array<NurbsSurface, 3> apart = {patch({0, 0, 0.5}, {1, 0, 0.1}, {0, 1, 0.2}), patch({2, 0, -1}, {1, 0, 0}, {0, 0.3, 2}),
+        patch({1.2, 1.2, -1}, {1, -1, 0}, {0, 0, 2})};
+    for (const NurbsSurface& other : apart)
+        for (bool swapped : {false, true}) {
+            const surface_section::Result result = swapped ? surface_section::intersect(other, floor, 1e-7) : surface_section::intersect(floor, other, 1e-7);
+            MINI_CHECK(result.complete && result.curves.empty() && result.points.empty());
+            MINI_CHECK(result.coverage == surface_section::Coverage::OriginalDomainExcluded);
+        }
+    // A wall through the floor is no such pair.
+    const surface_section::Result crossing = surface_section::intersect(floor, patch({0.5, -1, -1}, {0, 3, 0}, {0, 0, 2}), 1e-7);
+    MINI_CHECK(crossing.complete && crossing.curves.size() == 1);
+}

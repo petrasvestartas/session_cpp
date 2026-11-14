@@ -8,6 +8,7 @@
 #include "nurbs_implicit.h"
 #include "nurbs_hermite.h"
 #include "nurbs_coincidence.h"
+#include "nurbs_memo.h"
 #include "ssi_diagnostics.h"
 #include "nurbscurve.h"
 #include "nurbssurface.h"
@@ -929,6 +930,10 @@ std::vector<double> bernstein_roots(const std::vector<double>& values) {
         return {};
 
     const double epsilon = 16.0 * std::numeric_limits<double>::epsilon() * scale * values.size();
+    // Coefficients of one sign and clear of zero: so is every value between them, and nothing below is a root.
+    const auto [low, high] = std::minmax_element(values.begin(), values.end());
+    if (*low > 2.0 * epsilon || *high < -2.0 * epsilon)
+        return {};
     std::vector<double> derivative;
     for (size_t i = 1; i < values.size(); ++i)
         derivative.push_back(values[i] - values[i - 1]);
@@ -2915,15 +2920,42 @@ bool section_jet(const std::vector<Vector>& a, const std::vector<Vector>& b, con
 /// The curves of a section share t only if t runs with the true arc: a chord's error here is a fourth order error in the fit.
 bool section_arcs(const std::vector<Point>& points, const std::vector<SectionJet>& starts, const std::vector<SectionJet>& ends,
     std::vector<double>& along, double& speed) {
+    // The rule NurbsCurve::length applies to the one span of the quintic, on its derivative's own control points.
+    static const double nodes[10] = {-0.9739065285171717, -0.8650633666889845, -0.6794095682990244, -0.4333953941292472, -0.1488743389816312,
+        0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717};
+    static const double weights[10] = {0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
+        0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881};
     std::vector<double> arcs(points.size(), 0.0);
     for (size_t i = 1; i < points.size(); ++i) {
         arcs[i] = points[i - 1].distance(points[i]);
         for (int pass = 0; pass < 3; ++pass) {
-            const NurbsCurve trial = nurbs_hermite::quintic({{0.0, 1.0, points[i - 1], points[i], starts[i].world_first * arcs[i],
-                ends[i].world_first * arcs[i], starts[i].world_second * (arcs[i] * arcs[i]), ends[i].world_second * (arcs[i] * arcs[i])}});
-            if (!trial.is_valid())
+            const double h = arcs[i];
+            std::array<std::array<double, 3>, 5> hodograph;
+            for (int d = 0; d < 3; ++d) {
+                const double a = starts[i].world_first[d] * h, b = ends[i].world_first[d] * h;
+                const double p = starts[i].world_second[d] * (h * h), q = ends[i].world_second[d] * (h * h);
+                const double control[6] = {points[i - 1][d], points[i - 1][d] + a / 5, points[i - 1][d] + a * 2 / 5 + p / 20,
+                    points[i][d] - b * 2 / 5 + q / 20, points[i][d] - b / 5, points[i][d]};
+                for (int k = 0; k < 5; ++k)
+                    hodograph[k][d] = 5.0 * (control[k + 1] - control[k]);
+            }
+            double total = 0.0;
+            for (int part = 0; part < 4; ++part) {
+                double sum = 0.0;
+                for (int node = 0; node < 10; ++node) {
+                    const double t = (part + 0.5 + 0.5 * nodes[node]) / 4.0;
+                    std::array<std::array<double, 3>, 5> w = hodograph;
+                    for (int level = 4; level > 0; --level)
+                        for (int k = 0; k < level; ++k)
+                            for (int d = 0; d < 3; ++d)
+                                w[k][d] += t * (w[k + 1][d] - w[k][d]);
+                    sum += weights[node] * std::hypot(w[0][0], w[0][1], w[0][2]);
+                }
+                total += 0.125 * sum;
+            }
+            if (!std::isfinite(total))
                 return false;
-            arcs[i] = trial.length();
+            arcs[i] = total;
         }
     }
     speed = std::accumulate(arcs.begin(), arcs.end(), 0.0);
@@ -3236,7 +3268,11 @@ bool solve_gauss(
     std::vector<double>& out
 ) {
 
-    std::vector<std::vector<double>> a(n, std::vector<double>(n + 1));
+    // Every system here has at most four unknowns.
+    std::array<std::array<double, 5>, 4> a;
+
+    if (n > 4)
+        return false;
 
     for (int r = 0; r < n; r++) {
         for (int c = 0; c < n; c++)
@@ -10149,6 +10185,63 @@ using SsiInterval = nurbs_interval::Interval;
 using SsiHomogeneous = nurbs_interval::Homogeneous;
 using SsiPatchBounds = nurbs_interval::SurfaceBounds;
 
+/// The enclosure nurbs_interval::surface_bounds gives a rectangle that is one point, by the one blossom that ends in it: of that rectangle's controls all are this one.
+bool surface_point_bounds(const NurbsSurface& surface, double u, double v, const std::array<double, 3>& origin, SsiPatchBounds& bounds) {
+    const int p = surface.degree(0), q = surface.degree(1);
+    const std::array<double, 2> at = {u, v};
+    std::array<int, 2> span;
+    std::array<SsiHomogeneous, 8> column, row;
+    if (surface.dimension() != 3 || p > 7 || q > 7)
+        return nurbs_interval::surface_bounds(surface, {u, u, v, v}, origin, bounds, false, true);
+    for (int d = 0; d < 2; ++d) {
+        const std::vector<double>& knots = surface.m_nurbsknot[d];
+        span[d] = std::clamp(nurbs_interval::padded_upper_bound(knots, at[d]) - 1, surface.degree(d), surface.cv_count(d) - 1);
+        if (at[d] < knots[span[d] - 1] || at[d] > knots[span[d]])
+            return nurbs_interval::surface_bounds(surface, {u, u, v, v}, origin, bounds, false, true);
+    }
+    const nurbs_interval::BlossomSteps along_u(nurbs_interval::PaddedKnots{surface.m_nurbsknot[0].data()}, span[0], p, u, u);
+    const nurbs_interval::BlossomSteps along_v(nurbs_interval::PaddedKnots{surface.m_nurbsknot[1].data()}, span[1], q, v, v);
+    if (!along_u.valid || !along_v.valid)
+        return false;
+    for (int j = 0; j <= q; ++j) {
+        for (int i = 0; i <= p; ++i) {
+            const double* cv = surface.cv(span[0] - p + i, span[1] - q + j);
+            const double weight = surface.is_rational() ? cv[3] : 1.0;
+            column[i][3] = weight;
+            for (int d = 0; d < 3; ++d)
+                column[i][d] = SsiInterval(cv[d]) - SsiInterval(origin[d]) * SsiInterval(weight);
+        }
+        for (int level = 1; level <= p; ++level)
+            along_u.step(column.data(), 1, level);
+        row[j] = column[p];
+    }
+    for (int level = 1; level <= q; ++level)
+        along_v.step(row.data(), 1, level);
+    for (const SsiInterval value : row[q])
+        if (!nurbs_interval::finite(value))
+            return false;
+    if (!(row[q][3].lo > 0.0))
+        return false;
+    const nurbs_interval::Divisor weight(row[q][3]);
+    for (int d = 0; d < 3; ++d) {
+        bounds.point[d] = row[q][d] / weight;
+        if (!nurbs_interval::finite(bounds.point[d]))
+            return false;
+    }
+    return true;
+}
+
+/// The enclosure of a - b at one point of the joint parameters, about a's value there.
+bool point_gap(const SurfaceSurfaceField& field, const std::array<double, 4>& x, std::array<SsiInterval, 3>& gap) {
+    const std::array<double, 3> origin = field.point(x);
+    SsiPatchBounds a, b;
+    if (!surface_point_bounds(field.a, x[0], x[1], origin, a) || !surface_point_bounds(field.b, x[2], x[3], origin, b))
+        return false;
+    for (int d = 0; d < 3; ++d)
+        gap[d] = a.point[d] - b.point[d];
+    return true;
+}
+
 std::array<double, 12> bound_seed_cell(const NurbsSurface& surface, std::array<double, 12> box) {
     ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Bounds);
     const Point point = surface.get_cv(0, 0);
@@ -10180,17 +10273,9 @@ SsiInterval project_seed_controls(const std::vector<SsiHomogeneous>& controls, c
     return result;
 }
 
-/// Separating axes reject disjoint positive-rational control hulls despite overlapping AABBs.
-bool seed_cell_separated(const SurfaceSurfaceField& field, const SeedCellPair& pair) {
-    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Separation);
-    const std::array<double, 3> origin = field.point({pair.a[6], pair.a[7], pair.b[6], pair.b[7]});
-    const auto a = nurbs_interval::surface_controls(field.a, {pair.a[8], pair.a[9], pair.a[10], pair.a[11]}, origin);
-    const auto b = nurbs_interval::surface_controls(field.b, {pair.b[8], pair.b[9], pair.b[10], pair.b[11]}, origin);
-    if (a.empty() || b.empty())
-        throw std::runtime_error("Native SSI could not bound candidate projections");
-    Vector point, au, av, bu, bv;
-    field.eval_a(pair.a[6], pair.a[7], point, au, av);
-    field.eval_b(pair.b[6], pair.b[7], point, bu, bv);
+/// Whether one of ten axes built on the surfaces' directions keeps two control hulls more than `gap` apart along it.
+bool hulls_separated(const std::vector<SsiHomogeneous>& a, const std::vector<SsiHomogeneous>& b,
+    Vector au, Vector av, Vector bu, Vector bv, double gap) {
     for (Vector* derivative : {&au, &av, &bu, &bv}) {
         const double scale = std::max({std::abs((*derivative)[0]), std::abs((*derivative)[1]), std::abs((*derivative)[2])});
         if (std::isfinite(scale) && scale > 0.0)
@@ -10209,10 +10294,49 @@ bool seed_cell_separated(const SurfaceSurfaceField& field, const SeedCellPair& p
         axis /= scale;
         const SsiInterval first = project_seed_controls(a, axis);
         const SsiInterval second = project_seed_controls(b, axis);
-        if (nurbs_interval::finite(first) && nurbs_interval::finite(second) && (first.hi < second.lo || second.hi < first.lo))
+        if (nurbs_interval::finite(first) && nurbs_interval::finite(second) && (first.hi + gap < second.lo || second.hi + gap < first.lo))
             return true;
     }
     return false;
+}
+
+/// Separating axes reject disjoint positive-rational control hulls despite overlapping AABBs.
+bool seed_cell_separated(const SurfaceSurfaceField& field, const SeedCellPair& pair) {
+    ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Separation);
+    const std::array<double, 3> origin = field.point({pair.a[6], pair.a[7], pair.b[6], pair.b[7]});
+    const auto a = nurbs_interval::surface_controls(field.a, {pair.a[8], pair.a[9], pair.a[10], pair.a[11]}, origin);
+    const auto b = nurbs_interval::surface_controls(field.b, {pair.b[8], pair.b[9], pair.b[10], pair.b[11]}, origin);
+    if (a.empty() || b.empty())
+        throw std::runtime_error("Native SSI could not bound candidate projections");
+    Vector point, au, av, bu, bv;
+    field.eval_a(pair.a[6], pair.a[7], point, au, av);
+    field.eval_b(pair.b[6], pair.b[7], point, bu, bv);
+    return hulls_separated(a, b, au, av, bu, bv, 0.0);
+}
+
+/// Two surfaces of one knot cell each whose control hulls an axis keeps apart by more than a section is looked for within: nothing of either comes near the other.
+bool patches_apart(const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
+    const NurbsSurface* surfaces[2] = {&a, &b};
+    std::array<std::array<xyz, 6>, 2> jet;
+    std::array<std::vector<SsiHomogeneous>, 2> controls;
+    double reach = 0.0;
+    for (int side = 0; side < 2; ++side) {
+        const std::pair<double, double> u = surfaces[side]->domain(0), v = surfaces[side]->domain(1);
+        if (!surfaces[side]->jet(std::midpoint(u.first, u.second), std::midpoint(v.first, v.second), 1, jet[side]))
+            return false;
+        controls[side] = nurbs_interval::surface_controls(*surfaces[side], {u.first, u.second, v.first, v.second},
+            {jet[0][0][0], jet[0][0][1], jet[0][0][2]});
+        for (int i = 0; i < surfaces[side]->cv_count(0); ++i)
+            for (int j = 0; j < surfaces[side]->cv_count(1); ++j) {
+                const Point point = surfaces[side]->get_cv(i, j);
+                reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
+            }
+    }
+    // An axis here is up to the square root of three long, and the section search reaches twice the tolerance or a part in 1e9 of the coordinates.
+    // A tolerance the coordinates do not resolve is left to that search to refuse.
+    return !controls[0].empty() && !controls[1].empty() && reach * 32.0 * std::numeric_limits<double>::epsilon() <= tolerance * 0.25 &&
+        hulls_separated(controls[0], controls[1], Vector(jet[0][2]), Vector(jet[0][1]), Vector(jet[1][2]), Vector(jet[1][1]),
+            4.0 * std::max(2.0 * tolerance, 1e-9 * reach));
 }
 
 bool ssi_continuous(const NurbsSurface& surface, const std::array<double, 4>& rectangle) {
@@ -10448,7 +10572,7 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
 }
 
 bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph,
-    const std::array<double, 4>& point, std::array<SsiInterval, 4>& box) {
+    const std::array<double, 4>& point, std::array<SsiInterval, 4>& box, const std::array<SsiInterval, 3>* known = nullptr) {
     for (int k = 0; k < 4; ++k)
         if (!std::isfinite(point[k]) ||
             (field.closed[k] && (point[k] < field.lo[k] || point[k] > field.hi[k])) ||
@@ -10459,16 +10583,16 @@ bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph&
             box[k] = SsiInterval(std::max(box[k].lo, graph.image[k].lo), std::min(box[k].hi, graph.image[k].hi));
         return graph_contains(graph, box);
     }
-    const std::array<double, 3> origin = field.point(point);
-    SsiPatchBounds a, b;
-    if (!nurbs_interval::surface_bounds(field.a, {point[0], point[0], point[1], point[1]}, origin, a, false, true) ||
-        !nurbs_interval::surface_bounds(field.b, {point[2], point[2], point[3], point[3]}, origin, b, false, true))
+    std::array<SsiInterval, 3> gap;
+    if (known)
+        gap = *known;
+    else if (!point_gap(field, point, gap))
         return false;
     double displacement = 0.0;
     for (int r = 0; r < 3; ++r) {
         SsiInterval residual;
         for (int d = 0; d < 3; ++d)
-            residual = residual - SsiInterval(graph.inverse[r][d]) * (a.point[d] - b.point[d]);
+            residual = residual - SsiInterval(graph.inverse[r][d]) * gap[d];
         if (!nurbs_interval::finite(residual))
             return false;
         displacement = std::max(displacement, nurbs_interval::magnitude(residual));
@@ -10532,11 +10656,12 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
     field.eval_b(root[2], root[3], point, bu, bv);
     const Vector columns[4] = {au, av, -bu, -bv};
     SsiPatchBounds root_a, root_b;
-    const bool root_a_enclosed =
-        nurbs_interval::surface_bounds(field.a, {root[0], root[0], root[1], root[1]}, origin, root_a, false);
-    const bool root_b_enclosed =
-        nurbs_interval::surface_bounds(field.b, {root[2], root[2], root[3], root[3]}, origin, root_b, false);
+    const bool root_a_enclosed = surface_point_bounds(field.a, root[0], root[1], origin, root_a);
+    const bool root_b_enclosed = surface_point_bounds(field.b, root[2], root[3], origin, root_b);
     const bool root_enclosed = root_a_enclosed && root_b_enclosed;
+    std::array<SsiInterval, 3> root_gap;
+    for (int d = 0; d < 3; ++d)
+        root_gap[d] = root_a.point[d] - root_b.point[d];
     for (int fixed : seed_isoparameters(field, root)) {
         if (required_fixed >= 0 && fixed != required_fixed)
             continue;
@@ -10603,9 +10728,63 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
             (*chart)["upper"] = upper;
             (*chart)["scale"] = scale;
         }
+        // The contraction bounded over the chart is no less than the derivatives at a point inside it give: where four such points
+        // of each surface already put it at one, the bounds are not taken.
+        std::array<std::array<double, 2>, 3> least{};
+        double size = 1.0;
+        for (int corner = 0; corner < 4; ++corner) {
+            const auto inside = [&](int k, bool far) {
+                return std::clamp(std::lerp(lower[k], upper[k], far ? 0.9375 : 0.0625), field.lo[k], field.hi[k]);
+            };
+            std::array<std::array<xyz, 6>, 2> jet{};
+            if (!field.a.jet(inside(0, corner & 1), inside(1, corner & 2), 1, jet[0]) ||
+                !field.b.jet(inside(2, corner & 1), inside(3, corner & 2), 1, jet[1]))
+                continue;
+            for (int r = 0; r < 3; ++r) {
+                std::array<double, 2> sum{};
+                for (int c = 0; c < 3; ++c) {
+                    const int k = free[c];
+                    double entry = r == c ? 1.0 : 0.0;
+                    for (int d = 0; d < 3; ++d) {
+                        const double term = inverse[r][d] * jet[k / 2][2 - k % 2][d] * scale[c];
+                        entry += k < 2 ? -term : term;
+                        size += std::abs(term);
+                    }
+                    sum[k / 2] += std::abs(entry);
+                }
+                for (int side = 0; side < 2; ++side)
+                    least[r][side] = std::max(least[r][side], sum[side]);
+            }
+        }
+        if (std::any_of(least.begin(), least.end(), [size](const std::array<double, 2>& row) { return row[0] + row[1] > 1.0 + 1e-9 * size; }))
+            continue;
         SsiPatchBounds a, b;
         if (!nurbs_interval::surface_bounds(field.a, {lower[0], upper[0], lower[1], upper[1]}, origin, a, true, true) ||
             !nurbs_interval::surface_bounds(field.b, {lower[2], upper[2], lower[3], upper[3]}, origin, b, true, true))
+            continue;
+        SsiInterval matrix[3][3];
+        double contraction_bound = 0.0;
+        bool covered = true;
+        for (int r = 0; r < 3; ++r) {
+            SsiInterval contraction;
+            for (int c = 0; c < 3; ++c) {
+                matrix[r][c] = SsiInterval(r == c ? 1.0 : 0.0);
+                const int k = free[c];
+                for (int d = 0; d < 3; ++d) {
+                    const SsiInterval derivative = k < 2 ? a.derivative[k][d] : SsiInterval(-1.0) * b.derivative[k - 2][d];
+                    matrix[r][c] = matrix[r][c] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(scale[c]);
+                }
+                contraction = contraction + SsiInterval(nurbs_interval::magnitude(matrix[r][c]));
+            }
+            contraction_bound = std::max(contraction_bound, contraction.hi);
+            covered = covered && contraction.hi < 1.0;
+        }
+        if (chart) {
+            (*chart)["status"] = "krawczyk_inclusion_unproved";
+            (*chart)["contraction"] = contraction_bound;
+        }
+        // The residual along the fixed parameter is bounded only for a chart that contracts.
+        if (!covered)
             continue;
         std::array<double, 4> center_lo = root;
         std::array<double, 4> center_hi = root;
@@ -10628,11 +10807,8 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
             domain[c] = {first.lo, last.hi};
             interior[c] = {first.hi, last.lo};
         }
-        bool covered = true;
         std::array<SsiInterval, 3> image;
         std::array<SsiInterval, 3> forcing;
-        SsiInterval matrix[3][3];
-        double contraction_bound = 0.0;
         for (int r = 0; r < 3; ++r) {
             SsiInterval center_residual, fixed_derivative;
             for (int d = 0; d < 3; ++d) {
@@ -10655,23 +10831,12 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
                     image[r] = common;
                 }
             }
-            SsiInterval contraction;
-            for (int c = 0; c < 3; ++c) {
-                matrix[r][c] = SsiInterval(r == c ? 1.0 : 0.0);
-                const int k = free[c];
-                for (int d = 0; d < 3; ++d) {
-                    const SsiInterval derivative = k < 2 ? a.derivative[k][d] : SsiInterval(-1.0) * b.derivative[k - 2][d];
-                    matrix[r][c] = matrix[r][c] - SsiInterval(inverse[r][d]) * derivative * SsiInterval(scale[c]);
-                }
-                contraction = contraction + SsiInterval(nurbs_interval::magnitude(matrix[r][c]));
+            for (int c = 0; c < 3; ++c)
                 image[r] = image[r] + matrix[r][c] * domain[c];
-            }
-            contraction_bound = std::max(contraction_bound, contraction.hi);
-            covered = covered && contraction.hi < 1.0 && image[r].lo > interior[r].lo && image[r].hi < interior[r].hi;
+            covered = covered && image[r].lo > interior[r].lo && image[r].hi < interior[r].hi;
         }
         if (chart) {
             (*chart)["status"] = "krawczyk_inclusion_unproved";
-            (*chart)["contraction"] = contraction_bound;
             (*chart)["image"] = {{image[0].lo, image[0].hi}, {image[1].lo, image[1].hi}, {image[2].lo, image[2].hi}};
             (*chart)["interior"] = {{interior[0].lo, interior[0].hi}, {interior[1].lo, interior[1].hi}, {interior[2].lo, interior[2].hi}};
         }
@@ -10719,7 +10884,7 @@ bool seed_cell_covered(const SurfaceSurfaceField& field, const SeedCellPair& pai
                     graph.boundary_fixed_width = free_width;
                     graph.boundary_anchor_certified = std::isfinite(free_width) && free_width > 0.0 &&
                         normalized_graph_derivative(matrix, forcing, contraction_bound, graph.boundary_derivative);
-                } else if (!graph_root_box(field, graph, root, graph.anchor)) {
+                } else if (!graph_root_box(field, graph, root, graph.anchor, root_enclosed ? &root_gap : nullptr)) {
                     continue;
                 }
                 bool retained = true;
@@ -12050,9 +12215,12 @@ struct SurfaceSurfaceArc {
     std::array<SsiInterval, 4> first, last;
 };
 
+/// The enclosure of a - b at the points of a walk: a point ends one arc and starts the next.
+using PointGaps = std::map<std::array<double, 4>, std::array<SsiInterval, 3>>;
+
 bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double, 4>& first,
     const std::array<double, 4>& last, std::array<double, 4>& middle, SurfaceSurfaceArc& arc,
-    nlohmann::ordered_json* diagnostic = nullptr) {
+    nlohmann::ordered_json* diagnostic = nullptr, PointGaps* gaps = nullptr) {
     arc.start = first;
     arc.end = last;
     const std::array<double, 3> dummy = {};
@@ -12099,7 +12267,14 @@ bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double,
     arc.failure = "endpoint_roots_unproved";
     if (diagnostic)
         (*diagnostic)["status"] = arc.failure;
-    return graph_root_box(field, arc.graph, first, arc.first) && graph_root_box(field, arc.graph, last, arc.last);
+    const auto held = [&](const std::array<double, 4>& point, std::array<SsiInterval, 4>& box) {
+        std::array<SsiInterval, 3> gap;
+        PointGaps::iterator known = gaps ? gaps->find(point) : PointGaps::iterator();
+        if (gaps && known == gaps->end() && point_gap(field, point, gap))
+            known = gaps->emplace(point, gap).first;
+        return graph_root_box(field, arc.graph, point, box, gaps && known != gaps->end() ? &known->second : nullptr);
+    };
+    return held(first, arc.first) && held(last, arc.last);
 }
 
 bool retained_root(const SurfaceSurfaceField& field, const std::array<SsiInterval, 4>& root) {
@@ -12210,13 +12385,14 @@ std::vector<SurfaceSurfaceArc> continuation_arcs(const SurfaceSurfaceField& fiel
     for (size_t i = points.size() - 1; i > 0; --i)
         work.push_back({points[i - 1], points[i], 0});
     std::vector<SurfaceSurfaceArc> result;
+    PointGaps gaps;
     size_t attempts = 0;
     while (!work.empty()) {
         const Segment segment = work.back();
         work.pop_back();
         std::array<double, 4> middle;
         SurfaceSurfaceArc arc;
-        if (continuation_arc(precise, segment.first, segment.last, middle, arc)) {
+        if (continuation_arc(precise, segment.first, segment.last, middle, arc, nullptr, &gaps)) {
             if (!result.empty() && !connected_arcs(field, result.back(), arc))
                 throw std::runtime_error("Native SSI could not certify adjacent walking graphs: " +
                     nlohmann::ordered_json({{"previous", graph_diagnostic(result.back())},
@@ -14837,6 +15013,57 @@ std::optional<surface_section::PointEvent> isolated_support_corner(const NurbsSu
 }
 } // namespace
 
+bool surface_section::on_flat_patch(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurface& surface,
+                                    double tolerance) {
+    using nurbs_interval::Interval;
+    if (surface.is_rational() || surface.dimension() != 3 || surface.order(0) != 2 || surface.order(1) != 2 ||
+        surface.cv_count(0) != 2 || surface.cv_count(1) != 2 || world.dimension() != 3 || pcurve.dimension() < 2 ||
+        world.order() != pcurve.order() || world.is_rational() != pcurve.is_rational() ||
+        world.m_nurbsknot != pcurve.m_nurbsknot || !(tolerance > 0.0) || !world.is_valid() || !pcurve.is_valid() ||
+        !surface.is_valid())
+        return false;
+    // The patch is its corner, two sides and a twist: c00 + s e + r f + s r g. A curve and a parameter curve of one basis
+    // differ from it by a combination of their controls' differences, and by the twist at most as far as s and r reach.
+    std::array<std::array<Interval, 3>, 2> side;
+    std::array<Interval, 3> twist;
+    std::array<Interval, 2> start, width;
+    for (int d = 0; d < 3; ++d) {
+        side[0][d] = Interval(surface.cv(1, 0)[d]) - Interval(surface.cv(0, 0)[d]);
+        side[1][d] = Interval(surface.cv(0, 1)[d]) - Interval(surface.cv(0, 0)[d]);
+        twist[d] = Interval(surface.cv(1, 1)[d]) - Interval(surface.cv(1, 0)[d]) - side[1][d];
+    }
+    for (int k = 0; k < 2; ++k) {
+        start[k] = surface.domain(k).first;
+        width[k] = Interval(surface.domain(k).second) - start[k];
+    }
+    std::array<double, 3> off{};
+    std::array<double, 2> reach{};
+    for (int i = 0; i < world.cv_count(); ++i) {
+        const double weight = world.is_rational() ? world.weight(i) : 1.0;
+        if (!(weight > 0.0) || (world.is_rational() && pcurve.weight(i) != weight))
+            return false;
+        std::array<Interval, 2> fraction;
+        for (int k = 0; k < 2; ++k) {
+            fraction[k] = (Interval(pcurve.cv(i)[k]) / Interval(weight) - start[k]) / width[k];
+            reach[k] = std::max(reach[k], nurbs_interval::magnitude(fraction[k]));
+        }
+        for (int d = 0; d < 3; ++d) {
+            const Interval gap = Interval(world.cv(i)[d]) / Interval(weight) - Interval(surface.cv(0, 0)[d]) -
+                fraction[0] * side[0][d] - fraction[1] * side[1][d];
+            if (!nurbs_interval::finite(gap))
+                return false;
+            off[d] = std::max(off[d], nurbs_interval::magnitude(gap));
+        }
+    }
+    Interval squared;
+    for (int d = 0; d < 3; ++d) {
+        const Interval bound = Interval(off[d]) + Interval(reach[0]) * Interval(reach[1]) * Interval(nurbs_interval::magnitude(twist[d]));
+        squared = squared + bound * bound;
+    }
+    const Interval allowed = Interval(tolerance) * Interval(tolerance);
+    return nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.hi <= allowed.lo;
+}
+
 surface_section::Result surface_section::intersect(const NurbsSurface& a, const NurbsSurface& b,
                                                     double tolerance) {
     Result result;
@@ -14881,11 +15108,24 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
             } else {
                 // Section curves are fitted well inside the model tolerance, so what they sum to across a boundary stays within it.
                 result.curves=Intersection::surface_surface(a,b,std::max(tolerance*.125,std::min(tolerance,1e-7)),true);
+                const auto agrees=[tolerance](const NurbsCurve& world,const NurbsCurve& pcurve,const NurbsSurface& surface) {
+                    if (!on_flat_patch(world,pcurve,surface,tolerance))
+                        return curve_surface_intersection::same_parameter(world,pcurve,surface,tolerance)
+                            ==curve_surface_intersection::ParameterMatch::Matched;
+                    // Kept as same_parameter keeps what it matched, for the same question asked of the untrimmed section later.
+                    if (nurbs_memo::Scope* memo=nurbs_memo::Scope::active) {
+                        std::string key;
+                        nurbs_memo::add(key,world);
+                        nurbs_memo::add(key,pcurve);
+                        nurbs_memo::add(key,surface);
+                        nurbs_memo::add(key,&tolerance,1);
+                        memo->matched.insert(std::move(key));
+                    }
+                    return true;
+                };
                 for (const auto& section:result.curves)
-                    if (curve_surface_intersection::same_parameter(std::get<0>(section),std::get<1>(section),a,tolerance)
-                            !=curve_surface_intersection::ParameterMatch::Matched ||
-                        curve_surface_intersection::same_parameter(std::get<0>(section),std::get<2>(section),b,tolerance)
-                            !=curve_surface_intersection::ParameterMatch::Matched)
+                    if (!agrees(std::get<0>(section),std::get<1>(section),a) ||
+                        !agrees(std::get<0>(section),std::get<2>(section),b))
                         throw std::runtime_error("Support inventory curve lacks original paired agreement");
                 const auto whole_section=[&](const NurbsSurface& planar,const NurbsSurface& other) {
                     return parallelogram_plane(planar,other) &&
@@ -14895,8 +15135,8 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                 if (!result.curves.empty()) {
                     // Do not pretend returned-locus agreement proves every original branch.
                     result.coverage=Coverage::LegacyLocusOnly;
-                } else if (whole_section(a,b) || whole_section(b,a)) {
-                    // The closed form is the whole locus and none of it lies in the patch, a patch edge tangent to it included.
+                } else if (whole_section(a,b) || whole_section(b,a) || patches_apart(a,b,tolerance)) {
+                    // The closed form is the whole locus and none of it lies in the patch, a patch edge tangent to it included: or the patches are apart.
                     result.coverage=Coverage::OriginalDomainExcluded;
                 } else {
                     const SurfaceSurfaceField original(a,b,tolerance);

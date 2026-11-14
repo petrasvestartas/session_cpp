@@ -448,4 +448,9 @@ private:
     static double plane_value_at(const Plane& plane, const Point& point);
 };
 
+namespace surface_section {
+/// Whether a curve keeps within tolerance of an unweighted patch of four corners at a parameter curve of its own knots and weights, proved on the controls with outward rounding; false where the controls do not decide.
+bool on_flat_patch(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurface& surface, double tolerance);
+}
+
 } // namespace session_cpp
