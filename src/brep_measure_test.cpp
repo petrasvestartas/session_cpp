@@ -512,3 +512,74 @@ MINI_TEST("BRep Native Measure", "Sphere Xor Shared Support Primitive Reuse") {
     MINI_CHECK(source.jsondump()==before);
 }
 }
+
+MINI_TEST("BRep Native Measure", "Volume Keeps Its Value On Spans That Are Not Bezier Patches") {
+    for (BRep shape : {BRep::create_sphere(2), BRep::create_torus(3, 0.5), BRep::create_cylinder(2, 3)}) {
+        const double before = shape.volume_exact(1e-9);
+        BRep raised = shape;
+        for (BRep* changed : {&shape, &raised})
+            for (NurbsSurface& surface : changed->m_surfaces)
+                for (int dir = 0; dir < 2; ++dir) {
+                    const std::pair<double, double> domain = surface.domain(dir);
+                    if (surface.degree(dir) < 2)
+                        continue;
+                    if (changed == &raised)
+                        MINI_CHECK(surface.increase_degree(dir, 3));
+                    for (double share : {0.3, 0.71})
+                        MINI_CHECK(surface.insert_nurbsknot(dir, std::lerp(domain.first, domain.second, share), 1));
+                }
+        for (const BRep* changed : {&shape, &raised}) {
+            MINI_CHECK(changed->is_valid() && changed->is_solid());
+            MINI_CHECK(std::abs(changed->volume_exact(1e-9) - before) <= std::abs(before) * 1e-9);
+        }
+    }
+}
+
+MINI_TEST("BRep Native Measure", "Enclosure Of A Point Is One Control") {
+    const std::array<double, 3> origin = {0.1, 0.2, 0.3};
+    const auto same = [](const nurbs_interval::Interval& a, const nurbs_interval::Interval& b) { return a.lo == b.lo && a.hi == b.hi; };
+    const BRep torus = BRep::create_torus(1.0, 0.25);
+    const NurbsSurface& surface = torus.m_surfaces[0];
+    const NurbsCurve& curve = torus.m_curves_3d[0];
+    for (double share : {0.0, 0.137, 0.25, 0.61, 1.0}) {
+        const double t = std::lerp(curve.domain_start(), curve.domain_end(), share);
+        const auto controls = nurbs_interval::curve_controls(curve, {t, t}, origin);
+        nurbs_interval::CurveBounds bounds;
+        MINI_CHECK(static_cast<int>(controls.size()) == curve.order() && nurbs_interval::curve_bounds(curve, {t, t}, origin, bounds));
+        const Point point = curve.point_at(t);
+        for (int d = 0; d < 3 && !controls.empty(); ++d) {
+            for (const auto& control : controls)
+                MINI_CHECK(same(control[d], controls[0][d]));
+            const nurbs_interval::Interval value = controls[0][d] / controls[0][3];
+            MINI_CHECK(same(bounds.point[d], value) && value.hi - value.lo < 1e-13);
+            MINI_CHECK(value.lo <= point[d] - origin[d] + 1e-14 && value.hi >= point[d] - origin[d] - 1e-14);
+        }
+        const double u = std::lerp(surface.domain(0).first, surface.domain(0).second, share);
+        const double v = std::lerp(surface.domain(1).first, surface.domain(1).second, 1.0 - share);
+        const auto net = nurbs_interval::surface_controls(surface, {u, u, v, v}, origin);
+        nurbs_interval::SurfaceBounds box;
+        MINI_CHECK(net.size() == 9 && nurbs_interval::surface_bounds(surface, {u, u, v, v}, origin, box, false));
+        const Point on = surface.point_at(u, v);
+        for (int d = 0; d < 3 && !net.empty(); ++d) {
+            for (const auto& control : net)
+                MINI_CHECK(same(control[d], net[0][d]));
+            const nurbs_interval::Interval value = net[0][d] / net[0][3];
+            MINI_CHECK(same(box.point[d], value) && value.hi - value.lo < 1e-13);
+            MINI_CHECK(value.lo <= on[d] - origin[d] + 1e-14 && value.hi >= on[d] - origin[d] - 1e-14);
+        }
+        // A point in u alone: every row of the net is the first.
+        const double beyond = std::min(v + 0.01, surface.domain(1).second);
+        const auto rows = nurbs_interval::surface_controls(surface, {u, u, std::min(v, beyond - 0.005), beyond}, origin, true);
+        for (size_t k = 3; k < rows.size(); ++k)
+            for (int d = 0; d < 4; ++d)
+                MINI_CHECK(same(rows[k][d], rows[k % 3][d]));
+    }
+    // A piece inside one span is enclosed from that span's controls; across a knot the whole curve has to be valid.
+    NurbsCurve broken = NurbsCurve::create(false, 3, {{0, 0, 0}, {1, 2, 0.5}, {2, -1, 1}, {4, 0.5, 0}, {5, 3, 2}, {7, 1, 1}, {8, 0, 3}});
+    const std::vector<double> spans = broken.get_span_vector();
+    broken.m_cv.back() = std::numeric_limits<double>::infinity();
+    nurbs_interval::CurveBounds piece;
+    MINI_CHECK(spans.size() > 2 && !broken.is_valid());
+    MINI_CHECK(nurbs_interval::curve_bounds(broken, {spans[0], std::midpoint(spans[0], spans[1])}, origin, piece));
+    MINI_CHECK(!nurbs_interval::curve_bounds(broken, {spans[0], std::midpoint(spans[1], spans[2])}, origin, piece));
+}

@@ -400,3 +400,110 @@ MINI_TEST("BRep Native Classification", "Parity Ray Stays Clear Of Corner Gaps")
     MINI_CHECK(height != corner && std::abs(height - corner) < 1e-10);
     MINI_CHECK(brep_classify::clear_ray_height({&first, &second}, 0.5, 1e-10) == 0.5);
 }
+
+MINI_TEST("BRep Native Classification", "Prepared Solid Answers As The Model") {
+    const std::vector<BRep> shapes = {BRep::create_box(2, 2, 2), BRep::create_sphere(1.0), BRep::create_torus(1.0, 0.25),
+        BRep::create_block_with_hole(2, 2, 1, 0.3).transformed(Xform::rotation(Vector(1, 2, 3), 0.7))};
+    const std::vector<Point> queries = {{0, 0, 0}, {0.9, 0.1, 0.2}, {1, 0, 0}, {1, 1, 0}, {0.31, -0.47, 0.13}, {3, 0.2, -0.1}, {1.25, 0, 0}};
+    for (const BRep& shape : shapes) {
+        const brep_classify::Solid solid(shape), asked(shape, false);
+        MINI_CHECK(solid.valid && solid.solid && static_cast<int>(solid.faces.size()) == shape.face_count());
+        MINI_CHECK(asked.valid && asked.solid && !asked.faces[0].boundary.owner && solid.faces[0].boundary.complete);
+        for (const Point& query : queries) {
+            MINI_CHECK(brep_classify::point(solid, query, 1e-7) == brep_classify::point(shape, query, 1e-7));
+            const auto prepared = brep_classify::ray(solid, query, Vector(0.319, -0.271, 1.0), 1e-7);
+            const auto direct = brep_classify::ray(shape, query, Vector(0.319, -0.271, 1.0), 1e-7);
+            MINI_CHECK(prepared.complete == direct.complete && prepared.hits.size() == direct.hits.size());
+            for (size_t i = 0; i < prepared.hits.size() && i < direct.hits.size(); ++i)
+                MINI_CHECK(prepared.hits[i].face == direct.hits[i].face && prepared.hits[i].distance == direct.hits[i].distance
+                    && prepared.hits[i].crossing == direct.hits[i].crossing && prepared.hits[i].trim == direct.hits[i].trim);
+        }
+        for (int face = 0; face < shape.face_count(); ++face) {
+            const NurbsSurface& surface = shape.m_surfaces[shape.m_faces[face].surface_index];
+            for (double s : {-0.1, 0.0, 0.3, 0.5, 1.0})
+                for (double t : {0.25, 0.5, 1.2}) {
+                    const Point uv(std::lerp(surface.domain(0).first, surface.domain(0).second, s),
+                        std::lerp(surface.domain(1).first, surface.domain(1).second, t), 0);
+                    MINI_CHECK(brep_classify::face_uv(solid, face, uv, 1e-7) == brep_classify::face_uv(shape, face, uv, 1e-7));
+                    MINI_CHECK(brep_classify::face_uv(asked, face, uv, 1e-7) == brep_classify::face_uv(shape, face, uv, 1e-7));
+                }
+        }
+    }
+    BRep open = shapes[0];
+    open.m_shells[0].faces.pop_back();
+    const brep_classify::Solid sheet(open);
+    MINI_CHECK(sheet.valid && !sheet.solid);
+    MINI_CHECK(brep_classify::ray(sheet, {0, 0, 0}, Vector(1, 0, 0), 1e-7).hits.size() == 1);
+    BRep broken = shapes[0];
+    broken.m_curves_2d[0].m_cv[0] = std::numeric_limits<double>::quiet_NaN();
+    const brep_classify::Solid invalid(broken);
+    int rejected = 0;
+    for (int query = 0; query < 4; ++query)
+        try {
+            if (query == 0) static_cast<void>(brep_classify::point(sheet, {0, 0, 0}, 1e-7));
+            if (query == 1) static_cast<void>(brep_classify::point(invalid, {0, 0, 0}, 1e-7));
+            if (query == 2) static_cast<void>(brep_classify::ray(invalid, {0, 0, 0}, Vector(1, 0, 0), 1e-7));
+            if (query == 3) static_cast<void>(brep_classify::face_uv(invalid, 0, {0.5, 0.5, 0}, 1e-7));
+        } catch (const std::invalid_argument&) {
+            ++rejected;
+        }
+    MINI_CHECK(!invalid.valid && rejected == 4);
+}
+
+MINI_TEST("BRep Native Classification", "One Witness Decides Faces Joined Off The Other Solid") {
+    const BRep outer = BRep::create_box(4, 4, 4);
+    const BRep inner = BRep::create_sphere(1.0).transformed(Xform::translation(0.3, -0.2, 0.1));
+    const double ball = 4.0 * Tolerance::PI / 3.0;
+    MINI_CHECK(std::abs(outer.boolean_union(inner).volume_exact() - 64.0) < 1e-6);
+    MINI_CHECK(std::abs(outer.boolean_intersection(inner).volume_exact() - ball) < 1e-6);
+    const BRep hollow = outer.boolean_difference(inner);
+    MINI_CHECK(hollow.face_count() == 7 && hollow.shell_count() == 2 && std::abs(hollow.volume_exact() - (64.0 - ball)) < 1e-6);
+    MINI_CHECK(inner.boolean_difference(outer).face_count() == 0);
+    // A face lying in a face of the other solid is decided by itself, not by its neighbours.
+    const BRep stacked = BRep::create_box(2, 2, 2).transformed(Xform::translation(0, 0, 3));
+    const BRep tower = outer.boolean_union(stacked);
+    MINI_CHECK(tower.is_solid() && std::abs(tower.volume_exact() - 72.0) < 1e-6);
+    MINI_CHECK(outer.boolean_intersection(stacked).face_count() == 0);
+    const BRep sunk = BRep::create_box(2, 2, 2).transformed(Xform::translation(0, 0, 1));
+    MINI_CHECK(std::abs(outer.boolean_union(sunk).volume_exact() - 64.0) < 1e-6);
+    MINI_CHECK(std::abs(outer.boolean_difference(sunk).volume_exact() - 56.0) < 1e-6);
+}
+
+MINI_TEST("BRep Native Classification", "Knot Inserted In Place As With Fresh Arrays") {
+    // Boehm's insertion written out on copies of the arrays: the curve's own insertion gives these bits.
+    const auto reference = [](NurbsCurve curve, double value, int times) {
+        for (int pass = 0; pass < times; ++pass) {
+            const int p = curve.degree(), stride = curve.m_cv_stride;
+            const int k = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, value) + p;
+            std::vector<double> full = curve.m_nurbsknot;
+            full.insert(full.begin(), full.front());
+            full.push_back(full.back());
+            std::vector<double> cv(curve.m_cv.begin(), curve.m_cv.begin() + (k - p + 1) * stride);
+            for (int i = k - p + 1; i <= k; ++i) {
+                const double span = full[i + p] - full[i], alpha = span != 0.0 ? (value - full[i]) / span : 0.0;
+                for (int d = 0; d < stride; ++d) {
+                    const double before = curve.m_cv[(i - 1) * stride + d], here = curve.m_cv[i * stride + d];
+                    cv.push_back(std::isfinite(here) && here != 0.0 && before == here ? here : (1.0 - alpha) * before + alpha * here);
+                }
+            }
+            cv.insert(cv.end(), curve.m_cv.begin() + k * stride, curve.m_cv.end());
+            curve.m_cv = cv;
+            curve.m_cv_count++;
+            curve.m_nurbsknot.insert(curve.m_nurbsknot.begin() + k, value);
+        }
+        return curve;
+    };
+    NurbsCurve plain = NurbsCurve::create(false, 3, {{0, 0, 0}, {1, 2, 0.5}, {2, -1, 1}, {4, 0.5, 0}, {5, 3, 2}, {7, 1, 1}, {8, 0, 3}});
+    NurbsCurve weighted = Primitives::circle(0.3, -0.2, 0.1, 1.7);
+    for (const NurbsCurve* source : {&plain, &weighted})
+        for (double share : {0.137, 0.41, 0.86})
+            for (int times = 1; times <= source->degree(); ++times) {
+                const double value = std::lerp(source->domain_start(), source->domain_end(), share);
+                NurbsCurve inserted = *source;
+                MINI_CHECK(inserted.insert_nurbsknot(value, times));
+                const NurbsCurve expected = reference(*source, value, times);
+                MINI_CHECK(inserted.cv_count() == source->cv_count() + times && inserted.is_valid());
+                MINI_CHECK(inserted.m_cv == expected.m_cv && inserted.m_nurbsknot == expected.m_nurbsknot);
+                MINI_CHECK(inserted.insert_nurbsknot(value, times) && inserted.m_cv == expected.m_cv);
+            }
+}

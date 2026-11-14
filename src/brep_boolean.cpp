@@ -482,24 +482,26 @@ Partition partition(
 }
 
 bool interior_candidate(
-    const BRep& brep,
+    const brep_classify::Solid& solid,
     int face,
     const Point& uv,
+    double uv_tol,
     double tolerance,
-    const BRep* avoid
+    const brep_classify::Solid* avoid
 ) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    if (brep_classify::face_uv(brep, face, uv, uv_tolerance(surface, tolerance)) != State::Inside)
+    if (brep_classify::face_uv(solid, face, uv, uv_tol) != State::Inside)
         return false;
     if (!avoid)
         return true;
+    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index];
     const State state = brep_classify::point(*avoid, surface.point_at(uv[0], uv[1]), tolerance);
     if (state == State::Unknown)
         throw std::runtime_error("Native Boolean interior witness classification is unresolved");
     return state != State::Boundary;
 }
 
-Point interior(const BRep& brep, int face, double tolerance, const BRep* avoid = nullptr) {
+Point interior(const brep_classify::Solid& solid, int face, double tolerance, const brep_classify::Solid* avoid = nullptr) {
+    const BRep& brep = solid.brep;
     Point lo(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), 0);
     Point hi(-lo[0], -lo[1], 0);
     std::vector<const NurbsCurve*> boundaries;
@@ -510,17 +512,20 @@ Point interior(const BRep& brep, int face, double tolerance, const BRep* avoid =
                 throw std::runtime_error("Native Boolean encountered an untrimmed face");
             const NurbsCurve& curve = brep.m_curves_2d[index];
             boundaries.push_back(&curve);
-            for (int i = 0; i < curve.cv_count(); ++i)
+            for (int i = 0; i < curve.cv_count(); ++i) {
+                const xyz cv = curve.get_cv(i);
                 for (int d = 0; d < 2; ++d) {
-                    lo[d] = std::min(lo[d], curve.get_cv(i)[d]);
-                    hi[d] = std::max(hi[d], curve.get_cv(i)[d]);
+                    lo[d] = std::min(lo[d], cv[d]);
+                    hi[d] = std::max(hi[d], cv[d]);
                 }
+            }
         }
+    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index], tolerance);
     for (int n : {2, 4, 8, 16})
         for (int i = 1; i < n; ++i)
             for (int j = 1; j < n; ++j) {
                 const Point uv(lo[0] + (hi[0] - lo[0]) * i / n, lo[1] + (hi[1] - lo[1]) * j / n, 0);
-                if (interior_candidate(brep, face, uv, tolerance, avoid))
+                if (interior_candidate(solid, face, uv, uv_tol, tolerance, avoid))
                     return uv;
             }
     for (const NurbsCurve* boundary : boundaries) {
@@ -532,7 +537,7 @@ Point interior(const BRep& brep, int face, double tolerance, const BRep* avoid =
         for (double fraction : {1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1})
             for (double sign : {-1.0, 1.0}) {
                 const Point uv = boundary->point_at(t) + normal * (sign * fraction * lo.distance(hi));
-                if (interior_candidate(brep, face, uv, tolerance, avoid))
+                if (interior_candidate(solid, face, uv, uv_tol, tolerance, avoid))
                     return uv;
             }
     }
@@ -582,11 +587,12 @@ bool boundary_covers(
 int coincident_region(
     const BRep& source,
     int face,
-    const BRep& other,
+    const brep_classify::Solid& solid,
     const Point& uv,
     Point& other_uv,
     double tolerance
 ) {
+    const BRep& other = solid.brep;
     const NurbsSurface& a = source.m_surfaces[source.m_faces[face].surface_index];
     const Point point = a.point_at(uv[0], uv[1]);
     for (int candidate : active_faces(other)) {
@@ -601,7 +607,7 @@ int coincident_region(
         const std::pair<double, double> parameters = mapped ? std::pair<double, double>{mapped_uv[0], mapped_uv[1]}
             : b.closest_parameters(point);
         if (b.point_at(parameters.first, parameters.second).distance(point) > tolerance
-            || brep_classify::face_uv(other, candidate, {parameters.first, parameters.second, 0},
+            || brep_classify::face_uv(solid, candidate, {parameters.first, parameters.second, 0},
                 uv_tolerance(b, tolerance)) != State::Inside)
             continue;
         const std::vector<const NurbsCurve*> first = boundary_curves(source, face);
@@ -635,21 +641,51 @@ void select(
 ) {
     const BRep& source = partition.brep;
     const BRep& other = opposite.brep;
-    for (int face : active_faces(source)) {
-        Point uv = interior(source, face, tolerance);
-        const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
-        Point p = surface.point_at(uv[0], uv[1]);
-        State state = brep_classify::point(other, p, tolerance);
-        if (state == State::Unknown)
-            throw ClassificationError(other, p, face, second, tolerance);
-        Point other_uv;
-        const int coincident = state == State::Boundary ? coincident_region(source, face, other, uv, other_uv, tolerance) : -1;
-        if (state == State::Boundary && coincident < 0) {
-            uv = interior(source, face, tolerance, &other);
-            p = surface.point_at(uv[0], uv[1]);
-            state = brep_classify::point(other, p, tolerance);
-            if (state != State::Inside && state != State::Outside)
-                throw std::runtime_error("Native Boolean interior witness remained unresolved");
+    const brep_classify::Solid own(source), solid(other);
+    const std::vector<int> faces = active_faces(source);
+    // Faces joined across an edge the other solid's boundary does not meet lie on one side of it: one witness decides them all. Such an edge is an original one with no edge of the other operand along it or at its nodes; a pole joins nothing.
+    std::vector<bool> open(source.edge_count(), false), seen(source.edge_count(), false);
+    for (const split::EdgePiece& piece : partition.pieces)
+        if (piece.edge >= 0 && piece.edge < source.edge_count() && !seen[piece.edge]) {
+            seen[piece.edge] = true;
+            open[piece.edge] = piece.section < 0 && piece.exact && !source.m_edges[piece.edge].degenerated;
+        }
+    std::vector<std::vector<int>> around(source.edge_count());
+    for (int face : faces)
+        for (const BRepRef& wire : source.m_faces[face].wires)
+            for (const BRepRef& edge : source.wire_edges(wire))
+                if (open[edge.index])
+                    around[edge.index].push_back(face);
+    std::vector<State> known(source.face_count(), State::Unknown);
+    for (int face : faces) {
+        State state = known[face];
+        Point uv, other_uv;
+        int coincident = -1;
+        if (state == State::Unknown) {
+            uv = interior(own, face, tolerance);
+            const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+            Point p = surface.point_at(uv[0], uv[1]);
+            state = brep_classify::point(solid, p, tolerance);
+            if (state == State::Unknown)
+                throw ClassificationError(other, p, face, second, tolerance);
+            coincident = state == State::Boundary ? coincident_region(source, face, solid, uv, other_uv, tolerance) : -1;
+            if (state == State::Boundary && coincident < 0) {
+                uv = interior(own, face, tolerance, &solid);
+                p = surface.point_at(uv[0], uv[1]);
+                state = brep_classify::point(solid, p, tolerance);
+                if (state != State::Inside && state != State::Outside)
+                    throw std::runtime_error("Native Boolean interior witness remained unresolved");
+            }
+            known[face] = state;
+            std::vector<int> joined{face};
+            for (size_t i = 0; state != State::Boundary && i < joined.size(); ++i)
+                for (const BRepRef& wire : source.m_faces[joined[i]].wires)
+                    for (const BRepRef& edge : source.wire_edges(wire))
+                        for (int next : around[edge.index])
+                            if (known[next] == State::Unknown) {
+                                known[next] = state;
+                                joined.push_back(next);
+                            }
         }
         bool minus = false, plus = false;
         if (state != State::Boundary) {

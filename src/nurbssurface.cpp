@@ -461,11 +461,7 @@ bool NurbsSurface::is_valid() const {
     if (static_cast<int>(m_cv.size()) < cv_count() * cv_size())
         return false;
 
-    for (double value : m_cv)
-        if (!std::isfinite(value))
-            return false;
-
-    return true;
+    return nurbsknot::all_finite(m_cv.data(), m_cv.size());
 }
 
 bool NurbsSurface::has_evaluation_tables() const {
@@ -487,12 +483,15 @@ bool NurbsSurface::is_valid_nurbsknot_vector(int dir) const {
         || static_cast<int>(m_nurbsknot[dir].size()) != kc)
         return false;
 
-    for (int i = 0; i < kc; i++)
-        if (!std::isfinite(m_nurbsknot[dir][i])
-            || (i > 0 && m_nurbsknot[dir][i] < m_nurbsknot[dir][i - 1]))
-            return false;
+    if (!nurbsknot::all_finite(m_nurbsknot[dir].data(), kc))
+        return false;
 
-    return m_nurbsknot[dir][m_order[dir] - 2] < m_nurbsknot[dir][m_cv_count[dir] - 1];
+    bool sorted = true;
+
+    for (int i = 1; i < kc; i++)
+        sorted &= !(m_nurbsknot[dir][i] < m_nurbsknot[dir][i - 1]);
+
+    return sorted && m_nurbsknot[dir][m_order[dir] - 2] < m_nurbsknot[dir][m_cv_count[dir] - 1];
 }
 
 bool NurbsSurface::is_closed(int dir) const {
@@ -505,9 +504,17 @@ bool NurbsSurface::is_closed(int dir) const {
 
     const int last = m_cv_count[dir] - 1;
 
+    // The control points get_cv returns, as plain triples.
+    const auto control = [this](int i, int j) {
+        const double* h = cv(i, j);
+        const double w = (m_is_rat && h[m_dim] != 0.0) ? h[m_dim] : 1.0;
+
+        return xyz{h[0] / w, m_dim > 1 ? h[1] / w : 0.0, m_dim > 2 ? h[2] / w : 0.0};
+    };
+
     for (int k = 0; k < m_cv_count[1 - dir]; k++) {
-        const Point a = dir ? get_cv(k, 0) : get_cv(0, k);
-        const Point b = dir ? get_cv(k, last) : get_cv(last, k);
+        const xyz a = dir ? control(k, 0) : control(0, k);
+        const xyz b = dir ? control(k, last) : control(last, k);
 
         if (a.distance(b) > Tolerance::ZERO_TOLERANCE)
             return false;
@@ -849,7 +856,8 @@ bool NurbsSurface::insert_nurbsknot(int dir, double nurbsknot_value, int nurbskn
 // ═══════════════════════════════════════════════════════════════════════════
 std::pair<double, double> NurbsSurface::domain(int dir) const {
 
-    if (dir < 0 || dir > 1 || !is_valid())
+    // The domain is read from the knots of dir alone: the control points are not scanned.
+    if (!is_valid_nurbsknot_vector(dir))
         return {0.0, 0.0};
 
     return {m_nurbsknot[dir][m_order[dir] - 2], m_nurbsknot[dir][m_cv_count[dir] - 1]};

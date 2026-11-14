@@ -182,39 +182,151 @@ NurbsSurface local_surface(const NurbsSurface& surface, const Frame& frame) {
     return result;
 }
 
+constexpr int patch_order = 16;
+
+/// Bernstein values and derivatives of the degree at s.
+inline void bernstein(int degree, double s, double* value, double* derivative) {
+    double lower[patch_order];
+    lower[0] = 1.0;
+    for (int k = 1; k < degree; ++k) {
+        lower[k] = s * lower[k - 1];
+        for (int i = k - 1; i > 0; --i)
+            lower[i] = (1.0 - s) * lower[i] + s * lower[i - 1];
+        lower[0] = (1.0 - s) * lower[0];
+    }
+    for (int i = 0; i <= degree; ++i) {
+        const double before = i > 0 ? lower[i - 1] : 0.0;
+        const double here = i < degree ? lower[i] : 0.0;
+        value[i] = (1.0 - s) * here + s * before;
+        derivative[i] = degree * (before - here);
+    }
+}
+
+/// z times the z of the normal of a Bezier patch of controls x y z w over cell at (u, v); P and Q above zero are the degrees known at compile time. False where the weight vanishes.
+template <int P, int Q>
+inline bool patch_flux(const double* control, int degree_u, int degree_v, bool rational, const std::array<double, 4>& cell,
+    double u, double v, double& flux) {
+    const int p = P ? P : degree_u, q = Q ? Q : degree_v;
+    const double du = cell[1] - cell[0], dv = cell[3] - cell[2];
+    double bu[patch_order], gu[patch_order], bv[patch_order], gv[patch_order];
+    bernstein(p, (u - cell[0]) / du, bu, gu);
+    bernstein(q, (v - cell[2]) / dv, bv, gv);
+    // The homogeneous point and its partials, rows along v first; x y w is all the normal's z takes.
+    double point[4] = {0.0, 0.0, 0.0, 0.0}, along_u[4] = {0.0, 0.0, 0.0, 0.0}, along_v[4] = {0.0, 0.0, 0.0, 0.0};
+    for (int i = 0; i <= p; ++i) {
+        double row[4] = {0.0, 0.0, 0.0, 0.0}, slope[4] = {0.0, 0.0, 0.0, 0.0};
+        for (int j = 0; j <= q; ++j, control += 4) {
+            for (int d = 0; d < 4; ++d)
+                row[d] += bv[j] * control[d];
+            for (int d : {0, 1, 3})
+                slope[d] += gv[j] * control[d];
+        }
+        for (int d = 0; d < 4; ++d)
+            point[d] += bu[i] * row[d];
+        for (int d : {0, 1, 3}) {
+            along_u[d] += gu[i] * row[d];
+            along_v[d] += bu[i] * slope[d];
+        }
+    }
+    if (!rational) {
+        point[3] = 1.0;
+        along_u[3] = along_v[3] = 0.0;
+    }
+    const double w = point[3];
+    if (w == 0.0)
+        return false;
+    const double x = point[0] / w, y = point[1] / w;
+    const double xu = (along_u[0] - x * along_u[3]) / w, yu = (along_u[1] - y * along_u[3]) / w;
+    const double xv = (along_v[0] - x * along_v[3]) / w, yv = (along_v[1] - y * along_v[3]) / w;
+    flux = point[2] / w * ((xu * yv - yu * xv) / (du * dv));
+    return true;
+}
+
 struct SurfaceEvaluator {
+    /// One knot cell: its sides {u0, u1, v0, v1} and, where the orders allow, its Bezier controls x y z w.
+    struct Cell {
+        bool entered = false;
+        bool usable = false;
+        std::array<double, 4> sides{};
+        std::vector<double> patch;
+    };
+
     const NurbsSurface& surface;
     NurbsSurface local;
     std::array<int, 2> active{-1, -1};
-    bool usable = false;
     std::array<std::vector<double>, 2> knots;
+    std::vector<Cell> cells;
+    const Cell* cell = nullptr;
 
     explicit SurfaceEvaluator(const NurbsSurface& source)
         : surface(source), local(3, source.is_rational(), source.order(0), source.order(1), source.order(0), source.order(1)),
           knots{source.get_span_vector(0), source.get_span_vector(1)} {
         if (!source.is_valid() || source.dimension() != 3)
             throw std::runtime_error("Native BRep volume requires a valid three-dimensional support");
+        cells.resize((source.cv_count(0) - source.order(0) + 1) * (source.cv_count(1) - source.order(1) + 1));
+    }
+
+    /// Copy the active span into local, the surface jet evaluates.
+    void load() {
+        for (int dir = 0; dir < 2; ++dir)
+            std::copy_n(surface.m_nurbsknot[dir].begin() + active[dir], local.m_nurbsknot[dir].size(), local.m_nurbsknot[dir].begin());
+        for (int i = 0; i < local.cv_count(0); ++i)
+            for (int j = 0; j < local.cv_count(1); ++j)
+                std::copy_n(surface.cv(active[0] + i, active[1] + j), surface.cv_size(), local.cv(i, j));
+    }
+
+    void enter(const std::array<int, 2>& span) {
+        active = span;
+        Cell& entered = cells[span[0] * (surface.cv_count(1) - surface.order(1) + 1) + span[1]];
+        cell = &entered;
+        if (!entered.patch.empty())
+            return;
+        load();
+        if (entered.entered)
+            return;
+        // Checked where the span is first copied in; nothing else writes local.
+        entered.entered = true;
+        entered.usable = local.is_valid();
+        if (!entered.usable)
+            return;
+        for (int dir = 0; dir < 2; ++dir) {
+            entered.sides[2 * dir] = local.m_nurbsknot[dir][local.order(dir) - 2];
+            entered.sides[2 * dir + 1] = local.m_nurbsknot[dir][local.order(dir) - 1];
+        }
+        if (local.order(0) > patch_order || local.order(1) > patch_order)
+            return;
+        // The controls come as enclosures a few roundings wide, or as the controls themselves where the span is a Bezier patch already.
+        for (const nurbs_interval::Homogeneous& control : nurbs_interval::surface_controls(local, entered.sides, {0, 0, 0}))
+            for (const nurbs_interval::Interval& value : control)
+                entered.patch.push_back(std::midpoint(value.lo, value.hi));
     }
 
     double integrand(double u, double v) {
-        const std::array<int, 2> span = {
-            nurbsknot::find_span(surface.order(0), surface.cv_count(0), surface.m_nurbsknot[0], u),
-            nurbsknot::find_span(surface.order(1), surface.cv_count(1), surface.m_nurbsknot[1], v)
-        };
-        if (span != active) {
-            for (int dir = 0; dir < 2; ++dir)
-                std::copy_n(surface.m_nurbsknot[dir].begin() + span[dir], local.m_nurbsknot[dir].size(), local.m_nurbsknot[dir].begin());
-            for (int i = 0; i < local.cv_count(0); ++i)
-                for (int j = 0; j < local.cv_count(1); ++j)
-                    std::copy_n(surface.cv(span[0] + i, span[1] + j), surface.cv_size(), local.cv(i, j));
-            active = span;
-            // Checked where the span is copied in; nothing else writes local.
-            usable = local.is_valid();
+        // Strictly inside the active cell the span search would return it again.
+        if (!(cell && cell->usable && u > cell->sides[0] && u < cell->sides[1] && v > cell->sides[2] && v < cell->sides[3])) {
+            const std::array<int, 2> span = {
+                nurbsknot::find_span(surface.order(0), surface.cv_count(0), surface.m_nurbsknot[0], u),
+                nurbsknot::find_span(surface.order(1), surface.cv_count(1), surface.m_nurbsknot[1], v)
+            };
+            if (span != active)
+                enter(span);
+        }
+        // One global divergence-one field, F=(0,0,z), for EVERY face/path.
+        if (!cell->patch.empty()) {
+            const int p = surface.m_order[0] - 1, q = surface.m_order[1] - 1;
+            const bool rational = surface.m_is_rat;
+            const double* control = cell->patch.data();
+            double flux;
+            if (p == 2 && q == 2 ? patch_flux<2, 2>(control, p, q, rational, cell->sides, u, v, flux)
+                : p == 2 && q == 1 ? patch_flux<2, 1>(control, p, q, rational, cell->sides, u, v, flux)
+                : p == 1 && q == 2 ? patch_flux<1, 2>(control, p, q, rational, cell->sides, u, v, flux)
+                : patch_flux<0, 0>(control, p, q, rational, cell->sides, u, v, flux))
+                return flux;
+            load();
         }
         std::array<xyz, 6> derivatives;
-        if (!usable || !local.jet(u, v, 1, derivatives))
+        if (!cell->usable || !local.jet(u, v, 1, derivatives))
             throw std::runtime_error("Native BRep volume could not evaluate a local surface span");
-        // One global divergence-one field, F=(0,0,z), for EVERY face/path.
         return derivatives[0].z * derivatives[2].cross(derivatives[1]).z;
     }
 };

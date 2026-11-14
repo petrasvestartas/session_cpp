@@ -29,18 +29,18 @@ void check_tolerance(double tolerance) {
         throw std::invalid_argument("BRep classification requires a finite positive tolerance");
 }
 
-bool finite(const Point& p) {
+bool finite(const xyz& p) {
     return std::isfinite(p[0]) && std::isfinite(p[1]) && std::isfinite(p[2]);
 }
 
-double segment_distance(const Point& p, const Point& a, const Point& b) {
-    const Vector delta = b - a;
+double segment_distance(const xyz& p, const xyz& a, const xyz& b) {
+    const xyz delta = b - a;
     const double squared = delta.dot(delta);
     const double t = squared > 0.0 ? std::clamp((p - a).dot(delta) / squared, 0.0, 1.0) : 0.0;
     return p.distance(a + delta * t);
 }
 
-int crossing(const Point& a, const Point& b, const Point& query) {
+int crossing(const xyz& a, const xyz& b, const xyz& query) {
     if ((a[1] > query[1]) == (b[1] > query[1]))
         return 0;
     const double t = (query[1] - a[1]) / (b[1] - a[1]);
@@ -49,27 +49,46 @@ int crossing(const Point& a, const Point& b, const Point& query) {
     return b[1] > a[1] ? 1 : -1;
 }
 
-State curve_winding(const NurbsCurve& curve, const Point& query, double height, double tolerance, int& winding) {
-    const Point ray(query[0], height, 0.0);
+/// The control point NurbsCurve::get_cv returns.
+xyz control(const NurbsCurve& curve, int index) {
+    const double* cv = curve.cv(index);
+    const int dim = curve.dimension();
+    const double weight = curve.is_rational() ? cv[dim] : 1.0;
+    if (weight == 0.0)
+        return {0.0, 0.0, 0.0};
+    return {cv[0] / weight, dim > 1 ? cv[1] / weight : 0.0, dim > 2 ? cv[2] / weight : 0.0};
+}
+
+/// The box of the control points of a piece with ends a and b and their largest distance from its chord; false where a control is not finite with a positive weight.
+bool chord_hull(const NurbsCurve& curve, const xyz& a, const xyz& b, xyz& lo, xyz& hi, double& error) {
+    lo = hi = a;
+    error = 0.0;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        const xyz p = control(curve, i);
+        if (!finite(p) || !std::isfinite(curve.weight(i)) || !(curve.weight(i) > 0.0))
+            return false;
+        for (int d = 0; d < 2; ++d) {
+            lo[d] = std::min(lo[d], p[d]);
+            hi[d] = std::max(hi[d], p[d]);
+        }
+        error = std::max(error, segment_distance(p, a, b));
+    }
+    return true;
+}
+
+/// checked: the owner of the curve is known to be valid.
+State curve_winding(const NurbsCurve& curve, const xyz& query, double height, double tolerance, int& winding, bool checked) {
+    const xyz ray{query[0], height, 0.0};
+    xyz lo, hi;
+    double error;
     // A straight piece is the first pass of the loop below, taken on the curve itself.
     if (curve.order() == 2 && curve.cv_count() == 2) {
         // Without weights the ends of a valid straight piece are its two control points to the bit.
-        const bool plain = !curve.is_rational() && curve.is_valid();
-        const Point a = plain ? curve.get_cv(0) : curve.point_at_start();
-        const Point b = plain ? curve.get_cv(1) : curve.point_at_end();
-        Point lo = a;
-        Point hi = a;
-        double error = 0.0;
-        for (int i = 0; i < 2; ++i) {
-            const Point p = curve.get_cv(i);
-            if (!finite(p) || !std::isfinite(curve.weight(i)) || !(curve.weight(i) > 0.0))
-                return State::Unknown;
-            for (int d = 0; d < 2; ++d) {
-                lo[d] = std::min(lo[d], p[d]);
-                hi[d] = std::max(hi[d], p[d]);
-            }
-            error = std::max(error, segment_distance(p, a, b));
-        }
+        const bool plain = !curve.is_rational() && (checked || curve.is_valid());
+        const xyz a = plain ? control(curve, 0) : curve.point(curve.domain_start());
+        const xyz b = plain ? control(curve, 1) : curve.point(curve.domain_end());
+        if (!chord_hull(curve, a, b, lo, hi, error))
+            return State::Unknown;
         if (hi[0] < query[0] - tolerance || hi[1] < query[1] - tolerance || lo[1] > query[1] + tolerance)
             return State::Outside;
         if (lo[0] <= query[0] + tolerance && error <= tolerance * 0.125 && segment_distance(query, a, b) <= tolerance + error)
@@ -79,54 +98,80 @@ State curve_winding(const NurbsCurve& curve, const Point& query, double height, 
             return State::Outside;
         }
     }
-    std::vector<CurvePart> work = {{curve, 0}};
-    for (size_t iteration = 0; !work.empty() && iteration < 100000; ++iteration) {
-        CurvePart part = std::move(work.back());
-        work.pop_back();
-        const Point a = part.curve.point_at_start();
-        const Point b = part.curve.point_at_end();
-        Point lo = a;
-        Point hi = a;
-        double error = 0.0;
-        for (int i = 0; i < part.curve.cv_count(); ++i) {
-            const Point p = part.curve.get_cv(i);
-            if (!finite(p) || !std::isfinite(part.curve.weight(i)) || !(part.curve.weight(i) > 0.0))
-                return State::Unknown;
-            for (int d = 0; d < 2; ++d) {
-                lo[d] = std::min(lo[d], p[d]);
-                hi[d] = std::max(hi[d], p[d]);
-            }
-            error = std::max(error, segment_distance(p, a, b));
-        }
-        if (hi[0] < query[0] - tolerance || hi[1] < query[1] - tolerance || lo[1] > query[1] + tolerance)
-            continue;
-        if (lo[0] > query[0] + tolerance) {
+    // The curve itself is the first part; only its pieces are held.
+    std::vector<CurvePart> work;
+    CurvePart held;
+    const NurbsCurve* part = &curve;
+    int depth = 0;
+    for (size_t iteration = 0; iteration < 100000; ++iteration) {
+        const xyz a = part->point(part->domain_start());
+        const xyz b = part->point(part->domain_end());
+        if (!chord_hull(*part, a, b, lo, hi, error))
+            return State::Unknown;
+        if (hi[0] < query[0] - tolerance || hi[1] < query[1] - tolerance || lo[1] > query[1] + tolerance) {
+        } else if (lo[0] > query[0] + tolerance) {
             winding += crossing(a, b, ray);
-            continue;
-        }
-        if (error <= tolerance * 0.125) {
+        } else if (error <= tolerance * 0.125) {
             if (segment_distance(query, a, b) <= tolerance + error)
                 return State::Boundary;
             winding += crossing(a, b, ray);
-            continue;
+        } else {
+            const double middle = std::midpoint(part->domain_start(), part->domain_end());
+            NurbsCurve left;
+            NurbsCurve right;
+            if (depth >= 64 || !part->split(middle, left, right))
+                return State::Unknown;
+            work.push_back({std::move(right), depth + 1});
+            work.push_back({std::move(left), depth + 1});
         }
-        const double middle = std::midpoint(part.curve.domain_start(), part.curve.domain_end());
-        NurbsCurve left;
-        NurbsCurve right;
-        if (part.depth >= 64 || !part.curve.split(middle, left, right))
-            return State::Unknown;
-        work.push_back({std::move(right), part.depth + 1});
-        work.push_back({std::move(left), part.depth + 1});
+        if (work.empty())
+            return State::Outside;
+        held = std::move(work.back());
+        work.pop_back();
+        part = &held.curve;
+        depth = held.depth;
     }
-    return work.empty() ? State::Outside : State::Unknown;
+    return State::Unknown;
 }
 
-State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const Point& uv, double tolerance) {
-    std::vector<const NurbsCurve*> loop;
+/// The v of both ends of a pcurve; checked: its owner is known to be valid.
+std::array<double, 2> end_heights(const NurbsCurve& curve, bool checked) {
+    // The ends of a valid straight piece without weights are its two control points to the bit.
+    const bool plain = curve.order() == 2 && curve.cv_count() == 2 && !curve.is_rational() &&
+        curve.dimension() > 1 && (checked || curve.is_valid());
+    return {plain ? curve.cv(0)[1] : curve.point(curve.domain_start())[1],
+        plain ? curve.cv(1)[1] : curve.point(curve.domain_end())[1]};
+}
+
+double clear_height(const std::vector<std::array<double, 2>>& ends, double height, double tolerance) {
+    const auto clear = [&ends](double candidate) {
+        const double margin = 64.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(candidate));
+        for (const std::array<double, 2>& end : ends)
+            if (std::abs(end[0] - candidate) <= margin || std::abs(end[1] - candidate) <= margin)
+                return false;
+        return true;
+    };
+    for (double share : {0.0, 0.25, -0.25, 0.125, -0.125, 0.1875, -0.1875, 0.0625, -0.0625})
+        if (clear(height + share * tolerance))
+            return height + share * tolerance;
+    return height;
+}
+
+std::vector<std::array<double, 2>> wire_ends(const BRep& brep, const brep_face_boundary::Wire& wire, bool checked) {
+    std::vector<std::array<double, 2>> ends;
     for (const auto& use : wire.uses)
         if (use.pcurve >= 0 && use.pcurve < static_cast<int>(brep.m_curves_2d.size()))
-            loop.push_back(&brep.m_curves_2d[use.pcurve]);
-    const double height = clear_ray_height(loop, uv[1], tolerance);
+            ends.push_back(end_heights(brep.m_curves_2d[use.pcurve], checked));
+    return ends;
+}
+
+/// known: the ends of the wire's pcurves, of a valid owner; without them they are found here.
+State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const std::vector<std::array<double, 2>>* known,
+    const Point& uv, double tolerance) {
+    std::vector<std::array<double, 2>> found;
+    if (!known)
+        found = wire_ends(brep, wire, false);
+    const double height = clear_height(known ? *known : found, uv[1], tolerance);
     int winding = 0;
     for (const auto& use : wire.uses) {
         const auto& edge = use.edge;
@@ -136,7 +181,7 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const P
         if (ci < 0 || ci >= static_cast<int>(brep.m_curves_2d.size()))
             return State::Unknown;
         int contribution = 0;
-        const State state = curve_winding(brep.m_curves_2d[ci], uv, height, tolerance, contribution);
+        const State state = curve_winding(brep.m_curves_2d[ci], uv, height, tolerance, contribution, known != nullptr);
         if (state == State::Boundary || state == State::Unknown)
             return state;
         winding += edge.orientation == BRepOrientation::Reversed ? -contribution : contribution;
@@ -144,13 +189,42 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const P
     return winding == 0 ? State::Outside : State::Inside;
 }
 
-bool append_hit(RayResult& result, const BRep& brep, int face,
+/// The boundary of a face of a valid model and the ends of its pcurves.
+void lay_out(const BRep& brep, int index, Face& face) {
+    face.boundary = brep_face_boundary::extract(brep, index);
+    for (size_t wire = 0; face.boundary.complete && wire < face.boundary.wires.size(); ++wire)
+        face.ends.push_back(wire_ends(brep, face.boundary.wires[wire], true));
+}
+
+State face_state(const brep_face_boundary::Result& boundary, const std::vector<std::vector<std::array<double, 2>>>* ends,
+    const Point& uv, double tolerance) {
+    check_tolerance(tolerance);
+    if (!finite(uv))
+        throw std::invalid_argument("BRep classification requires a finite UV point");
+    if (!boundary.complete || !boundary.owner || boundary.wires.empty() ||
+        boundary.face < 0 || boundary.face >= boundary.owner->face_count())
+        return State::Unknown;
+    const BRep& brep = *boundary.owner;
+    const State outer = wire_state(brep, boundary.wires[0], ends ? &(*ends)[0] : nullptr, uv, tolerance);
+    if (outer != State::Inside)
+        return outer;
+    for (size_t i = 1; i < boundary.wires.size(); ++i) {
+        const State hole = wire_state(brep, boundary.wires[i], ends ? &(*ends)[i] : nullptr, uv, tolerance);
+        if (hole == State::Unknown || hole == State::Boundary)
+            return hole;
+        if (hole == State::Inside)
+            return State::Outside;
+    }
+    return State::Inside;
+}
+
+bool append_hit(RayResult& result, const Solid& solid, int face,
     const surface_ray::Root& root, const RayFrame& frame) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-    const std::vector<Vector> values = surface.evaluate(root.u, root.v, 1);
-    if (values.size() != 3)
+    const BRep& brep = solid.brep;
+    std::array<xyz, 6> values;
+    if (!brep.m_surfaces[brep.m_faces[face].surface_index].jet(root.u, root.v, 1, values))
         return false;
-    const double speed = std::max(values[1].magnitude(), values[2].magnitude());
+    const double speed = std::max(values[1].length(), values[2].length());
     if (!std::isfinite(speed) || !(speed > 0.0))
         return false;
     const double infinity = std::numeric_limits<double>::infinity();
@@ -162,12 +236,12 @@ bool append_hit(RayResult& result, const BRep& brep, int face,
     const double tolerance = std::nextafter(frame.tolerance / speed + radius, infinity);
     if (!std::isfinite(tolerance))
         return false;
-    const State trim = face_uv(brep, face, {root.u, root.v, 0.0}, tolerance);
+    const State trim = face_uv(solid, face, {root.u, root.v, 0.0}, tolerance);
     if (trim == State::Unknown)
         return false;
     if (trim == State::Outside)
         return true;
-    const int crossing = brep.face_orientation(face) == BRepOrientation::Reversed ? -root.crossing : root.crossing;
+    const int crossing = solid.faces[face].orientation == BRepOrientation::Reversed ? -root.crossing : root.crossing;
     result.hits.push_back({root.point, root.distance, root.u, root.v, face, crossing, trim, root.distance_enclosure});
     return true;
 }
@@ -175,8 +249,9 @@ bool append_hit(RayResult& result, const BRep& brep, int face,
 // Roots of one ray on the surfaces it has met, by surface index and advance: faces split from one face share their surface.
 using SurfaceRoots = std::map<std::pair<int, double>, surface_ray::Result>;
 
-void intersect_face(RayResult& result, const BRep& brep, int face, const RayFrame& frame, SurfaceRoots& met,
+void intersect_face(RayResult& result, const Solid& solid, int face, const RayFrame& frame, SurfaceRoots& met,
     const Vector* grazed = nullptr) {
+    const BRep& brep = solid.brep;
     const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
     surface_ray::Options options;
     options.include_origin = true;
@@ -214,12 +289,28 @@ void intersect_face(RayResult& result, const BRep& brep, int face, const RayFram
             surface.domain(1).first, surface.domain(1).second};
     }
     for (const auto& root : intersections.roots)
-        if (!append_hit(result, brep, face, root, frame)) {
+        if (!append_hit(result, solid, face, root, frame)) {
             result.complete = false;
             result.failure = "Unresolved ray trim on face " + std::to_string(face);
             result.unresolved_face = face;
             result.unresolved_domain = root.enclosure;
         }
+}
+
+/// The ray on a checked model; grazed: faces on whose surfaces the origin lies outside their trims, with their normals there.
+RayResult cast(const Solid& solid, const RayFrame& frame, const std::vector<std::pair<int, Vector>>& grazed = {}) {
+    RayResult result;
+    SurfaceRoots met;
+    for (int face = 0; face < static_cast<int>(solid.faces.size()); ++face) {
+        if (!solid.faces[face].active)
+            continue;
+        const auto found = std::find_if(grazed.begin(), grazed.end(), [face](const auto& item) { return item.first == face; });
+        intersect_face(result, solid, face, frame, met, found == grazed.end() ? nullptr : &found->second);
+    }
+    std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
+        return a.distance < b.distance;
+    });
+    return result;
 }
 
 State ray_state(const RayResult& result, double tolerance) {
@@ -243,35 +334,6 @@ State ray_state(const RayResult& result, double tolerance) {
     return winding == 0 ? State::Outside : State::Inside;
 }
 
-std::vector<bool> active_faces(const BRep& brep) {
-    std::vector<bool> active(brep.face_count(), brep.m_solids.empty());
-    for (const BRepSolid& solid : brep.m_solids)
-        for (const BRepRef& shell : solid.shells)
-            for (const BRepRef& face : brep.m_shells[shell.index].faces) {
-                const BRepOrientation orientation = brep_compose(shell.orientation, face.orientation);
-                if (orientation != BRepOrientation::Internal && orientation != BRepOrientation::External)
-                    active[face.index] = true;
-            }
-    return active;
-}
-
-bool near_surface_bounds(const NurbsSurface& surface, const Point& query, double tolerance) {
-    Point lo = surface.get_cv(0, 0);
-    Point hi = lo;
-    for (int i = 0; i < surface.cv_count(0); ++i)
-        for (int j = 0; j < surface.cv_count(1); ++j) {
-            const Point p = surface.get_cv(i, j);
-            for (int d = 0; d < 3; ++d) {
-                lo[d] = std::min(lo[d], p[d]);
-                hi[d] = std::max(hi[d], p[d]);
-            }
-        }
-    for (int d = 0; d < 3; ++d)
-        if (query[d] < lo[d] - tolerance || query[d] > hi[d] + tolerance)
-            return false;
-    return true;
-}
-
 bool near_edge(const BRep& brep, int face, const Point& query, double tolerance) {
     for (const BRepRef& wire : brep.m_faces[face].wires)
         for (const BRepRef& use : brep.wire_edges(wire)) {
@@ -288,52 +350,90 @@ bool near_edge(const BRep& brep, int face, const Point& query, double tolerance)
     return false;
 }
 
-State boundary_state(const BRep& brep, const Point& query, double tolerance, std::vector<std::pair<int, Vector>>* grazed = nullptr) {
-    const std::vector<bool> active = active_faces(brep);
+State boundary_state(const Solid& solid, const Point& query, double tolerance, std::vector<std::pair<int, Vector>>& grazed) {
+    const BRep& brep = solid.brep;
+    const xyz q = query;
     for (int face = 0; face < brep.face_count(); ++face) {
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
-        if (!active[face] || !near_surface_bounds(surface, query, tolerance))
+        const int support = brep.m_faces[face].surface_index;
+        const std::array<xyz, 2>& box = solid.boxes[support];
+        if (!solid.faces[face].active || q[0] < box[0][0] - tolerance || q[0] > box[1][0] + tolerance ||
+            q[1] < box[0][1] - tolerance || q[1] > box[1][1] + tolerance ||
+            q[2] < box[0][2] - tolerance || q[2] > box[1][2] + tolerance)
             continue;
+        const NurbsSurface& surface = brep.m_surfaces[support];
         const std::tuple<double, double, double> nearest = Closest::surface_point(surface, query);
         const double u = std::get<0>(nearest);
         const double v = std::get<1>(nearest);
-        if (surface.point_at(u, v).distance(query) > tolerance)
+        if (surface.point(u, v).distance(q) > tolerance)
             continue;
-        const std::vector<Vector> values = surface.evaluate(u, v, 1);
-        const double speed = std::max(values[1].magnitude(), values[2].magnitude());
+        std::array<xyz, 6> values;
+        surface.jet(u, v, 1, values);
+        const double speed = std::max(values[1].length(), values[2].length());
         if (!(speed > 0.0))
             return near_edge(brep, face, query, tolerance) ? State::Boundary : State::Unknown;
-        const State trim = face_uv(brep, face, {u, v, 0.0}, tolerance / speed);
+        const State trim = face_uv(solid, face, {u, v, 0.0}, tolerance / speed);
         if (trim == State::Inside || near_edge(brep, face, query, tolerance))
             return State::Boundary;
         if (trim == State::Unknown)
             return State::Unknown;
-        Vector normal = values[1].cross(values[2]);
-        if (grazed && normal.normalize_self())
-            grazed->push_back({face, normal});
+        Vector normal(values[1].cross(values[2]));
+        if (normal.normalize_self())
+            grazed.push_back({face, normal});
     }
     return State::Outside;
 }
 
 }
 
-double clear_ray_height(const std::vector<const NurbsCurve*>& loop, double height, double tolerance) {
-    const auto clear = [&loop](double candidate) {
-        const double margin = 64.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(candidate));
-        for (const NurbsCurve* curve : loop) {
-            // The ends of a valid straight piece without weights are its two control points to the bit.
-            const bool plain = curve->order() == 2 && curve->cv_count() == 2 && !curve->is_rational() &&
-                curve->dimension() > 1 && curve->is_valid();
-            if (std::abs((plain ? curve->cv(0)[1] : curve->point_at_start()[1]) - candidate) <= margin ||
-                std::abs((plain ? curve->cv(1)[1] : curve->point_at_end()[1]) - candidate) <= margin)
-                return false;
+Solid::Solid(const BRep& model, bool boundaries) : brep(model), solid(model.is_solid()), valid(solid || model.is_valid()) {
+    if (!valid)
+        return;
+    faces.resize(brep.face_count());
+    // The orientation BRep::face_orientation finds: the first use in a solid's shell, else the first in any shell.
+    std::vector<bool> oriented(faces.size(), false);
+    for (const BRepSolid& body : brep.m_solids)
+        for (const BRepRef& shell : body.shells)
+            for (const BRepRef& face : brep.m_shells[shell.index].faces) {
+                const BRepOrientation orientation = brep_compose(shell.orientation, face.orientation);
+                if (orientation != BRepOrientation::Internal && orientation != BRepOrientation::External)
+                    faces[face.index].active = true;
+                if (!oriented[face.index])
+                    faces[face.index].orientation = orientation;
+                oriented[face.index] = true;
+            }
+    for (const BRepShell& shell : brep.m_shells)
+        for (const BRepRef& face : shell.faces) {
+            if (!oriented[face.index])
+                faces[face.index].orientation = face.orientation;
+            oriented[face.index] = true;
         }
-        return true;
-    };
-    for (double share : {0.0, 0.25, -0.25, 0.125, -0.125, 0.1875, -0.1875, 0.0625, -0.0625})
-        if (clear(height + share * tolerance))
-            return height + share * tolerance;
-    return height;
+    boxes.resize(brep.m_surfaces.size());
+    for (size_t k = 0; k < boxes.size(); ++k) {
+        const NurbsSurface& surface = brep.m_surfaces[k];
+        xyz lo = surface.get_cv(0, 0), hi = lo;
+        for (int i = 0; i < surface.cv_count(0); ++i)
+            for (int j = 0; j < surface.cv_count(1); ++j) {
+                const xyz p = surface.get_cv(i, j);
+                for (int d = 0; d < 3; ++d) {
+                    lo[d] = std::min(lo[d], p[d]);
+                    hi[d] = std::max(hi[d], p[d]);
+                }
+            }
+        boxes[k] = {lo, hi};
+    }
+    for (int i = 0; i < brep.face_count(); ++i) {
+        Face& face = faces[i];
+        face.active = face.active || brep.m_solids.empty();
+        if (boundaries)
+            lay_out(brep, i, face);
+    }
+}
+
+double clear_ray_height(const std::vector<const NurbsCurve*>& loop, double height, double tolerance) {
+    std::vector<std::array<double, 2>> ends;
+    for (const NurbsCurve* curve : loop)
+        ends.push_back(end_heights(*curve, false));
+    return clear_height(ends, height, tolerance);
 }
 
 State face_uv(const BRep& brep, int face, const Point& uv, double tolerance) {
@@ -343,80 +443,55 @@ State face_uv(const BRep& brep, int face, const Point& uv, double tolerance) {
     const auto boundary = brep_face_boundary::extract(brep, face);
     if (!boundary.complete)
         return State::Unknown;
-    return face_uv(boundary, uv, tolerance);
+    return face_state(boundary, nullptr, uv, tolerance);
 }
 
 State face_uv(const brep_face_boundary::Result& boundary, const Point& uv, double tolerance) {
+    return face_state(boundary, nullptr, uv, tolerance);
+}
+
+State face_uv(const Solid& solid, int face, const Point& uv, double tolerance) {
     check_tolerance(tolerance);
-    if (!finite(uv))
-        throw std::invalid_argument("BRep classification requires a finite UV point");
-    if (!boundary.complete || !boundary.owner || boundary.wires.empty() ||
-        boundary.face < 0 || boundary.face >= boundary.owner->face_count())
+    if (face < 0 || face >= static_cast<int>(solid.faces.size()) || !finite(uv))
+        throw std::invalid_argument("BRep classification requires a valid face and finite UV point");
+    Face found;
+    if (!solid.faces[face].boundary.owner)
+        lay_out(solid.brep, face, found);
+    const Face& prepared = solid.faces[face].boundary.owner ? solid.faces[face] : found;
+    if (!prepared.boundary.complete)
         return State::Unknown;
-    const BRep& brep = *boundary.owner;
-    const State outer = wire_state(brep, boundary.wires[0], uv, tolerance);
-    if (outer != State::Inside)
-        return outer;
-    for (size_t i = 1; i < boundary.wires.size(); ++i) {
-        const State hole = wire_state(brep, boundary.wires[i], uv, tolerance);
-        if (hole == State::Unknown || hole == State::Boundary)
-            return hole;
-        if (hole == State::Inside)
-            return State::Outside;
-    }
-    return State::Inside;
+    return face_state(prepared.boundary, &prepared.ends, uv, tolerance);
 }
 
 RayResult ray(const BRep& brep, const Point& origin, const Vector& direction, double tolerance) {
     check_tolerance(tolerance);
-    if (!finite(origin) || !std::isfinite(direction[0]) || !std::isfinite(direction[1]) ||
-        !std::isfinite(direction[2]) || std::max({std::abs(direction[0]), std::abs(direction[1]),
-            std::abs(direction[2])}) == 0.0 || !brep.is_valid())
-        throw std::invalid_argument("BRep ray requires valid geometry and a finite nonzero direction");
-    const RayFrame frame = {origin, direction, tolerance};
-    RayResult result;
-    const std::vector<bool> active = active_faces(brep);
-    SurfaceRoots met;
-    for (int face = 0; face < brep.face_count(); ++face)
-        if (active[face])
-            intersect_face(result, brep, face, frame, met);
-    std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
-        return a.distance < b.distance;
-    });
-    return result;
+    return ray(Solid(brep, false), origin, direction, tolerance);
 }
 
-namespace {
-/// The ray of `ray` from a point that lies on the surfaces of the grazed faces outside their trims.
-RayResult grazing_ray(const BRep& brep, const Point& origin, const Vector& direction, double tolerance,
-    const std::vector<std::pair<int, Vector>>& grazed) {
-    const RayFrame frame = {origin, direction, tolerance};
-    RayResult result;
-    const std::vector<bool> active = active_faces(brep);
-    SurfaceRoots met;
-    for (int face = 0; face < brep.face_count(); ++face) {
-        if (!active[face])
-            continue;
-        const auto found = std::find_if(grazed.begin(), grazed.end(), [face](const auto& item) { return item.first == face; });
-        intersect_face(result, brep, face, frame, met, found == grazed.end() ? nullptr : &found->second);
-    }
-    std::sort(result.hits.begin(), result.hits.end(), [](const RayHit& a, const RayHit& b) {
-        return a.distance < b.distance;
-    });
-    return result;
-}
+RayResult ray(const Solid& solid, const Point& origin, const Vector& direction, double tolerance) {
+    check_tolerance(tolerance);
+    if (!finite(origin) || !std::isfinite(direction[0]) || !std::isfinite(direction[1]) ||
+        !std::isfinite(direction[2]) || std::max({std::abs(direction[0]), std::abs(direction[1]),
+            std::abs(direction[2])}) == 0.0 || !solid.valid)
+        throw std::invalid_argument("BRep ray requires valid geometry and a finite nonzero direction");
+    return cast(solid, {origin, direction, tolerance});
 }
 
 State point(const BRep& brep, const Point& query, double tolerance) {
     check_tolerance(tolerance);
+    return point(Solid(brep, false), query, tolerance);
+}
+
+State point(const Solid& solid, const Point& query, double tolerance) {
+    check_tolerance(tolerance);
     if (!finite(query))
         throw std::invalid_argument("BRep classification requires a finite point");
-    if (brep.m_faces.empty() && brep.m_solids.empty())
+    if (solid.brep.m_faces.empty() && solid.brep.m_solids.empty())
         return State::Outside;
-    if (!brep.is_solid())
+    if (!solid.solid)
         throw std::invalid_argument("BRep solid classification requires closed oriented solids");
     std::vector<std::pair<int, Vector>> grazed;
-    const State boundary = boundary_state(brep, query, tolerance, &grazed);
+    const State boundary = boundary_state(solid, query, tolerance, grazed);
     if (boundary != State::Outside)
         return boundary;
     const std::array<Vector, 7> directions = {
@@ -425,8 +500,7 @@ State point(const BRep& brep, const Point& query, double tolerance) {
     };
     State previous = State::Unknown;
     for (const Vector& direction : directions) {
-        const State current = ray_state(grazed.empty() ? ray(brep, query, direction, tolerance)
-            : grazing_ray(brep, query, direction, tolerance, grazed), tolerance);
+        const State current = ray_state(cast(solid, {query, direction, tolerance}, grazed), tolerance);
         if (current == State::Boundary)
             return current;
         if (current == State::Unknown)

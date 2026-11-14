@@ -118,6 +118,22 @@ struct Scratch {
     Scratch& operator=(const Scratch&) = delete;
 };
 
+/// Whether every one of count values is finite: a finite value times zero is zero, any other is not a number, and so is a sum that holds one.
+inline bool all_finite(const double* values, std::size_t count) {
+    double sum = 0.0;
+    std::size_t i = 0;
+    if (count >= 16) {
+        double part[4] = {0.0, 0.0, 0.0, 0.0};
+        for (; i + 4 <= count; i += 4)
+            for (int k = 0; k < 4; ++k)
+                part[k] += values[i + k] * 0.0;
+        sum = part[0] + part[1] + part[2] + part[3];
+    }
+    for (; i < count; ++i)
+        sum += values[i] * 0.0;
+    return sum == 0.0;
+}
+
 /// The arithmetic of basis_values for one order; an order FIXED above zero is known at compile time, so its small loops unroll.
 template <int FIXED>
 inline void basis_values_of(int order, const double* knot, double t, double* values, double* scratch) {

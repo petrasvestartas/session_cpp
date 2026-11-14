@@ -67,14 +67,15 @@ inline Interval operator-(Interval a, Interval b) {
 
 /// A factor classified once for many products.
 struct Factor {
-    enum class Kind : unsigned char { general, zero, one, minus_one, unbounded };
+    enum class Kind : unsigned char { general, zero, one, minus_one, unbounded, positive };
     Interval value;
     Kind kind = Kind::zero;
 
     Factor() = default;
     explicit Factor(Interval a)
         : value(a), kind(a.lo == 0.0 && a.hi == 0.0 ? Kind::zero : a.lo == 1.0 && a.hi == 1.0 ? Kind::one :
-            !finite(a) ? Kind::unbounded : a.lo == -1.0 && a.hi == -1.0 ? Kind::minus_one : Kind::general) {}
+            !finite(a) ? Kind::unbounded : a.lo == -1.0 && a.hi == -1.0 ? Kind::minus_one :
+            a.lo >= 0.0 ? Kind::positive : Kind::general) {}
 };
 
 inline Interval operator*(const Factor& a, Interval b) {
@@ -90,10 +91,17 @@ inline Interval operator*(const Factor& a, Interval b) {
         return {-b.hi, -b.lo};
     if (b.lo == -1.0 && b.hi == -1.0)
         return {-a.value.hi, -a.value.lo};
-    // The four products are finite or infinite, never NaN, and outward takes either zero alike: any smallest and largest give the same interval.
-    const double first = a.value.lo * b.lo, second = a.value.lo * b.hi, third = a.value.hi * b.lo, fourth = a.value.hi * b.hi;
-    return outward(std::min(std::min(first, second), std::min(third, fourth)),
-        std::max(std::max(first, second), std::max(third, fourth)));
+    // The four products are finite or infinite, never NaN, and outward takes either zero alike: any smallest and largest give the same interval. Rounding keeps order, so those of a factor that is nowhere negative are known by the signs of b.
+    double lo, hi;
+    if (a.kind == Factor::Kind::positive) {
+        lo = (b.lo >= 0.0 ? a.value.lo : a.value.hi) * b.lo;
+        hi = (b.hi >= 0.0 ? a.value.hi : a.value.lo) * b.hi;
+    } else {
+        const double first = a.value.lo * b.lo, second = a.value.lo * b.hi, third = a.value.hi * b.lo, fourth = a.value.hi * b.hi;
+        lo = std::min(std::min(first, second), std::min(third, fourth));
+        hi = std::max(std::max(first, second), std::max(third, fourth));
+    }
+    return outward(lo, hi);
 }
 
 inline Interval operator*(Interval a, Interval b) {
@@ -166,11 +174,13 @@ inline int padded_upper_bound(const std::vector<double>& knots, double value) {
 struct BlossomSteps {
     int degree;
     bool valid = true;
+    bool point; // lo and hi are one double: both ends share the table of lo.
     nurbsknot::Scratch<std::array<Factor, 2>, 112> weights;
 
     template <typename Knots>
     BlossomSteps(const Knots& knots, int span, int degree, double lo, double hi)
-        : degree(degree), weights(2 * degree * (degree + 1)) {
+        : degree(degree), point(std::bit_cast<std::uint64_t>(lo) == std::bit_cast<std::uint64_t>(hi)),
+          weights(2 * degree * (degree + 1)) {
         for (int level = 1; level <= degree && valid; ++level)
             for (int j = degree; j >= level && valid; --j) {
                 const int index = span - degree + j;
@@ -179,12 +189,14 @@ struct BlossomSteps {
                 const Interval width = Interval(right) - Interval(left);
                 valid = !(width.lo <= 0.0);
                 const Divisor divisor(width);
-                for (int end = 0; end < 2 && valid; ++end) {
+                for (int end = 0; end < (point ? 1 : 2) && valid; ++end) {
                     const double t = end ? hi : lo;
                     const Interval alpha = t == left ? Interval(0.0) : t == right ? Interval(1.0) :
                         (Interval(t) - Interval(left)) / divisor;
                     at(end, level, j) = {Factor(Interval(1.0) - alpha), Factor(alpha)};
                 }
+                if (point && valid)
+                    at(1, level, j) = at(0, level, j);
             }
     }
 
@@ -209,6 +221,13 @@ inline void blossom(const Homogeneous* controls, const BlossomSteps& steps, Homo
     Homogeneous* low = scratch;
     Homogeneous* work = scratch + degree + 1;
     std::copy_n(controls, degree + 1, low);
+    // Every pole of a point takes the same steps: they are taken once.
+    if (steps.point) {
+        for (int level = 1; level <= degree; ++level)
+            steps.step(low, 0, level);
+        std::fill_n(result, degree + 1, low[degree]);
+        return;
+    }
     // A pole takes its first steps at lo and the rest at hi; the steps at lo are the same for every pole after it and are taken once.
     for (int pole = degree; pole >= 0; --pole) {
         std::copy_n(low, degree + 1, work);
@@ -237,6 +256,24 @@ inline std::vector<Homogeneous> blossom(const std::vector<Homogeneous>& controls
 struct CurveBounds {
     std::array<Interval, 3> point;
 };
+
+/// The run of knots [first, last) strictly between lo and hi among those at begin up to end, found by halving as on a sorted vector: on one that is not sorted the run is whatever the steps give, and its curve or surface is invalid.
+inline std::array<int, 2> knots_inside(const std::vector<double>& knots, int begin, int end, double lo, double hi) {
+    int first = begin;
+    for (int length = end - begin; length > 0;) {
+        const int half = length >> 1;
+        if (knots[first + half] > lo)
+            length = half;
+        else {
+            first += half + 1;
+            length -= half + 1;
+        }
+    }
+    int last = first;
+    while (last < end && knots[last] < hi)
+        ++last;
+    return {first, last};
+}
 
 /// Write the degree + 1 outward-rounded Bezier controls of the curve over interval, relative to origin; false when the interval leaves one knot span or the input is unset.
 inline bool curve_controls(const NurbsCurve& curve, const std::array<double, 2>& interval,
@@ -291,16 +328,21 @@ inline bool curve_bounds(
         !std::isfinite(interval[0]) || !std::isfinite(interval[1]) || interval[0] > interval[1] ||
         interval[0] < curve.domain_start() || interval[1] > curve.domain_end())
         return false;
-    // The cuts are the interval ends and the distinct knots between them, the list of get_span_vector, which is empty on an invalid curve.
+    // The cuts are the interval ends and the distinct knots between them, the list of get_span_vector, which is empty on an invalid curve: the curve is checked only where a knot lies between.
     const std::vector<double>& knots = curve.m_nurbsknot;
-    const bool valid = curve.is_valid();
-    nurbsknot::Scratch<double, 32> cuts(valid ? knots.size() + 2 : 2);
+    const std::array<int, 2> inside = knots_inside(knots, curve.order() - 2, curve.cv_count(), interval[0], interval[1]);
+    const bool valid = inside[0] < inside[1] && curve.is_valid();
+    nurbsknot::Scratch<double, 32> cuts(valid ? inside[1] - inside[0] + 2 : 2);
     std::size_t count = 0;
     cuts.data[count++] = interval[0];
-    for (int i = curve.order() - 2; valid && i < curve.cv_count(); ++i)
-        if ((i == curve.order() - 2 || knots[i] > knots[i - 1]) && knots[i] > interval[0] && knots[i] < interval[1])
+    for (int i = inside[0]; valid && i < inside[1]; ++i)
+        if (i == curve.order() - 2 || knots[i] > knots[i - 1])
             cuts.data[count++] = knots[i];
     cuts.data[count++] = interval[1];
+    const auto same = [](double a, double b) { return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b); };
+    // A point is its own two ends: one evaluation stands for the three.
+    if (same(interval[0], interval[1]))
+        count = 1;
     nurbsknot::Scratch<Homogeneous, 16> data(curve.order());
     bool first = true;
     for (std::size_t i = 0; i < count; ++i) {
@@ -308,7 +350,8 @@ inline bool curve_bounds(
             const double lo = endpoint == 0 ? cuts.data[i] : cuts.data[i - 1];
             if (!curve_controls(curve, {lo, cuts.data[i]}, origin, data.data))
                 return false;
-            for (int k = 0; k < curve.order(); ++k) {
+            // The controls of a point are one control.
+            for (int k = 0; k < (same(lo, cuts.data[i]) ? 1 : curve.order()); ++k) {
                 const Homogeneous& cv = data.data[k];
                 if (!(cv[3].lo > 0.0))
                     return false;
@@ -384,8 +427,11 @@ inline bool surface_controls(const NurbsSurface& surface, const std::array<doubl
     }
     if (!along_v.valid)
         return false;
-    for (int i = 0; i <= p; ++i)
+    // At a point in u every row holds the same controls.
+    for (int i = 0; i <= (along_u.point ? 0 : p); ++i)
         blossom(controls + i * (q + 1), along_v, controls + i * (q + 1), work);
+    for (int i = 1; along_u.point && i <= p; ++i)
+        std::copy_n(controls, q + 1, controls + i * (q + 1));
     for (int k = 0; k < (p + 1) * (q + 1); ++k) {
         for (Interval value : controls[k])
             if (!finite(value))
@@ -416,17 +462,23 @@ inline bool bezier_bounds(const NurbsSurface& surface, const std::array<double, 
     if (!surface_controls(surface, rectangle, origin, extend, storage.data))
         return false;
     const std::span<const Homogeneous> controls(storage.data, (p + 1) * (q + 1));
+    // Along a side that is one point the controls repeat: the first of them stands for all, a point is one control and a line one row of them.
+    const int rows = std::bit_cast<std::uint64_t>(rectangle[0]) == std::bit_cast<std::uint64_t>(rectangle[1]) ? 1 : p + 1;
+    const int columns = std::bit_cast<std::uint64_t>(rectangle[2]) == std::bit_cast<std::uint64_t>(rectangle[3]) ? 1 : q + 1;
     Homogeneous hull = controls.front();
-    for (const auto& cv : controls)
-        for (int d = 0; d < 4; ++d)
-            hull[d] = interval_hull(hull[d], cv[d]);
     nurbsknot::Scratch<Divisor, 36> weights(controls.size());
-    for (std::size_t k = 0; k < controls.size(); ++k)
-        weights.data[k] = Divisor(controls[k][3]);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < columns; ++j) {
+            const Homogeneous& cv = controls[i * (q + 1) + j];
+            for (int d = 0; d < 4; ++d)
+                hull[d] = interval_hull(hull[d], cv[d]);
+            weights.data[i * (q + 1) + j] = Divisor(cv[3]);
+        }
     for (int d = 0; d < 3; ++d) {
         bounds.point[d] = controls.front()[d] / weights.data[0];
-        for (std::size_t k = 0; k < controls.size(); ++k)
-            bounds.point[d] = interval_hull(bounds.point[d], controls[k][d] / weights.data[k]);
+        for (int i = 0; i < rows; ++i)
+            for (int j = 0; j < columns; ++j)
+                bounds.point[d] = interval_hull(bounds.point[d], controls[i * (q + 1) + j][d] / weights.data[i * (q + 1) + j]);
         if (!finite(bounds.point[d]))
             return false;
     }
@@ -465,17 +517,22 @@ inline bool bezier_bounds(const NurbsSurface& surface, const std::array<double, 
 
 inline bool surface_bounds(const NurbsSurface& surface, const std::array<double, 4>& rectangle,
     const std::array<double, 3>& origin, SurfaceBounds& result, bool derivatives = true, bool extend = false) {
-    // The cuts are the rectangle sides and the distinct knots between them, the list of get_span_vector, which is empty on an invalid surface.
-    const bool valid = surface.is_valid();
-    nurbsknot::Scratch<double, 64> storage(valid ? surface.m_nurbsknot[0].size() + surface.m_nurbsknot[1].size() + 4 : 4);
+    // The cuts are the rectangle sides and the distinct knots between them, the list of get_span_vector, which is empty on an invalid surface: the surface is checked only where a knot lies between.
+    std::array<std::array<int, 2>, 2> inside{};
+    for (int d = 0; d < 2; ++d)
+        if (surface.order(d) >= 2 && surface.cv_count(d) >= surface.order(d) &&
+            surface.m_nurbsknot[d].size() == static_cast<std::size_t>(surface.order(d) + surface.cv_count(d) - 2))
+            inside[d] = knots_inside(surface.m_nurbsknot[d], surface.order(d) - 2, surface.cv_count(d), rectangle[d * 2], rectangle[d * 2 + 1]);
+    const bool valid = (inside[0][0] < inside[0][1] || inside[1][0] < inside[1][1]) && surface.is_valid();
+    nurbsknot::Scratch<double, 64> storage(valid ? inside[0][1] - inside[0][0] + inside[1][1] - inside[1][0] + 4 : 4);
     std::array<std::span<const double>, 2> cuts;
     double* next = storage.data;
     for (int d = 0; d < 2; ++d) {
         double* first_cut = next;
         const std::vector<double>& knots = surface.m_nurbsknot[d];
         *next++ = rectangle[d * 2];
-        for (int i = surface.order(d) - 2; valid && i < surface.cv_count(d); ++i)
-            if ((i == surface.order(d) - 2 || knots[i] > knots[i - 1]) && knots[i] > rectangle[d * 2] && knots[i] < rectangle[d * 2 + 1])
+        for (int i = inside[d][0]; valid && i < inside[d][1]; ++i)
+            if (i == surface.order(d) - 2 || knots[i] > knots[i - 1])
                 *next++ = knots[i];
         *next++ = rectangle[d * 2 + 1];
         cuts[d] = {first_cut, next};
@@ -499,6 +556,11 @@ inline bool surface_bounds(const NurbsSurface& surface, const std::array<double,
             first = false;
         }
     return !first;
+}
+
+/// The enclosure surface_bounds gives the rectangle that is the point (u, v) alone, a point past the domain taken on its end span: one blossom along each direction.
+inline bool surface_point_bounds(const NurbsSurface& surface, double u, double v, const std::array<double, 3>& origin, SurfaceBounds& bounds) {
+    return surface_bounds(surface, {u, u, v, v}, origin, bounds, false, true);
 }
 
 }

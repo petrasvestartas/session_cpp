@@ -10185,52 +10185,6 @@ using SsiInterval = nurbs_interval::Interval;
 using SsiHomogeneous = nurbs_interval::Homogeneous;
 using SsiPatchBounds = nurbs_interval::SurfaceBounds;
 
-/// The enclosure nurbs_interval::surface_bounds gives a rectangle that is one point, by the one blossom that ends in it: of that rectangle's controls all are this one.
-bool surface_point_bounds(const NurbsSurface& surface, double u, double v, const std::array<double, 3>& origin, SsiPatchBounds& bounds) {
-    const int p = surface.degree(0), q = surface.degree(1);
-    const std::array<double, 2> at = {u, v};
-    std::array<int, 2> span;
-    std::array<SsiHomogeneous, 8> column, row;
-    if (surface.dimension() != 3 || p > 7 || q > 7)
-        return nurbs_interval::surface_bounds(surface, {u, u, v, v}, origin, bounds, false, true);
-    for (int d = 0; d < 2; ++d) {
-        const std::vector<double>& knots = surface.m_nurbsknot[d];
-        span[d] = std::clamp(nurbs_interval::padded_upper_bound(knots, at[d]) - 1, surface.degree(d), surface.cv_count(d) - 1);
-        if (at[d] < knots[span[d] - 1] || at[d] > knots[span[d]])
-            return nurbs_interval::surface_bounds(surface, {u, u, v, v}, origin, bounds, false, true);
-    }
-    const nurbs_interval::BlossomSteps along_u(nurbs_interval::PaddedKnots{surface.m_nurbsknot[0].data()}, span[0], p, u, u);
-    const nurbs_interval::BlossomSteps along_v(nurbs_interval::PaddedKnots{surface.m_nurbsknot[1].data()}, span[1], q, v, v);
-    if (!along_u.valid || !along_v.valid)
-        return false;
-    for (int j = 0; j <= q; ++j) {
-        for (int i = 0; i <= p; ++i) {
-            const double* cv = surface.cv(span[0] - p + i, span[1] - q + j);
-            const double weight = surface.is_rational() ? cv[3] : 1.0;
-            column[i][3] = weight;
-            for (int d = 0; d < 3; ++d)
-                column[i][d] = SsiInterval(cv[d]) - SsiInterval(origin[d]) * SsiInterval(weight);
-        }
-        for (int level = 1; level <= p; ++level)
-            along_u.step(column.data(), 1, level);
-        row[j] = column[p];
-    }
-    for (int level = 1; level <= q; ++level)
-        along_v.step(row.data(), 1, level);
-    for (const SsiInterval value : row[q])
-        if (!nurbs_interval::finite(value))
-            return false;
-    if (!(row[q][3].lo > 0.0))
-        return false;
-    const nurbs_interval::Divisor weight(row[q][3]);
-    for (int d = 0; d < 3; ++d) {
-        bounds.point[d] = row[q][d] / weight;
-        if (!nurbs_interval::finite(bounds.point[d]))
-            return false;
-    }
-    return true;
-}
-
 /// The enclosure of a - b at one point of the joint parameters, about a's value there.
 bool point_gap(const SurfaceSurfaceField& field, const std::array<double, 4>& x, std::array<SsiInterval, 3>& gap) {
     const std::array<double, 3> origin = field.point(x);

@@ -624,8 +624,11 @@ private:
     /// Return the nurbsknots padded with one superfluous value at each end.
     std::vector<double> full_nurbsknots() const;
 
-    /// Insert one nurbsknot by Boehm, U the padded nurbsknots.
-    void insert_nurbsknot_once(double nurbsknot_value, const std::vector<double>& U);
+    /// Insert one nurbsknot by Boehm, in place.
+    void insert_nurbsknot_once(double nurbsknot_value);
+
+    /// insert_nurbsknot on a curve known to be valid, at a finite value.
+    bool insert_valid_nurbsknot(double nurbsknot_value, int nurbsknot_multiplicity);
 
     /// True when the last degree CVs repeat the first and the nurbsknot spacing repeats every period.
     bool is_wrapped() const;
