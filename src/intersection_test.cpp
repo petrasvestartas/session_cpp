@@ -3,6 +3,7 @@
 #include "intersection.h"
 #include "file_step.h"
 #include "curve_surface_intersection.h"
+#include "ssi_diagnostics.h"
 #include "closest.h"
 #include "nurbs_hermite.h"
 #include "nurbssurface.h"
@@ -3906,5 +3907,256 @@ MINI_TEST("Intersection", "Marched Section Keeps Small Curves") {
         }
     }
     MINI_CHECK(control_points > 0 && control_points <= 800);
+}
+} // namespace session_cpp
+
+namespace session_cpp {
+/// Whether every end of a section piece meets exactly one other end: the pieces chain into closed curves.
+static bool section_pieces_close(const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections) {
+    for (const auto& section : sections)
+        for (const Point& end : {std::get<0>(section).point_at_start(), std::get<0>(section).point_at_end()}) {
+            int met = 0;
+            for (const auto& other : sections)
+                for (const Point& point : {std::get<0>(other).point_at_start(), std::get<0>(other).point_at_end()})
+                    met += end.distance(point) <= 1e-6;
+            if (met != 2)
+                return false;
+        }
+    return !sections.empty();
+}
+
+static double section_length(const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections) {
+    double length = 0.0;
+    for (const auto& section : sections)
+        length += std::get<0>(section).length();
+    return length;
+}
+
+static bool section_pieces_match(const std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>>& sections,
+    const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
+    for (const auto& [world, on_a, on_b] : sections)
+        if (curve_surface_intersection::same_parameter(world, on_a, a, tolerance) != curve_surface_intersection::ParameterMatch::Matched ||
+            curve_surface_intersection::same_parameter(world, on_b, b, tolerance) != curve_surface_intersection::ParameterMatch::Matched)
+            return false;
+    return true;
+}
+
+MINI_TEST("Intersection", "Loop Clear Of Every Edge Is Seeded In Two Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    const double tolerance = 1e-7;
+    // A small sphere through the wall of a torus tube, and through one hump of a cubic surface no quadric is recognised in.
+    const NurbsSurface torus = Primitives::torus_surface(0, 0, 0, 2.0, 0.5);
+    const NurbsSurface sphere = Primitives::sphere_surface(2.45, 0.3, 0.17, 0.3);
+    const NurbsSurface wave = Primitives::wave_surface(10.0, 0.5);
+    const NurbsSurface ball = Primitives::sphere_surface(3.3, 4.1, 0.2, 0.4);
+    const std::array<std::tuple<const NurbsSurface*, const NurbsSurface*, double>, 4> pairs = {{
+        {&torus, &sphere, 1.878268962}, {&sphere, &torus, 1.878268962}, {&wave, &ball, 2.513224229}, {&ball, &wave, 2.513224229}}};
+    for (const auto& [a, b, length] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(*a, *b, tolerance, true);
+        // No cell of the search in four parameters was opened.
+        MINI_CHECK(statistics.cells == 0);
+        MINI_CHECK(section_pieces_close(sections));
+        MINI_CHECK(std::abs(section_length(sections) - length) <= 1e-6);
+        MINI_CHECK(section_pieces_match(sections, *a, *b, tolerance));
+    }
+}
+
+MINI_TEST("Intersection", "Loop Across A Seam Is Seeded In Two Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    const double tolerance = 1e-7;
+    // The loop lies across the cylinder's seam, and across both seams of the torus: in parameters it is arcs that end on domain edges.
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 1.0, 3.0);
+    const NurbsSurface sphere = Primitives::sphere_surface(1.05, 0.02, 1.4, 0.35);
+    const NurbsSurface torus = Primitives::torus_surface(0, 0, 0, 2.0, 0.5);
+    const NurbsSurface ball = Primitives::sphere_surface(2.5, 0.01, 0.02, 0.3);
+    const std::array<std::tuple<const NurbsSurface*, const NurbsSurface*, double>, 2> pairs = {{
+        {&cylinder, &sphere, 2.153938947}, {&torus, &ball, 1.874813543}}};
+    for (const auto& [a, b, length] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(*a, *b, tolerance, true);
+        MINI_CHECK(statistics.cells == 0);
+        MINI_CHECK(section_pieces_close(sections));
+        MINI_CHECK(std::abs(section_length(sections) - length) <= 1e-6);
+        MINI_CHECK(section_pieces_match(sections, *a, *b, tolerance));
+        bool on_seam = false;
+        for (const auto& [world, on_a, on_b] : sections)
+            for (const Point& uv : {on_a.point_at_start(), on_a.point_at_end()})
+                on_seam = on_seam || uv[0] == a->domain(0).first || uv[0] == a->domain(0).second;
+        MINI_CHECK(on_seam);
+    }
+}
+
+MINI_TEST("Intersection", "Drill Through A Wall Of Radius 2000 Is Seeded In Two Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    const double tolerance = 1e-6;
+    // The loop is 16 across on a knot span 3000 long.
+    const NurbsSurface wall = Primitives::cylinder_surface(0, 0, -50.0, 2000.0, 100.0);
+    NurbsSurface drill = Primitives::cylinder_surface(0, 0, -40.0, 8.0, 80.0);
+    drill.transform(Xform::translation(2000.0, 3.0, 5.0) * Xform::rotation(Vector(0.1, 1, 0.05), 0.5 * Tolerance::PI + 0.2));
+    for (const bool wall_first : {true, false}) {
+        const NurbsSurface& a = wall_first ? wall : drill;
+        const NurbsSurface& b = wall_first ? drill : wall;
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(a, b, tolerance, true);
+        MINI_CHECK(statistics.cells == 0);
+        MINI_CHECK(section_pieces_close(sections));
+        MINI_CHECK(std::abs(section_length(sections) - 50.7834526133) <= 1e-5);
+        MINI_CHECK(section_pieces_match(sections, a, b, tolerance));
+    }
+}
+
+MINI_TEST("Intersection", "Arcs Ending On Patch Edges Are Seeded In Two Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    const double tolerance = 1e-7;
+    // Part of a cylinder against part of a sphere: the arcs end on edges of both.
+    NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 1.0, 3.0);
+    cylinder.trim(0, {0.3, 1.7});
+    NurbsSurface sphere = Primitives::sphere_surface(0.9, 0.5, 1.4, 0.7);
+    sphere.trim(0, {0.2, 2.9});
+    sphere.trim(1, {0.3, 1.6});
+    // Part of a torus, which is not recognised, against a cone: the cone's rim is met by the curve and surface intersection.
+    NurbsSurface torus = Primitives::torus_surface(0, 0, 0, 1.2, 0.4);
+    torus.trim(0, {0.5, 2.5});
+    NurbsSurface cone = Primitives::cone_surface(0.2, 0.1, -1.0, 1.0, 2.0);
+    cone.transform(Xform::translation(1.0, 0.6, 0.1) * Xform::rotation(Vector(1, 0.3, 0.2), 1.0));
+    const std::array<std::tuple<const NurbsSurface*, const NurbsSurface*, size_t, double>, 2> pairs = {{
+        {&cylinder, &sphere, 2, 1.453322967}, {&torus, &cone, 4, 2.059416566}}};
+    for (const auto& [a, b, count, length] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(*a, *b, tolerance, true);
+        MINI_CHECK(statistics.cells == 0);
+        MINI_CHECK(sections.size() == count);
+        MINI_CHECK(std::abs(section_length(sections) - length) <= 1e-6);
+        MINI_CHECK(section_pieces_match(sections, *a, *b, tolerance));
+    }
+}
+
+MINI_TEST("Intersection", "Loop Beside A Pole Is Traced Once") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    const double tolerance = 1e-7;
+    // The lower of the two loops passes 0.005 from the sphere's south pole: a seed left unconsumed there traced it a second time.
+    const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 1.0);
+    NurbsSurface cylinder = Primitives::cylinder_surface(0.45, 0, -2.0, 0.5, 4.0);
+    cylinder.transform(Xform::rotation(Vector(1, 0.3, 0), 0.4));
+    const auto sections = Intersection::surface_surface(sphere, cylinder, tolerance, true);
+    MINI_CHECK(sections.size() == 14);
+    MINI_CHECK(section_pieces_close(sections));
+    MINI_CHECK(std::abs(section_length(sections) - 6.968336676) <= 1e-6);
+    MINI_CHECK(section_pieces_match(sections, sphere, cylinder, tolerance));
+}
+
+MINI_TEST("Intersection", "Symmetric Drill Is Cut At Every Crease") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    const double tolerance = 1e-7;
+    // Each of the two loops crosses four crease knots of the drill. A walk started on one of them left it uncut, in a piece of twice the control points.
+    const NurbsSurface wall = Primitives::cylinder_surface(0, 0, 0, 100.0, 425.0);
+    NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150.0, 10.0, 300.0);
+    drill.transform(Xform::translation(0, 0, 212.5) * Xform::rotation(Vector(1, 0, 0), 0.5 * Tolerance::PI));
+    const auto sections = Intersection::surface_surface(wall, drill, tolerance, true);
+    MINI_CHECK(sections.size() == 8);
+    MINI_CHECK(section_pieces_close(sections));
+    MINI_CHECK(std::abs(section_length(sections) - 125.742603983) <= 1e-5);
+    for (const auto& [world, on_wall, on_drill] : sections) {
+        MINI_CHECK(on_drill.cv_count() <= 100);
+        const double first = on_drill.point_at_start()[0], last = on_drill.point_at_end()[0];
+        MINI_CHECK(std::abs(last - first) <= 1.0 + 1e-9);
+    }
+}
+
+MINI_TEST("Intersection", "Section Through A Pole Or An Apex Keeps The Four Parameter Search") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // using session_cpp::Vector;
+    // using session_cpp::Xform;
+    const double tolerance = 1e-7;
+    // At a pole or an apex the recognised surface's parameters end: the branch through it is not one the two-parameter seeds can start.
+    const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 1.0);
+    NurbsSurface through_pole = Primitives::cylinder_surface(0.4, 0, -3.0, 0.4, 4.0);
+    through_pole.transform(Xform::translation(0, 0, 1.0) * Xform::rotation(Vector(1, 0, 0), 0.3));
+    MINI_CHECK(through_pole.point_at(2.0, 0.75).distance(Point(0, 0, 1)) <= 1e-12);
+    const NurbsSurface cone = Primitives::cone_surface(0, 0, 0, 1.0, 2.0);
+    NurbsSurface through_apex = Primitives::cylinder_surface(0, 0, -2.0, 0.5, 4.0);
+    through_apex.transform(Xform::translation(0.5, 0, 2.0) * Xform::rotation(Vector(1, 0, 0), 0.5 * Tolerance::PI));
+    const std::array<std::pair<const NurbsSurface*, const NurbsSurface*>, 4> pairs = {{
+        {&sphere, &through_pole}, {&through_pole, &sphere}, {&cone, &through_apex}, {&through_apex, &cone}}};
+    for (const auto& [a, b] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        try {
+            Intersection::surface_surface(*a, *b, tolerance, true);
+        } catch (const std::runtime_error&) {
+        }
+        MINI_CHECK(statistics.cells > 0);
+    }
+}
+
+MINI_TEST("Intersection", "Two Parameter Seeds Agree With The Search At A Finer Tolerance") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    // At 1e-12 the cylinder is not confirmed as the form recognised in it to within what the corrector resolves, and the search in four parameters stands. At 1e-7 the seeds come from two. Both find the same two loops.
+    const NurbsSurface sphere = Primitives::sphere_surface(0.0, 0.0, 0.0, 2.0);
+    const NurbsSurface cylinder = Primitives::cylinder_surface(1.3, 0.0, -3.0, 0.3, 6.0);
+    for (const double tolerance : {1e-12, 1e-7}) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(sphere, cylinder, tolerance);
+        MINI_CHECK(tolerance < 1e-9 || statistics.cells == 0);
+        MINI_CHECK(sections.size() == 4);
+        MINI_CHECK(std::abs(section_length(sections) - 4.427137845) <= 1e-6);
+    }
+}
+
+MINI_TEST("Intersection", "Touching Quadrics Keep The Four Parameter Search") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    const double tolerance = 1e-7;
+    // Where the surfaces touch the polynomial and its slope vanish together and no cell is decided: at one point from outside and from inside, along the circle of a ball that fills the tube, where a loop touches the rim, and at the crossing of Viviani's curve.
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0, 0, 0, 1.0, 3.0);
+    const NurbsSurface outside = Primitives::sphere_surface(1.5 * std::cos(0.4), 1.5 * std::sin(0.4), 1.3, 0.5);
+    const NurbsSurface inside = Primitives::sphere_surface(0.5 * std::cos(0.4), 0.5 * std::sin(0.4), 1.3, 0.5);
+    const NurbsSurface torus = Primitives::torus_surface(0, 0, 0, 2.0, 0.5);
+    const NurbsSurface filling = Primitives::sphere_surface(2.0 * std::cos(0.3), 2.0 * std::sin(0.3), 0, 0.5);
+    const NurbsSurface at_rim = Primitives::sphere_surface(1.2 * std::cos(0.7), 1.2 * std::sin(0.7), 3.0 - std::sqrt(0.6 * 0.6 - 0.04), 0.6);
+    const NurbsSurface unit = Primitives::sphere_surface(0, 0, 0, 1.0);
+    const NurbsSurface viviani = Primitives::cylinder_surface(0.5, 0, -2.0, 0.5, 4.0);
+    const std::array<std::pair<const NurbsSurface*, const NurbsSurface*>, 5> pairs = {{
+        {&cylinder, &outside}, {&cylinder, &inside}, {&torus, &filling}, {&cylinder, &at_rim}, {&unit, &viviani}}};
+    for (const auto& [a, b] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        try {
+            Intersection::surface_surface(*a, *b, tolerance, true);
+        } catch (const std::runtime_error&) {
+        }
+        MINI_CHECK(statistics.cells > 0);
+    }
 }
 } // namespace session_cpp

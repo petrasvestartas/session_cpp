@@ -5,6 +5,7 @@
 #include "brep_section.h"
 #include "surface_section.h"
 #include "nurbs_interval.h"
+#include "nurbs_implicit.h"
 #include "nurbs_hermite.h"
 #include "nurbs_coincidence.h"
 #include "ssi_diagnostics.h"
@@ -12360,6 +12361,25 @@ bool same_boundary_point(const SurfaceSurfaceField& field,
     return graph_contains(source, image);
 }
 
+/// Whether the root at x is proved to lie in the unique root graph of one of the arcs, a point a rounding off a seam taken at either end of it.
+bool arcs_hold_root(const SurfaceSurfaceField& field, const std::array<double, 4>& x, const std::vector<SurfaceSurfaceArc>& arcs) {
+    for (const SurfaceSurfaceArc& arc : arcs)
+        for (int turn = 0; turn < 16; ++turn) {
+            std::array<double, 4> y = x;
+            bool seam = true;
+            for (int k = 0; k < 4 && seam; ++k)
+                if (turn >> k & 1) {
+                    const double margin = 64.0 * std::numeric_limits<double>::epsilon() * field.range[k];
+                    seam = field.closed[k] && (x[k] - field.lo[k] <= margin || field.hi[k] - x[k] <= margin);
+                    y[k] = x[k] - field.lo[k] <= margin ? field.hi[k] : field.lo[k];
+                }
+            std::array<SsiInterval, 4> root;
+            if (seam && graph_root_box(field, arc.graph, y, root))
+                return true;
+        }
+    return false;
+}
+
 /// Identity is certified in four parameters; the old residual allowances only check fit coverage.
 void consume_section_seeds(const SurfaceSurfaceField& field,
     const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
@@ -12369,7 +12389,10 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
     for (SurfaceSurfaceSeed& seed : seeds) {
         if (seed.used)
             continue;
-        const bool same_branch = std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& graph) {
+        // A seed found without a chart is on this section when its root is proved to lie in the root graph of one of the arcs.
+        if (seed.graphs.empty() && (seed.used = arcs_hold_root(field, {seed.u, seed.v, seed.s, seed.t}, arcs)))
+            continue;
+        const bool same_branch = seed.graphs.empty() || std::any_of(seed.graphs.begin(), seed.graphs.end(), [&](const auto& graph) {
             return std::any_of(arcs.begin(), arcs.end(), [&](const auto& arc) { return same_graph(graph, arc.graph) ||
                 same_boundary_point(field, graph, arc.graph); });
         });
@@ -12408,6 +12431,8 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
             for (int k = 0; k < 4; ++k)
                 matches = matches && parameter_difference(field, k, x[k], y[k]) <= allowed[k];
             if (matches) {
+                if (seed.graphs.empty())
+                    throw std::runtime_error("Native SSI seed lies on a fitted section without a shared root graph");
                 seed.used = true;
                 if (ssi_diagnostics::active)
                     ssi_diagnostics::active->consumed_seeds.push_back({x, y});
@@ -12417,12 +12442,305 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
     }
 }
 
+/// Whether a parameter sits on a seam or a crease knot.
+bool on_chart_line(const SurfaceSurfaceField& field, const std::array<double, 4>& x) {
+    for (int k = 0; k < 4; ++k) {
+        const double margin = field.range[k] * 1e-12;
+        if (field.closed[k] && (x[k] <= field.lo[k] + margin || x[k] >= field.hi[k] - margin))
+            return true;
+        for (double knot : field.creases[k])
+            if (std::abs(x[k] - knot) <= margin)
+                return true;
+    }
+    return false;
+}
+
+/// One step along the section off a seam or a crease knot: a walk that starts on one leaves the piece through its start uncut there. The seed the walk came from must still be found on the fitted pieces.
+void leave_chart_line(const SurfaceSurfaceField& field, std::array<double, 4>& x) {
+    for (double way : {1.0, -1.0}) {
+        if (!on_chart_line(field, x))
+            return;
+        SurfaceSurfaceMarch m = start_march(field, x, field.point(x));
+        if (march_direction(field, m, way) && march_step(field, m, way) && m.boundary < 0)
+            for (int k = 0; k < 4; ++k)
+                x[k] = field.wrap(k, m.xn[k]);
+    }
+}
+
+/// Seeds on every branch of the section when one surface is a recognised plane, sphere, cylinder, cone or torus, searched in the two parameters of the other.
+/// The recognised form on a Bezier patch of the other surface is one polynomial: its zeros along every patch edge are isolated in one parameter, a closed curve inside a patch is met on an edge of a cell the polynomial is monotone along, and a branch that ends on the recognised surface's own edge is met where that edge crosses the other surface. A point of the zero set that is not on the recognised patch is proved off it and dropped.
+/// False where a sign, a slope or a point stays undecided: a touching, a pole or an apex on the other surface, an edge lying in it. The search in four parameters then stands.
+bool boundary_first_seeds(const SurfaceSurfaceField& field, std::vector<SurfaceSurfaceSeed>& seeds) {
+    using nurbs_implicit::Bernstein;
+    seeds.clear();
+    const NurbsSurface* surfaces[2] = {&field.a, &field.b};
+    const double infinity = std::numeric_limits<double>::infinity();
+    const int degree = std::max({field.a.degree(0), field.a.degree(1), field.b.degree(0), field.b.degree(1)});
+    std::array<nurbs_implicit::Implicit, 2> model;
+    std::array<bool, 2> known{};
+    for (int side = 0; side < 2; ++side) {
+        const RecogSurface recognised = recognize_surface(*surfaces[side], field.tolerance);
+        nurbs_implicit::Implicit& f = model[side] = {static_cast<int>(recognised.kind), recognised.p1, recognised.p2, recognised.r, recognised.r2};
+        const double length = std::hypot(f.axis[0], f.axis[1], f.axis[2]);
+        known[side] = f.kind != RecogSurface::NONE && (f.kind == RecogSurface::SPHERE || length > 0.0) &&
+            (f.kind == RecogSurface::PLANE || f.radius > 0.0) && (f.kind != RecogSurface::TORUS || (f.minor > 0.0 && f.minor < f.radius)) &&
+            f.degree() * degree <= nurbs_implicit::degree_limit;
+        if (known[side] && f.kind != RecogSurface::SPHERE)
+            for (double& value : f.axis)
+                value /= length;
+    }
+    // A knot of more than full multiplicity tears a surface: its two sides do not share the edge searched once for both.
+    if ((!known[0] && !known[1]) || !ssi_continuous(field.a, {field.lo[0], field.hi[0], field.lo[1], field.hi[1]}) ||
+        !ssi_continuous(field.b, {field.lo[2], field.hi[2], field.lo[3], field.hi[3]}))
+        return false;
+    const std::vector<std::array<double, 12>>* cells[2] = {&field.boxes_a, &field.boxes_b};
+    std::array<std::array<double, 6>, 2> extent;
+    std::array<double, 3> origin;
+    double margin = 2.0 * field.tolerance;
+    for (int d = 0; d < 3; ++d) {
+        for (int side = 0; side < 2; ++side) {
+            extent[side][d] = extent[side][d + 3] = cells[side]->front()[d];
+            for (const std::array<double, 12>& box : *cells[side]) {
+                extent[side][d] = std::min(extent[side][d], box[d]);
+                extent[side][d + 3] = std::max(extent[side][d + 3], box[d + 3]);
+            }
+            margin = std::max({margin, 1e-9 * std::abs(extent[side][d]), 1e-9 * std::abs(extent[side][d + 3])});
+        }
+        origin[d] = std::midpoint(std::max(extent[0][d], extent[1][d]), std::min(extent[0][d + 3], extent[1][d + 3]));
+    }
+    const nurbs_implicit::Patches patches[2] = {{field.a, origin}, {field.b, origin}};
+    // A patch none of whose sixteen cell boxes comes near the other surface's box is left as it is: the boxes come from trimmed copies, good to far less than the margin.
+    const auto near = [&](int side, int i, int j) {
+        const int row = 4 * patches[side].count(1);
+        for (int k = 0; k < 16; ++k) {
+            const std::array<double, 12>& box = (*cells[side])[(4 * i + k / 4) * row + 4 * j + k % 4];
+            bool apart = false;
+            for (int d = 0; d < 3; ++d)
+                apart = apart || box[d] > extent[1 - side][d + 3] + margin || extent[1 - side][d] > box[d + 3] + margin;
+            if (!apart)
+                return true;
+        }
+        return false;
+    };
+    std::array<std::vector<std::array<double, 6>>, 2> cover;
+    std::array<std::array<double, 6>, 2> hull;
+    for (int side = 0; side < 2; ++side) {
+        hull[side] = {infinity, infinity, infinity, -infinity, -infinity, -infinity};
+        for (int i = 0; i < patches[side].count(0); ++i)
+            for (int j = 0; j < patches[side].count(1); ++j) {
+                cover[side].push_back({infinity, infinity, infinity, -infinity, -infinity, -infinity});
+                if (!near(side, i, j))
+                    continue;
+                const std::array<Bernstein, 4>* h = patches[side].at(i, j);
+                if (!h)
+                    return false;
+                cover[side].back() = nurbs_implicit::hull(*h);
+                for (int d = 0; d < 3; ++d) {
+                    hull[side][d] = std::min(hull[side][d], cover[side].back()[d]);
+                    hull[side][d + 3] = std::max(hull[side][d + 3], cover[side].back()[d + 3]);
+                }
+            }
+    }
+    // A section point lies in a patch of each surface whose box reaches the other surface's box.
+    const auto live = [&](int side, int i, int j) {
+        const std::array<double, 6>& box = cover[side][i * patches[side].count(1) + j];
+        for (int d = 0; d < 3; ++d)
+            if (box[d] > hull[1 - side][d + 3] || hull[1 - side][d] > box[d + 3])
+                return false;
+        return true;
+    };
+    for (int side = 0; side < 2; ++side) {
+        bool reached = false;
+        for (int i = 0; i < patches[side].count(0); ++i)
+            for (int j = 0; j < patches[side].count(1); ++j)
+                reached = reached || live(side, i, j);
+        if (!reached)
+            return true;
+    }
+    // The recognised form on its own surface stays within `slack`: so does it at a point of the other surface on it, and a cell is cleared only beyond that. A form that strays from its surface by more than the corrector resolves is not used.
+    std::array<double, 2> slack{};
+    for (int side = 0; side < 2; ++side) {
+        if (!known[side])
+            continue;
+        const nurbs_implicit::Implicit& f = model[side];
+        double gauge = f.kind == RecogSurface::PLANE ? 1.0 : 2.0 * f.radius, weight = infinity;
+        if (f.kind == RecogSurface::TORUS)
+            gauge = 8.0 * f.radius * (f.radius - f.minor) * f.minor;
+        if (f.kind == RecogSurface::CONE) {
+            double reach = 0.0;
+            for (int d = 0; d < 3; ++d)
+                reach = std::hypot(reach, std::max(std::abs(hull[side][d] + origin[d] - f.point[d]), std::abs(hull[side][d + 3] + origin[d] - f.point[d])));
+            gauge = reach * std::sin(2.0 * f.radius);
+        }
+        for (int i = 0; i < patches[side].count(0); ++i)
+            for (int j = 0; j < patches[side].count(1); ++j) {
+                if (!live(side, i, j))
+                    continue;
+                const std::array<Bernstein, 4>& h = *patches[side].at(i, j);
+                const Bernstein form = nurbs_implicit::compose(h, f, origin);
+                slack[side] = std::max(slack[side], form.peak() + form.error);
+                weight = std::min(weight, *std::min_element(h[3].c.begin(), h[3].c.end()) - h[3].error);
+            }
+        slack[side] /= std::pow(weight, f.degree());
+        known[side] = weight > 0.0 && slack[side] <= gauge * field.conv_tol;
+    }
+    // The form of the surface whose other side has no pole, then the one with less to bound.
+    int q = -1;
+    double least = infinity;
+    for (int side = 0; side < 2; ++side) {
+        if (!known[side])
+            continue;
+        const NurbsSurface& other = *surfaces[1 - side];
+        double work = patches[1 - side].count(0) * patches[1 - side].count(1) *
+            (model[side].degree() * other.degree(0) + 1.0) * (model[side].degree() * other.degree(1) + 1.0);
+        if (other.is_singular(0) || other.is_singular(1) || other.is_singular(2) || other.is_singular(3))
+            work *= 1e6;
+        if (work < least) {
+            least = work;
+            q = side;
+        }
+    }
+    if (q < 0)
+        return false;
+    const int p = 1 - q;
+    struct Candidate {
+        std::array<double, 2> uv;
+        int side, fixed;
+    };
+    std::array<std::vector<Candidate>, 3> candidates;
+    std::vector<std::pair<std::array<double, 4>, int>> met;
+    size_t budget = 20000;
+    const nurbs_implicit::Patches& grid = patches[p];
+    for (int i = 0; i < grid.count(0); ++i)
+        for (int j = 0; j < grid.count(1); ++j) {
+            if (!live(p, i, j))
+                continue;
+            const std::array<Bernstein, 4>& h = *grid.at(i, j);
+            const Bernstein form = nurbs_implicit::compose(h, model[q], origin);
+            const double band = slack[q] * std::pow(h[3].peak() + h[3].error, model[q].degree());
+            // An edge is shared with the patch before it and searched once; the last edge of an open direction closes the domain.
+            for (int direction = 0; direction < 2; ++direction)
+                for (int end = 0; end < 2; ++end) {
+                    const int fixed = 1 - direction, index = fixed ? j : i;
+                    if (end == 1 && (index + 1 < grid.count(fixed) || grid.closed[fixed]))
+                        continue;
+                    std::vector<double> roots;
+                    if (!nurbs_implicit::edge_roots(nurbs_implicit::side(form, direction, end), band, budget, roots))
+                        return false;
+                    const bool open = !grid.closed[fixed] && (end == 1 || index == 0);
+                    for (double t : roots)
+                        candidates[open ? 1 : 2].push_back({grid.parameters(i, j, direction ? end : t, direction ? t : end), p, open ? fixed : -1});
+                }
+            std::vector<std::array<double, 2>> roots;
+            if (!nurbs_implicit::loop_roots(form, band, budget, roots))
+                return false;
+            for (const std::array<double, 2>& local : roots)
+                candidates[0].push_back({grid.parameters(i, j, local[0], local[1]), p, -1});
+        }
+    // The recognised surface's own open edges against the other surface, and its poles proved off it.
+    const nurbs_implicit::Patches& rim = patches[q];
+    for (int fixed = 0; fixed < 2; ++fixed)
+        for (int end = 0; end < 2; ++end) {
+            if (rim.closed[fixed])
+                continue;
+            const int direction = 1 - fixed;
+            const double value = end ? rim.spans[fixed].back() : rim.spans[fixed].front();
+            if (surfaces[q]->is_singular(fixed ? 2 * end : 3 - 2 * end)) {
+                const Point pole = fixed ? surfaces[q]->point_at(rim.spans[0].front(), value) : surfaces[q]->point_at(value, rim.spans[1].front());
+                std::array<double, 2> uv;
+                if (nurbs_implicit::invert(grid, cover[p], {pole[0], pole[1], pole[2]}, field.conv_tol, uv) != 0)
+                    return false;
+                continue;
+            }
+            if (!known[p]) {
+                const NurbsCurve curve = surfaces[q]->iso_curve(direction, value);
+                if (!curve.is_valid())
+                    return false;
+                const curve_surface_intersection::Result crossed = curve_surface_intersection::intersect(curve, *surfaces[p], field.tolerance);
+                if (!crossed.complete || !crossed.overlaps.empty())
+                    return false;
+                for (const curve_surface_intersection::Hit& hit : crossed.points) {
+                    std::array<double, 4> x;
+                    x[2 * p] = hit.u;
+                    x[2 * p + 1] = hit.v;
+                    x[2 * q + direction] = hit.t;
+                    x[2 * q + fixed] = value;
+                    met.push_back({x, 2 * q + fixed});
+                }
+                continue;
+            }
+            for (int k = 0; k < rim.count(direction); ++k) {
+                const int i = fixed ? k : end * (rim.count(0) - 1), j = fixed ? end * (rim.count(1) - 1) : k;
+                if (!live(q, i, j))
+                    continue;
+                const std::array<Bernstein, 4>& h = *rim.at(i, j);
+                const std::array<Bernstein, 4> edge = {nurbs_implicit::side(h[0], direction, end), nurbs_implicit::side(h[1], direction, end),
+                    nurbs_implicit::side(h[2], direction, end), nurbs_implicit::side(h[3], direction, end)};
+                const Bernstein form = nurbs_implicit::compose(edge, model[p], origin);
+                std::vector<double> roots;
+                if (!nurbs_implicit::edge_roots(form, slack[p] * std::pow(edge[3].peak() + edge[3].error, model[p].degree()), budget, roots))
+                    return false;
+                for (double t : roots)
+                    candidates[1].push_back({rim.parameters(i, j, direction ? end : t, direction ? t : end), q, fixed});
+            }
+        }
+    const SurfaceSurfaceField precise = precise_surface_field(field);
+    const std::array<double, 3> dummy = {};
+    // A corrector that carries a point further than the tolerance may have left its branch.
+    const auto add = [&](std::array<double, 4> x, int fixed) {
+        const std::array<double, 3> found = field.point(x);
+        std::array<double, 4> polished = x;
+        if (fixed >= 0 ? precise.correct_on_seam(polished, fixed) : precise.correct(polished, false, dummy, dummy))
+            x = polished;
+        else if (!(fixed >= 0 ? field.correct_on_seam(x, fixed) : field.correct(x, false, dummy, dummy)))
+            return false;
+        if (!(triple_distance(found, field.point(x)) <= field.tolerance))
+            return false;
+        for (int k = 0; k < 4; ++k)
+            x[k] = field.wrap(k, x[k]);
+        for (const SurfaceSurfaceSeed& seed : seeds) {
+            const std::array<double, 4> other = {seed.u, seed.v, seed.s, seed.t};
+            bool same = true;
+            for (int k = 0; k < 4 && same; ++k)
+                same = parameter_difference(field, k, x[k], other[k]) <= field.range[k] * 1e-10;
+            if (same)
+                return true;
+        }
+        seeds.push_back({x[0], x[1], x[2], x[3], false, {}});
+        return true;
+    };
+    for (size_t group = 0; group < candidates.size(); ++group) {
+        for (const Candidate& candidate : candidates[group]) {
+            const Point world = surfaces[candidate.side]->point_at(candidate.uv[0], candidate.uv[1]);
+            std::array<double, 2> other;
+            const int found = nurbs_implicit::invert(patches[1 - candidate.side], cover[1 - candidate.side], {world[0], world[1], world[2]}, field.conv_tol, other);
+            if (found < 0)
+                return false;
+            if (found == 0)
+                continue;
+            std::array<double, 4> x;
+            x[2 * candidate.side] = candidate.uv[0];
+            x[2 * candidate.side + 1] = candidate.uv[1];
+            x[2 - 2 * candidate.side] = other[0];
+            x[3 - 2 * candidate.side] = other[1];
+            if (!add(x, candidate.fixed < 0 ? -1 : 2 * candidate.side + candidate.fixed))
+                return false;
+        }
+        if (group == 1)
+            for (const std::pair<std::array<double, 4>, int>& x : met)
+                if (!add(x.first, x.second))
+                    return false;
+    }
+    return true;
+}
+
 /// Section triples of two freeform surfaces by seeding, marching and fitting every trace.
 std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_triples(
     const NurbsSurface& a,
     const NurbsSurface& b,
     double tolerance,
-    bool chart_pieces
+    bool chart_pieces,
+    bool* boundary_first = nullptr
 ) {
 
     ssi_diagnostics::Timer total(ssi_diagnostics::Stage::Total);
@@ -12431,7 +12749,9 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
     field.chart_pieces = chart_pieces;
     initialize.stop();
     const std::array<double, 3> dummy3 = {0.0, 0.0, 0.0};
-    std::vector<SurfaceSurfaceSeed> seeds = surface_surface_seeds(field);
+    std::vector<SurfaceSurfaceSeed> seeds;
+    if (!boundary_first || !(*boundary_first = boundary_first_seeds(field, seeds)))
+        seeds = surface_surface_seeds(field);
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
 
     for (size_t si = 0; si < seeds.size(); si++) {
@@ -12450,6 +12770,8 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
         if (!field.correct(x0, false, dummy3, dummy3))
             throw std::runtime_error("Native SSI seed did not produce a resolved section");
         boundary_trace_start(field, seeds[si].graphs, x0);
+        if (seeds[si].graphs.empty())
+            leave_chart_line(field, x0);
         if (!trace_seed(field, x0, quad, is_loop))
             throw std::runtime_error("Native SSI seed did not produce a resolved section");
         trace.stop();
@@ -12706,6 +13028,14 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
     if (auto crossing = surface_section::bilinear_crossing(a, b, tolerance))
         return *crossing;
 
+    // Seeds found in two parameters first; where they are undecided, or do not carry the walk through, the search in four.
+    bool boundary_first = true;
+    try {
+        return marched_section_triples(a, b, tolerance, chart_pieces, &boundary_first);
+    } catch (const std::runtime_error&) {
+        if (!boundary_first)
+            throw;
+    }
     return marched_section_triples(a, b, tolerance, chart_pieces);
 }
 
@@ -14571,7 +14901,10 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                 } else {
                     const SurfaceSurfaceField original(a,b,tolerance);
                     // A root that leaves both patches at once is a boundary contact and adds nothing to what the edges meeting there already own.
-                    for (const SurfaceSurfaceSeed& seed:surface_surface_seeds(original))
+                    std::vector<SurfaceSurfaceSeed> roots;
+                    if (!boundary_first_seeds(original,roots) || !roots.empty())
+                        roots=surface_surface_seeds(original);
+                    for (const SurfaceSurfaceSeed& seed:roots)
                         if (!isolated_boundary_seed(original,seed))
                             throw std::runtime_error("Empty support inventory has unowned original root graphs");
                     result.coverage=Coverage::OriginalDomainExcluded;
