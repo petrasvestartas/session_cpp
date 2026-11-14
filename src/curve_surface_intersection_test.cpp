@@ -934,6 +934,24 @@ MINI_TEST("Curve Surface Native", "Line Tangent To A Turned Cylinder Hits Once")
     }
 }
 
+MINI_TEST("Curve Surface Native", "Lines Through Recognised Surfaces Hit Where Their Forms Vanish") {
+    const Xform turn = Xform::rotation(Vector(0.3, -0.5, 0.8), 0.9);
+    const NurbsSurface surfaces[] = {Primitives::sphere_surface(0, 0, 0, 2).transformed(turn), Primitives::cylinder_surface(0, 0, -3, 2, 6).transformed(turn),
+        Primitives::cone_surface(0, 0, -3, 2, 6).transformed(turn), Primitives::torus_surface(0, 0, 0, 3, 1).transformed(turn)};
+    const NurbsCurve line = NurbsCurve::create(false, 1, {Point(-5, 0.31, 0.17).transformed(turn), Point(5, 0.31, 0.17).transformed(turn)});
+    const size_t expected[] = {2, 2, 2, 4};
+    for (int k = 0; k < 4; ++k) {
+        const auto events = curve_surface_intersection::intersect(line, surfaces[k], 1e-7);
+        MINI_CHECK(events.complete && events.overlaps.empty() && events.points.size() == expected[k]);
+        for (const auto& hit : events.points) {
+            MINI_CHECK(!hit.tangent);
+            MINI_CHECK(surfaces[k].point_at(hit.u, hit.v).distance(line.point_at(hit.t)) < 1e-9);
+        }
+    }
+    const NurbsCurve miss = NurbsCurve::create(false, 1, {Point(-5, 2.5, 0).transformed(turn), Point(5, 2.5, 0).transformed(turn)});
+    MINI_CHECK(curve_surface_intersection::intersect(miss, surfaces[0], 1e-7).points.empty());
+}
+
 MINI_TEST("Curve Surface Native", "Crossing Cylinders Section Stays Small And Certified") {
     NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150, 10, 300).transformed(Xform::rotation_x(0.5 * Tolerance::PI));
     drill = drill.transformed(Xform::translation(0, 0, 200));

@@ -36,14 +36,14 @@ std::pair<double, double> unresolved_parameters() {
 }
 
 struct Bounds {
-    Point lo;
-    Point hi;
+    xyz lo;
+    xyz hi;
 
     explicit Bounds(const NurbsCurve& curve) : Bounds(curve, 0, curve.cv_count()) {}
 
-    Bounds(const NurbsCurve& curve, int first, int count) : lo(curve.get_cv(first)), hi(lo) {
+    Bounds(const NurbsCurve& curve, int first, int count) : lo(curve.control(first)), hi(lo) {
         for (int i = first + 1; i < first + count; ++i) {
-            const Point p = curve.get_cv(i);
+            const xyz p = curve.control(i);
             for (int d = 0; d < 3; ++d) {
                 lo[d] = std::min(lo[d], p[d]);
                 hi[d] = std::max(hi[d], p[d]);
@@ -134,13 +134,13 @@ NurbsCurve interval(const NurbsCurve& curve, double a, double b) {
 }
 
 double flatness(const NurbsCurve& curve) {
-    const Point a = curve.point_at_start();
-    const Vector chord = curve.point_at_end() - a;
+    const xyz a = curve.point(curve.domain_start());
+    const xyz chord = curve.point(curve.domain_end()) - a;
     const double length2 = chord.dot(chord);
     double distance = 0.0;
     double previous = 0.0;
     for (int i = 0; i < curve.cv_count(); ++i) {
-        const Point p = curve.get_cv(i);
+        const xyz p = curve.control(i);
         const double t = length2 > 0.0 ? std::clamp((p - a).dot(chord) / length2, 0.0, 1.0) : 0.0;
         if (t + epsilon * 64.0 < previous)
             return Bounds(curve).size();
@@ -512,11 +512,11 @@ bool subdivide(const Pair& pair, bool first, std::vector<Pair>& work) {
         return false;
 
     if (first) {
-        work.push_back({left, pair.b, pair.depth + 1});
-        work.push_back({right, pair.b, pair.depth + 1});
+        work.push_back({std::move(left), pair.b, pair.depth + 1});
+        work.push_back({std::move(right), pair.b, pair.depth + 1});
     } else {
-        work.push_back({pair.a, left, pair.depth + 1});
-        work.push_back({pair.a, right, pair.depth + 1});
+        work.push_back({pair.a, std::move(left), pair.depth + 1});
+        work.push_back({pair.a, std::move(right), pair.depth + 1});
     }
     return true;
 }

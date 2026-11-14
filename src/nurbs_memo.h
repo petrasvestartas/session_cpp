@@ -44,4 +44,14 @@ inline void add(std::string& key, const NurbsSurface& surface) {
     add(key, surface.m_cv.data(), surface.m_cv.size());
 }
 
+/// The bytes of the polynomial piece of a curve on the span around a parameter: its controls and the knots they blend over.
+inline void add_span(std::string& key, const NurbsCurve& curve, double inside) {
+    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, inside);
+    const int layout[] = {curve.m_dim, curve.m_is_rat, curve.m_order};
+    add(key, layout, std::size(layout));
+    add(key, &curve.m_nurbsknot[first], 2 * curve.degree());
+    for (int i = 0; i < curve.order(); ++i)
+        add(key, curve.cv(first + i), curve.cv_size());
+}
+
 }

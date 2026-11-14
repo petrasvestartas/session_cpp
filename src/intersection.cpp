@@ -6490,7 +6490,7 @@ struct AngleProbe {
 
     /// Surface point at free parameter x.
     Point point(double x) const {
-        return x_is_u ? srf.point_at(x, fixed) : srf.point_at(fixed, x);
+        return x_is_u ? Point(srf.point(x, fixed)) : Point(srf.point(fixed, x));
     }
 
     /// Angle at free parameter x.
@@ -6575,7 +6575,7 @@ static void height_table(
     for (int k = 0; k <= nt; ++k) {
         double v = v0 + (v1 - v0) * k / nt;
         tv[k] = v;
-        th[k] = axis_height(srf.point_at(um, v), f.o, f.z);
+        th[k] = axis_height(Point(srf.point(um, v)), f.o, f.z);
     }
 }
 
@@ -6625,8 +6625,8 @@ static double sphere_refine_v(const NurbsSurface& srf, const AxisFrame& f, doubl
     for (int np = 0; np < 2; ++np) {
         double dv = (v1 - v0) * 1e-7;
         double vc = std::min(std::max(v, vlo), vhi);
-        double g0 = axis_height(srf.point_at(um, vc), f.o, f.z) - h;
-        double g1 = axis_height(srf.point_at(um, std::min(vc + dv, vhi)), f.o, f.z) - h;
+        double g0 = axis_height(Point(srf.point(um, vc)), f.o, f.z) - h;
+        double g1 = axis_height(Point(srf.point(um, std::min(vc + dv, vhi))), f.o, f.z) - h;
         double dg = (g1 - g0) / dv;
 
         if (std::abs(dg) < 1e-12)
@@ -6847,12 +6847,12 @@ static std::vector<PullbackRun> analytic_sphere_pullback(
 
     double um = 0.5 * (u0 + u1);
     double vm = 0.5 * (v0 + v1);
-    Point sp = srf.point_at(um, v0);
-    Point np = srf.point_at(um, v1);
+    Point sp(srf.point(um, v0));
+    Point np(srf.point(um, v1));
     std::array<double, 3> axis{np[0] - sp[0], np[1] - sp[1], np[2] - sp[2]};
     AxisFrame frame{};
 
-    if (!normalize_axis(axis) || !axis_frame(recog.p1, axis, srf.point_at(u0, vm), frame))
+    if (!normalize_axis(axis) || !axis_frame(recog.p1, axis, Point(srf.point(u0, vm)), frame))
         return {};
 
     AngleMap lon_map = angle_map(AngleProbe{srf, frame, vm, true, false, 0.0, 0.0}, u0, u1);
@@ -7339,7 +7339,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
     // This is only a proposal: ORIGINAL surface evaluation chooses improvement,
     // and the unchanged whole-pair certificate decides agreement.
     const Point target = world.point_at(parameter);
-    double best_gap = surface.point_at(result[0], result[1]).distance(target);
+    double best_gap = Point(surface.point(result[0], result[1])).distance(target);
     for (int d = 0; d < 2; ++d) {
         const double width = window[2*d+1] - window[2*d];
         if (!surface.is_closed(d) || !(width > 0 && width < 1))
@@ -7364,7 +7364,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
                 candidate[axis] = unwrap_period(candidate[axis], seed[axis], domain.second-domain.first);
         }
         if (!std::isfinite(candidate[0]) || !std::isfinite(candidate[1])) continue;
-        const double candidate_gap = surface.point_at(candidate[0], candidate[1]).distance(target);
+        const double candidate_gap = Point(surface.point(candidate[0], candidate[1])).distance(target);
         if (std::isfinite(candidate_gap) && candidate_gap < best_gap) {
             result = candidate;
             best_gap = candidate_gap;
@@ -7376,7 +7376,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
     if (std::isfinite(best_gap)) {
         const auto derivatives = surface.evaluate(result[0], result[1], 1);
         if (derivatives.size() >= 3) {
-            const Vector residual = target - surface.point_at(result[0], result[1]);
+            const Vector residual = target - Point(surface.point(result[0], result[1]));
             int a = 0, b = 1;
             double determinant = 0;
             for (int i = 0; i < 3; ++i)
@@ -7399,7 +7399,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
                         bounded &= candidate[d] >= domain.first && candidate[d] <= domain.second;
                 }
                 if (bounded) {
-                    const double improved_gap = surface.point_at(candidate[0], candidate[1]).distance(target);
+                    const double improved_gap = Point(surface.point(candidate[0], candidate[1])).distance(target);
                     if (std::isfinite(improved_gap) && improved_gap < best_gap)
                         result = candidate;
                 }
@@ -7724,10 +7724,13 @@ static bool refine_pullback_failure(PullbackRun& samples,
     return true;
 }
 
+/// Jets of the pullback by a node and, at a crease, the neighbour it is taken toward.
+using PullbackJets = std::map<std::array<double, 6>, std::array<Vector, 2>>;
+
 // Local higher-order proposals preserve every raw chart/world join. Derivatives
 // are one-sided proposals only; the original whole same_parameter is mandatory.
 static NurbsCurve quintic_run_proposal(const PullbackRun& samples, const std::vector<double>& cuts,
-                                       const NurbsSurface& surface, const NurbsCurve& world) {
+                                       const NurbsSurface& surface, const NurbsCurve& world, PullbackJets* known = nullptr) {
     std::vector<double> parameters = samples.ts;
     const double first = parameters.front(), last = parameters.back();
     for (double t : cuts)
@@ -7760,6 +7763,14 @@ static NurbsCurve quintic_run_proposal(const PullbackRun& samples, const std::ve
         const bool crease = i == 0 || i + 1 == parameters.size() ||
             std::find(cuts.begin(), cuts.end(), parameters[i]) != cuts.end() ||
             std::find(world.m_nurbsknot.begin(), world.m_nurbsknot.end(), parameters[i]) != world.m_nurbsknot.end();
+        const size_t from = crease ? toward : i;
+        const std::array<double, 6> key = {parameters[i], values[i][0], values[i][1], parameters[from], values[from][0], values[from][1]};
+        if (known)
+            if (const auto found = known->find(key); found != known->end()) {
+                first = found->second[0];
+                second = found->second[1];
+                return true;
+            }
         // One-sided at a crease, a little inside the span: a crossing sample can sit a rounding beyond its knot.
         const double inside = crease ? 1e-10 : 0.0;
         const double t = parameters[i] + (parameters[toward] - parameters[i]) * inside;
@@ -7794,6 +7805,8 @@ static NurbsCurve quintic_run_proposal(const PullbackRun& samples, const std::ve
         for (int d = 0; d < 3; ++d)
             if (!std::isfinite(first[d]) || !std::isfinite(second[d]))
                 return false;
+        if (known)
+            known->emplace(key, std::array<Vector, 2>{first, second});
         return true;
     };
     std::vector<nurbs_hermite::QuinticSpan> spans;
@@ -7929,7 +7942,7 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
             for (int k = 0; k < 8; ++k) {
                 const double t = from + (to - from) * (k + 0.5) / 8.0;
                 const Point uv = candidate.point_at(t);
-                worst = std::max(worst, surface.point_at(uv[0], uv[1]).distance(world.point_at(t)));
+                worst = std::max(worst, Point(surface.point(uv[0], uv[1])).distance(world.point_at(t)));
             }
             return worst;
         };
@@ -7969,15 +7982,20 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
         for (double t : run.ts)
             run.uv.push_back(at(t));
         std::map<double, double> parents; // Middle of each span halved in the last pass, with that span's gap.
+        std::unordered_map<std::string, double> gaps; // By the bytes of a span's polynomial: a span the last pass left as it was is not measured again.
+        PullbackJets jets;
         for (int pass = 0; pass < 16 && run.ts.size() <= 129; ++pass) {
-            const NurbsCurve proposal = quintic_run_proposal(run, breaks, surface, world);
+            const NurbsCurve proposal = quintic_run_proposal(run, breaks, surface, world, &jets);
             if (!proposal.is_valid() || proposal.domain() != world.domain())
                 break;
             const std::vector<double> spans = proposal.get_span_vector();
             std::vector<double> halved;
             std::map<double, double> halves;
             for (size_t i = 1; i < spans.size(); ++i) {
-                const double measured = gap(proposal, spans[i - 1], spans[i]);
+                std::string key;
+                nurbs_memo::add_span(key, proposal, std::midpoint(spans[i - 1], spans[i]));
+                const auto known = gaps.find(key);
+                const double measured = known != gaps.end() ? known->second : gaps[key] = gap(proposal, spans[i - 1], spans[i]);
                 if (!(measured > enough))
                     continue;
                 // A half no closer than its whole is held off by the curve leaving the surface, not by the fit: halving it again gains nothing.

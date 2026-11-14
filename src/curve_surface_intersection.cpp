@@ -5,11 +5,15 @@
 #include "nurbs_interval.h"
 #include "nurbs_coincidence.h"
 #include "nurbs_memo.h"
+#include "nurbs_implicit.h"
+#include "surface_ray.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -584,13 +588,14 @@ std::vector<double> product(const std::vector<double>& a, const std::vector<doub
     const int m = static_cast<int>(b.size()) - 1;
     if (n < 0 || m < 0 || n + m > 96)
         return {};
-    std::array<double, 97> of_n, of_m, of_sum;
-    for (int i = 0; i <= n; ++i)
-        of_n[i] = binomial(n, i);
-    for (int j = 0; j <= m; ++j)
-        of_m[j] = binomial(m, j);
-    for (int k = 0; k <= n + m; ++k)
-        of_sum[k] = binomial(n + m, k);
+    static const std::vector<std::array<double, 97>> table = [] {
+        std::vector<std::array<double, 97>> rows(97);
+        for (int a = 0; a <= 96; ++a)
+            for (int k = 0; k <= a; ++k)
+                rows[a][k] = binomial(a, k);
+        return rows;
+    }();
+    const auto &of_n = table[n], &of_m = table[m], &of_sum = table[n + m];
     std::vector<double> result(n + m + 1, 0.0);
     for (int i = 0; i <= n; ++i)
         for (int j = 0; j <= m; ++j)
@@ -729,7 +734,7 @@ std::vector<double> graph_cuts(const NurbsCurve& curve, const NurbsSurface& surf
         return above != below && nearest > 1e-9 * size;
     };
     for (int d = 0; d < 2; ++d) {
-        const std::vector<double> spans = surface.get_span_vector(d);
+        const std::vector<double> spans = nurbsknot::span_vector(surface.order(d), surface.cv_count(d), surface.m_nurbsknot[d]);
         for (size_t i = margin; i + margin < spans.size(); ++i) {
             const double parameter = spans[i];
             if (beside(d, parameter))
@@ -924,24 +929,14 @@ bool parameter_point_mismatch(const NurbsCurve& curve, double t,
     return nurbs_interval::finite(squared) && nurbs_interval::finite(allowed) && squared.lo > allowed.hi;
 }
 
-// The bytes of the polynomial piece of a curve on the span around a parameter: its controls and the knots they blend over.
-void add_span(std::string& key, const NurbsCurve& curve, double inside) {
-    const int first = nurbsknot::find_span(curve.order(), curve.cv_count(), curve.m_nurbsknot, inside);
-    const int layout[] = {curve.m_dim, curve.m_is_rat, curve.m_order};
-    nurbs_memo::add(key, layout, std::size(layout));
-    nurbs_memo::add(key, &curve.m_nurbsknot[first], 2 * curve.degree());
-    for (int i = 0; i < curve.order(); ++i)
-        nurbs_memo::add(key, curve.cv(first + i), curve.cv_size());
-}
-
 std::vector<SpanPair> span_pairs(const NurbsCurve& curve, const NurbsCurve& pcurve) {
     const std::vector<double> a = curve.get_span_vector(), b = pcurve.get_span_vector();
     std::vector<SpanPair> pairs;
     for (size_t i = 1, j = 1; i < a.size() && j < b.size();) {
         if (std::max(a[i - 1], b[j - 1]) < std::min(a[i], b[j])) {
             SpanPair pair{i, j, {}};
-            add_span(pair.key, curve, std::midpoint(a[i - 1], a[i]));
-            add_span(pair.key, pcurve, std::midpoint(b[j - 1], b[j]));
+            nurbs_memo::add_span(pair.key, curve, std::midpoint(a[i - 1], a[i]));
+            nurbs_memo::add_span(pair.key, pcurve, std::midpoint(b[j - 1], b[j]));
             pairs.push_back(std::move(pair));
         }
         const bool first = a[i] <= b[j], second = b[j] <= a[i];
@@ -1029,7 +1024,8 @@ std::vector<std::array<double, 4>> parameter_rectangles(const NurbsCurve& pcurve
     Bounds uv;
     if (!bounds(pcurve, uv))
         return {};
-    const std::array<std::vector<double>, 2> spans = {surface.get_span_vector(0), surface.get_span_vector(1)};
+    const std::array<std::vector<double>, 2> spans = {nurbsknot::span_vector(surface.order(0), surface.cv_count(0), surface.m_nurbsknot[0]),
+        nurbsknot::span_vector(surface.order(1), surface.cv_count(1), surface.m_nurbsknot[1])};
     std::array<size_t, 2> first;
     std::array<size_t, 2> last;
     for (int d = 0; d < 2; ++d) {
@@ -1079,13 +1075,27 @@ void parameter_diagnostic(
     *diagnostic = text.str();
 }
 
+// A patch of the surface per knot rectangle, cut once for every part of one certificate; null where the cut fails.
+using Patches = std::vector<std::pair<std::array<double, 4>, std::optional<NurbsSurface>>>;
+
+const NurbsSurface* rectangle_patch(const NurbsSurface& surface, const std::array<double, 4>& rectangle, Patches& patches) {
+    for (const auto& [at, patch] : patches)
+        if (at == rectangle)
+            return patch ? &*patch : nullptr;
+    NurbsSurface patch = surface;
+    const bool cut = patch.trim(0, {rectangle[0], rectangle[1]}) && patch.trim(1, {rectangle[2], rectangle[3]});
+    patches.emplace_back(rectangle, cut ? std::optional<NurbsSurface>(std::move(patch)) : std::nullopt);
+    return cut ? &*patches.back().second : nullptr;
+}
+
 ParameterMatch parameter_match(
     const ParameterPart& part,
     const NurbsSurface& surface,
     double tolerance,
     std::string* diagnostic,
     ParameterFailure* failure,
-    double& reached
+    double& reached,
+    Patches& patches
 ) {
     if (failure) {
         failure->kind = ParameterFailure::Kind::Bound;
@@ -1094,31 +1104,41 @@ ParameterMatch parameter_match(
         failure->normalized_lo = part.curve.domain_start();
         failure->normalized_hi = part.curve.domain_end();
     }
-    for (const double t : {part.curve.domain_start(), part.curve.domain_middle(), part.curve.domain_end()}) {
-        if (parameter_point_mismatch(part.curve, t, part.pcurve, t, surface, tolerance)) {
-            if (failure) {
-                failure->kind = ParameterFailure::Kind::PointResidual;
-                failure->has_point = true;
-                failure->normalized_point = t;
+    // A residual proved above the tolerance at a point decides a part the bound leaves open; a part the bound covers has none.
+    const auto witness = [&] {
+        for (const double t : {part.curve.domain_start(), part.curve.domain_middle(), part.curve.domain_end()})
+            if (parameter_point_mismatch(part.curve, t, part.pcurve, t, surface, tolerance)) {
+                if (failure) {
+                    failure->kind = ParameterFailure::Kind::PointResidual;
+                    failure->has_point = true;
+                    failure->normalized_point = t;
+                }
+                parameter_diagnostic("Certified common-interval point residual exceeds tolerance", part, surface, diagnostic);
+                return true;
             }
-            parameter_diagnostic("Certified common-interval point residual exceeds tolerance", part, surface, diagnostic);
-            return ParameterMatch::Mismatched;
-        }
-    }
+        return false;
+    };
     const std::vector<std::array<double, 4>> rectangles = parameter_rectangles(part.pcurve, surface);
     if (rectangles.empty()) {
+        if (witness())
+            return ParameterMatch::Mismatched;
         parameter_diagnostic("Patch enclosure exceeds support budget", part, surface, diagnostic);
         return ParameterMatch::Unresolved;
     }
     // Every possible evaluation branch must satisfy the bound, including either side of a rounded knot crossing.
     for (const std::array<double, 4>& rectangle : rectangles) {
-        NurbsSurface patch = surface;
-        if (!patch.trim(0, {rectangle[0], rectangle[1]}) || !patch.trim(1, {rectangle[2], rectangle[3]})) {
-            parameter_diagnostic("Patch extraction failed", part, patch, diagnostic);
-            return ParameterMatch::Unresolved;
-        }
-        if (!certified_composition(part.curve, part.pcurve, patch, tolerance, reached)) {
-            parameter_diagnostic("Composition bound unresolved", part, patch, diagnostic);
+        const NurbsSurface* patch = rectangle_patch(surface, rectangle, patches);
+        if (!patch || !certified_composition(part.curve, part.pcurve, *patch, tolerance, reached)) {
+            if (witness())
+                return ParameterMatch::Mismatched;
+            if (patch)
+                parameter_diagnostic("Composition bound unresolved", part, *patch, diagnostic);
+            else {
+                NurbsSurface failed = surface;
+                if (failed.trim(0, {rectangle[0], rectangle[1]}))
+                    failed.trim(1, {rectangle[2], rectangle[3]});
+                parameter_diagnostic("Patch extraction failed", part, failed, diagnostic);
+            }
             return ParameterMatch::Unresolved;
         }
     }
@@ -1540,6 +1560,198 @@ void intersect_general(Result& result, const NurbsCurve& curve, const NurbsSurfa
         fail(result, "Curve/surface subdivision work limit exceeded");
 }
 
+// A recognised surface laid out once per thread: its patches, their boxes and the bound of its form on it.
+struct Recognised {
+    std::string key;
+    NurbsSurface surface;
+    std::optional<surface_ray::Form> form;
+};
+
+const surface_ray::Form* surface_form(const NurbsSurface& surface, double tolerance) {
+    thread_local std::vector<std::unique_ptr<Recognised>> known;
+    std::string key;
+    nurbs_memo::add(key, surface);
+    nurbs_memo::add(key, &tolerance, 1);
+    for (const auto& entry : known)
+        if (entry->key == key)
+            return entry->form ? &*entry->form : nullptr;
+    if (known.size() == 16)
+        known.erase(known.begin());
+    known.push_back(std::make_unique<Recognised>(Recognised{std::move(key), surface, std::nullopt}));
+    Recognised& entry = *known.back();
+    const nurbs_implicit::Implicit f = nurbs_implicit::recognize(entry.surface, tolerance);
+    if (f.kind >= 2 && f.kind <= 5)
+        entry.form.emplace(entry.surface, f);
+    if (entry.form && !(entry.form->band <= entry.form->gauge * tolerance))
+        entry.form.reset();
+    return entry.form ? &*entry.form : nullptr;
+}
+
+// The hits of a curve on a recognised sphere, cylinder, cone or torus. The form composed with a span of the curve is one polynomial: where it is
+// proved beyond the form's band on the surface widened by its slope over twice the tolerance, the curve is further than that from the surface;
+// elsewhere it is proved monotone, and the stretch about its zero is short. On each stretch the general routine's own refinement finds the hit
+// from the surface's nearest point, and every Bezier cell of the surface outside a chart about a hit is proved off the stretch. False, leaving
+// the general routine to decide, where a stretch is not monotone (a touching or a near miss), a hit is not refined or a cell is not cleared.
+bool implicit_hits(Result& result, const NurbsCurve& curve, const NurbsSurface& surface, double tolerance) {
+    using nurbs_implicit::Bernstein;
+    const surface_ray::Form* form = surface_form(surface, tolerance);
+    Bounds a, b;
+    if (!form || !bounds(curve, a) || !bounds(surface, b))
+        return false;
+    const nurbs_implicit::Implicit& f = form->implicit;
+    const nurbs_implicit::Patches& patches = form->patches;
+    const std::array<double, 3>& origin = patches.origin;
+    double reach = 0.0;
+    for (int i = 0; i < curve.cv_count(); ++i) {
+        const Point p = curve.get_cv(i);
+        reach = std::max(reach, std::hypot(p[0] - f.point[0], p[1] - f.point[1], p[2] - f.point[2]));
+    }
+    reach += 2.0 * tolerance;
+    // The form's slope near the curve bounds how far it moves within twice the tolerance of the surface.
+    const double slope = f.kind == 4 ? 4.0 * reach : f.kind == 5 ? 4.0 * (reach * reach + f.radius * f.radius + f.minor * f.minor) * reach +
+        8.0 * f.radius * f.radius * reach : 2.0 * reach;
+    const double band = (form->band + slope * 2.0 * tolerance) * (1.0 + 1e-6);
+    const Part original{curve, surface, 0};
+    const double precision = std::min(tolerance, (a.roundoff + b.roundoff) * 32.0);
+    const double infinity = std::numeric_limits<double>::infinity();
+    const std::vector<double> spans = nurbsknot::span_vector(curve.order(), curve.cv_count(), curve.m_nurbsknot);
+    Result found;
+    size_t budget = 4096;
+    for (size_t k = 1; k < spans.size(); ++k) {
+        const std::vector<nurbs_interval::Homogeneous> controls = nurbs_interval::curve_controls(curve, {spans[k - 1], spans[k]}, origin);
+        if (controls.empty())
+            return false;
+        std::array<Bernstein, 4> h;
+        for (int d = 0; d < 4; ++d) {
+            h[d] = Bernstein(curve.degree(), 0);
+            for (size_t i = 0; i < controls.size(); ++i) {
+                h[d].c[i] = std::midpoint(controls[i][d].lo, controls[i][d].hi);
+                h[d].error = std::max(h[d].error, std::nextafter(std::max(controls[i][d].hi - h[d].c[i], h[d].c[i] - controls[i][d].lo), infinity));
+            }
+        }
+        const double bound = band * std::pow(h[3].peak() + h[3].error, f.degree());
+        struct Piece {
+            Bernstein g;
+            double lo, hi;
+            int depth;
+        };
+        std::vector<Piece> work = {{nurbs_implicit::compose(h, f, origin), 0.0, 1.0, 0}};
+        while (!work.empty()) {
+            if (budget-- == 0)
+                return false;
+            const Piece piece = std::move(work.back());
+            work.pop_back();
+            const double limit = piece.g.error + bound;
+            const auto [low, high] = std::minmax_element(piece.g.c.begin(), piece.g.c.end());
+            if (*low > limit || *high < -limit)
+                continue;
+            if (!nurbs_implicit::monotone(piece.g, 0)) {
+                if (piece.depth >= 48)
+                    return false;
+                Piece first{{}, piece.lo, std::midpoint(piece.lo, piece.hi), piece.depth + 1}, second{{}, first.hi, piece.hi, piece.depth + 1};
+                nurbs_implicit::halve(piece.g, 0, first.g, second.g);
+                work.push_back(std::move(second));
+                work.push_back(std::move(first));
+                continue;
+            }
+            std::vector<double> zero;
+            if (!nurbs_implicit::crossing(piece.g, limit, zero))
+                return false;
+            if (zero.empty())
+                continue;
+            // Monotone: within the band only on a stretch about its zero no longer than the band over its least slope.
+            double rise = infinity;
+            for (int i = 0; i < piece.g.m; ++i)
+                rise = std::min(rise, std::abs(piece.g.c[i + 1] - piece.g.c[i]) - 2.0 * piece.g.error);
+            const double half = 4.0 * limit / (rise * piece.g.m * (1.0 - 1e-9));
+            const auto [first, last] = std::minmax_element(zero.begin(), zero.end());
+            const double lo = std::lerp(piece.lo, piece.hi, std::max(0.0, *first - half)), hi = std::lerp(piece.lo, piece.hi, std::min(1.0, *last + half));
+            if (!(half > 0.0) || !std::isfinite(half) || !(lo < 1.0))
+                return false;
+            std::array<Bernstein, 4> stretch;
+            for (int d = 0; d < 4; ++d)
+                stretch[d] = nurbs_implicit::part(h[d], 0, lo, (hi - lo) / (1.0 - lo));
+            std::array<double, 6> box = nurbs_implicit::hull(stretch);
+            std::array<double, 3> middle;
+            double size = 16.0 * tolerance;
+            for (int d = 0; d < 3; ++d) {
+                box[d] -= 2.0 * tolerance;
+                box[d + 3] += 2.0 * tolerance;
+                middle[d] = origin[d] + std::midpoint(box[d], box[d + 3]);
+                size = std::max(size, box[d + 3] - box[d]);
+            }
+            const auto meets = [&box](const std::array<double, 6>& other) {
+                for (int d = 0; d < 3; ++d)
+                    if (other[d] > box[d + 3] || box[d] > other[d + 3])
+                        return false;
+                return true;
+            };
+            const double t = std::lerp(spans[k - 1], spans[k], std::lerp(piece.lo, piece.hi, std::midpoint(*first, *last)));
+            std::vector<std::array<double, 4>> charts;
+            const auto charted = [&charts](const std::array<double, 4>& r) {
+                return std::any_of(charts.begin(), charts.end(), [&r](const std::array<double, 4>& c) {
+                    return c[0] <= r[0] && r[1] <= c[1] && c[2] <= r[2] && r[3] <= c[3]; });
+            };
+            for (int i = 0; i < patches.count(0); ++i)
+                for (int j = 0; j < patches.count(1); ++j) {
+                    std::array<double, 2> uv = patches.parameters(i, j, 0.5, 0.5);
+                    if (!meets(form->boxes[i * patches.count(1) + j]) || !nurbs_implicit::nearest(patches, middle, size, uv) || charted({uv[0], uv[0], uv[1], uv[1]}))
+                        continue;
+                    Hit hit{{}, t, uv[0], uv[1], false};
+                    const bool refined = refine(original, precision, hit, true);
+                    const bool contact = polish_contact(original, precision, hit);
+                    if (!refined && !contact)
+                        return false;
+                    append_hit(found, curve, surface, hit, tolerance);
+                    std::array<double, 4> chart;
+                    for (int d = 0; d < 2; ++d) {
+                        const std::vector<double>& knots = patches.spans[d];
+                        const double at = d ? hit.v : hit.u;
+                        const int cell = std::clamp(static_cast<int>(std::upper_bound(knots.begin(), knots.end(), at) - knots.begin()) - 1, 0, patches.count(d) - 1);
+                        const double width = (knots[cell + 1] - knots[cell]) * 0.0625;
+                        chart[2 * d] = std::max(knots.front(), at - width);
+                        chart[2 * d + 1] = std::min(knots.back(), at + width);
+                    }
+                    charts.push_back(chart);
+                }
+            struct Cell {
+                std::array<Bernstein, 4> h;
+                std::array<double, 4> box;
+                int i, j, depth;
+            };
+            std::vector<Cell> cells;
+            for (int i = 0; i < patches.count(0); ++i)
+                for (int j = 0; j < patches.count(1); ++j)
+                    if (meets(form->boxes[i * patches.count(1) + j]))
+                        cells.push_back({*patches.at(i, j), {0.0, 1.0, 0.0, 1.0}, i, j, 0});
+            for (size_t count = 0; !cells.empty(); ++count) {
+                Cell cell = std::move(cells.back());
+                cells.pop_back();
+                std::array<double, 4> rectangle;
+                for (int d = 0; d < 2; ++d) {
+                    const int index = d ? cell.j : cell.i;
+                    const nurbs_interval::Interval start(patches.spans[d][index]), width = nurbs_interval::Interval(patches.spans[d][index + 1]) - start;
+                    rectangle[2 * d] = (start + width * nurbs_interval::Interval(cell.box[2 * d])).lo;
+                    rectangle[2 * d + 1] = (start + width * nurbs_interval::Interval(cell.box[2 * d + 1])).hi;
+                }
+                if (charted(rectangle) || (cell.depth > 0 && !meets(nurbs_implicit::hull(cell.h))))
+                    continue;
+                if (cell.depth >= 24 || count >= 512)
+                    return false;
+                const int d = cell.depth % 2;
+                Cell low{{}, cell.box, cell.i, cell.j, cell.depth + 1}, high = low;
+                low.box[2 * d + 1] = high.box[2 * d] = std::midpoint(cell.box[2 * d], cell.box[2 * d + 1]);
+                for (int c = 0; c < 4; ++c)
+                    nurbs_implicit::halve(cell.h[c], d, low.h[c], high.h[c]);
+                cells.push_back(std::move(high));
+                cells.push_back(std::move(low));
+            }
+        }
+    }
+    result.points = std::move(found.points);
+    return true;
+}
+
 // Closed-form degree-two agreement uses ORIGINAL inputs and outward arithmetic.
 // Each linear curve has its OWN normalized knot fraction, as in parameter_parts.
 bool finite_parameter_span(const std::pair<double, double>& domain) {
@@ -1755,19 +1967,25 @@ static ParameterMatch same_parameter_impl(
         return ParameterMatch::Unresolved;
     }
 
-    // A single certified negative witness is decisive even if common partitioning is unresolved.
-    for (int end = 0; end < 2; ++end)
-        if (parameter_point_mismatch(curve, end ? curve.domain_end() : curve.domain_start(),
-                pcurve, end ? pcurve.domain_end() : pcurve.domain_start(), surface, tolerance)) {
-            if (failure) {
-                failure->kind = ParameterFailure::Kind::EndpointResidual;
-                failure->has_interval = failure->has_point = true;
-                failure->normalized_lo = failure->normalized_hi = failure->normalized_point = end;
+    // A single certified negative witness is decisive even if common partitioning is unresolved; where the bound covers the whole curve there is none.
+    const auto finish = [&](ParameterMatch match) {
+        if (match == ParameterMatch::Matched)
+            return match;
+        for (int end = 0; end < 2; ++end)
+            if (parameter_point_mismatch(curve, end ? curve.domain_end() : curve.domain_start(),
+                    pcurve, end ? pcurve.domain_end() : pcurve.domain_start(), surface, tolerance)) {
+                if (failure) {
+                    *failure = {};
+                    failure->kind = ParameterFailure::Kind::EndpointResidual;
+                    failure->has_interval = failure->has_point = true;
+                    failure->normalized_lo = failure->normalized_hi = failure->normalized_point = end;
+                }
+                if (diagnostic)
+                    *diagnostic = "Certified endpoint residual exceeds tolerance";
+                return ParameterMatch::Mismatched;
             }
-            if (diagnostic)
-                *diagnostic = "Certified endpoint residual exceeds tolerance";
-            return ParameterMatch::Mismatched;
-        }
+        return match;
+    };
 
     // A span pair a matched certificate reached within this tolerance is not certified again: a piece cut from a matched curve, or one whose end was moved, is asked only for the spans the cut or the move made.
     std::vector<SpanPair> pairs;
@@ -1795,24 +2013,25 @@ static ParameterMatch same_parameter_impl(
         *diagnostic = "Common parameter partition failed";
     if (!parameter_parts(curve, pcurve, surface, tolerance, work, diagnostic, pairs)) {
         if (failure) failure->kind = ParameterFailure::Kind::Partition;
-        return ParameterMatch::Unresolved;
+        return finish(ParameterMatch::Unresolved);
     }
 
+    Patches patches;
     for (size_t iteration = 0; !work.empty() && iteration < 4096; ++iteration) {
         const ParameterPart part = std::move(work.back());
         work.pop_back();
         double reached = 0.0;
-        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic, failure, reached);
+        const ParameterMatch match = parameter_match(part, surface, tolerance, diagnostic, failure, reached, patches);
         if (match == ParameterMatch::Matched) {
             if (part.pair >= 0)
                 pairs[part.pair].reached = std::max(pairs[part.pair].reached, reached);
             continue;
         }
         if (match == ParameterMatch::Mismatched)
-            return match;
+            return finish(match);
         if (part.depth >= 20 || !split_parameters(part, work)) {
             if (failure) failure->kind = ParameterFailure::Kind::RefinementLimit;
-            return ParameterMatch::Unresolved;
+            return finish(ParameterMatch::Unresolved);
         }
     }
     if (work.empty()) {
@@ -1830,7 +2049,7 @@ static ParameterMatch same_parameter_impl(
         failure->normalized_lo = work.back().curve.domain_start();
         failure->normalized_hi = work.back().curve.domain_end();
     }
-    return work.empty() ? ParameterMatch::Matched : ParameterMatch::Unresolved;
+    return finish(work.empty() ? ParameterMatch::Matched : ParameterMatch::Unresolved);
 }
 
 // Translate both physical geometries only when EVERY homogeneous operation is exact.
@@ -2007,13 +2226,13 @@ void inherit(const NurbsCurve& piece, const NurbsCurve& piece_pcurve, const Nurb
         if (known.contains(pair.key) || !(middle > curve.domain_start() && middle < curve.domain_end()))
             continue;
         std::string world_key, uv_key, piece_world_key, piece_uv_key;
-        add_span(world_key, curve, middle);
-        add_span(uv_key, pcurve, middle);
+        nurbs_memo::add_span(world_key, curve, middle);
+        nurbs_memo::add_span(uv_key, pcurve, middle);
         const auto whole = known.find(world_key + uv_key);
         if (whole == known.end())
             continue;
-        add_span(piece_world_key, piece, middle);
-        add_span(piece_uv_key, piece_pcurve, middle);
+        nurbs_memo::add_span(piece_world_key, piece, middle);
+        nurbs_memo::add_span(piece_uv_key, piece_pcurve, middle);
         // On the piece the residual is the whole curve's, plus how far the cut moved its world curve and, through the surface's derivatives where the two pcurves run, its pcurve: nothing for a span the cut left as it was.
         const Point start = piece.get_cv(0);
         Interval world, uv, speed;
@@ -2059,7 +2278,7 @@ Result intersect(const NurbsCurve& curve, const NurbsSurface& surface, double to
     else if (!iso_overlap(result, curve, surface, error, tolerance) && !graph_overlap(result, curve, surface, error, tolerance)) {
         if (unresolved_overlap(curve, surface, error))
             fail(result, "On-surface overlap needs a certified parameter mapping");
-        else
+        else if (!implicit_hits(result, curve, surface, tolerance))
             intersect_general(result, curve, surface, tolerance);
     }
     std::sort(result.points.begin(), result.points.end(), [](const Hit& a, const Hit& b) {
