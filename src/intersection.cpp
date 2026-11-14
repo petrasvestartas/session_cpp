@@ -7302,7 +7302,8 @@ static PullbackRun run_span_samples(const std::vector<PullbackRun>& runs, double
 // Closest supplies proposals only. The complete same_parameter certificate is
 // the sole acceptance condition, for the entire original world interval.
 static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& world, double parameter,
-                               const Point& seed, const Point& before, const Point& after) {
+                               const Point& seed, const Point& before, const Point& after,
+                               const NurbsSurface* conditioned = nullptr) {
     std::array<double, 4> window;
     for (int d = 0; d < 2; ++d) {
         const auto domain = surface.domain(d);
@@ -7312,16 +7313,22 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
     }
     // Closest's nonpositive window values mean "whole domain". Condition only
     // this proposal copy so shifted/negative raw charts retain the local window.
-    NurbsSurface proposal = surface;
-    if (!proposal.set_domain(0, 1, 2) || !proposal.set_domain(1, 1, 2))
-        throw std::runtime_error("Analytic pullback could not condition a projection proposal");
+    NurbsSurface copy;
+    if (!conditioned) {
+        copy = surface;
+        if (!copy.set_domain(0, 1, 2) || !copy.set_domain(1, 1, 2))
+            throw std::runtime_error("Analytic pullback could not condition a projection proposal");
+    }
+    const NurbsSurface& proposal = conditioned ? *conditioned : copy;
+    const bool closed[2] = {surface.is_closed(0), surface.is_closed(1)};
+    const Point target = world.point_at(parameter);
     for (int d = 0; d < 2; ++d) {
         const auto domain = surface.domain(d);
         for (int end = 0; end < 2; ++end)
             window[2 * d + end] =
                 std::clamp(1 + (window[2 * d + end] - domain.first) / (domain.second - domain.first), 1., 2.);
     }
-    const auto [u, v, gap] = Closest::surface_point(proposal, world.point_at(parameter), window[0], window[1],
+    const auto [u, v, gap] = Closest::surface_point(proposal, target, window[0], window[1],
                                                     window[2], window[3]);
     if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(gap))
         throw std::runtime_error("Analytic pullback projection proposal is nonfinite");
@@ -7338,11 +7345,10 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
     // opposite window, then unwrap its raw coordinates near the original seed.
     // This is only a proposal: ORIGINAL surface evaluation chooses improvement,
     // and the unchanged whole-pair certificate decides agreement.
-    const Point target = world.point_at(parameter);
     double best_gap = Point(surface.point(result[0], result[1])).distance(target);
     for (int d = 0; d < 2; ++d) {
         const double width = window[2*d+1] - window[2*d];
-        if (!surface.is_closed(d) || !(width > 0 && width < 1))
+        if (!closed[d] || !(width > 0 && width < 1))
             continue;
         auto opposite = window;
         if (window[2*d] == 1) {
@@ -7360,7 +7366,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
         for (int axis = 0; axis < 2; ++axis) {
             const auto domain = surface.domain(axis);
             candidate[axis] = std::lerp(domain.first, domain.second, coordinates[axis]-1);
-            if (surface.is_closed(axis))
+            if (closed[axis])
                 candidate[axis] = unwrap_period(candidate[axis], seed[axis], domain.second-domain.first);
         }
         if (!std::isfinite(candidate[0]) || !std::isfinite(candidate[1])) continue;
@@ -7374,8 +7380,8 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
     // requested agreement tolerance. One ORIGINAL-chart Newton proposal also
     // corrects nonperiodic raw endspan aliases; all bounds and proof gates remain.
     if (std::isfinite(best_gap)) {
-        const auto derivatives = surface.evaluate(result[0], result[1], 1);
-        if (derivatives.size() >= 3) {
+        std::array<xyz, 6> derivatives;
+        if (surface.jet(result[0], result[1], 1, derivatives)) {
             const Vector residual = target - Point(surface.point(result[0], result[1]));
             int a = 0, b = 1;
             double determinant = 0;
@@ -7395,7 +7401,7 @@ static Point pullback_proposal(const NurbsSurface& surface, const NurbsCurve& wo
                     const auto domain = surface.domain(d);
                     const double pad = std::max(std::abs(after[d]-before[d])*2, (domain.second-domain.first)*.01);
                     bounded &= candidate[d] >= seed[d]-pad && candidate[d] <= seed[d]+pad;
-                    if (!surface.is_closed(d))
+                    if (!closed[d])
                         bounded &= candidate[d] >= domain.first && candidate[d] <= domain.second;
                 }
                 if (bounded) {
@@ -7919,14 +7925,20 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
     affine_seed.m_nurbsknot = {world.domain_start(), world.domain_end()};
     affine_seed.set_cv(0, samples.uv.front());
     affine_seed.set_cv(1, samples.uv.back());
+    const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
+    const bool observing = capture && *capture;
+    // A seed whose middle lies off the curve by more than the tolerance and a part in 1e9 of the coordinates for their rounding is no match: the certificate is asked only of one that may be.
+    const double middle = std::midpoint(world.domain_start(), world.domain_end());
+    const xyz seed_middle = affine_seed.point(middle), world_middle = world.point(middle), lifted = surface.point(seed_middle[0], seed_middle[1]);
+    const double size = std::max({std::abs(world_middle[0]), std::abs(world_middle[1]), std::abs(world_middle[2]),
+        std::abs(lifted[0]), std::abs(lifted[1]), std::abs(lifted[2])});
+    const bool apart = !observing && lifted.distance(world_middle) > tolerance + 1e-9 * size;
     std::string affine_diagnostic;
-    const auto affine_match = curve_surface_intersection::same_parameter(
+    const auto affine_match = apart ? curve_surface_intersection::ParameterMatch::Mismatched : curve_surface_intersection::same_parameter(
         world, affine_seed, surface, tolerance, &affine_diagnostic);
     if (affine_match == curve_surface_intersection::ParameterMatch::Matched)
         return affine_seed;
     const int prefix_attempts = 1; // Consumes one of the existing 20 proof attempts.
-    const char* capture = std::getenv("SESSION_ANALYTIC_PULLBACK_FAILURE");
-    const bool observing = capture && *capture;
     const PullbackRun original_samples = observing ? samples : PullbackRun{};
     // A volume moves with a trim's error times its reach, so a trim within the model tolerance is not yet a measured one.
     {
@@ -7941,18 +7953,20 @@ static NurbsCurve certified_run_curve(const NurbsSurface& surface, const NurbsCu
             double worst = 0.0;
             for (int k = 0; k < 8; ++k) {
                 const double t = from + (to - from) * (k + 0.5) / 8.0;
-                const Point uv = candidate.point_at(t);
-                worst = std::max(worst, Point(surface.point(uv[0], uv[1])).distance(world.point_at(t)));
+                const xyz uv = candidate.point(t);
+                worst = std::max(worst, surface.point(uv[0], uv[1]).distance(world.point(t)));
             }
             return worst;
         };
-        // A node is projected from the given samples around it, so its seed is never far from the curve; only the nodes are projected.
+        // A node is projected from the given samples around it, so its seed is never far from the curve; only the nodes are projected, on one conditioned copy of the surface.
+        NurbsSurface conditioned = surface;
+        const NurbsSurface* proposal = conditioned.set_domain(0, 1, 2) && conditioned.set_domain(1, 1, 2) ? &conditioned : nullptr;
         const auto at = [&](double t) {
             const size_t i = static_cast<size_t>(std::lower_bound(samples.ts.begin(), samples.ts.end(), t) - samples.ts.begin());
             if (samples.ts[i] == t)
-                return pullback_proposal(surface, world, t, samples.uv[i], samples.uv[i ? i - 1 : i], samples.uv[std::min(i + 1, samples.uv.size() - 1)]);
+                return pullback_proposal(surface, world, t, samples.uv[i], samples.uv[i ? i - 1 : i], samples.uv[std::min(i + 1, samples.uv.size() - 1)], proposal);
             const double f = (t - samples.ts[i - 1]) / (samples.ts[i] - samples.ts[i - 1]);
-            return pullback_proposal(surface, world, t, samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * f, samples.uv[i - 1], samples.uv[i]);
+            return pullback_proposal(surface, world, t, samples.uv[i - 1] + (samples.uv[i] - samples.uv[i - 1]) * f, samples.uv[i - 1], samples.uv[i], proposal);
         };
         // The parameters are only as smooth as the surface's knots, so the spans end where the curve crosses them.
         const std::vector<double> knots = pullback_breaks(surface, world, tolerance);
@@ -10375,6 +10389,59 @@ bool patches_apart(const NurbsSurface& a, const NurbsSurface& b, double toleranc
     return !controls[0].empty() && !controls[1].empty() && reach * 32.0 * std::numeric_limits<double>::epsilon() <= tolerance * 0.25 &&
         hulls_separated(controls[0], controls[1], Vector(jet[0][2]), Vector(jet[0][1]), Vector(jet[1][2]), Vector(jet[1][1]),
             4.0 * std::max(2.0 * tolerance, 1e-9 * reach));
+}
+
+/// Two surfaces on recognised spheres, each within the band its form keeps on it, with the balls about them apart or one inside the other by more than a section is looked for within.
+bool spheres_apart(const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
+    using nurbs_interval::Interval;
+    const NurbsSurface* surfaces[2] = {&a, &b};
+    double reach = 0.0;
+    for (const NurbsSurface* surface : surfaces)
+        for (int i = 0; i < surface->cv_count(0); ++i)
+            for (int j = 0; j < surface->cv_count(1); ++j) {
+                const xyz point = surface->control(i, j);
+                reach = std::max({reach, std::abs(point[0]), std::abs(point[1]), std::abs(point[2])});
+            }
+    if (!(reach * 32.0 * std::numeric_limits<double>::epsilon() <= tolerance * 0.25))
+        return false;
+    std::array<nurbs_memo::Recognised*, 2> kept;
+    std::array<std::optional<surface_ray::Form>, 2> own;
+    std::array<std::optional<surface_ray::Form>*, 2> slot;
+    std::array<nurbs_implicit::Implicit, 2> recognised;
+    for (int side = 0; side < 2; ++side) {
+        kept[side] = nurbs_memo::recognised(*surfaces[side], tolerance);
+        slot[side] = kept[side] ? &kept[side]->form : &own[side];
+        recognised[side] = *slot[side] ? (*slot[side])->implicit : nurbs_implicit::recognize(*surfaces[side], tolerance);
+        if (recognised[side].kind != RecogSurface::SPHERE)
+            return false;
+    }
+    // A form is that of the centre and squared radius it was composed with, each a rounding off the recognised ones: its surface lies between the two radii.
+    std::array<std::array<Interval, 3>, 2> centre;
+    std::array<double, 2> inner, outer;
+    for (int side = 0; side < 2; ++side) {
+        if (!*slot[side])
+            slot[side]->emplace(kept[side] ? kept[side]->surface : *surfaces[side], recognised[side]);
+        const surface_ray::Form& form = **slot[side];
+        for (int d = 0; d < 3; ++d)
+            centre[side][d] = Interval(form.patches.origin[d]) - Interval(form.patches.origin[d] - form.implicit.point[d]);
+        const Interval squared(form.implicit.radius * form.implicit.radius), least = squared - Interval(form.band), most = squared + Interval(form.band);
+        if (!nurbs_interval::finite(least) || !nurbs_interval::finite(most) || !(least.lo > 0.0))
+            return false;
+        inner[side] = nurbs_interval::next_down(std::sqrt(least.lo));
+        outer[side] = nurbs_interval::next_up(std::sqrt(most.hi));
+    }
+    Interval squared;
+    for (int d = 0; d < 3; ++d) {
+        const Interval offset = centre[0][d] - centre[1][d];
+        squared = squared + offset * offset;
+    }
+    if (!nurbs_interval::finite(squared))
+        return false;
+    const Interval distance = nurbs_interval::outward(std::sqrt(std::max(squared.lo, 0.0)), std::sqrt(squared.hi));
+    const double gap = 4.0 * std::max(2.0 * tolerance, 1e-9 * reach);
+    const std::array<Interval, 3> clear = {distance - Interval(outer[0]) - Interval(outer[1]),
+        Interval(inner[0]) - distance - Interval(outer[1]), Interval(inner[1]) - distance - Interval(outer[0])};
+    return std::any_of(clear.begin(), clear.end(), [gap](Interval value) { return nurbs_interval::finite(value) && value.lo > gap; });
 }
 
 bool ssi_continuous(const NurbsSurface& surface, const std::array<double, 4>& rectangle) {
@@ -15630,7 +15697,7 @@ surface_section::Result surface_section::intersect(const NurbsSurface& a, const 
                 if (!result.curves.empty()) {
                     // Do not pretend returned-locus agreement proves every original branch.
                     result.coverage=Coverage::LegacyLocusOnly;
-                } else if (whole_section(a,b) || whole_section(b,a) || patches_apart(a,b,tolerance)) {
+                } else if (whole_section(a,b) || whole_section(b,a) || patches_apart(a,b,tolerance) || spheres_apart(a,b,tolerance)) {
                     // The closed form is the whole locus and none of it lies in the patch, a patch edge tangent to it included: or the patches are apart.
                     result.coverage=Coverage::OriginalDomainExcluded;
                 } else {

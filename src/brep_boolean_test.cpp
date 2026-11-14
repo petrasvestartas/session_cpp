@@ -965,6 +965,9 @@ MINI_TEST("BRep Native Boolean", "Affine Coincident Basis And Rational Pcurve Pr
         const std::pair<double, double> domain = target.domain(0);
         MINI_CHECK(different_basis.insert_nurbsknot(0, (domain.first + domain.second) * .5));
         MINI_CHECK(!nurbs_coincidence::parameter_mapping(source, different_basis, 1e-7, forward));
+        NurbsSurface moved_corner = target;
+        MINI_CHECK(moved_corner.set_cv(0, 0, target.get_cv(0, 0) + Vector(1e-6, 0, 0)));
+        MINI_CHECK(!nurbs_coincidence::parameter_mapping(source, moved_corner, 1e-7, forward));
     }
     NurbsSurface span_three = source, span_one = source;
     MINI_CHECK(span_three.set_domain(0, -1, 2) && span_one.set_domain(0, -4, -3));

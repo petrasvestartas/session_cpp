@@ -1,5 +1,6 @@
 #include "brep_classify.h"
 #include "brep_face_boundary.h"
+#include "nurbs_memo.h"
 #include "primitives.h"
 #include "file_step.h"
 #include "mini_test.h"
@@ -165,6 +166,17 @@ MINI_TEST("BRep Native Classification", "Recognised Forms Kept On The Solid") {
     MINI_CHECK(brep_classify::point(solid, {0.3, -0.7, 0.2}, 1e-7) == brep_classify::State::Inside);
     MINI_CHECK(brep_classify::point(solid, {0.3, -0.7, 0.3}, 1e-7) == brep_classify::State::Outside);
     MINI_CHECK(&*solid.forms[0] == kept);
+}
+
+MINI_TEST("BRep Native Classification", "Recognised Forms Laid Out Once In A Scope") {
+    const BRep sphere = BRep::create_sphere(0.8), copy = sphere;
+    const nurbs_memo::Scope scope;
+    const brep_classify::Solid first(sphere), second(copy);
+    MINI_CHECK(brep_classify::point(first, {0.1, 0.2, 0.3}, 1e-7) == brep_classify::State::Inside);
+    MINI_CHECK(brep_classify::point(second, {0.9, 0.2, 0.3}, 1e-7) == brep_classify::State::Outside);
+    // One surface of the same bytes, one form for both models, none kept on either.
+    MINI_CHECK(scope.forms.size() == 1 && scope.forms.begin()->second->form && scope.forms.begin()->second->form->implicit.kind == 2);
+    MINI_CHECK(!first.forms[0] && !second.forms[0]);
 }
 
 MINI_TEST("BRep Native Classification", "Scale And Translation") {

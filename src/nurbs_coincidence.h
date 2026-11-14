@@ -138,6 +138,18 @@ inline bool mapped_basis(const NurbsSurface& a, const NurbsSurface& candidate, d
 inline bool parameter_mapping(const NurbsSurface& a, const NurbsSurface& b, double tolerance, ParameterMap& map) {
     if (!a.is_valid() || !b.is_valid() || !(tolerance > 0) || !std::isfinite(tolerance))
         return false;
+    // Every variant takes the corner controls of b to those of a: a corner of a no corner of b is near decides them all.
+    const std::array<Point, 4> corners = {b.get_cv(0, 0), b.get_cv(0, b.cv_count(1) - 1), b.get_cv(b.cv_count(0) - 1, 0),
+        b.get_cv(b.cv_count(0) - 1, b.cv_count(1) - 1)};
+    for (int i : {0, a.cv_count(0) - 1})
+        for (int j : {0, a.cv_count(1) - 1}) {
+            const Point corner = a.get_cv(i, j);
+            if (std::none_of(corners.begin(), corners.end(), [&](const Point& other) {
+                    const double gap = corner.distance(other);
+                    return std::isfinite(gap) && gap <= tolerance * 0.25;
+                }))
+                return false;
+        }
     for (int variant = 0; variant < 8; ++variant) {
         if (!mapped_knots(a, b, variant))
             continue;

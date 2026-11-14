@@ -606,16 +606,6 @@ std::vector<double> product(const std::vector<double>& a, const std::vector<doub
     return result;
 }
 
-std::vector<double> power(const std::vector<double>& coefficients, int exponent) {
-    std::vector<double> result = {1.0};
-    for (int i = 0; i < exponent; ++i) {
-        result = product(result, coefficients);
-        if (result.empty())
-            break;
-    }
-    return result;
-}
-
 std::vector<std::vector<double>> composed_basis(const NurbsCurve& pcurve, const NurbsSurface& patch, int direction) {
     const std::pair<double, double> domain = patch.domain(direction);
     std::vector<double> value;
@@ -624,15 +614,21 @@ std::vector<std::vector<double>> composed_basis(const NurbsCurve& pcurve, const 
     for (int i = 0; i < pcurve.cv_count(); ++i)
         maximum = std::max(maximum, pcurve.weight(i));
     for (int i = 0; i < pcurve.cv_count(); ++i) {
-        const double parameter = (pcurve.get_cv(i)[direction] - domain.first) / (domain.second - domain.first);
+        const double parameter = (pcurve.control(i)[direction] - domain.first) / (domain.second - domain.first);
         const double weight = pcurve.weight(i) / maximum;
         value.push_back(parameter * weight);
         complement.push_back((1.0 - parameter) * weight);
     }
     const int degree = patch.degree(direction);
+    // Each power from the one before, an empty one once a product fails.
+    std::vector<std::vector<double>> rising = {{1.0}}, falling = {{1.0}};
+    for (int i = 0; i < degree; ++i) {
+        rising.push_back(rising.back().empty() ? std::vector<double>{} : product(rising.back(), value));
+        falling.push_back(falling.back().empty() ? std::vector<double>{} : product(falling.back(), complement));
+    }
     std::vector<std::vector<double>> result;
     for (int i = 0; i <= degree; ++i) {
-        std::vector<double> coefficients = product(power(value, i), power(complement, degree - i));
+        std::vector<double> coefficients = product(rising[i], falling[degree - i]);
         if (coefficients.empty())
             return {};
         for (double& coefficient : coefficients)
@@ -660,7 +656,7 @@ std::array<std::vector<double>, 4> composed_surface(const NurbsCurve& pcurve, co
             const std::vector<double> basis = product(u[i], v[j]);
             if (basis.empty())
                 return {};
-            const Point point = patch.get_cv(i, j);
+            const xyz point = patch.control(i, j);
             const double weight = patch.weight(i, j) / maximum;
             for (int d = 0; d < 4; ++d)
                 for (size_t k = 0; k < basis.size(); ++k)
@@ -694,11 +690,14 @@ bool certified_composition(
     std::vector<double> weights;
     for (int i = 0; i < curve.cv_count(); ++i)
         weights.push_back(curve.weight(i) / maximum);
+    std::vector<xyz> controls;
+    for (int i = 0; i < curve.cv_count(); ++i)
+        controls.push_back(curve.control(i));
     double squared = 0.0;
     for (int d = 0; d < 3; ++d) {
         std::vector<double> coordinates;
         for (int i = 0; i < curve.cv_count(); ++i)
-            coordinates.push_back(curve.get_cv(i)[d] * weights[i]);
+            coordinates.push_back(controls[i][d] * weights[i]);
         const std::vector<double> a = product(coordinates, composed[3]);
         const std::vector<double> b = product(weights, composed[d]);
         if (a.empty() || b.empty())

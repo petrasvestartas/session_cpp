@@ -2,11 +2,20 @@
 
 #include "curve_intersection.h"
 #include "nurbssurface.h"
+#include "surface_ray.h"
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace session_cpp::nurbs_memo {
+
+/// A copy of a surface and its recognised form, which refers to the copy.
+struct Recognised {
+    NurbsSurface surface;
+    std::optional<surface_ray::Form> form;
+};
 
 /// Complete results of curve_intersection::intersect and matched same_parameter certificates, reused on this thread while the scope lives. A key is the bytes of the whole input, so an entry can not go stale; failures are never stored.
 struct Scope {
@@ -14,6 +23,8 @@ struct Scope {
     std::unordered_set<std::string> matched;
     /// By surface, then by one span of a curve and one of its pcurve over the same raw range: the bound a matched certificate reached there.
     std::unordered_map<std::string, std::unordered_map<std::string, double>> spans;
+    /// By surface and the tolerance it was recognised at.
+    std::unordered_map<std::string, std::unique_ptr<Recognised>> forms;
     Scope* outer = active;
     Scope() { active = this; }
     ~Scope() { active = outer; }
@@ -52,6 +63,19 @@ inline void add_span(std::string& key, const NurbsCurve& curve, double inside) {
     add(key, &curve.m_nurbsknot[first], 2 * curve.degree());
     for (int i = 0; i < curve.order(); ++i)
         add(key, curve.cv(first + i), curve.cv_size());
+}
+
+/// A surface kept while the scope lives, by its bytes and the tolerance its form is recognised at, for the form to be laid out on once something needs it: null outside a scope.
+inline Recognised* recognised(const NurbsSurface& surface, double tolerance) {
+    if (!Scope::active)
+        return nullptr;
+    std::string key;
+    add(key, surface);
+    add(key, &tolerance, 1);
+    std::unique_ptr<Recognised>& entry = Scope::active->forms[key];
+    if (!entry)
+        entry = std::make_unique<Recognised>(Recognised{surface, std::nullopt});
+    return entry.get();
 }
 
 }

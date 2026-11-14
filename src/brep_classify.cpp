@@ -1,6 +1,7 @@
 #include "brep_classify.h"
 #include "brep_face_boundary.h"
 #include "closest.h"
+#include "nurbs_memo.h"
 #include "surface_ray.h"
 #include <algorithm>
 #include <array>
@@ -272,6 +273,12 @@ void intersect_face(RayResult& result, const Solid& solid, int face, const RayFr
     const auto [found, fresh] = met.try_emplace({brep.m_faces[face].surface_index, advance});
     surface_ray::Result& intersections = found->second;
     if (fresh) {
+        // Inside a Boolean a curved surface's form is laid out once for every model holding the same bytes; four flat corners are settled without one.
+        if (surface.m_is_rat || surface.m_order[0] != 2 || surface.m_order[1] != 2)
+            if (nurbs_memo::Recognised* kept = nurbs_memo::recognised(surface, frame.tolerance)) {
+                options.form = &kept->form;
+                options.layout = &kept->surface;
+            }
         Vector step = frame.direction;
         step.normalize_self();
         intersections = surface_ray::intersect(surface, advance > 0.0 ? frame.origin + step * advance : frame.origin,

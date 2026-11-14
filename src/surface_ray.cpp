@@ -702,8 +702,10 @@ bool meets(const std::array<double, 6>& box, const std::vector<std::array<I, 3>>
 /// Roots on a surface lying on a recognised form. Every root lies where the form along the ray is within its band of zero: a few short stretches of the ray. A root on a stretch ahead of the origin is found by Newton and held in a Krawczyk chart, and every Bezier cell outside the charts is proved off those stretches. False, leaving the search to decide, where the form is not confirmed, a stretch is not short or lies at the origin, a root is not certified, or a cell is not cleared.
 bool form_roots(const NurbsSurface& surface, std::optional<Form>& slot, const Point& origin, const Vector& direction,
     double tolerance, const Options& options, Result& result) {
-    if (!slot)
-        slot.emplace(surface, nurbs_implicit::recognize(surface, tolerance));
+    if (!slot) {
+        const NurbsSurface& layout = options.layout ? *options.layout : surface;
+        slot.emplace(layout, nurbs_implicit::recognize(layout, tolerance));
+    }
     const Form& form = *slot;
     const nurbs_implicit::Patches& patches = form.patches;
     if (!(form.band <= form.gauge * tolerance))

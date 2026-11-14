@@ -4,6 +4,7 @@
 #include "curve_surface_intersection.h"
 #include "ssi_diagnostics.h"
 #include "nurbs_interval.h"
+#include "nurbs_memo.h"
 #include "mini_test.h"
 #include "primitives.h"
 #include <array>
@@ -1000,4 +1001,22 @@ MINI_TEST("Surface Section Native", "Patches Apart Across An Axis Are Excluded")
     // A wall through the floor is no such pair.
     const surface_section::Result crossing = surface_section::intersect(floor, patch({0.5, -1, -1}, {0, 3, 0}, {0, 0, 2}), 1e-7);
     MINI_CHECK(crossing.complete && crossing.curves.size() == 1);
+}
+
+MINI_TEST("Surface Section Native", "Spheres One Inside The Other Are Apart By Their Forms") {
+    const NurbsSurface outer = Primitives::sphere_surface(0, 0, 0, 1.0);
+    const NurbsSurface inner = Primitives::sphere_surface(0.2, 0.1, -0.1, 0.4);
+    for (bool swapped : {false, true}) {
+        const nurbs_memo::Scope scope;
+        const surface_section::Result result = swapped ? surface_section::intersect(inner, outer, 1e-7) : surface_section::intersect(outer, inner, 1e-7);
+        MINI_CHECK(result.complete && result.curves.empty() && result.points.empty());
+        MINI_CHECK(result.coverage == surface_section::Coverage::OriginalDomainExcluded);
+        // Both forms are laid out, for the rays of the Boolean to take up.
+        MINI_CHECK(scope.forms.size() == 2);
+        for (const auto& [key, kept] : scope.forms)
+            MINI_CHECK(kept->form && kept->form->implicit.kind == 2 && kept->form->band < 1e-12);
+    }
+    // A sphere through the outer one is no such pair.
+    const surface_section::Result crossing = surface_section::intersect(outer, Primitives::sphere_surface(0.9, 0, 0, 0.5), 1e-7);
+    MINI_CHECK(crossing.complete && !crossing.curves.empty());
 }

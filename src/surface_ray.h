@@ -38,6 +38,7 @@ struct Options {
     int max_depth = 96;
     bool include_origin = false; // Keep certified roots whose signed distance enclosure contains zero.
     std::optional<Form>* form = nullptr; // The surface's form, recognised on the first ray that needs it and kept for the next: roots are then found on the polynomial along the ray first.
+    const NurbsSurface* layout = nullptr; // An unchanged copy of the surface that outlives the form, for the form to be laid out on.
 };
 
 struct Result {
