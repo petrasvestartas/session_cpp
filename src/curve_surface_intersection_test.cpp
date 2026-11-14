@@ -952,6 +952,17 @@ MINI_TEST("Curve Surface Native", "Lines Through Recognised Surfaces Hit Where T
     MINI_CHECK(curve_surface_intersection::intersect(miss, surfaces[0], 1e-7).points.empty());
 }
 
+MINI_TEST("Curve Surface Native", "Line Of Degree Eleven Through A Torus") {
+    // Its form along the line has degree 44, past the fixed buffers of the Bernstein routines: the general routine finds the hits.
+    const NurbsSurface torus = Primitives::torus_surface(0, 0, 0, 3, 1);
+    NurbsCurve line = NurbsCurve::create(false, 1, {Point(-5, 0.31, 0.17), Point(5, 0.31, 0.17)});
+    MINI_CHECK(line.increase_degree(11));
+    const auto events = curve_surface_intersection::intersect(line, torus, 1e-7);
+    MINI_CHECK(events.complete && events.overlaps.empty() && events.points.size() == 4);
+    for (const auto& hit : events.points)
+        MINI_CHECK(torus.point_at(hit.u, hit.v).distance(line.point_at(hit.t)) < 1e-9);
+}
+
 MINI_TEST("Curve Surface Native", "Crossing Cylinders Section Stays Small And Certified") {
     NurbsSurface drill = Primitives::cylinder_surface(0, 0, -150, 10, 300).transformed(Xform::rotation_x(0.5 * Tolerance::PI));
     drill = drill.transformed(Xform::translation(0, 0, 200));

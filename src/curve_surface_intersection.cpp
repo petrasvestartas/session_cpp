@@ -1595,7 +1595,7 @@ bool implicit_hits(Result& result, const NurbsCurve& curve, const NurbsSurface& 
     using nurbs_implicit::Bernstein;
     const surface_ray::Form* form = surface_form(surface, tolerance);
     Bounds a, b;
-    if (!form || !bounds(curve, a) || !bounds(surface, b))
+    if (!form || form->implicit.degree() * curve.degree() > nurbs_implicit::degree_limit || !bounds(curve, a) || !bounds(surface, b))
         return false;
     const nurbs_implicit::Implicit& f = form->implicit;
     const nurbs_implicit::Patches& patches = form->patches;

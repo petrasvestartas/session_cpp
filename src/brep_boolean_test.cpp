@@ -610,6 +610,33 @@ MINI_TEST("BRep Native Boolean", "Empty Identities Both Operand Orders") {
     MINI_CHECK(rejected);
 }
 
+MINI_TEST("BRep Native Boolean", "Face Turned Over With Its Wires Is Rejected") {
+    // The bottom face turned over with its wires: every edge is still used once each way and the volume is as it was, but the face's material is outside.
+    const BRep block = BRep::create_block_with_hole(2.0, 2.0, 1.0, 0.6);
+    BRep turned = block;
+    for (BRepRef& face : turned.m_shells[0].faces)
+        if (turned.m_faces[face.index].wires.size() == 2 && turned.m_surfaces[turned.m_faces[face.index].surface_index].point_at(0.5, 0.5)[2] < 0.0) {
+            face.orientation = brep_reverse(face.orientation);
+            for (const BRepRef& wire : turned.m_faces[face.index].wires) {
+                std::vector<BRepRef>& edges = turned.m_wires[wire.index].edges;
+                std::reverse(edges.begin(), edges.end());
+                for (BRepRef& edge : edges)
+                    edge.orientation = brep_reverse(edge.orientation);
+            }
+        }
+    MINI_CHECK(turned.is_solid() && std::abs(turned.volume_exact() - block.volume_exact()) < 1e-9);
+    MINI_CHECK(brep_classify::point(turned, {-0.6, -0.9, -0.7}, 1e-7) == brep_classify::State::Outside);
+    const BRep below = BRep::create_cylinder(0.05, 0.2).transformed(Xform::translation(-0.6, -0.9, -0.8));
+    MINI_CHECK(block.boolean_intersection(below).face_count() == 0);
+    bool rejected = false;
+    try {
+        turned.boolean_intersection(below);
+    } catch (const std::invalid_argument& error) {
+        rejected = std::string(error.what()).find("against its orientation") != std::string::npos;
+    }
+    MINI_CHECK(rejected);
+}
+
 MINI_TEST("BRep Native Boolean", "Isolated Tangent Spheres At Interior Witness") {
     const BRep first = BRep::create_sphere(1.0);
     const BRep second = first.transformed(Xform::translation(-2, 0, 0));

@@ -67,6 +67,35 @@ double uv_tolerance(const NurbsSurface& surface, double tolerance) {
     return tolerance / nurbs_bounds::surface_metric(surface);
 }
 
+/// Whether a face's outer wire keeps the face on its right in the surface's parameters. Volume follows the sense of a trim and classification the use of its face: on such a face the two disagree, though its shell can be closed with every edge used once each way.
+bool trim_against_use(const BRep& brep, int face, double tolerance) {
+    const brep_face_boundary::Result boundary = brep_face_boundary::extract(brep, face);
+    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index], tolerance);
+    for (const BRepRef& use : brep.wire_edges(brep.m_faces[face].wires.front())) {
+        const int index = brep.pcurve_index(use.index, face, use.orientation);
+        if (!boundary.complete || index < 0 || brep.m_edges[use.index].degenerated)
+            continue;
+        const NurbsCurve& curve = brep.m_curves_2d[index];
+        const Point uv = curve.point_at(curve.domain_middle());
+        const Vector tangent = curve.evaluate(curve.domain_middle(), 1)[1];
+        const double reach = tangent.magnitude() * (curve.domain_end() - curve.domain_start());
+        Vector left(-tangent[1], tangent[0], 0);
+        if (!left.normalize_self())
+            continue;
+        if (use.orientation == BRepOrientation::Reversed)
+            left *= -1.0;
+        for (double share : {1e-2, 1e-3, 1e-4}) {
+            const State on_left = brep_classify::face_uv(boundary, uv + left * (share * reach), uv_tol);
+            const State on_right = brep_classify::face_uv(boundary, uv + left * (-share * reach), uv_tol);
+            if (on_left == State::Inside && on_right == State::Outside)
+                return false;
+            if (on_left == State::Outside && on_right == State::Inside)
+                return true;
+        }
+    }
+    return false;
+}
+
 bool covers(const NurbsCurve& candidate, const NurbsCurve& boundary, double tolerance) {
     const curve_intersection::Result events = curve_intersection::intersect(candidate, boundary, tolerance);
     if (!events.complete)
@@ -963,6 +992,10 @@ BRep apply(const BRep& first, const BRep& second, Operation operation, double to
     for (const BRep* input : {&first, &second})
         if (!empty(*input) && (!input->is_valid() || !input->is_solid()))
             throw std::invalid_argument("Native BRep Booleans require closed oriented solid operands");
+    for (const BRep* input : {&first, &second})
+        for (int face : active_faces(*input))
+            if (trim_against_use(*input, face, tolerance))
+                throw std::invalid_argument("Native BRep Boolean operand face " + std::to_string(face) + " has its outer trim running against its orientation");
     if (empty(first) || empty(second))
         return empty_operation(first, second, operation);
     nurbs_memo::Scope reuse;

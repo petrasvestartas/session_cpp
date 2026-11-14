@@ -330,12 +330,14 @@ State ray_state(const RayResult& result, double tolerance) {
     }
     if (!result.complete)
         return State::Unknown;
-    int winding = 0;
+    int winding = 0, last = 0;
     double previous = -std::numeric_limits<double>::infinity();
+    // Along a ray a closed shell is entered and left in turn: two crossings the same way prove a face oriented against its shell.
     for (const RayHit& hit : result.hits) {
         const double separated = std::nextafter(previous + tolerance, std::numeric_limits<double>::infinity());
-        if (hit.trim != State::Inside || hit.crossing == 0 || hit.distance_enclosure[0] <= separated)
+        if (hit.trim != State::Inside || hit.crossing == 0 || hit.crossing == last || hit.distance_enclosure[0] <= separated)
             return State::Unknown;
+        last = hit.crossing;
         previous = hit.distance_enclosure[1];
         winding += hit.crossing;
     }
