@@ -21,9 +21,11 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <string_view>
 #include <tuple>
@@ -9691,7 +9693,10 @@ double cell_diagonal(const std::vector<std::array<double, 12>>& boxes) {
     return sizes[sizes.size() / 2];
 }
 
+struct ImplicitCell;
+
 struct SurfaceSurfaceGraph {
+    std::shared_ptr<const ImplicitCell> cell; // Set where the graph was proved in the two parameters of one surface.
     int fixed = -1;
     std::array<int, 3> free{};
     std::array<double, 4> lower{}, upper{}, center{};
@@ -10586,8 +10591,12 @@ bool ssi_graph_domain_connected(const SurfaceSurfaceField& field, const std::arr
     return true;
 }
 
+bool implicit_root_box(const SurfaceSurfaceGraph& graph, const std::array<double, 4>& x, std::array<SsiInterval, 4>& box);
+
 bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph& graph,
     const std::array<double, 4>& point, std::array<SsiInterval, 4>& box, const std::array<SsiInterval, 3>* known = nullptr) {
+    if (graph.cell)
+        return implicit_root_box(graph, point, box);
     for (int k = 0; k < 4; ++k)
         if (!std::isfinite(point[k]) ||
             (field.closed[k] && (point[k] < field.lo[k] || point[k] > field.hi[k])) ||
@@ -12223,6 +12232,197 @@ bool piece_triple(
     throw std::runtime_error(surface_fit_failure(field, triple, piece_pts.size()));
 }
 
+/// The recognised plane, sphere, cylinder, cone or torus of a surface with a unit axis: kind 0 where there is none, or where composed on patches of `degree` it passes the degree limit.
+nurbs_implicit::Implicit recognised_form(const NurbsSurface& surface, double tolerance, int degree) {
+    const RecogSurface recognised = recognize_surface(surface, tolerance);
+    nurbs_implicit::Implicit f = {static_cast<int>(recognised.kind), recognised.p1, recognised.p2, recognised.r, recognised.r2};
+    const double length = std::hypot(f.axis[0], f.axis[1], f.axis[2]);
+    if (f.kind == RecogSurface::NONE || (f.kind != RecogSurface::SPHERE && !(length > 0.0)) || (f.kind != RecogSurface::PLANE && !(f.radius > 0.0)) ||
+        (f.kind == RecogSurface::TORUS && !(f.minor > 0.0 && f.minor < f.radius)) || f.degree() * degree > nurbs_implicit::degree_limit)
+        return {};
+    if (f.kind != RecogSurface::SPHERE)
+        for (double& value : f.axis)
+            value /= length;
+    return f;
+}
+
+/// A bound of the slope of a polynomial along one parameter of its square.
+SsiInterval bernstein_slope(const nurbs_implicit::Bernstein& f, int direction) {
+    double change = 0.0;
+    for (int i = 0; i + (direction == 0) <= f.m; ++i)
+        for (int j = 0; j + (direction == 1) <= f.n; ++j)
+            change = std::max(change, std::abs(f.at(i + (direction == 0), j + (direction == 1)) - f.at(i, j)));
+    return SsiInterval(direction ? f.n : f.m) * (nurbs_interval::outward(change, change) + SsiInterval(4.0 * f.error));
+}
+
+/// The gradient of the polynomial `compose` writes for the form, over a box of points about the origin.
+std::array<SsiInterval, 3> implicit_gradient(const nurbs_implicit::Implicit& f, const std::array<double, 3>& origin, const std::array<SsiInterval, 3>& x) {
+    std::array<SsiInterval, 3> d, gradient;
+    SsiInterval along, square;
+    for (int k = 0; k < 3; ++k) {
+        d[k] = x[k] + SsiInterval(origin[k] - f.point[k]);
+        along = along + SsiInterval(f.axis[k]) * d[k];
+        square = square + d[k] * d[k];
+    }
+    const double cosine = std::cos(f.radius), major = f.radius * f.radius;
+    for (int k = 0; k < 3; ++k) {
+        const SsiInterval radial = d[k] - along * SsiInterval(f.axis[k]);
+        gradient[k] = f.kind == RecogSurface::PLANE ? SsiInterval(f.axis[k]) : f.kind == RecogSurface::SPHERE ? SsiInterval(2.0) * d[k] :
+            f.kind == RecogSurface::CYLINDER ? SsiInterval(2.0) * radial :
+            f.kind == RecogSurface::CONE ? SsiInterval(2.0) * along * SsiInterval(f.axis[k]) + SsiInterval(2.0 * -(cosine * cosine)) * d[k] :
+            SsiInterval(4.0) * (square + SsiInterval(major - f.minor * f.minor)) * d[k] + SsiInterval(2.0 * (-4.0 * major)) * radial;
+    }
+    return gradient;
+}
+
+/// The recognised form of surface q composed on the Bezier patches of surface p, both about one origin: what the walk certificate reads in the two parameters of p.
+struct ImplicitWalk {
+    const SurfaceSurfaceField& field;
+    int p, q;
+    nurbs_implicit::Implicit f;
+    std::array<double, 3> origin;
+    std::array<nurbs_implicit::Patches, 2> patches;
+    mutable std::vector<std::optional<nurbs_implicit::Bernstein>> forms;
+    mutable std::vector<std::optional<std::array<double, 3>>> rims;
+
+    ImplicitWalk(const SurfaceSurfaceField& field, int q, const nurbs_implicit::Implicit& f, const std::array<double, 3>& origin)
+        : field(field), p(1 - q), q(q), f(f), origin(origin), patches{{{field.a, origin}, {field.b, origin}}},
+          forms(patches[p].count(0) * patches[p].count(1)), rims(patches[q].count(0) * patches[q].count(1)) {}
+
+    /// The form on a patch of p, null where the patch has no Bezier form.
+    const nurbs_implicit::Bernstein* form(int i, int j) const {
+        std::optional<nurbs_implicit::Bernstein>& slot = forms[i * patches[p].count(1) + j];
+        if (!slot) {
+            const std::array<nurbs_implicit::Bernstein, 4>* h = patches[p].at(i, j);
+            slot = h ? nurbs_implicit::compose(*h, f, origin) : nurbs_implicit::Bernstein(-1, 0);
+        }
+        return slot->m < 0 ? nullptr : &*slot;
+    }
+
+    /// On a patch of q, bounds of how far the form strays from zero and of its slope along each parameter of the patch's square.
+    const std::array<double, 3>* rim(int i, int j) const {
+        std::optional<std::array<double, 3>>& slot = rims[i * patches[q].count(1) + j];
+        if (!slot) {
+            slot = std::array<double, 3>{-1.0, 0.0, 0.0};
+            if (const std::array<nurbs_implicit::Bernstein, 4>* h = patches[q].at(i, j)) {
+                const nurbs_implicit::Bernstein form = nurbs_implicit::compose(*h, f, origin);
+                const nurbs_implicit::Bernstein& weight = (*h)[3];
+                const SsiInterval stray = SsiInterval(form.peak()) + SsiInterval(form.error);
+                const SsiInterval light = SsiInterval(*std::min_element(weight.c.begin(), weight.c.end())) - SsiInterval(weight.error);
+                const SsiInterval heavy = SsiInterval(weight.peak()) + SsiInterval(weight.error);
+                SsiInterval power(1.0);
+                for (int k = 0; k < f.degree(); ++k)
+                    power = power * light;
+                if (light.lo > 0.0) {
+                    (*slot)[0] = (stray / power).hi;
+                    for (int direction = 0; direction < 2; ++direction)
+                        (*slot)[1 + direction] = ((bernstein_slope(form, direction) * heavy +
+                            SsiInterval(f.degree()) * stray * bernstein_slope(weight, direction)) / (power * light)).hi;
+                }
+            }
+        }
+        return (*slot)[0] >= 0.0 && std::isfinite((*slot)[0] + (*slot)[1] + (*slot)[2]) ? &*slot : nullptr;
+    }
+};
+
+/// The middle of where the two surfaces' cell boxes overlap.
+std::array<double, 3> overlap_middle(const SurfaceSurfaceField& field) {
+    std::array<double, 3> middle;
+    for (int d = 0; d < 3; ++d) {
+        std::array<double, 4> extent = {field.boxes_a.front()[d], field.boxes_a.front()[d + 3], field.boxes_b.front()[d], field.boxes_b.front()[d + 3]};
+        for (int side = 0; side < 2; ++side)
+            for (const std::array<double, 12>& box : side ? field.boxes_b : field.boxes_a) {
+                extent[2 * side] = std::min(extent[2 * side], box[d]);
+                extent[2 * side + 1] = std::max(extent[2 * side + 1], box[d + 3]);
+            }
+        middle[d] = std::midpoint(std::max(extent[0], extent[2]), std::min(extent[1], extent[3]));
+    }
+    return middle;
+}
+
+/// The recognised form of either surface composed on the other's patches: first the side whose other has no pole, then the lower degree.
+std::vector<ImplicitWalk> implicit_walks(const SurfaceSurfaceField& field) {
+    const NurbsSurface* surfaces[2] = {&field.a, &field.b};
+    std::array<nurbs_implicit::Implicit, 2> forms;
+    std::vector<std::pair<double, int>> order;
+    for (int q = 0; q < 2; ++q) {
+        const NurbsSurface& other = *surfaces[1 - q];
+        forms[q] = recognised_form(*surfaces[q], field.tolerance, std::max(other.degree(0), other.degree(1)));
+        if (forms[q].kind == RecogSurface::NONE)
+            continue;
+        const bool pole = other.is_singular(0) || other.is_singular(1) || other.is_singular(2) || other.is_singular(3);
+        order.push_back({(pole ? 1e6 : 1.0) * (forms[q].degree() * other.degree(0) + 1.0) * (forms[q].degree() * other.degree(1) + 1.0), q});
+    }
+    std::sort(order.begin(), order.end());
+    std::vector<ImplicitWalk> walks;
+    walks.reserve(2);
+    const std::array<double, 3> origin = overlap_middle(field);
+    for (const auto& [work, q] : order)
+        walks.emplace_back(field, q, forms[q], origin);
+    return walks;
+}
+
+/// A walk arc proved in the two parameters (u, v) of p. On a cell of a patch of p the form N(u, v) = w^k F(S_p(u, v)) of q's recognised polynomial F is monotone across the parameter `d` and keeps one sign beyond `band` + its rounding on each side across it. Every point of the cell lifts to exactly one point of a box of q's parameters with the same two coordinates along the `tangents` (Krawczyk), and F's gradient is not normal to them between the two: a point of the cell and its lift are one point of the section exactly where N equals w^k F(S_q) of the lift, which strays from zero by at most `band` and turns across d by at most what `slope` is net of. So the section in the cell and the box is one arc, a graph over d across the whole cell.
+struct ImplicitCell {
+    const ImplicitWalk* walk = nullptr;
+    int d = 0;
+    std::array<int, 2> patch{};
+    std::array<SsiInterval, 4> start, end;
+    nurbs_implicit::Bernstein form;
+    double slope = 0.0, band = 0.0, drift = 0.0, inverse = 0.0;
+    std::array<std::array<double, 3>, 2> tangents{};
+
+    /// An enclosure, about the origin, of a surface's point at two of the joint parameters, on p's cell patch or q's patch that holds them.
+    std::array<SsiInterval, 3> point(int side, const std::array<double, 4>& x) const {
+        const nurbs_implicit::Patches& patches = walk->patches[side];
+        std::array<int, 2> at = patch;
+        std::array<SsiInterval, 2> unit;
+        for (int r = 0; r < 2; ++r) {
+            const std::vector<double>& spans = patches.spans[r];
+            if (side == walk->q)
+                at[r] = std::clamp(static_cast<int>(std::upper_bound(spans.begin(), spans.end(), x[2 * side + r]) - spans.begin()) - 1, 0, patches.count(r) - 1);
+            unit[r] = (SsiInterval(x[2 * side + r]) - SsiInterval(spans[at[r]])) / (SsiInterval(spans[at[r] + 1]) - SsiInterval(spans[at[r]]));
+        }
+        const std::array<nurbs_implicit::Bernstein, 4>& h = *patches.at(at[0], at[1]);
+        const SsiInterval weight = nurbs_implicit::value(h[3], unit[0], unit[1]);
+        std::array<SsiInterval, 3> result;
+        for (int k = 0; k < 3; ++k)
+            result[k] = nurbs_implicit::value(h[k], unit[0], unit[1]) / weight;
+        return result;
+    }
+};
+
+/// The box about a point of the joint parameters that holds the arc's point at its value of the parameter the arc is a graph over.
+bool implicit_root_box(const SurfaceSurfaceGraph& graph, const std::array<double, 4>& x, std::array<SsiInterval, 4>& box) {
+    const ImplicitCell& cell = *graph.cell;
+    const int p = cell.walk->p, q = cell.walk->q, e = 1 - cell.d;
+    for (int k = 0; k < 4; ++k)
+        if (!(x[k] >= graph.lower[k] && x[k] <= graph.upper[k]))
+            return false;
+    std::array<SsiInterval, 2> local;
+    for (int r = 0; r < 2; ++r)
+        local[r] = (SsiInterval(x[2 * p + r]) - cell.start[2 * p + r]) / (cell.end[2 * p + r] - cell.start[2 * p + r]);
+    const SsiInterval value = nurbs_implicit::value(cell.form, local[0], local[1]);
+    const double move = ((SsiInterval(nurbs_interval::magnitude(value)) + SsiInterval(cell.band)) / SsiInterval(cell.slope)).hi;
+    const SsiInterval across = nurbs_interval::outward(std::max(0.0, local[e].lo - move), std::min(1.0, local[e].hi + move));
+    const std::array<SsiInterval, 3> sp = cell.point(p, x), sq = cell.point(q, x);
+    double gap = 0.0;
+    for (const std::array<double, 3>& tangent : cell.tangents) {
+        SsiInterval along;
+        for (int k = 0; k < 3; ++k)
+            along = along + SsiInterval(tangent[k]) * (sp[k] - sq[k]);
+        gap = std::max(gap, nurbs_interval::magnitude(along));
+    }
+    const double reach = (SsiInterval(cell.inverse) * (SsiInterval(gap) + SsiInterval(cell.drift) * (SsiInterval(across.hi) - SsiInterval(across.lo)))).hi;
+    box[2 * p + cell.d] = SsiInterval(x[2 * p + cell.d]);
+    box[2 * p + e] = cell.start[2 * p + e] + across * (cell.end[2 * p + e] - cell.start[2 * p + e]);
+    for (int r = 0; r < 2; ++r)
+        box[2 * q + r] = SsiInterval(x[2 * q + r]) + SsiInterval(-reach, reach);
+    for (int k = 0; k < 4; ++k)
+        box[k] = SsiInterval(std::max(box[k].lo, graph.image[k].lo), std::min(box[k].hi, graph.image[k].hi));
+    return graph_contains(graph, box);
+}
+
 struct SurfaceSurfaceArc {
     SurfaceSurfaceGraph graph;
     const char* failure = "middle_corrector_failed";
@@ -12232,6 +12432,257 @@ struct SurfaceSurfaceArc {
 
 /// The enclosure of a - b at the points of a walk: a point ends one arc and starts the next.
 using PointGaps = std::map<std::array<double, 4>, std::array<SsiInterval, 3>>;
+
+/// The walk certificate of two march points in two parameters (ImplicitCell). False where it does not decide: the points on two patches of p, a turn or a touching in the cell, a lift that leaves q's domain or does not contract.
+bool implicit_arc(const ImplicitWalk& walk, const std::array<double, 4>& first, const std::array<double, 4>& last, SurfaceSurfaceArc& arc) {
+    using nurbs_implicit::Bernstein;
+    const int p = walk.p, q = walk.q;
+    const SurfaceSurfaceField& field = walk.field;
+    const auto cell = std::make_shared<ImplicitCell>();
+    cell->walk = &walk;
+    const auto locate = [&](int side, int r, double x) {
+        const std::vector<double>& spans = walk.patches[side].spans[r];
+        return std::clamp(static_cast<int>(std::upper_bound(spans.begin(), spans.end(), x) - spans.begin()) - 1, 0, walk.patches[side].count(r) - 1);
+    };
+    const auto knot = [&](int side, int r, int i, SsiInterval t) {
+        const std::vector<double>& spans = walk.patches[side].spans[r];
+        return SsiInterval(spans[i]) + t * (SsiInterval(spans[i + 1]) - SsiInterval(spans[i]));
+    };
+    const auto restrict = [](const std::array<Bernstein, 4>& h, const std::array<double, 2>& lo, const std::array<double, 2>& share) {
+        std::array<Bernstein, 4> result;
+        for (int k = 0; k < 4; ++k)
+            result[k] = nurbs_implicit::part(nurbs_implicit::part(h[k], 0, lo[0], share[0]), 1, lo[1], share[1]);
+        return result;
+    };
+    const auto project = [&](const std::array<SsiInterval, 3>& x, int r) {
+        SsiInterval along;
+        for (int k = 0; k < 3; ++k)
+            along = along + SsiInterval(cell->tangents[r][k]) * x[k];
+        return along;
+    };
+    // The cell of p, on one patch: the two points padded as the proof in four parameters pads them, the arc a graph over the parameter it moves more along.
+    for (int k = 0; k < 4; ++k) {
+        const std::vector<double>& spans = walk.patches[k / 2].spans[k % 2];
+        if (!(std::min(first[k], last[k]) >= spans.front() && std::max(first[k], last[k]) <= spans.back()))
+            return false;
+    }
+    for (int r = 0; r < 2; ++r) {
+        cell->patch[r] = locate(p, r, std::min(first[2 * p + r], last[2 * p + r]));
+        if (std::max(first[2 * p + r], last[2 * p + r]) > walk.patches[p].spans[r][cell->patch[r] + 1])
+            return false;
+    }
+    const std::array<Bernstein, 4>* hp = walk.patches[p].at(cell->patch[0], cell->patch[1]);
+    const Bernstein* whole = walk.form(cell->patch[0], cell->patch[1]);
+    if (!hp || !whole)
+        return false;
+    Vector point, du, dv;
+    if (p)
+        field.eval_b(first[2], first[3], point, du, dv);
+    else
+        field.eval_a(first[0], first[1], point, du, dv);
+    const std::array<double, 2> speed = {du.magnitude(), dv.magnitude()};
+    const std::array<double, 2> change = {last[2 * p] - first[2 * p], last[2 * p + 1] - first[2 * p + 1]};
+    const int d = cell->d = std::abs(change[0]) * speed[0] >= std::abs(change[1]) * speed[1] ? 0 : 1, e = 1 - d;
+    const double distance = std::hypot(change[0] * speed[0], change[1] * speed[1]);
+    std::array<double, 2> lo, share;
+    for (int r = 0; r < 2; ++r) {
+        const int k = 2 * p + r;
+        const double k0 = walk.patches[p].spans[r][cell->patch[r]], width = walk.patches[p].spans[r][cell->patch[r] + 1] - k0;
+        const double padding = std::max(128.0 * std::numeric_limits<double>::epsilon() * std::max(std::abs(first[k]), std::abs(last[k])),
+            std::min(width / 16.0, std::max(distance, field.tolerance) / (8.0 * std::max(speed[r], 1e-300))));
+        lo[r] = std::max(0.0, (std::min(first[k], last[k]) - padding - k0) / width);
+        const double hi = std::min(1.0, (std::max(first[k], last[k]) + padding - k0) / width);
+        if (!(lo[r] < hi))
+            return false;
+        share[r] = std::min(1.0, nurbs_interval::next_up((hi - lo[r]) / (1.0 - lo[r])));
+        cell->start[k] = knot(p, r, cell->patch[r], SsiInterval(lo[r]));
+        cell->end[k] = knot(p, r, cell->patch[r], SsiInterval(lo[r]) + SsiInterval(share[r]) * (SsiInterval(1.0) - SsiInterval(lo[r])));
+    }
+    cell->form = nurbs_implicit::part(nurbs_implicit::part(*whole, 0, lo[0], share[0]), 1, lo[1], share[1]);
+    const Bernstein& form = cell->form;
+    const int count = e ? form.n : form.m;
+    double low = std::numeric_limits<double>::infinity(), high = -low;
+    for (int i = 0; i + (e == 0) <= form.m; ++i)
+        for (int j = 0; j + (e == 1) <= form.n; ++j) {
+            const double step = form.at(i + (e == 0), j + (e == 1)) - form.at(i, j);
+            low = std::min(low, step);
+            high = std::max(high, step);
+        }
+    const double sign = low > 0.0 ? 1.0 : high < 0.0 ? -1.0 : 0.0;
+    if (count == 0 || sign == 0.0)
+        return false;
+    const SsiInterval rise = SsiInterval(count) * ((sign > 0.0 ? nurbs_interval::outward(low, low) : SsiInterval(0.0) - nurbs_interval::outward(high, high)) -
+        SsiInterval(2.0 * form.error));
+    const std::array<Bernstein, 4> hpc = restrict(*hp, lo, share);
+    std::array<SsiInterval, 3> sp, sq;
+    std::array<std::array<SsiInterval, 3>, 2> dp;
+    if (!nurbs_implicit::bounds(hpc, sp, dp))
+        return false;
+    // Two directions across the form's gradient at the first point: the lift keeps them.
+    std::array<SsiInterval, 3> here;
+    for (int k = 0; k < 3; ++k)
+        here[k] = SsiInterval(point[k] - walk.origin[k]);
+    const std::array<SsiInterval, 3> gradient = implicit_gradient(walk.f, walk.origin, here);
+    Vector normal(std::midpoint(gradient[0].lo, gradient[0].hi), std::midpoint(gradient[1].lo, gradient[1].hi), std::midpoint(gradient[2].lo, gradient[2].hi));
+    if (!(normal.magnitude() > 0.0) || !std::isfinite(normal.magnitude()))
+        return false;
+    normal /= normal.magnitude();
+    const int least = std::abs(normal[0]) <= std::abs(normal[1]) && std::abs(normal[0]) <= std::abs(normal[2]) ? 0 : std::abs(normal[1]) <= std::abs(normal[2]) ? 1 : 2;
+    Vector first_tangent = normal.cross(Vector(least == 0, least == 1, least == 2));
+    first_tangent /= first_tangent.magnitude();
+    const Vector second_tangent = normal.cross(first_tangent);
+    cell->tangents = {{{first_tangent[0], first_tangent[1], first_tangent[2]}, {second_tangent[0], second_tangent[1], second_tangent[2]}}};
+    const std::array<SsiInterval, 2> target = {project(sp, 0), project(sp, 1)};
+    // The lift: a Krawczyk test on a box of q's parameters, across its knots, for the two coordinates of every point of p's cell, widened until it holds.
+    std::array<double, 4> middle;
+    for (int k = 0; k < 4; ++k)
+        middle[k] = std::midpoint(first[k], last[k]);
+    Vector at_middle, qu, qv;
+    if (q)
+        field.eval_b(middle[2], middle[3], at_middle, qu, qv);
+    else
+        field.eval_a(middle[0], middle[1], at_middle, qu, qv);
+    const Vector columns[2] = {qu, qv};
+    double jacobian[2][2];
+    for (int r = 0; r < 2; ++r)
+        for (int s = 0; s < 2; ++s)
+            jacobian[r][s] = cell->tangents[r][0] * columns[s][0] + cell->tangents[r][1] * columns[s][1] + cell->tangents[r][2] * columns[s][2];
+    const double determinant = jacobian[0][0] * jacobian[1][1] - jacobian[0][1] * jacobian[1][0];
+    const double inverse[2][2] = {{jacobian[1][1] / determinant, -jacobian[0][1] / determinant}, {-jacobian[1][0] / determinant, jacobian[0][0] / determinant}};
+    if (!std::isfinite(inverse[0][0] + inverse[0][1] + inverse[1][0] + inverse[1][1]))
+        return false;
+    const std::array<SsiInterval, 3> centre = cell->point(q, middle);
+    std::array<SsiInterval, 2> image;
+    std::array<double, 2> reach;
+    for (int r = 0; r < 2; ++r) {
+        image[r] = SsiInterval(middle[2 * q + r]) - (SsiInterval(inverse[r][0]) * (project(centre, 0) - target[0]) + SsiInterval(inverse[r][1]) * (project(centre, 1) - target[1]));
+        reach[r] = 1.25 * nurbs_interval::magnitude(image[r] - SsiInterval(middle[2 * q + r])) + 64.0 * std::numeric_limits<double>::epsilon() * (1.0 + std::abs(middle[2 * q + r]));
+    }
+    const NurbsSurface& surface = q ? field.b : field.a;
+    double contraction = 1.0;
+    std::array<double, 3> stray{};
+    bool lifted = false;
+    for (int round = 0; round < 4 && !lifted; ++round) {
+        // Each patch the box meets, as a part of its square: the first from where the box starts, the last up to where it ends.
+        std::array<std::vector<std::array<double, 3>>, 2> parts;
+        std::array<double, 2> qlo, qhi;
+        for (int r = 0; r < 2; ++r) {
+            const std::vector<double>& spans = walk.patches[q].spans[r];
+            qlo[r] = std::max(spans.front(), middle[2 * q + r] - reach[r]);
+            qhi[r] = std::min(spans.back(), middle[2 * q + r] + reach[r]);
+            const int i0 = locate(q, r, qlo[r]), i1 = std::max(i0, static_cast<int>(std::lower_bound(spans.begin(), spans.end(), qhi[r]) - spans.begin()) - 1);
+            for (int i = i0; i <= i1; ++i) {
+                const double width = spans[i + 1] - spans[i];
+                const double from = i == i0 ? std::clamp((qlo[r] - spans[i]) / width, 0.0, 1.0) : 0.0;
+                const double to = i == i1 ? std::clamp((qhi[r] - spans[i]) / width, 0.0, 1.0) : 1.0;
+                if (!(from < to))
+                    return false;
+                parts[r].push_back({static_cast<double>(i), from, i == i1 ? std::min(1.0, nurbs_interval::next_up((to - from) / (1.0 - from))) : 1.0});
+            }
+            cell->start[2 * q + r] = knot(q, r, i0, SsiInterval(parts[r].front()[1]));
+            const std::array<double, 3>& final = parts[r].back();
+            cell->end[2 * q + r] = knot(q, r, i1, SsiInterval(final[1]) + SsiInterval(final[2]) * (SsiInterval(1.0) - SsiInterval(final[1])));
+        }
+        if ((parts[0].size() > 1 || parts[1].size() > 1) && !ssi_continuous(surface, {qlo[0], qhi[0], qlo[1], qhi[1]}))
+            return false;
+        SsiInterval slopes[2][2];
+        bool started = false;
+        for (const std::array<double, 3>& along : parts[0])
+            for (const std::array<double, 3>& over : parts[1]) {
+                const int i = static_cast<int>(along[0]), j = static_cast<int>(over[0]);
+                const std::array<Bernstein, 4>* hq = walk.patches[q].at(i, j);
+                const std::array<double, 3>* rim = walk.rim(i, j);
+                std::array<SsiInterval, 3> box;
+                std::array<std::array<SsiInterval, 3>, 2> dq;
+                if (!hq || !rim || !nurbs_implicit::bounds(restrict(*hq, {along[1], over[1]}, {along[2], over[2]}), box, dq))
+                    return false;
+                for (int s = 0; s < 2; ++s) {
+                    const std::array<double, 3>& piece = s ? over : along;
+                    const int index = s ? j : i;
+                    const SsiInterval scale = SsiInterval(piece[2]) * (SsiInterval(1.0) - SsiInterval(piece[1])) *
+                        (SsiInterval(walk.patches[q].spans[s][index + 1]) - SsiInterval(walk.patches[q].spans[s][index]));
+                    stray[1 + s] = std::max(stray[1 + s], (SsiInterval((*rim)[1 + s]) / (SsiInterval(walk.patches[q].spans[s][index + 1]) - SsiInterval(walk.patches[q].spans[s][index]))).hi);
+                    for (int r = 0; r < 2; ++r) {
+                        const SsiInterval slope = project(dq[s], r) / scale;
+                        slopes[r][s] = started ? nurbs_interval::interval_hull(slopes[r][s], slope) : slope;
+                    }
+                }
+                stray[0] = std::max(stray[0], (*rim)[0]);
+                for (int k = 0; k < 3; ++k)
+                    sq[k] = started ? nurbs_interval::interval_hull(sq[k], box[k]) : box[k];
+                started = true;
+            }
+        contraction = 0.0;
+        lifted = true;
+        for (int r = 0; r < 2; ++r) {
+            SsiInterval row, krawczyk = image[r];
+            for (int s = 0; s < 2; ++s) {
+                const SsiInterval entry = SsiInterval(r == s ? 1.0 : 0.0) - (SsiInterval(inverse[r][0]) * slopes[0][s] + SsiInterval(inverse[r][1]) * slopes[1][s]);
+                row = row + SsiInterval(nurbs_interval::magnitude(entry));
+                krawczyk = krawczyk + entry * (SsiInterval(cell->start[2 * q + s].lo, cell->end[2 * q + s].hi) - SsiInterval(middle[2 * q + s]));
+            }
+            contraction = std::max(contraction, row.hi);
+            lifted = lifted && krawczyk.lo > cell->start[2 * q + r].hi && krawczyk.hi < cell->end[2 * q + r].lo;
+            reach[r] = std::max(reach[r], 1.25 * nurbs_interval::magnitude(krawczyk - SsiInterval(middle[2 * q + r])));
+        }
+        lifted = lifted && contraction < 1.0;
+    }
+    if (!lifted)
+        return false;
+    // F's gradient is nowhere between the two normal to the two directions: a point and its lift that agree along them and in F are one point.
+    std::array<SsiInterval, 3> both, kernel;
+    for (int k = 0; k < 3; ++k)
+        both[k] = nurbs_interval::interval_hull(sp[k], sq[k]);
+    const std::array<SsiInterval, 3> across = implicit_gradient(walk.f, walk.origin, both);
+    SsiInterval transverse;
+    for (int k = 0; k < 3; ++k) {
+        const int i = (k + 1) % 3, j = (k + 2) % 3;
+        kernel[k] = SsiInterval(cell->tangents[0][i]) * SsiInterval(cell->tangents[1][j]) - SsiInterval(cell->tangents[0][j]) * SsiInterval(cell->tangents[1][i]);
+        transverse = transverse + across[k] * kernel[k];
+    }
+    if (!(transverse.lo > 0.0 || transverse.hi < 0.0))
+        return false;
+    // How far w^k F(S_q) of the lift strays from zero and turns across d, against how steeply N rises.
+    const double rows[2] = {(SsiInterval(std::abs(inverse[0][0])) + SsiInterval(std::abs(inverse[0][1]))).hi,
+        (SsiInterval(std::abs(inverse[1][0])) + SsiInterval(std::abs(inverse[1][1]))).hi};
+    cell->inverse = (SsiInterval(std::max(rows[0], rows[1])) / (SsiInterval(1.0) - SsiInterval(contraction))).hi;
+    cell->drift = std::max(nurbs_interval::magnitude(project(dp[e], 0)), nurbs_interval::magnitude(project(dp[e], 1)));
+    const SsiInterval heavy = SsiInterval(hpc[3].peak()) + SsiInterval(hpc[3].error);
+    SsiInterval power(1.0);
+    for (int k = 1; k < walk.f.degree(); ++k)
+        power = power * heavy;
+    cell->band = (power * heavy * SsiInterval(stray[0])).hi;
+    const SsiInterval turn = SsiInterval(walk.f.degree()) * power * bernstein_slope(hpc[3], e) * SsiInterval(stray[0]) +
+        power * heavy * (SsiInterval(stray[1]) + SsiInterval(stray[2])) * SsiInterval(cell->inverse) * SsiInterval(cell->drift);
+    cell->slope = (rise - turn).lo;
+    if (!(cell->slope > 0.0) || !std::isfinite(cell->band))
+        return false;
+    const double beyond = (SsiInterval(form.error) + SsiInterval(cell->band)).hi;
+    for (int end = 0; end < 2; ++end)
+        for (double value : nurbs_implicit::side(form, d, end).c)
+            if (!((end ? sign : -sign) * value > beyond))
+                return false;
+    SurfaceSurfaceGraph& graph = arc.graph;
+    graph = SurfaceSurfaceGraph{};
+    graph.cell = cell;
+    graph.fixed = 2 * p + d;
+    for (int k = 0, n = 0; k < 4; ++k) {
+        if (k != graph.fixed)
+            graph.free[n++] = k;
+        graph.lower[k] = cell->start[k].hi;
+        graph.upper[k] = cell->end[k].lo;
+        graph.image[k] = SsiInterval(cell->start[k].lo, cell->end[k].hi);
+        if (!(graph.lower[k] <= graph.upper[k]))
+            return false;
+    }
+    graph.center = first;
+    arc.start = first;
+    arc.end = last;
+    if (!implicit_root_box(graph, first, arc.first) || !implicit_root_box(graph, last, arc.last))
+        return false;
+    graph.anchor = arc.first;
+    return true;
+}
 
 bool continuation_arc(const SurfaceSurfaceField& field, const std::array<double, 4>& first,
     const std::array<double, 4>& last, std::array<double, 4>& middle, SurfaceSurfaceArc& arc,
@@ -12390,7 +12841,7 @@ void record_continuation_failure(
 
 /// Each neighbouring walking pair must belong to one connected, unique root graph.
 std::vector<SurfaceSurfaceArc> continuation_arcs(const SurfaceSurfaceField& field,
-    const std::vector<std::array<double, 4>>& points, bool loop) {
+    const std::vector<std::array<double, 4>>& points, bool loop, const std::vector<ImplicitWalk>& walks = {}) {
     ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::Continuation);
     const SurfaceSurfaceField precise = precise_surface_field(field);
     struct Segment { std::array<double, 4> first, last; int depth; };
@@ -12407,7 +12858,8 @@ std::vector<SurfaceSurfaceArc> continuation_arcs(const SurfaceSurfaceField& fiel
         work.pop_back();
         std::array<double, 4> middle;
         SurfaceSurfaceArc arc;
-        if (continuation_arc(precise, segment.first, segment.last, middle, arc, nullptr, &gaps)) {
+        if (std::any_of(walks.begin(), walks.end(), [&](const ImplicitWalk& walk) { return implicit_arc(walk, segment.first, segment.last, arc); }) ||
+            continuation_arc(precise, segment.first, segment.last, middle, arc, nullptr, &gaps)) {
             if (!result.empty() && !connected_arcs(field, result.back(), arc))
                 throw std::runtime_error("Native SSI could not certify adjacent walking graphs: " +
                     nlohmann::ordered_json({{"previous", graph_diagnostic(result.back())},
@@ -12572,9 +13024,11 @@ bool arcs_hold_root(const SurfaceSurfaceField& field, const std::array<double, 4
 }
 
 /// Identity is certified in four parameters; the old residual allowances only check fit coverage.
+/// Arcs proved in two parameters end at the edge of a patch: a seed on the section a little beyond one is held by the arcs proved in four, `walked`, before it is refused.
 void consume_section_seeds(const SurfaceSurfaceField& field,
     const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& triple,
-    const std::vector<SurfaceSurfaceArc>& arcs, std::vector<SurfaceSurfaceSeed>& seeds) {
+    const std::vector<SurfaceSurfaceArc>& arcs, std::vector<SurfaceSurfaceSeed>& seeds,
+    const std::function<const std::vector<SurfaceSurfaceArc>&()>& walked = nullptr) {
     ssi_diagnostics::Timer timer(ssi_diagnostics::Stage::SectionConsumption);
     const auto spans = section_spans(triple);
     for (SurfaceSurfaceSeed& seed : seeds) {
@@ -12622,7 +13076,7 @@ void consume_section_seeds(const SurfaceSurfaceField& field,
             for (int k = 0; k < 4; ++k)
                 matches = matches && parameter_difference(field, k, x[k], y[k]) <= allowed[k];
             if (matches) {
-                if (seed.graphs.empty())
+                if (seed.graphs.empty() && !(walked && arcs_hold_root(field, x, walked())))
                     throw std::runtime_error("Native SSI seed lies on a fitted section without a shared root graph");
                 seed.used = true;
                 if (ssi_diagnostics::active)
@@ -12669,17 +13123,8 @@ bool boundary_first_seeds(const SurfaceSurfaceField& field, std::vector<SurfaceS
     const int degree = std::max({field.a.degree(0), field.a.degree(1), field.b.degree(0), field.b.degree(1)});
     std::array<nurbs_implicit::Implicit, 2> model;
     std::array<bool, 2> known{};
-    for (int side = 0; side < 2; ++side) {
-        const RecogSurface recognised = recognize_surface(*surfaces[side], field.tolerance);
-        nurbs_implicit::Implicit& f = model[side] = {static_cast<int>(recognised.kind), recognised.p1, recognised.p2, recognised.r, recognised.r2};
-        const double length = std::hypot(f.axis[0], f.axis[1], f.axis[2]);
-        known[side] = f.kind != RecogSurface::NONE && (f.kind == RecogSurface::SPHERE || length > 0.0) &&
-            (f.kind == RecogSurface::PLANE || f.radius > 0.0) && (f.kind != RecogSurface::TORUS || (f.minor > 0.0 && f.minor < f.radius)) &&
-            f.degree() * degree <= nurbs_implicit::degree_limit;
-        if (known[side] && f.kind != RecogSurface::SPHERE)
-            for (double& value : f.axis)
-                value /= length;
-    }
+    for (int side = 0; side < 2; ++side)
+        known[side] = (model[side] = recognised_form(*surfaces[side], field.tolerance, degree)).kind != RecogSurface::NONE;
     // A knot of more than full multiplicity tears a surface: its two sides do not share the edge searched once for both.
     if ((!known[0] && !known[1]) || !ssi_continuous(field.a, {field.lo[0], field.hi[0], field.lo[1], field.hi[1]}) ||
         !ssi_continuous(field.b, {field.lo[2], field.hi[2], field.lo[3], field.hi[3]}))
@@ -12943,6 +13388,7 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
     std::vector<SurfaceSurfaceSeed> seeds;
     if (!boundary_first || !(*boundary_first = boundary_first_seeds(field, seeds)))
         seeds = surface_surface_seeds(field);
+    const std::vector<ImplicitWalk> walks = seeds.empty() ? std::vector<ImplicitWalk>() : implicit_walks(field);
     std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> result;
 
     for (size_t si = 0; si < seeds.size(); si++) {
@@ -12981,8 +13427,24 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> marched_section_trip
             std::tuple<NurbsCurve, NurbsCurve, NurbsCurve> triple;
 
             if (piece.first.size() >= 2 && piece_triple(field, piece.first, piece.second, triple)) {
-                const auto arcs = continuation_arcs(field, piece.first, piece.second);
-                consume_section_seeds(field, triple, arcs, seeds);
+                std::vector<SurfaceSurfaceArc> arcs;
+                // Arcs proved in two parameters stand beside what the proof in four does: a walk they do not certify is certified without them.
+                try {
+                    arcs = continuation_arcs(field, piece.first, piece.second, walks);
+                } catch (const std::runtime_error&) {
+                    if (walks.empty())
+                        throw;
+                    arcs = continuation_arcs(field, piece.first, piece.second);
+                }
+                std::optional<std::vector<SurfaceSurfaceArc>> walked;
+                std::function<const std::vector<SurfaceSurfaceArc>&()> without;
+                if (!walks.empty())
+                    without = [&]() -> const std::vector<SurfaceSurfaceArc>& {
+                        if (!walked)
+                            walked = continuation_arcs(field, piece.first, piece.second);
+                        return *walked;
+                    };
+                consume_section_seeds(field, triple, arcs, seeds, without);
                 result.push_back(std::move(triple));
             }
         }

@@ -4,6 +4,7 @@
 #include "file_step.h"
 #include "curve_surface_intersection.h"
 #include "ssi_diagnostics.h"
+#include "nurbs_implicit.h"
 #include "closest.h"
 #include "nurbs_hermite.h"
 #include "nurbssurface.h"
@@ -4157,6 +4158,58 @@ MINI_TEST("Intersection", "Touching Quadrics Keep The Four Parameter Search") {
         } catch (const std::runtime_error&) {
         }
         MINI_CHECK(statistics.cells > 0);
+    }
+}
+MINI_TEST("Intersection", "Part Of A Bernstein Polynomial Agrees With It") {
+    // using session_cpp::nurbs_implicit::Bernstein;
+    // A polynomial of degree 3 by 2, its part over [0.3, 0.65] x [0.2, 0.4], and enclosures at points: each within the error it carries.
+    nurbs_implicit::Bernstein f(3, 2);
+    for (size_t k = 0; k < f.c.size(); ++k)
+        f.c[k] = std::sin(1.0 + 3.0 * k);
+    const auto at = [](const nurbs_implicit::Bernstein& g, double s, double t) {
+        long double sum = 0.0L;
+        for (int i = 0; i <= g.m; ++i)
+            for (int j = 0; j <= g.n; ++j)
+                sum += nurbs_implicit::binomial(g.m, i) * std::pow(1.0L - s, g.m - i) * std::pow(static_cast<long double>(s), i) *
+                    nurbs_implicit::binomial(g.n, j) * std::pow(1.0L - t, g.n - j) * std::pow(static_cast<long double>(t), j) * g.at(i, j);
+        return static_cast<double>(sum);
+    };
+    const nurbs_implicit::Bernstein g = nurbs_implicit::part(nurbs_implicit::part(f, 0, 0.3, 0.5), 1, 0.2, 0.25);
+    MINI_CHECK(g.m == 3 && g.n == 2 && g.error > 0.0 && g.error < 1e-13);
+    for (double s : {0.0, 0.25, 0.7, 1.0})
+        for (double t : {0.0, 0.4, 1.0}) {
+            MINI_CHECK(std::abs(at(g, s, t) - at(f, 0.3 + 0.35 * s, 0.2 + 0.2 * t)) <= g.error + 1e-15);
+            const nurbs_interval::Interval value = nurbs_implicit::value(g, nurbs_interval::Interval(s), nurbs_interval::Interval(t));
+            MINI_CHECK(value.lo <= at(g, s, t) && at(g, s, t) <= value.hi && value.hi - value.lo < 1e-13);
+        }
+    const nurbs_interval::Interval range = nurbs_implicit::value(f, nurbs_interval::Interval(0.3, 0.65), nurbs_interval::Interval(0.2, 0.4));
+    for (double s : {0.3, 0.5, 0.65})
+        for (double t : {0.2, 0.3, 0.4})
+            MINI_CHECK(range.lo <= at(f, s, t) && at(f, s, t) <= range.hi);
+}
+
+MINI_TEST("Intersection", "Walk Is Certified In Two Parameters") {
+    // using session_cpp::Intersection;
+    // using session_cpp::NurbsSurface;
+    // using session_cpp::Primitives;
+    const double tolerance = 1e-7;
+    // A drill through a ball, and a ball on a cubic surface no quadric is recognised in: between march points the section is proved one arc on the ball's polynomial in the other surface's two parameters, the proof in four parameters kept for the few steps it does not decide.
+    const NurbsSurface sphere = Primitives::sphere_surface(0, 0, 0, 1.0);
+    const NurbsSurface cylinder = Primitives::cylinder_surface(0.3, 0.1, -2.0, 0.5, 4.0);
+    const NurbsSurface wave = Primitives::wave_surface(10.0, 0.5);
+    const NurbsSurface ball = Primitives::sphere_surface(3.3, 4.1, 0.2, 0.4);
+    const std::array<std::tuple<const NurbsSurface*, const NurbsSurface*, size_t, double>, 2> pairs = {{
+        {&sphere, &cylinder, 16, 6.533695429}, {&wave, &ball, 6, 2.513224229}}};
+    for (const auto& [a, b, count, length] : pairs) {
+        ssi_diagnostics::Statistics statistics;
+        ssi_diagnostics::Capture capture(statistics);
+        const auto sections = Intersection::surface_surface(*a, *b, tolerance, true);
+        MINI_CHECK(statistics.continuation_arcs > 0);
+        MINI_CHECK(statistics.coverage_checks * 4 <= statistics.continuation_arcs);
+        MINI_CHECK(sections.size() == count);
+        MINI_CHECK(section_pieces_close(sections));
+        MINI_CHECK(std::abs(section_length(sections) - length) <= 1e-6);
+        MINI_CHECK(section_pieces_match(sections, *a, *b, tolerance));
     }
 }
 } // namespace session_cpp

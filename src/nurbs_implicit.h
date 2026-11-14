@@ -142,6 +142,109 @@ inline void halve(const Bernstein& f, int direction, Bernstein& low, Bernstein& 
     low.error = high.error = f.error + count * rounding * f.peak();
 }
 
+/// The polynomial on [lo, lo + share (1 - lo)] of one parameter, again on [0, 1]: the part past lo, then the first share of what is left.
+inline Bernstein part(const Bernstein& f, int direction, double lo, double share) {
+    Bernstein result = f;
+    const int count = direction ? f.n : f.m, lines = direction ? f.m : f.n;
+    const int stride = direction ? 1 : f.n + 1, step = direction ? f.n + 1 : 1;
+    std::array<double, degree_limit + 1> t{};
+    for (int line = 0; line <= lines; ++line) {
+        for (int i = 0; i <= count; ++i)
+            t[i] = f.c[line * step + i * stride];
+        for (int k = 1; k <= count; ++k)
+            for (int i = 0; i + k <= count; ++i)
+                t[i] += lo * (t[i + 1] - t[i]);
+        result.c[line * step] = t[0];
+        for (int k = 1; k <= count; ++k) {
+            for (int i = 0; i + k <= count; ++i)
+                t[i] += share * (t[i + 1] - t[i]);
+            result.c[line * step + k * stride] = t[0];
+        }
+    }
+    result.error = f.error + 6 * count * rounding * f.peak();
+    return result;
+}
+
+/// An enclosure of the polynomial where its parameters lie in s and t, taken within the square: its value at their middles, widened by the rounding and by its slopes across them.
+inline nurbs_interval::Interval value(const Bernstein& f, nurbs_interval::Interval s, nurbs_interval::Interval t) {
+    const std::array<double, 4> box = {std::clamp(s.lo, 0.0, 1.0), std::clamp(s.hi, 0.0, 1.0), std::clamp(t.lo, 0.0, 1.0), std::clamp(t.hi, 0.0, 1.0)};
+    const double x = std::midpoint(box[0], box[1]), y = std::midpoint(box[2], box[3]);
+    std::array<double, degree_limit + 1> row{}, column{};
+    std::array<double, 2> rise{};
+    for (int i = 0; i <= f.m; ++i) {
+        for (int j = 0; j <= f.n; ++j) {
+            row[j] = f.at(i, j);
+            if (j > 0)
+                rise[1] = std::max(rise[1], std::abs(row[j] - row[j - 1]));
+            if (i > 0)
+                rise[0] = std::max(rise[0], std::abs(row[j] - f.at(i - 1, j)));
+        }
+        for (int k = f.n; k > 0; --k)
+            for (int j = 0; j < k; ++j)
+                row[j] += y * (row[j + 1] - row[j]);
+        column[i] = row[0];
+    }
+    for (int k = f.m; k > 0; --k)
+        for (int i = 0; i < k; ++i)
+            column[i] += x * (column[i + 1] - column[i]);
+    // Every term is positive and rounded a few times: a part in 1e14 more covers that.
+    const double spread = (f.error + 3.0 * (f.m + f.n) * rounding * f.peak() + f.m * (rise[0] + 2.0 * f.error) * std::max(x - box[0], box[1] - x) +
+        f.n * (rise[1] + 2.0 * f.error) * std::max(y - box[2], box[3] - y)) * (1.0 + 64.0 * rounding);
+    return nurbs_interval::outward(column[0] - spread, column[0] + spread);
+}
+
+/// Enclosures, about the origin, of the points of a patch in homogeneous coordinates and of their derivatives along each parameter of the square: false where a weight is not proved positive.
+inline bool bounds(const std::array<Bernstein, 4>& h, std::array<nurbs_interval::Interval, 3>& point,
+    std::array<std::array<nurbs_interval::Interval, 3>, 2>& derivative) {
+    using nurbs_interval::Interval;
+    const Bernstein& w = h[3];
+    double light = std::numeric_limits<double>::infinity(), heavy = 0.0, slack = 0.0;
+    std::array<double, 3> low, high;
+    low.fill(std::numeric_limits<double>::infinity());
+    high.fill(-std::numeric_limits<double>::infinity());
+    for (size_t k = 0; k < w.c.size(); ++k) {
+        const double least = nurbs_interval::next_down(w.c[k] - w.error);
+        if (!(least > 0.0))
+            return false;
+        light = std::min(light, least);
+        heavy = std::max(heavy, nurbs_interval::next_up(w.c[k] + w.error));
+        for (int d = 0; d < 3; ++d) {
+            const double ratio = h[d].c[k] / w.c[k];
+            low[d] = std::min(low[d], ratio);
+            high[d] = std::max(high[d], ratio);
+            slack = std::max(slack, std::abs(ratio) * rounding + (h[d].error + std::abs(ratio) * w.error) / least);
+        }
+    }
+    slack *= 1.0 + 8.0 * rounding;
+    for (int d = 0; d < 3; ++d) {
+        point[d] = nurbs_interval::outward(low[d] - slack, high[d] + slack);
+        if (!nurbs_interval::finite(point[d]))
+            return false;
+    }
+    const Interval weight(light, heavy);
+    for (int direction = 0; direction < 2; ++direction) {
+        const int count = direction ? w.n : w.m;
+        Interval rate;
+        for (int d = 3; d >= 0; --d) {
+            double least = 0.0, most = 0.0, size = 0.0;
+            for (int i = 0; i + (direction == 0) <= w.m; ++i)
+                for (int j = 0; j + (direction == 1) <= w.n; ++j) {
+                    const double step = h[d].at(i + (direction == 0), j + (direction == 1)) - h[d].at(i, j);
+                    least = i + j == 0 ? step : std::min(least, step);
+                    most = i + j == 0 ? step : std::max(most, step);
+                    size = std::max(size, std::abs(step));
+                }
+            const double margin = 2.0 * h[d].error + rounding * size;
+            const Interval change = Interval(count) * nurbs_interval::outward(least - margin, most + margin);
+            if (d == 3)
+                rate = change;
+            else
+                derivative[direction][d] = (change - point[d] * rate) / weight;
+        }
+    }
+    return true;
+}
+
 /// The polynomial along one side of the square: direction 0 runs along the first parameter, at the start (end 0) or the end of the second.
 inline Bernstein side(const Bernstein& f, int direction, int end) {
     Bernstein edge(direction ? f.n : f.m, 0);
