@@ -977,6 +977,23 @@ namespace session_cpp {
         save_brep_geometry("boolean_torus_half", half);
     }
 
+    MINI_TEST("BRep", "Boolean Section Edges Whole") {
+        // OCCT 3 6 4, 4 9 6, 4 9 6, 3 6 4: the section loop is not cut where it crosses a knot line of the cylinder or the sphere.
+        const BRep cylinder = BRep::create_cylinder(0.4, 1.3);
+        const BRep sphere = BRep::create_sphere(0.5).transformed(Xform::translation(-0.1, -0.3, 0.1));
+        const BRep common = cylinder.boolean_intersection(sphere);
+        const BRep united = cylinder.boolean_union(sphere);
+        const BRep cut = cylinder.boolean_difference(sphere);
+        const BRep cut_other = sphere.boolean_difference(cylinder);
+
+        MINI_CHECK(common.is_solid() && common.face_count() == 3 && common.edge_count() == 6 && common.vertex_count() == 4);
+        MINI_CHECK(united.is_solid() && united.face_count() == 4 && united.edge_count() == 9 && united.vertex_count() == 6);
+        MINI_CHECK(cut.is_solid() && cut.face_count() == 4 && cut.edge_count() == 9 && cut.vertex_count() == 6);
+        MINI_CHECK(cut_other.is_solid() && cut_other.face_count() == 3 && cut_other.edge_count() == 6 && cut_other.vertex_count() == 4);
+        MINI_CHECK(std::abs(common.volume_exact() + cut.volume_exact() - cylinder.volume_exact()) < 1e-6);
+        MINI_CHECK(std::abs(united.volume_exact() - cut.volume_exact() - sphere.volume_exact()) < 1e-6);
+    }
+
     MINI_TEST("BRep", "Boolean Scale And Translation") {
         const auto observed_common = [](const BRep& a, const BRep& b, const std::string& stage) {
             std::cerr << "[public-scale-stage] " << stage << std::endl;

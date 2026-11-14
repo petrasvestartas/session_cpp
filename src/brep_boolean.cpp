@@ -706,6 +706,173 @@ void select(
     }
 }
 
+/// One curve of two that meet end to start, or false when they do not.
+bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, std::pair<double, double> domain_a,
+                  std::pair<double, double> domain_b, double tolerance, NurbsCurve& out) {
+
+    if (flip_a)
+        a.reverse();
+    if (flip_b)
+        b.reverse();
+    if (!a.set_domain(domain_a.first, domain_a.second) || !b.set_domain(domain_b.first, domain_b.second))
+        return false;
+    const std::vector<NurbsCurve> joined = NurbsCurve::join({a, b}, tolerance);
+    if (joined.size() != 1 || joined[0].domain().first != domain_a.first ||
+        joined[0].point_at_start().distance(a.point_at_start()) > tolerance ||
+        joined[0].point_at_end().distance(b.point_at_end()) > tolerance)
+        return false;
+    out = joined[0];
+    return true;
+}
+
+/// Keep each edge whole, as OCCT does: two edges at a vertex no other edge meets, used one after the other by the same wires
+/// and lying on the same surfaces, become one. A section piece ends where it crosses a knot line of a NURBS surface or where
+/// a closed section closes; an analytic surface has neither.
+BRep joined_edges(BRep b, double tolerance) {
+
+    const BRepOrientation F = BRepOrientation::Forward;
+    const BRepOrientation R = BRepOrientation::Reversed;
+    std::vector<bool> dropped_edge(b.edge_count(), false), dropped_vertex(b.vertex_count(), false);
+    std::vector<bool> stale_3d(b.m_curves_3d.size(), false), stale_2d(b.m_curves_2d.size(), false);
+
+    for (int v = 0; v < b.vertex_count(); ++v) {
+        std::vector<std::pair<int, bool>> ends;
+        for (int e = 0; e < b.edge_count(); ++e)
+            for (bool last : {false, true})
+                if (!dropped_edge[e] && (last ? b.m_edges[e].end_vertex : b.m_edges[e].start_vertex) == v)
+                    ends.push_back({e, last});
+        if (ends.size() != 2 || ends[0].first == ends[1].first)
+            continue;
+        const int e1 = ends[0].first, e2 = ends[1].first;
+        const bool flip1 = !ends[0].second, flip2 = ends[1].second;
+        BRepEdge& x = b.m_edges[e1];
+        const BRepEdge& y = b.m_edges[e2];
+        if (x.degenerated || y.degenerated || x.pcurves.size() != y.pcurves.size())
+            continue;
+
+        std::vector<std::array<int, 3>> uses;
+        bool consecutive = true;
+        for (int w = 0; w < (int)b.m_wires.size() && consecutive; ++w) {
+            const std::vector<BRepRef>& refs = b.m_wires[w].edges;
+            const int n = (int)refs.size();
+            int i1 = -1, i2 = -1, count1 = 0, count2 = 0;
+            for (int i = 0; i < n; ++i)
+                if (refs[i].index == e1) {
+                    i1 = i;
+                    ++count1;
+                } else if (refs[i].index == e2) {
+                    i2 = i;
+                    ++count2;
+                }
+            if (count1 == 0 && count2 == 0)
+                continue;
+            consecutive = count1 == 1 && count2 == 1 && (refs[i1].orientation == F || refs[i1].orientation == R) &&
+                (refs[i2].orientation == F || refs[i2].orientation == R);
+            const bool toward = consecutive && (refs[i1].orientation == F) != flip1;
+            consecutive = consecutive && i2 == (toward ? (i1 + 1) % n : (i1 + n - 1) % n) &&
+                ((refs[i2].orientation == F) != flip2) == toward;
+            uses.push_back({w, i1, i2});
+        }
+        if (!consecutive || uses.empty())
+            continue;
+
+        const std::pair<double, double> d1 = b.m_curves_3d[x.curve_3d_index].domain();
+        const std::pair<double, double> d2 = b.m_curves_3d[y.curve_3d_index].domain();
+        NurbsCurve curve;
+        if (!joined_curve(b.m_curves_3d[x.curve_3d_index], b.m_curves_3d[y.curve_3d_index], flip1, flip2, d1, d2, tolerance, curve))
+            continue;
+        std::vector<BRepCurveOnSurface> pcurves;
+        std::vector<NurbsCurve> curves_2d;
+        for (const BRepCurveOnSurface& p : x.pcurves) {
+            const auto q = std::find_if(y.pcurves.begin(), y.pcurves.end(), [&](const BRepCurveOnSurface& c) { return c.surface_index == p.surface_index; });
+            if (q == y.pcurves.end() || (p.curve_2d_index_2 < 0) != (q->curve_2d_index_2 < 0))
+                break;
+            BRepCurveOnSurface joined{p.surface_index, -1, -1};
+            for (bool second : {false, true}) {
+                if (second && p.curve_2d_index_2 < 0)
+                    continue;
+                const int a = second != flip1 && p.curve_2d_index_2 >= 0 ? p.curve_2d_index_2 : p.curve_2d_index;
+                const int c = second != flip2 && q->curve_2d_index_2 >= 0 ? q->curve_2d_index_2 : q->curve_2d_index;
+                NurbsCurve pcurve;
+                if (!joined_curve(b.m_curves_2d[a], b.m_curves_2d[c], flip1, flip2, d1, d2, tolerance, pcurve))
+                    break;
+                (second ? joined.curve_2d_index_2 : joined.curve_2d_index) = (int)(b.m_curves_2d.size() + curves_2d.size());
+                curves_2d.push_back(pcurve);
+            }
+            if (joined.curve_2d_index < 0 || (p.curve_2d_index_2 >= 0 && joined.curve_2d_index_2 < 0))
+                break;
+            pcurves.push_back(joined);
+        }
+        if (pcurves.size() != x.pcurves.size())
+            continue;
+
+        for (int e : {e1, e2}) {
+            stale_3d[b.m_edges[e].curve_3d_index] = true;
+            for (const BRepCurveOnSurface& p : b.m_edges[e].pcurves)
+                for (int index : {p.curve_2d_index, p.curve_2d_index_2})
+                    if (index >= 0)
+                        stale_2d[index] = true;
+        }
+        for (const std::array<int, 3>& use : uses) {
+            std::vector<BRepRef>& refs = b.m_wires[use[0]].edges;
+            const bool toward = (refs[use[1]].orientation == F) != flip1;
+            refs[use[1]] = {e1, toward ? F : R};
+            refs.erase(refs.begin() + use[2]);
+        }
+        x.start_vertex = flip1 ? x.end_vertex : x.start_vertex;
+        x.end_vertex = flip2 ? y.start_vertex : y.end_vertex;
+        x.tolerance = std::max(x.tolerance, y.tolerance);
+        x.curve_3d_index = b.add_curve_3d(curve);
+        x.pcurves = pcurves;
+        b.m_curves_2d.insert(b.m_curves_2d.end(), curves_2d.begin(), curves_2d.end());
+        stale_3d.push_back(false);
+        stale_2d.resize(b.m_curves_2d.size(), false);
+        dropped_edge[e2] = true;
+        dropped_vertex[v] = true;
+    }
+
+    const auto remap = [](auto& items, const std::vector<bool>& drop) {
+        std::vector<int> index(items.size(), -1);
+        std::remove_reference_t<decltype(items)> kept;
+        for (size_t i = 0; i < items.size(); ++i)
+            if (!drop[i]) {
+                index[i] = (int)kept.size();
+                kept.push_back(std::move(items[i]));
+            }
+        items = std::move(kept);
+        return index;
+    };
+    for (int e = 0; e < b.edge_count(); ++e) {
+        if (dropped_edge[e])
+            continue;
+        if (b.m_edges[e].curve_3d_index >= 0)
+            stale_3d[b.m_edges[e].curve_3d_index] = false;
+        for (const BRepCurveOnSurface& p : b.m_edges[e].pcurves)
+            for (int index : {p.curve_2d_index, p.curve_2d_index_2})
+                if (index >= 0)
+                    stale_2d[index] = false;
+    }
+    const std::vector<int> curve_3d = remap(b.m_curves_3d, stale_3d);
+    const std::vector<int> curve_2d = remap(b.m_curves_2d, stale_2d);
+    const std::vector<int> vertex = remap(b.m_vertices, dropped_vertex);
+    const std::vector<int> edge = remap(b.m_edges, dropped_edge);
+    for (BRepEdge& e : b.m_edges) {
+        e.start_vertex = vertex[e.start_vertex];
+        e.end_vertex = vertex[e.end_vertex];
+        if (e.curve_3d_index >= 0)
+            e.curve_3d_index = curve_3d[e.curve_3d_index];
+        for (BRepCurveOnSurface& p : e.pcurves)
+            for (int* index : {&p.curve_2d_index, &p.curve_2d_index_2})
+                if (*index >= 0)
+                    *index = curve_2d[*index];
+    }
+    for (BRepWire& w : b.m_wires)
+        for (BRepRef& r : w.edges)
+            r.index = edge[r.index];
+
+    return b;
+}
+
 bool empty(const BRep& brep) {
     return brep.m_faces.empty() && brep.m_vertices.empty() && brep.m_edges.empty()
         && brep.m_wires.empty() && brep.m_shells.empty() && brep.m_solids.empty();
@@ -821,7 +988,7 @@ BRep apply(const BRep& first, const BRep& second, Operation operation, double to
     select(selected, b, a, true, operation, tolerance);
     boolean_progress("assemble");
     try {
-        BRep result = brep_assemble::assemble(selected, tolerance);
+        BRep result = joined_edges(brep_assemble::assemble(selected, tolerance), tolerance);
         boolean_progress("complete");
         return result;
     } catch (const brep_assemble::TopologyError& error) {
