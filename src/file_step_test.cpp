@@ -1032,6 +1032,7 @@ MINI_TEST("FileStep", "BRep Write Pcurves Round Trip Exact") {
     MINI_CHECK(file_step::write_file_step_brep(BRep::create_cylinder(1.0, 2.0), first));
     std::ifstream input(first);
     const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();
     MINI_CHECK(text.find("SEAM_CURVE(") != std::string::npos && text.find("PCURVE(") != std::string::npos);
     const auto once = file_step::read_file_step_breps(first);
     MINI_CHECK(once.size() == 1 && file_step::write_file_step_brep(once[0], second));
