@@ -2336,7 +2336,8 @@ static Point chart_eval(const AnFace& an, const Window& w, const Point& q) {
 }
 
 /// Edges of a loop shifted by whole turns so each meets the one before, from an edge leaving a pole or apex on: the angle is free there, so the loop closes through it.
-static void align_at_poles(Loop& lp, const AnFace& an) {
+/// An outer loop runs counterclockwise.
+static void align_at_poles(Loop& lp, const AnFace& an, bool outer) {
 
     const size_t count = lp.edges.size();
     const auto start = [&](size_t k) { return lp.edges[k].reversed ? lp.edges[k].uv.back() : lp.edges[k].uv.front(); };
@@ -2354,6 +2355,32 @@ static void align_at_poles(Loop& lp, const AnFace& an) {
         for (Point& p : lp.edges[k].uv)
             p[0] += n * 2.0 * PI;
     }
+
+    // An outer loop through two poles (a lune) bounds the side on its left: the stretch from its last pole moves by a turn while the loop runs clockwise.
+    size_t last = first;
+
+    for (size_t i = 1; first < count && i < count; i++)
+        last = at_pole((first + i) % count) ? (first + i) % count : last;
+
+    const auto area = [&]() {
+        double a = 0.0;
+        Point before = lp.edges.back().reversed ? lp.edges.back().uv.front() : lp.edges.back().uv.back();
+
+        for (const LoopEdge& le : lp.edges)
+            for (size_t m = 0; m < le.uv.size(); m++) {
+                const Point& p = le.uv[le.reversed ? le.uv.size() - 1 - m : m];
+                a += before[0] * p[1] - p[0] * before[1];
+                before = p;
+            }
+
+        return a;
+    };
+
+    for (double turn : {2.0 * PI, -4.0 * PI})
+        if (outer && last != first && area() < 0.0)
+            for (size_t k = last; k != first; k = (k + 1) % count)
+                for (Point& p : lp.edges[k].uv)
+                    p[0] += turn;
 }
 
 /// Chart polyline of every edge of a loop, shifted by whole periods so consecutive edges of a projected loop meet, except at a pole or apex where u is free.
@@ -2848,6 +2875,33 @@ static NurbsCurve fit_pcurve(const NurbsCurve& world, const NurbsSurface& srf, c
     return line;
 }
 
+/// Bounds of a surface's partial derivatives as BSplSLib::Resolution takes them: its degree times the largest step between control points
+/// over the knot span that step covers, by the spread of its weights.
+static std::array<double, 2> partial_bounds(const NurbsSurface& s) {
+
+    std::array<double, 2> bound = {0.0, 0.0};
+    double low = INFINITY, high = 0.0;
+
+    for (int i = 0; i < s.cv_count(0); i++)
+        for (int j = 0; j < s.cv_count(1); j++) {
+            low = std::min(low, s.weight(i, j));
+            high = std::max(high, s.weight(i, j));
+        }
+
+    for (int dir = 0; dir < 2; dir++)
+        for (int i = 0; i + 1 < s.cv_count(dir); i++)
+            for (int j = 0; j < s.cv_count(1 - dir); j++) {
+                const double span = s.nurbsknot(dir, i + s.degree(dir)) - s.nurbsknot(dir, i);
+                const Point p = dir == 0 ? s.get_cv(i, j) : s.get_cv(j, i);
+                const Point q = dir == 0 ? s.get_cv(i + 1, j) : s.get_cv(j, i + 1);
+
+                if (span > 0.0)
+                    bound[dir] = std::max(bound[dir], s.degree(dir) * p.distance(q) / span * high / low);
+            }
+
+    return bound;
+}
+
 /// Closest uv of p on a surface by Newton from a guess, on the guess's branch of the periods tau_u, tau_v (0 when open).
 static Point newton_uv(const NurbsSurface& srf, const Point& p, const Point& guess, double tau_u, double tau_v) {
 
@@ -2861,13 +2915,25 @@ static Point newton_uv(const NurbsSurface& srf, const Point& p, const Point& gue
     for (int it = 0; it < 50; it++) {
         std::array<xyz, 6> s;
 
-        if (!srf.jet(u, v, 1, s))
+        if (!srf.jet(u, v, 2, s))
             break;
 
+        // Gauss-Newton for four steps, then Newton on the squared distance (its Hessian takes the second partials, so a point off the
+        // surface converges quadratically where Gauss-Newton crawls), Gauss-Newton again where that Hessian is not positive.
         const xyz r = s[0] - xyz(p);
-        const double a = s[2].dot(s[2]);
-        const double b = s[2].dot(s[1]);
-        const double d = s[1].dot(s[1]);
+        const xyz& pu = s[3];
+        const xyz& pv = s[1];
+        double a = pu.dot(pu);
+        double b = pu.dot(pv);
+        double d = pv.dot(pv);
+        const double na = a + s[5].dot(r), nb = b + s[4].dot(r), nd = d + s[2].dot(r);
+
+        if (it >= 4 && na > 0.0 && nd > 0.0 && na * nd - nb * nb > 1e-12 * na * nd) {
+            a = na;
+            b = nb;
+            d = nd;
+        }
+
         const double det = a * d - b * b;
 
         if (!(a > 0.0 || d > 0.0))
@@ -2875,21 +2941,21 @@ static Point newton_uv(const NurbsSurface& srf, const Point& p, const Point& gue
 
         // Where one partial vanishes (a collapsed boundary) the step runs along the other.
         const bool singular = !(det > 1e-24 * a * d) || !(std::min(a, d) > 0.0);
-        double nu = singular ? (a > 0.0 ? u - s[2].dot(r) / a : u) : u - (d * s[2].dot(r) - b * s[1].dot(r)) / det;
-        double nv = singular ? (a > 0.0 ? v : v - s[1].dot(r) / d) : v - (a * s[1].dot(r) - b * s[2].dot(r)) / det;
+        double nu = singular ? (a > 0.0 ? u - pu.dot(r) / a : u) : u - (d * pu.dot(r) - b * pv.dot(r)) / det;
+        double nv = singular ? (a > 0.0 ? v : v - pv.dot(r) / d) : v - (a * pv.dot(r) - b * pu.dot(r)) / det;
 
         // A step leaving the domain stops on its boundary, the other coordinate then minimised along it.
         const bool out_u = nu < du.first || nu > du.second;
 
         if (out_u && d > 0.0)
-            nv = v - s[1].dot(r) / d;
+            nv = v - pv.dot(r) / d;
 
         if ((nv < dv.first || nv > dv.second) && !out_u && a > 0.0)
-            nu = u - s[2].dot(r) / a;
+            nu = u - pu.dot(r) / a;
 
         nu = std::clamp(nu, du.first, du.second);
         nv = std::clamp(nv, dv.first, dv.second);
-        const bool done = std::abs(nu - u) <= 1e-14 * (du.second - du.first) && std::abs(nv - v) <= 1e-14 * (dv.second - dv.first);
+        const bool done = std::abs(nu - u) <= 1e-12 * (du.second - du.first) && std::abs(nv - v) <= 1e-12 * (dv.second - dv.first);
         u = nu;
         v = nv;
 
@@ -3081,26 +3147,76 @@ public:
                 }
             }
 
-        std::vector<BRepRef> wires;
+        // Loops running counterclockwise each bound a face of their own with the clockwise loops inside them (ShapeFix_Face::FixSplitFace).
+        std::vector<std::vector<Point>> polygons;
+        std::vector<double> areas;
 
         for (const std::vector<PendingEdge>& lp : loops) {
-            std::vector<BRepRef> refs;
+            polygons.emplace_back();
+            areas.push_back(0.0);
 
-            for (const PendingEdge& pe : lp) {
-                NurbsCurve c = pe.c2d;
+            for (const PendingEdge& pe : lp)
+                for (int k = 0; k < 16; k++)
+                    polygons.back().push_back(pe.c2d.point_at(pe.c2d.domain_start() + (pe.c2d.domain_end() - pe.c2d.domain_start()) * k / 16.0));
 
-                if (!pe.reversed || c.reverse())
-                    attach_pcurve(pe.edge, si, brep.add_curve_2d(c), pe.reversed);
-
-                refs.push_back({pe.edge, pe.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
+            for (size_t k = 0; k < polygons.back().size(); k++) {
+                const Point& a = polygons.back()[k];
+                const Point& b = polygons.back()[(k + 1) % polygons.back().size()];
+                areas.back() += a[0] * b[1] - b[0] * a[1];
             }
-
-            if (!refs.empty())
-                wires.push_back({brep.add_wire(refs), BRepOrientation::Forward});
         }
 
-        const int fi = brep.add_face(si, wires);
-        face_refs.push_back({fi, reversed_face ? BRepOrientation::Reversed : BRepOrientation::Forward});
+        const auto inside = [](const std::vector<Point>& polygon, const Point& p) {
+            bool in = false;
+
+            for (size_t k = 0, j = polygon.size() - 1; k < polygon.size(); j = k++)
+                if ((polygon[k][1] > p[1]) != (polygon[j][1] > p[1]) &&
+                    p[0] < polygon[j][0] + (polygon[k][0] - polygon[j][0]) * (p[1] - polygon[j][1]) / (polygon[k][1] - polygon[j][1]))
+                    in = !in;
+
+            return in;
+        };
+        std::vector<size_t> outers = {0};
+
+        for (size_t k = 1; k < loops.size(); k++)
+            if (areas[k] > 0.0 && !inside(polygons[0], polygons[k][0]))
+                outers.push_back(k);
+
+        // Each loop's face: its own when it bounds one, else the first that holds it, else the first.
+        std::vector<size_t> owner(loops.size(), 0);
+
+        for (size_t k = 0; k < loops.size(); k++)
+            for (size_t o : outers)
+                if (o == k || (outers.size() > 1 && std::find(outers.begin(), outers.end(), k) == outers.end() && inside(polygons[o], polygons[k][0]))) {
+                    owner[k] = o;
+                    break;
+                }
+
+        for (size_t o : outers) {
+            std::vector<BRepRef> wires;
+
+            for (size_t k = 0; k < loops.size(); k++) {
+                if (owner[k] != o)
+                    continue;
+
+                std::vector<BRepRef> refs;
+
+                for (const PendingEdge& pe : loops[k]) {
+                    NurbsCurve c = pe.c2d;
+
+                    if (!pe.reversed || c.reverse())
+                        attach_pcurve(pe.edge, si, brep.add_curve_2d(c), pe.reversed);
+
+                    refs.push_back({pe.edge, pe.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
+                }
+
+                if (!refs.empty())
+                    wires.insert(k == o ? wires.begin() : wires.end(), {brep.add_wire(refs), BRepOrientation::Forward});
+            }
+
+            const int fi = brep.add_face(si, wires);
+            face_refs.push_back({fi, reversed_face ? BRepOrientation::Reversed : BRepOrientation::Forward});
+        }
     }
 
     /// Return the brep vertex of a VERTEX_POINT, creating it once.
@@ -3382,7 +3498,8 @@ public:
                 double lo = world.domain_start() + (world.domain_end() - world.domain_start()) * i / n;
                 double hi = world.domain_start() + (world.domain_end() - world.domain_start()) * (i + 1) / n;
 
-                if (!(off(lo) * off(hi) < 0.0) || std::abs(off(lo) - off(hi)) > PI)
+                // A vertex on the angle, off it by rounding, is no crossing.
+                if (!(off(lo) * off(hi) < 0.0) || std::abs(off(lo) - off(hi)) > PI || std::min(std::abs(off(lo)), std::abs(off(hi))) <= 1e-12)
                     continue;
 
                 for (int it = 0; it < 80 && std::nextafter(lo, hi) < hi; it++)
@@ -3521,29 +3638,94 @@ public:
         if (!shared && !b.edges.empty())
             split_at_angle(in_b ? a : b, an, best);
 
+        const auto on_seam = [&](const LoopEdge& le) { return std::abs(std::remainder(angle(start(le)) - best, 2.0 * PI)) * an.radius <= tolerance; };
+        const size_t i = std::find_if(a.edges.begin(), a.edges.end(), on_seam) - a.edges.begin();
         // The material lies left of a loop on the surface, so the cap of a loop turning up in s holds the north pole.
-        const size_t i = std::find_if(a.edges.begin(), a.edges.end(), [&](const LoopEdge& le) { return std::abs(std::remainder(angle(start(le)) - best, 2.0 * PI)) * an.radius <= tolerance; }) - a.edges.begin();
         const Point pole = an_eval(an, best, turn > 0.0 ? PI_2 : -PI_2);
-        const size_t j = std::find_if(b.edges.begin(), b.edges.end(), [&](const LoopEdge& le) { return std::abs(std::remainder(angle(start(le)) - best, 2.0 * PI)) * an.radius <= tolerance; }) - b.edges.begin();
+        const size_t j = std::find_if(b.edges.begin(), b.edges.end(), on_seam) - b.edges.begin();
 
         if (i == a.edges.size() || (!b.edges.empty() && j == b.edges.size()))
             return;
 
-        LoopEdge seam;
-        seam.edge_idx = brep.add_edge(brep.add_curve_3d(seam_curve(an, best, foot(a.edges[i]), b.edges.empty() ? pole : foot(b.edges[j]))), start(a.edges[i]),
-                                      b.edges.empty() ? brep.add_vertex(pole) : start(b.edges[j]));
+        // The other loops are split where they cross the seam, as ShapeFix_ComposeShell cuts every wire at it; a hole met there twice
+        // between the joined loops is cut in two halves the seam runs to and on from, its stretch inside the hole dropped.
+        const auto height = [&](const Point& p) { return std::get<1>(an_st_of(an, p)); };
+        const Point pa = foot(a.edges[i]);
+        const Point pb = b.edges.empty() ? pole : foot(b.edges[j]);
+        std::vector<LoopEdge> halves[2];
+        std::vector<Point> cuts = {pa, pb};
+        std::vector<int> ends = {start(a.edges[i]), b.edges.empty() ? brep.add_vertex(pole) : start(b.edges[j])};
+
+        for (size_t k = 0; k < loops.size(); k++) {
+            if (std::find(around.begin(), around.end(), k) != around.end())
+                continue;
+
+            Loop& lp = loops[k];
+
+            for (size_t count = 0; count != lp.edges.size();) {
+                count = lp.edges.size();
+                split_at_angle(lp, an, best);
+            }
+
+            std::vector<size_t> at_seam;
+
+            for (size_t e = 0; e < lp.edges.size(); e++)
+                if (on_seam(lp.edges[e]))
+                    at_seam.push_back(e);
+
+            if (b.edges.empty() || cuts.size() > 2 || at_seam.size() != 2)
+                continue;
+
+            const Point p0 = brep.m_vertices[start(lp.edges[at_seam[0]])].point;
+            const Point p1 = brep.m_vertices[start(lp.edges[at_seam[1]])].point;
+
+            if (!((height(p0) - height(pa)) * (height(p0) - height(pb)) < 0.0 && (height(p1) - height(pa)) * (height(p1) - height(pb)) < 0.0))
+                continue;
+
+            const bool flip = std::abs(height(p1) - height(pa)) < std::abs(height(p0) - height(pa));
+            const size_t near = at_seam[flip], far = at_seam[!flip];
+            std::rotate(lp.edges.begin(), lp.edges.begin() + near, lp.edges.end());
+            const size_t split = (far + lp.edges.size() - near) % lp.edges.size();
+            halves[0].assign(lp.edges.begin(), lp.edges.begin() + split);
+            halves[1].assign(lp.edges.begin() + split, lp.edges.end());
+            cuts.insert(cuts.begin() + 1, {flip ? p1 : p0, flip ? p0 : p1});
+            ends.insert(ends.begin() + 1, {start(lp.edges[0]), start(lp.edges[split])});
+            lp.edges.clear();
+        }
+
+        std::vector<LoopEdge> seams;
+
+        for (size_t k = 0; k < cuts.size(); k += 2) {
+            LoopEdge seam;
+            seam.edge_idx = brep.add_edge(brep.add_curve_3d(seam_curve(an, best, cuts[k], cuts[k + 1])), ends[k], ends[k + 1]);
+            seams.push_back(seam);
+        }
+
         std::vector<LoopEdge> uses(a.edges.begin() + i, a.edges.end());
         uses.insert(uses.end(), a.edges.begin(), a.edges.begin() + i);
-        uses.push_back(seam);
+
+        for (size_t k = 0; k < seams.size(); k++) {
+            uses.push_back(seams[k]);
+
+            if (k == 0)
+                uses.insert(uses.end(), halves[0].begin(), halves[0].end());
+        }
+
         uses.insert(uses.end(), b.edges.begin() + j, b.edges.end());
         uses.insert(uses.end(), b.edges.begin(), b.edges.begin() + j);
-        seam.reversed = true;
 
-        // A cap starts down the seam from the pole, so its two uses lie a turn apart and the degenerated edge closes them.
-        if (b.edges.empty())
-            uses.insert(uses.begin(), seam);
-        else
-            uses.push_back(seam);
+        for (size_t k = seams.size(); k-- > 0;) {
+            seams[k].reversed = true;
+
+            // A cap starts down the seam from the pole, so its two uses lie a turn apart and the degenerated edge closes them.
+            if (b.edges.empty())
+                uses.insert(uses.begin(), seams[k]);
+            else
+                uses.push_back(seams[k]);
+
+            if (k == 1)
+                uses.insert(uses.end(), halves[1].begin(), halves[1].end());
+        }
 
         Loop joined;
         joined.is_outer = joined.projected = true;
@@ -3554,12 +3736,14 @@ public:
         }
 
         if (!b.edges.empty())
-            loops.erase(loops.begin() + around[1]);
+            loops[around[1]].edges.clear();
 
         loops[around[0]] = joined;
 
         for (Loop& lp : loops)
             lp.is_outer = &lp == &loops[around[0]];
+
+        loops.erase(std::remove_if(loops.begin(), loops.end(), [](const Loop& lp) { return lp.edges.empty(); }), loops.end());
     }
 
     /// Loops of an analytic face, each edge use with canonical (s, t) samples of its curve unwrapped along the traversal; inner loops shifted by whole turns onto the outer one.
@@ -3586,7 +3770,7 @@ public:
                     lp.edges.push_back(le);
                 }
 
-            align_at_poles(lp, an);
+            align_at_poles(lp, an, lp.is_outer || bound_refs.size() == 1);
             loops.push_back(lp);
         }
 
@@ -3927,7 +4111,7 @@ public:
         pick_outer_loop(loops);
     }
 
-    /// Pending edges of a loop, with a degenerated edge across each axis-aligned uv gap at one vertex that is certified to collapse onto it (a pole).
+    /// Pending edges of a loop, with a degenerated edge across each uv gap at one vertex whose image stays within its reach.
     std::vector<PendingEdge> projected_pending(const Loop& loop, const NurbsSurface& support) {
         const auto original = pending_of(loop);
         std::vector<PendingEdge> result;
@@ -3944,17 +4128,22 @@ public:
             if (vertex != next_vertex)
                 continue;
             const Point a = current.c2d.point_at_end(), b = next.c2d.point_at_start();
-            if ((a[0] != b[0]) == (a[1] != b[1]) || a.distance(b) <= 1e-9 * (1.0 + std::abs(a[0]) + std::abs(a[1])))
+            if (a.distance(b) <= 1e-9 * (1.0 + std::abs(a[0]) + std::abs(a[1])))
                 continue;
-            const NurbsCurve bridge = polyline_nurbs({a, b}, 2);
-            NurbsCurve world(3, false, 2, 2);
-            world.m_nurbsknot = {0, 1};
+            // A gap whose image stays within the vertex's reach, the tolerance its edges carry or the distance of their ends from it, takes a
+            // degenerated edge where that image spans under a tenth of the length the surface's partial bounds give the gap
+            // (ShapeFix_Wire::FixLacking with ShapeAnalysis_Surface::IsDegenerated at ratio 10): a pole, or a vertex off its curves; an
+            // overlap of two pcurves along the surface keeps its gap, the vertex's tolerance covering it.
             const Point& point = brep.m_vertices.at(vertex).point;
-            if (!world.set_cv(0, point) || !world.set_cv(1, point) ||
-                curve_surface_intersection::same_parameter(world, bridge, support, tolerance) !=
-                    curve_surface_intersection::ParameterMatch::Matched)
-                continue;
-            result.push_back({brep.add_edge(-1, vertex, vertex), false, bridge});
+            const Point pa = Point(support.point(a[0], a[1])), pb = Point(support.point(b[0], b[1]));
+            const Point pm = Point(support.point(0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])));
+            const double allowed = std::max({tolerance, first_edge.tolerance, second_edge.tolerance, pa.distance(point), pb.distance(point)}) * (1.0 + 1e-9);
+            bool collapsed = true;
+            for (int k = 1; k < 8 && collapsed; ++k)
+                collapsed = Point(support.point(a[0] + (b[0] - a[0]) * k / 8, a[1] + (b[1] - a[1]) * k / 8)).distance(point) <= allowed;
+            const std::array<double, 2> bound = partial_bounds(support);
+            if (collapsed && std::hypot((b[0] - a[0]) * bound[0], (b[1] - a[1]) * bound[1]) > 10.0 * std::max({pa.distance(pb), pm.distance(pa), pm.distance(pb)}))
+                result.push_back({brep.add_edge(-1, vertex, vertex), false, polyline_nurbs({a, b}, 2)});
         }
         return result;
     }
@@ -4821,6 +5010,106 @@ std::vector<NurbsSurfaceTrimmed> read_file_step_nurbssurfaces_trimmed(const std:
     return out;
 }
 
+/// The solid model of an entity: MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS or SHELL_BASED_SURFACE_MODEL; none otherwise.
+static const StepSubEntity* model_of(const StepReader& r, int id) {
+
+    const StepEntity* e = r.get(id);
+
+    for (const char* type : {"MANIFOLD_SOLID_BREP", "BREP_WITH_VOIDS", "SHELL_BASED_SURFACE_MODEL"})
+        if (const StepSubEntity* sub = e ? e->find(type) : nullptr)
+            return sub;
+
+    return nullptr;
+}
+
+/// Solid models with their placements, as STEPControl_ActorRead transfers an assembly: from each product no
+/// NEXT_ASSEMBLY_USAGE_OCCURRENCE uses down its tree, the models of its shape representations (and of those a
+/// SHAPE_REPRESENTATION_RELATIONSHIP joins them to), each child moved by the ITEM_DEFINED_TRANSFORMATION of its
+/// CONTEXT_DEPENDENT_SHAPE_REPRESENTATION, from the axis in the child's representation to the axis in the parent's.
+/// Without an assembly every model once, in file order, unmoved.
+static std::vector<std::pair<int, std::optional<Xform>>> placed_models(StepReader& r, const std::vector<int>& order) {
+
+    std::vector<std::pair<int, std::optional<Xform>>> out;
+    std::map<int, int> shape_of; // PRODUCT_DEFINITION_SHAPE by the product definition or occurrence it defines.
+    std::map<int, std::vector<int>> reps; // Representations by PRODUCT_DEFINITION_SHAPE.
+    std::map<int, std::vector<int>> joined; // Representations a relationship without transformation joins.
+    std::map<int, int> placement_of; // Representation relationship by the PRODUCT_DEFINITION_SHAPE of an occurrence.
+    std::vector<std::array<int, 3>> uses; // Occurrence, parent and child product definitions.
+
+    for (int id : order) {
+        const StepEntity* e = r.get(id);
+        const std::vector<int> refs = all_refs(e->parts.front().params);
+
+        if (model_of(r, id))
+            out.push_back({id, std::nullopt});
+        else if (e->has("PRODUCT_DEFINITION_SHAPE") && !refs.empty())
+            shape_of[refs[0]] = id;
+        else if (e->has("SHAPE_DEFINITION_REPRESENTATION") && refs.size() >= 2)
+            reps[refs[0]].push_back(refs[1]);
+        else if (e->has("NEXT_ASSEMBLY_USAGE_OCCURRENCE") && refs.size() >= 2)
+            uses.push_back({id, refs[0], refs[1]});
+        else if (e->has("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION") && refs.size() >= 2)
+            placement_of[refs[1]] = refs[0];
+        else if (e->has("SHAPE_REPRESENTATION_RELATIONSHIP") && !e->has("REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION") && refs.size() >= 2) {
+            joined[refs[0]].push_back(refs[1]);
+            joined[refs[1]].push_back(refs[0]);
+        }
+    }
+
+    if (uses.empty())
+        return out;
+
+    // The representations of a product definition, closed under the joining relationships.
+    const auto closure = [&](int pd) {
+        std::vector<int> found = shape_of.count(pd) ? reps[shape_of[pd]] : std::vector<int>();
+
+        for (size_t k = 0; k < found.size(); k++)
+            for (int next : joined[found[k]])
+                if (std::find(found.begin(), found.end(), next) == found.end())
+                    found.push_back(next);
+
+        return found;
+    };
+    const auto frame = [&](int axis) {
+        const Axis2 a = r.get_axis2(axis);
+        return std::pair<Xform, Xform>{Xform::frame_to_world(a.origin, a.ax, a.ay, a.az), Xform::world_to_frame(a.origin, a.ax, a.ay, a.az)};
+    };
+    const std::vector<std::pair<int, std::optional<Xform>>> unplaced = out;
+    out.clear();
+    std::function<void(int, const Xform&, int)> visit = [&](int pd, const Xform& placement, int depth) {
+        for (int rep : closure(pd))
+            for (int item : list_refs(r.get(rep) ? r.get(rep)->parts.front().params : std::vector<StepParam>()))
+                if (model_of(r, item))
+                    out.push_back({item, placement});
+
+        for (const auto& [occurrence, parent, child] : uses) {
+            const auto relation = parent == pd && depth < 64 && shape_of.count(occurrence) ? placement_of.find(shape_of[occurrence]) : placement_of.end();
+            const StepEntity* rel = relation != placement_of.end() ? r.get(relation->second) : nullptr;
+            const StepSubEntity* related = rel ? rel->find("REPRESENTATION_RELATIONSHIP") : nullptr;
+            const StepSubEntity* with = rel ? rel->find("REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION") : nullptr;
+            const StepEntity* transform = with ? r.get(first_ref(with->params)) : nullptr;
+            const std::vector<int> sides = related ? all_refs(related->params) : std::vector<int>();
+            const std::vector<int> axes = transform && transform->has("ITEM_DEFINED_TRANSFORMATION") ? all_refs(transform->parts.front().params) : std::vector<int>();
+
+            if (sides.size() < 2 || axes.size() < 2)
+                continue;
+
+            const std::vector<int> mine = closure(child);
+            const bool first_is_child = std::find(mine.begin(), mine.end(), sides[0]) != mine.end();
+            const int from = first_is_child ? axes[0] : axes[1];
+            const int to = first_is_child ? axes[1] : axes[0];
+            visit(child, placement * frame(to).first * frame(from).second, depth + 1);
+        }
+    };
+
+    for (const auto& [pd, shape] : shape_of)
+        if (std::none_of(uses.begin(), uses.end(), [&](const std::array<int, 3>& use) { return use[2] == pd; }) &&
+            (reps.count(shape) || std::any_of(uses.begin(), uses.end(), [&](const std::array<int, 3>& use) { return use[1] == pd; })))
+            visit(pd, Xform::identity(), 0);
+
+    return out.empty() ? unplaced : out;
+}
+
 std::vector<BRep> read_file_step_breps(const std::string& filepath, double tolerance, std::vector<StepIds>* ids) {
 
     if (!std::isfinite(tolerance) || tolerance <= 0)
@@ -4835,47 +5124,70 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath, double toler
 
     std::sort(order.begin(), order.end());
 
-    std::vector<int> shell_refs;
-
-    for (int id : order) {
-        const StepEntity* e = r.get(id);
-        const StepSubEntity* root = e->find("MANIFOLD_SOLID_BREP");
-
-        if (!root)
-            root = e->find("BREP_WITH_VOIDS");
-
-        if (!root)
-            root = e->find("SHELL_BASED_SURFACE_MODEL");
-
-        if (!root)
-            continue;
-
-        for (int sh : all_refs(root->params))
-            shell_refs.push_back(sh);
-
-        for (int sh : list_refs(root->params))
-            shell_refs.push_back(sh);
-    }
-
+    std::map<int, std::vector<std::pair<BRep, StepIds>>> built;
     std::vector<BRep> out;
 
-    for (int shell_ref : shell_refs) {
-        const StepEntity* sh = r.get(shell_ref);
-        const StepSubEntity* os = sh ? sh->find("ORIENTED_CLOSED_SHELL") : nullptr;
-        const int inner = os ? first_ref(os->params) : -1;
-        for (const std::vector<int>& faces : shell_parts(r, inner >= 0 ? inner : shell_ref)) {
-            BRepBuilder builder(r, tolerance);
-            StepIds part;
-            BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref, faces, part);
+    for (const auto& [model, placement] : placed_models(r, order)) {
+        if (!built.count(model)) {
+            const StepSubEntity* root = model_of(r, model);
+            std::vector<int> shell_refs = all_refs(root->params);
 
-            if (b.m_faces.empty())
-                continue;
+            for (int sh : list_refs(root->params))
+                shell_refs.push_back(sh);
 
-            out.push_back(std::move(b));
+            for (int shell_ref : shell_refs) {
+                const StepEntity* sh = r.get(shell_ref);
+                const StepSubEntity* os = sh ? sh->find("ORIENTED_CLOSED_SHELL") : nullptr;
+                const int inner = os ? first_ref(os->params) : -1;
+
+                for (const std::vector<int>& faces : shell_parts(r, inner >= 0 ? inner : shell_ref)) {
+                    BRepBuilder builder(r, tolerance);
+                    StepIds part;
+                    BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref, faces, part);
+
+                    if (!b.m_faces.empty())
+                        built[model].push_back({std::move(b), std::move(part)});
+                }
+            }
+        }
+
+        for (const auto& [b, part] : built[model]) {
+            out.push_back(placement ? b.transformed(*placement) : b);
 
             if (ids)
-                ids->push_back(std::move(part));
+                ids->push_back(part);
         }
+    }
+
+    // A GEOMETRIC_CURVE_SET or GEOMETRIC_SET as a BRep without faces: its points as vertices, its B-spline curves as edges (as
+    // STEPControl_ActorRead transfers it to a compound of vertices and edges).
+    for (int id : order) {
+        const StepEntity* e = r.get(id);
+        const StepSubEntity* set = e->find("GEOMETRIC_CURVE_SET");
+
+        if (!set)
+            set = e->find("GEOMETRIC_SET");
+
+        if (!set)
+            continue;
+
+        BRep b;
+        b.name = "step_curves";
+
+        for (int element : list_refs(set->params)) {
+            const StepEntity* item = r.get(element);
+            const NurbsCurve curve = item && !item->has("CARTESIAN_POINT") ? r.get_nurbs_curve(element) : NurbsCurve();
+
+            if (item && item->has("CARTESIAN_POINT"))
+                b.add_vertex(r.get_point(element));
+            else if (curve.is_valid())
+                b.add_edge(b.add_curve_3d(curve), b.add_vertex(curve.point_at_start()), b.add_vertex(curve.point_at_end()));
+        }
+
+        out.push_back(std::move(b));
+
+        if (ids)
+            ids->push_back({});
     }
 
     return out;

@@ -1062,6 +1062,24 @@ MINI_TEST("FileStep", "BRep Read Seamless Loops Seam At Angle Nearest Zero") {
     MINI_CHECK(ids[0].faces == std::vector<int>({25, 46, 34}));
     MINI_CHECK(wire == std::vector<int>({-16, -16, 0, 0, 8}));
 }
+MINI_TEST("FileStep", "BRep Read Hole Across The Seam Joins The Loop") {
+    // a window across the seam angle 0.3, closed by a face of its own: its arcs are split on the seam, which runs up to it and on from it
+    const std::string path = serialization_path("seamless_window.step");
+    std::ofstream(path) << step_fixture("seamless_window.step");
+    std::vector<file_step::StepIds> ids;
+    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    std::filesystem::remove(path);
+    MINI_CHECK(shapes.size() == 1 && shapes[0].is_valid() && shapes[0].is_solid());
+    MINI_CHECK(std::abs(shapes[0].volume_exact() - 2.0 * Tolerance::PI) < 1e-12);
+    MINI_CHECK(step_uncertified_pcurves(shapes[0]) == 0);
+    const auto& side = shapes[0].m_faces[1];
+    std::vector<int> wire;
+    for (const auto& edge : shapes[0].wire_edges(side.wires[0]))
+        wire.push_back(ids[0].edges[edge.index]);
+    std::sort(wire.begin(), wire.end());
+    MINI_CHECK(ids[0].faces == std::vector<int>({25, 89, 34, 82}) && side.wires.size() == 1);
+    MINI_CHECK(wire == std::vector<int>({-64, -64, -53, -53, -16, -16, 0, 0, 0, 0, 8, 58, 69}));
+}
 MINI_TEST("FileStep", "BRep Read Loose Circle On Cone Carries Its Distance") {
     // a circle 1e-4 wider than the cone is 1e-4 cos(semi-angle) from it along the normal
     const auto shapes = step_read_text(step_fixture("loose_cone.step"), "loose_cone.step");
@@ -1083,5 +1101,53 @@ MINI_TEST("FileStep", "BRep Read Entity Ids And Counts") {
     MINI_CHECK(ids[0].edges.size() == shapes[0].m_edges.size());
     MINI_CHECK(std::count(ids[0].edges.begin(), ids[0].edges.end(), 0) == 0);
     MINI_CHECK(counts.at("ADVANCED_FACE") == 5 && counts.at("FACE_SURFACE") == 1);
+}
+MINI_TEST("FileStep", "BRep Read Assembly Places Each Instance") {
+    // the cube placed twice under an assembly, the second turned a quarter about z, as STEPControl_ActorRead transfers it
+    std::string text = step_fixture("senses_cube.step");
+    text.insert(text.rfind("ENDSEC;"),
+        "#900=CARTESIAN_POINT('',(0.,0.,0.));#901=DIRECTION('',(0.,0.,1.));#902=DIRECTION('',(1.,0.,0.));#903=AXIS2_PLACEMENT_3D('',#900,#901,#902);\n"
+        "#904=CARTESIAN_POINT('',(10.,0.,0.));#905=AXIS2_PLACEMENT_3D('',#904,#901,#902);\n"
+        "#906=CARTESIAN_POINT('',(0.,5.,0.));#907=DIRECTION('',(0.,1.,0.));#908=AXIS2_PLACEMENT_3D('',#906,#901,#907);\n"
+        "#910=PRODUCT_DEFINITION('assembly','',$,$);#911=PRODUCT_DEFINITION('cube','',$,$);\n"
+        "#912=PRODUCT_DEFINITION_SHAPE('','',#910);#913=PRODUCT_DEFINITION_SHAPE('','',#911);\n"
+        "#914=SHAPE_REPRESENTATION('',(#903,#905,#908),#143);\n"
+        "#915=SHAPE_DEFINITION_REPRESENTATION(#912,#914);#916=SHAPE_DEFINITION_REPRESENTATION(#913,#144);\n"
+        "#917=NEXT_ASSEMBLY_USAGE_OCCURRENCE('1','','',#910,#911,$);#918=PRODUCT_DEFINITION_SHAPE('','',#917);\n"
+        "#919=ITEM_DEFINED_TRANSFORMATION('','',#903,#905);\n"
+        "#920=(REPRESENTATION_RELATIONSHIP('','',#144,#914)REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#919)SHAPE_REPRESENTATION_RELATIONSHIP());\n"
+        "#921=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#920,#918);\n"
+        "#922=NEXT_ASSEMBLY_USAGE_OCCURRENCE('2','','',#910,#911,$);#923=PRODUCT_DEFINITION_SHAPE('','',#922);\n"
+        "#924=ITEM_DEFINED_TRANSFORMATION('','',#903,#908);\n"
+        "#925=(REPRESENTATION_RELATIONSHIP('','',#144,#914)REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#924)SHAPE_REPRESENTATION_RELATIONSHIP());\n"
+        "#926=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#925,#923);\n");
+    const auto shapes = step_read_text(text, "assembly_cube.step");
+    MINI_CHECK(shapes.size() == 2);
+    const std::array<std::array<double, 4>, 2> boxes = {{{10, 11, 0, 1}, {-1, 0, 5, 6}}};
+    for (size_t i = 0; i < shapes.size(); i++) {
+        double box[4] = {INFINITY, -INFINITY, INFINITY, -INFINITY};
+        for (const auto& v : shapes[i].m_vertices)
+            for (int d = 0; d < 2; d++) {
+                box[2 * d] = std::min(box[2 * d], v.point[d]);
+                box[2 * d + 1] = std::max(box[2 * d + 1], v.point[d]);
+            }
+        for (int k = 0; k < 4; k++)
+            MINI_CHECK(std::abs(box[k] - boxes[i][k]) < 1e-12);
+        MINI_CHECK(shapes[i].is_solid() && std::abs(shapes[i].volume_exact() - 1.0) < 1e-12);
+    }
+}
+MINI_TEST("FileStep", "BRep Read Geometric Curve Set As Vertices And Edges") {
+    std::string text = step_fixture("senses_cube.step");
+    text.insert(text.rfind("ENDSEC;"), "#930=CARTESIAN_POINT('',(1.,2.,3.));#931=GEOMETRIC_CURVE_SET('',(#930));\n");
+    const auto shapes = step_read_text(text, "curve_set_cube.step");
+    MINI_CHECK(shapes.size() == 2 && shapes[1].face_count() == 0 && shapes[1].m_vertices.size() == 1);
+    MINI_CHECK(shapes[1].m_vertices[0].point.distance(Point(1, 2, 3)) == 0.0);
+}
+MINI_TEST("FileStep", "BRep Read Face Of Two Outer Loops As Two Faces") {
+    // two disjoint counterclockwise loops bound a face each, as ShapeFix_Face::FixSplitFace splits them
+    const auto shapes = step_read_text(step_fixture("two_patches.step"), "two_patches.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].face_count() == 2);
+    for (const auto& face : shapes[0].m_faces)
+        MINI_CHECK(face.wires.size() == 1);
 }
 }

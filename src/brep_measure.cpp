@@ -86,6 +86,9 @@ std::array<double, 2> kronrod(const Function& function, double first, double las
     return {half * sum[0], half * sum[1]};
 }
 
+/// Quadrature work (Kronrod sums and polynomial coefficients) one volume may spend.
+constexpr size_t budget = 5000000;
+
 struct Work {
     size_t total = 0;
     size_t inner = 0;
@@ -111,7 +114,7 @@ double integrate(const Function& function, double first, double last,
     ++(inner ? work.inner : work.outer);
     int& maximum_depth = inner ? work.inner_depth : work.outer_depth;
     maximum_depth = std::max(maximum_depth, depth);
-    if (++work.total > 200000)
+    if (++work.total > budget)
         throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
     std::array<double, 3>* known = sums ? &sums->found.try_emplace({sums->line[0], sums->line[1], std::bit_cast<std::uint64_t>(first),
         std::bit_cast<std::uint64_t>(last)}, std::array<double, 3>{NAN, NAN, NAN}).first->second : nullptr;
@@ -130,7 +133,7 @@ double integrate(const Function& function, double first, double last,
     if (inner) {
         // This is an additional quadrature pass, not free work or a larger budget.
         ++work.inner;
-        if (++work.total > 200000)
+        if (++work.total > budget)
             throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
         const double higher = known && !std::isnan((*known)[2]) ? (*known)[2] : gauss(function, first, last, higher_nodes, higher_weights);
         if (known)
@@ -142,6 +145,10 @@ double integrate(const Function& function, double first, double last,
     }
     ++(inner ? work.inner_subdivisions : work.outer_subdivisions);
     const double middle = (first + last) * 0.5;
+    // An outer interval 2^-22 of its pcurve span still unresolved holds a jump of a loose boundary (a corner off its knots, a gap between
+    // edges within tolerance): it adds its value, an error the size of the interval.
+    if (!inner && depth >= 22)
+        return fine;
     if (depth >= 22 || middle == first || middle == last)
         throw std::runtime_error("Native BRep volume did not converge at the requested tolerance");
     return integrate(function, first, middle, tolerance * 0.5, work, depth + 1, inner, sums) +
@@ -170,7 +177,7 @@ double integrate_polynomial(const Function& function,
         return 0.0;
     ++work.outer;
     work.outer_depth = std::max(work.outer_depth, depth);
-    if (++work.total > 200000)
+    if (++work.total > budget)
         throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
     const nurbs_interval::Interval fine_box = enclosed_gauss(function, first, last, nodes, weights);
     const nurbs_interval::Interval coarse_box = enclosed_gauss(function, first, last, coarse_nodes, coarse_weights);
@@ -541,7 +548,7 @@ double polynomial_volume(SurfaceEvaluator& surface, int orientation, Work& work)
     double compensation = 0;
     for (size_t i = 1; i < u.size(); ++i)
         for (size_t j = 1; j < v.size(); ++j) {
-            if (++work.total > 200000)
+            if (++work.total > budget)
                 throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
             const double du = (u[i] - u[i - 1]) * 0.5;
             const double dv = (v[j] - v[j - 1]) * 0.5;
@@ -606,7 +613,7 @@ double gauge_error(const BRep& brep, int face, const NurbsSurface& surface, doub
                     // Charge every certified integration rectangle, as with an
                     // adaptive integration interval; never hide new work.
                     ++work.inner;
-                    if (++work.total > 200000)
+                    if (++work.total > budget)
                         throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
                     // Bound the flux on a FULL original V knot cell. Dividing
                     // restricted control differences by an ULP-sized gap would
@@ -666,7 +673,7 @@ std::array<double, 4> trim_hull(const BRep& brep, int face, const NurbsSurface& 
     return result;
 }
 
-double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work, PrimitiveMemo& memo, Sums& sums) {
+double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work, PrimitiveMemo& memo, Sums& sums, bool cached = true) {
     const BRepFace& boundary = brep.m_faces[face];
     const NurbsSurface surface = local_surface(brep.m_surfaces[boundary.surface_index], frame);
     SurfaceEvaluator evaluator(surface);
@@ -674,17 +681,17 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
     if (!surface.is_rational() && rectangle && surface.degree(0) <= 21 && surface.degree(1) <= 21)
         return polynomial_volume(evaluator, rectangle, work);
     const plane::Primitive cache(
-        surface, trim_hull(brep, face, surface), 200000 - work.total,
+        surface, trim_hull(brep, face, surface), cached ? budget - work.total : 0,
         [&]() {
             ++work.polynomial_coefficients;
-            if (++work.total > 200000)
+            if (++work.total > budget)
                 throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
         },
         [&](double anchor, size_t required) {
             // Check the gauge BEFORE spending the coefficient budget. Every
             // certificate rectangle is charged, even if this cache is declined.
             const double residual = gauge_error(brep, face, surface, anchor, work);
-            if (!std::isfinite(residual) || residual > tolerance * .125 || required > 200000 - work.total)
+            if (!std::isfinite(residual) || residual > tolerance * .125 || required > budget - work.total)
                 return false;
             const auto remaining = nurbs_interval::Interval(tolerance) - nurbs_interval::Interval(residual);
             if (!nurbs_interval::finite(remaining) || remaining.lo <= 0)
@@ -756,7 +763,12 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& 
                 const double sign = orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
                 const Work before = work;
                 try {
-                    volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work, memo, sums);
+                    // A face whose enclosed polynomial cache cannot resolve its boundary (loose pcurves) integrates adaptively instead.
+                    try {
+                        volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work, memo, sums);
+                    } catch (const std::runtime_error&) {
+                        volume += sign * face_volume(brep, face.index, frame, tolerance / brep.face_count(), work, memo, sums, false);
+                    }
                 } catch (const std::runtime_error& error) {
                     throw std::runtime_error(std::string(error.what()) + "; face=" + std::to_string(face.index)
                         + ", total_work=" + std::to_string(work.total)

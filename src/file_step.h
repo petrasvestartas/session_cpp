@@ -29,7 +29,9 @@ struct StepIds {
     std::vector<int> edges;
 };
 
-/// One BRep per connected part of every shell of every MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS and SHELL_BASED_SURFACE_MODEL, in file order;
+/// One BRep per connected part of every shell of every MANIFOLD_SOLID_BREP, BREP_WITH_VOIDS and SHELL_BASED_SURFACE_MODEL, placed as the
+/// assembly places each instance (NEXT_ASSEMBLY_USAGE_OCCURRENCE with ITEM_DEFINED_TRANSFORMATION), else in file order; then one BRep
+/// without faces per GEOMETRIC_CURVE_SET or GEOMETRIC_SET, its points as vertices and its B-spline curves as edges;
 /// throws std::runtime_error naming the first face whose geometry or topology cannot be read, so no face is dropped.
 /// Linear tolerance for pcurve certification and fitting, in input-coordinate units; edge and vertex tolerances carry larger gaps of the file.
 /// ids, when given, receives the entity ids of each BRep.
