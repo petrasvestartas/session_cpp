@@ -1025,4 +1025,62 @@ MINI_TEST("FileStep", "BRep Primitives Round Trip Exact") {
         std::filesystem::remove(path);
     }
 }
+MINI_TEST("FileStep", "BRep Write Pcurves Round Trip Exact") {
+    // SURFACE_CURVE and SEAM_CURVE carry the pcurves, so a second round trip reads the first one's BRep again
+    const std::string first = serialization_path("pcurves_first.step");
+    const std::string second = serialization_path("pcurves_second.step");
+    MINI_CHECK(file_step::write_file_step_brep(BRep::create_cylinder(1.0, 2.0), first));
+    std::ifstream input(first);
+    const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    MINI_CHECK(text.find("SEAM_CURVE(") != std::string::npos && text.find("PCURVE(") != std::string::npos);
+    const auto once = file_step::read_file_step_breps(first);
+    MINI_CHECK(once.size() == 1 && file_step::write_file_step_brep(once[0], second));
+    const auto twice = file_step::read_file_step_breps(second);
+    MINI_CHECK(twice.size() == 1 && twice[0].is_solid());
+    MINI_CHECK(twice[0].volume_exact() == once[0].volume_exact());
+    MINI_CHECK(twice[0].m_curves_2d.size() == once[0].m_curves_2d.size());
+    std::filesystem::remove(first);
+    std::filesystem::remove(second);
+}
+MINI_TEST("FileStep", "BRep Read Seamless Loops Seam At Angle Nearest Zero") {
+    // circles with vertices at angles 0.3 and -2: the seam runs from the first, the second is split there
+    const std::string path = serialization_path("seamless_cylinder.step");
+    std::ofstream(path) << step_fixture("seamless_cylinder.step");
+    std::vector<file_step::StepIds> ids;
+    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    std::filesystem::remove(path);
+    MINI_CHECK(shapes.size() == 1 && ids.size() == 1);
+    MINI_CHECK(shapes[0].is_valid() && shapes[0].is_solid());
+    MINI_CHECK(std::abs(shapes[0].volume_exact() - 2.0 * Tolerance::PI) < 1e-12);
+    MINI_CHECK(step_uncertified_pcurves(shapes[0]) == 0);
+    const auto& side = shapes[0].m_faces[1];
+    std::vector<int> wire;
+    for (const auto& edge : shapes[0].wire_edges(side.wires[0]))
+        wire.push_back(ids[0].edges[edge.index]);
+    std::sort(wire.begin(), wire.end());
+    MINI_CHECK(ids[0].faces == std::vector<int>({25, 46, 34}));
+    MINI_CHECK(wire == std::vector<int>({-16, -16, 0, 0, 8}));
+}
+MINI_TEST("FileStep", "BRep Read Loose Circle On Cone Carries Its Distance") {
+    // a circle 1e-4 wider than the cone is 1e-4 cos(semi-angle) from it along the normal
+    const auto shapes = step_read_text(step_fixture("loose_cone.step"), "loose_cone.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].is_solid());
+    double edge = 0.0;
+    for (const auto& e : shapes[0].m_edges)
+        edge = std::max(edge, e.tolerance);
+    MINI_CHECK(std::abs(edge - 1e-4 * std::cos(std::atan(0.5))) < 1e-12);
+}
+MINI_TEST("FileStep", "BRep Read Entity Ids And Counts") {
+    const std::string path = serialization_path("ids_cube.step");
+    std::ofstream(path) << step_fixture("senses_cube.step");
+    std::vector<file_step::StepIds> ids;
+    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    const auto counts = file_step::read_file_step_entity_counts(path);
+    std::filesystem::remove(path);
+    MINI_CHECK(shapes.size() == 1 && ids.size() == 1);
+    MINI_CHECK(ids[0].faces == std::vector<int>({44, 72, 92, 108, 124, 136}));
+    MINI_CHECK(ids[0].edges.size() == shapes[0].m_edges.size());
+    MINI_CHECK(std::count(ids[0].edges.begin(), ids[0].edges.end(), 0) == 0);
+    MINI_CHECK(counts.at("ADVANCED_FACE") == 5 && counts.at("FACE_SURFACE") == 1);
+}
 }
