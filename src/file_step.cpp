@@ -4134,7 +4134,7 @@ static std::string fmt(double v) {
     if (std::abs(v) < 1e15 && v == (double)(long long)v)
         s = fmt::format("{}.", (long long)v);
     else
-        s = fmt::format("{:.15g}", v);
+        s = fmt::format("{}", v);
 
     const size_t e = s.find('e');
 
