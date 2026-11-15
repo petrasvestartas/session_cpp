@@ -332,11 +332,13 @@ std::vector<double> split_parameters(const NurbsCurve& curve, double a, double b
 void remaining_pairs(const Pair& pair, const Overlap& shared, std::vector<Pair>& work) {
     const std::vector<double> a = split_parameters(pair.a, shared.a0, shared.a1);
     const std::vector<double> b = split_parameters(pair.b, shared.b0, shared.b1);
-    const double b0 = std::min(shared.b0, shared.b1);
-    const double b1 = std::max(shared.b0, shared.b1);
+    // An end of the common range nearer a piece's end than split_parameters cuts is that end.
+    const double near = epsilon * 32.0;
+    const double b0 = std::min(shared.b0, shared.b1) - near;
+    const double b1 = std::max(shared.b0, shared.b1) + near;
     for (size_t i = 1; i < a.size(); ++i)
         for (size_t j = 1; j < b.size(); ++j) {
-            if (a[i - 1] >= shared.a0 && a[i] <= shared.a1 && b[j - 1] >= b0 && b[j] <= b1)
+            if (a[i - 1] >= shared.a0 - near && a[i] <= shared.a1 + near && b[j - 1] >= b0 && b[j] <= b1)
                 continue;
 
             work.push_back({interval(pair.a, a[i - 1], a[i]), interval(pair.b, b[j - 1], b[j])});

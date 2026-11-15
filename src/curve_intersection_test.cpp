@@ -840,4 +840,32 @@ MINI_TEST("CurveIntersection", "Ends Away From The Other Curve Are Not Matched A
         MINI_CHECK(std::abs(shared.overlaps[0].a0 - 0.2) < 1e-9 && std::abs(shared.overlaps[0].a1 - 0.7) < 1e-9);
     }
 }
+
+MINI_TEST("CurveIntersection", "Arcs Of One Circle With Ends A Rounding Apart Overlap Whole") {
+    // A semicircle edge and a section arc lying along it, each with its own rational law, their shared end a rounding apart.
+    const std::vector<std::array<double, 4>> edge_cvs = {{70.0, -3.391901413832837e-14, -10.0, 1.0},
+        {49.49747468305835, 3.5355339059327133, -7.0710678118654755, 0.7071067811865476}, {65.00000000000004, 5.0, -10.0, 1.0},
+        {42.42640687119288, 3.5355339059327635, -7.0710678118654755, 0.7071067811865476}, {60.0, 3.675178358715236e-14, -10.0, 1.0}};
+    const std::vector<std::array<double, 4>> arc_cvs = {{60.0, 0.0, -10.0, 1.0},
+        {42.42640687119285, 3.5355339059327378, -7.0710678118654755, 0.7071067811865476}, {65.0, 5.0, -10.0, 1.0},
+        {54.86148313645389, 4.042251898497687, -8.084503796995373, 0.8084503796995373},
+        {60.122493330932436, 2.198698493396876, -8.674443341932768, 0.8674443341932769}};
+    const auto rational = [](const std::vector<std::array<double, 4>>& cvs, const std::vector<double>& knots) {
+        std::vector<Point> points;
+        std::vector<double> weights;
+        for (const auto& cv : cvs) {
+            points.push_back(Point(cv[0] / cv[3], cv[1] / cv[3], cv[2] / cv[3]));
+            weights.push_back(cv[3]);
+        }
+        NurbsCurve curve = NurbsCurve::create_from_parameters(points, weights, knots, {3, 2, 3}, 2);
+        for (int i = 0; i < 5; ++i)
+            MINI_CHECK(curve.set_cv_4d(i, cvs[i][0], cvs[i][1], cvs[i][2], cvs[i][3]));
+        return curve;
+    };
+    const NurbsCurve edge = rational(edge_cvs, {3.1415926535897865, 4.712388980384683, 6.283185307179579});
+    const NurbsCurve arc = rational(arc_cvs, {0.0, 0.5, 0.8269956557486283});
+    const auto shared = curve_intersection::intersect(edge, arc, 1e-7);
+    MINI_CHECK(shared.complete && shared.points.empty() && shared.overlaps.size() == 1);
+    MINI_CHECK(shared.overlaps[0].a1 == edge.domain_end() && std::abs(shared.overlaps[0].b0 - arc.domain_end()) < 1e-12);
+}
 }

@@ -526,27 +526,39 @@ NurbsCurve parameterized_pcurve(
     const NurbsCurve& world,
     NurbsCurve pcurve,
     const NurbsSurface& surface,
-    double tolerance
+    double& tolerance
 ) {
     const curve_surface_intersection::ParameterMatch match =
         curve_surface_intersection::same_parameter(world, pcurve, surface, tolerance);
+    // A loose edge holds its pcurve within more than its recorded tolerance: as OCCT's BRepLib_ValidateEdge
+    // and UpdateTolerance, the edge's tolerance grows to the agreement its certificate proves, up to a thousandfold.
+    const auto grown = [&]() {
+        for (double wider = 2.0 * tolerance; wider <= 1024.0 * tolerance; wider *= 2.0)
+            if (curve_surface_intersection::same_parameter(world, pcurve, surface, wider) ==
+                curve_surface_intersection::ParameterMatch::Matched) {
+                tolerance = wider;
+                return true;
+            }
+        return false;
+    };
     if (match == curve_surface_intersection::ParameterMatch::Mismatched) {
         const curve_surface_intersection::Result result = curve_surface_intersection::intersect(world, surface, tolerance);
-        if (!result.complete)
-            throw ParameterError("pcurve reparameterization is unresolved: " + result.failure,
-                world, pcurve, surface, tolerance, match);
         bool repaired = false;
         for (const curve_surface_intersection::Overlap& overlap : result.overlaps)
-            if (covers(overlap.t0, overlap.t1, world) && same_uv_trace(pcurve, overlap.pcurve) &&
+            if (result.complete && covers(overlap.t0, overlap.t1, world) && same_uv_trace(pcurve, overlap.pcurve) &&
                 curve_surface_intersection::same_parameter(world, overlap.pcurve, surface, tolerance) ==
                     curve_surface_intersection::ParameterMatch::Matched) {
                 pcurve = overlap.pcurve;
                 repaired = true;
                 break;
             }
-        if (!repaired)
+        if (!repaired && !grown()) {
+            if (!result.complete)
+                throw ParameterError("pcurve reparameterization is unresolved: " + result.failure,
+                    world, pcurve, surface, tolerance, match);
             throw ParameterError("edge and pcurve disagree inside their ranges", world, pcurve, surface, tolerance, match);
-    } else if (match != curve_surface_intersection::ParameterMatch::Matched)
+        }
+    } else if (match != curve_surface_intersection::ParameterMatch::Matched && !grown())
         throw ParameterError("pcurve same-parameter certification is unresolved", world, pcurve, surface, tolerance, match);
     require(pcurve.set_domain(world.domain_start(), world.domain_end()), "pcurve same-range conversion failed");
     return pcurve;
@@ -561,9 +573,15 @@ void attach_pcurve(
 ) {
     BRepEdge& boundary = assembly.result.m_edges[edge];
     NurbsCurve pcurve = curve;
-    if (!boundary.degenerated)
+    if (!boundary.degenerated) {
+        const double recorded = boundary.tolerance;
         pcurve = parameterized_pcurve(assembly.result.m_curves_3d[boundary.curve_3d_index],
             pcurve, assembly.result.m_surfaces[surface], boundary.tolerance);
+        // OCCT's CorrectVertexTolerance: the vertices of a grown edge are at least as loose as it.
+        for (const int end : {boundary.start_vertex, boundary.end_vertex})
+            if (boundary.tolerance > recorded)
+                assembly.result.m_vertices[end].tolerance = std::max(assembly.result.m_vertices[end].tolerance, boundary.tolerance);
+    }
     for (BRepCurveOnSurface& record : boundary.pcurves) {
         if (record.surface_index != surface)
             continue;

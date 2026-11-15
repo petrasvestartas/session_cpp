@@ -4212,4 +4212,29 @@ MINI_TEST("Intersection", "Walk Is Certified In Two Parameters") {
         MINI_CHECK(section_pieces_match(sections, *a, *b, tolerance));
     }
 }
+
+MINI_TEST("Intersection", "Curve Plane Root At A Span End Stays In The Domain") {
+    NurbsCurve line = NurbsCurve::create(false, 1, {{0, 0, -1}, {0, 0, 0}});
+    MINI_CHECK(line.set_domain(-1.5707963267948932, 1.7763568394002511e-16));
+    const std::vector<double> roots = Intersection::curve_plane(line, Plane::from_point_normal({0, 0, 0}, {0, 0, 1}));
+    MINI_CHECK(roots.size() == 1 && roots[0] == line.domain_end());
+}
+
+MINI_TEST("Intersection", "Sphere Patch Section Falls Back Where Its Exact Pullback Is Uncertified") {
+    NurbsSurface octant = Primitives::sphere_surface(0, 0, 0, 2);
+    MINI_CHECK(octant.trim(0, {0.0, 1.0}) && octant.trim(1, {1.0, 2.0}));
+    const NurbsSurface plane = bilinear(Point(-3, -3, 0.5), Point(-3, 3, 1.5), Point(3, -3, 1.0), Point(3, 3, 2.0));
+    for (bool swap : {false, true}) {
+        const auto sections = Intersection::surface_surface(swap ? plane : octant, swap ? octant : plane, 1e-7);
+        MINI_CHECK(sections.size() == 1);
+        for (const auto& section : sections)
+            for (int i = 0; i <= 16; ++i) {
+                const NurbsCurve& world = std::get<0>(section);
+                const Point p = world.point_at(std::lerp(world.domain_start(), world.domain_end(), i / 16.0));
+                MINI_CHECK(std::abs(p.distance(Point(0, 0, 0)) - 2) < 1e-6 && std::abs(p[2] - 1.25 - p[0] / 12 - p[1] / 6) < 1e-6);
+                MINI_CHECK(p[0] > -1e-6 && p[1] > -1e-6);
+            }
+    }
+}
+
 } // namespace session_cpp

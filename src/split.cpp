@@ -2113,10 +2113,17 @@ std::vector<std::vector<std::vector<Run>>> arrange(
 int vertex(BRep& result, const Point& p, double tolerance) {
 
     for (size_t i = 0; i < result.m_vertices.size(); ++i)
-        if (result.m_vertices[i].point.distance(p) <= tolerance)
+        if (result.m_vertices[i].point.distance(p) <= std::max(tolerance, result.m_vertices[i].tolerance)) {
+            result.m_vertices[i].tolerance = std::max(result.m_vertices[i].tolerance, std::min(tolerance, result.m_vertices[i].point.distance(p)));
             return static_cast<int>(i);
+        }
 
     return result.add_vertex(p, tolerance);
+}
+
+/// The tolerance an operand edge carries, never below the operation's: its curves agree with each other and meet its vertices within it, as BRep_Tool::Tolerance gives OCCT's BOPAlgo.
+double own_tolerance(const BRep& brep, int edge, double tolerance) {
+    return edge >= 0 && edge < static_cast<int>(brep.m_edges.size()) ? std::max(tolerance, brep.m_edges[edge].tolerance) : tolerance;
 }
 
 /// Distance from a point to the surface under a pcurve parameter.
@@ -2305,6 +2312,8 @@ BRepRef add_run_edge(
 
     const Source& source = sources[run.source];
     const bool degenerated = source.edge >= 0 && brep.m_edges[source.edge].degenerated;
+    // A piece of an operand edge keeps that edge's tolerance.
+    tolerance = own_tolerance(brep, source.edge, tolerance);
     double wa = 0.0;
     double wb = 0.0;
     std::tie(wa, wb) = world_run(brep.m_surfaces[surface_index], source, run, tolerance);
@@ -2563,7 +2572,9 @@ void validate(const BRep& result, const std::vector<bool>& closed, double tolera
         const NurbsCurve& world = result.m_curves_3d[edge.curve_3d_index];
         const double start = world.point_at_start().distance(result.m_vertices[edge.start_vertex].point);
         const double end = world.point_at_end().distance(result.m_vertices[edge.end_vertex].point);
-        require(start <= tolerance * 4.0 && end <= tolerance * 4.0, "Split edge does not meet its vertices");
+        const double reach = std::max({tolerance, edge.tolerance, result.m_vertices[edge.start_vertex].tolerance,
+            result.m_vertices[edge.end_vertex].tolerance}) * 4.0;
+        require(start <= reach && end <= reach, "Split edge does not meet its vertices");
 
         for (const BRepCurveOnSurface& pc : edge.pcurves)
             for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
@@ -2757,6 +2768,7 @@ void required_edge_pieces(BRep& result, const BRep& original, const Source& sour
                           const std::vector<EdgeEvent>& events, std::vector<Piece>& pieces,
                           std::vector<EdgeEvent>& resolved, double tolerance) {
     const Piece full{index, events.front().parameter, events.back().parameter, source.edge};
+    tolerance = own_tolerance(original, source.edge, tolerance);
     for (const auto& image : original.m_edges[source.edge].pcurves) {
         require(image.curve_2d_index >= 0, "Required edge has no primary original pcurve");
         for (int pc : {image.curve_2d_index, image.curve_2d_index_2})

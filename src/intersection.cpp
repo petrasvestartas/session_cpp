@@ -1057,7 +1057,7 @@ std::vector<double> Intersection::curve_plane(const NurbsCurve& curve, const Pla
             curve.degree()
         );
         for (double root : bernstein_roots(coefficients)) {
-            const double t = start + (end - start) * root;
+            const double t = std::lerp(start, end, root);
             const Point point = curve.point_at(t);
             const double distance = normal.dot(point - origin);
             if (std::isfinite(distance) && std::abs(distance) <= tolerance)
@@ -5117,6 +5117,46 @@ static void clip_exact_conic_to_cone(const NurbsCurve& conic, const NurbsSurface
     }
 }
 
+/// The axial height above the apex of the support's cap nearer the apex: zero where the support reaches it.
+static double near_cap_height(const NurbsSurface& support, const PlaneConeSection& s) {
+    const double um = std::midpoint(support.domain(0).first, support.domain(0).second);
+    double height = std::numeric_limits<double>::infinity();
+    for (const double v : {support.domain(1).first, support.domain(1).second}) {
+        const Point p = support.point_at(um, v);
+        height = std::min(height, (p[0] - s.apex[0]) * s.w[0] + (p[1] - s.apex[1]) * s.w[1] + (p[2] - s.apex[2]) * s.w[2]);
+    }
+    return std::max(height, 0.0);
+}
+
+/// An open section curve built from the apex's side out to the far cap, cut where it passes the near cap of a frustum: the parts below it are off the support.
+static void clip_to_near_cap(const NurbsCurve& curve, const NurbsSurface& support, const PlaneConeSection& s, double tolerance,
+                             std::vector<NurbsCurve>& out) {
+    const double near = near_cap_height(support, s);
+    const auto above = [&](double t) {
+        const Point p = curve.point_at(t);
+        return (p[0] - s.apex[0]) * s.w[0] + (p[1] - s.apex[1]) * s.w[1] + (p[2] - s.apex[2]) * s.w[2] >= near;
+    };
+    if (!(near > tolerance)) {
+        out.push_back(curve);
+        return;
+    }
+    const Point base(s.apex[0] + near * s.w[0], s.apex[1] + near * s.w[1], s.apex[2] + near * s.w[2]);
+    std::vector<double> cuts = {curve.domain_start(), curve.domain_end()};
+    for (const double root : Intersection::curve_plane(curve, Plane::from_point_normal(base, Vector(s.w[0], s.w[1], s.w[2])), tolerance))
+        if (root > cuts.front() && root < cuts.back())
+            cuts.push_back(root);
+    std::sort(cuts.begin(), cuts.end());
+    for (size_t i = 1; i < cuts.size(); ++i) {
+        if (!above(std::midpoint(cuts[i - 1], cuts[i])))
+            continue;
+        NurbsCurve piece = curve;
+        if (cuts[i - 1] == curve.domain_start() && cuts[i] == curve.domain_end())
+            out.push_back(piece);
+        else if (piece.trim(cuts[i - 1], cuts[i]))
+            out.push_back(std::move(piece));
+    }
+}
+
 /// Exact plane-cone conic: circle, ellipse, parabola or hyperbola; false when none fits the cone.
 static bool plane_cone_exact(const PlaneConeSection& s, const NurbsSurface& support,
                              std::vector<NurbsCurve>& out, double tolerance) {
@@ -5148,7 +5188,7 @@ static bool plane_cone_exact(const PlaneConeSection& s, const NurbsSurface& supp
             std::array<double, 3> cc{apex[0] + dax * w[0], apex[1] + dax * w[1], apex[2] + dax * w[2]};
             NurbsCurve circ = exact_circle(cc[0], cc[1], cc[2], s.e1, s.e2, rr);
 
-            if (conic_within_cone(circ, apex, w, s.height))
+            if (conic_within_cone(circ, apex, w, s.height) && dax >= near_cap_height(support, s) - tolerance)
                 out.push_back(circ);
         }
 
@@ -5163,7 +5203,7 @@ static bool plane_cone_exact(const PlaneConeSection& s, const NurbsSurface& supp
     }
 
     if ((is_parabola || is_hyperbola) && build_exact_plane_cone_open(s.o, s.nu, s.apex, s.w, s.alpha, s.height, is_parabola, c3)) {
-        out.push_back(c3);
+        clip_to_near_cap(c3, support, s, tolerance, out);
 
         return true;
     }
@@ -5181,7 +5221,10 @@ static bool ssi_plane_cone(const RecogSurface& plane, const RecogSurface& cone, 
         return false;
 
     if (std::abs(s.d0) < 1e-6 * std::max(1.0, s.height)) {
-        plane_cone_through_apex(s, out);
+        std::vector<NurbsCurve> rays;
+        plane_cone_through_apex(s, rays);
+        for (const NurbsCurve& ray : rays)
+            clip_to_near_cap(ray, cone_srf, s, tolerance, out);
 
         return true;
     }
@@ -10759,6 +10802,8 @@ bool graph_root_box(const SurfaceSurfaceField& field, const SurfaceSurfaceGraph&
 bool field_bounds(const SurfaceSurfaceField& field, int side, const std::array<double, 4>& rectangle, const std::array<double, 3>& origin,
     SsiPatchBounds& result, bool derivatives) {
     const NurbsSurface& surface = side ? field.b : field.a;
+    if (std::max(surface.degree(0), surface.degree(1)) > nurbs_implicit::degree_limit)
+        return nurbs_interval::surface_bounds(surface, rectangle, origin, result, derivatives, true);
     const double rounding = 4.0 * std::numeric_limits<double>::epsilon();
     std::array<int, 2> cell;
     std::array<std::array<double, 2>, 2> local;
@@ -13461,6 +13506,10 @@ std::array<nurbs_implicit::Bernstein, 4> freeform_side(const FreeformCell& cell,
 /// False where a cut is not certified, the work runs out or a weight is not proved positive: the search in four parameters then stands.
 bool freeform_seeds(const SurfaceSurfaceField& field, std::vector<SurfaceSurfaceSeed>& seeds) {
     const NurbsSurface* surfaces[2] = {&field.a, &field.b};
+    // The normal w^3 (x_u x x_v) has degree 3 p - 1 along a parameter of degree p: past the Bernstein kernels' limit the search in four parameters stands.
+    for (const NurbsSurface* surface : surfaces)
+        if (3 * std::max(surface->degree(0), surface->degree(1)) - 1 > nurbs_implicit::degree_limit)
+            return false;
     const double infinity = std::numeric_limits<double>::infinity();
     std::array<double, 3> origin;
     for (int d = 0; d < 3; ++d) {
@@ -14147,7 +14196,11 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
                     Vector normal(0, 0, 0);
                     origin[direction] = bound;
                     normal[direction] = 1.0;
-                    const double error = 128 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(bound));
+                    // The root is checked on the curve's coordinate, rounded as the curve's size is, not as the bound's.
+                    double reach = std::max(1.0, std::abs(bound));
+                    for (int i = 0; i < planar_parameters.cv_count(); ++i)
+                        reach = std::max(reach, std::abs(planar_parameters.get_cv(i)[direction]));
+                    const double error = 128 * std::numeric_limits<double>::epsilon() * reach;
                     const std::vector<double> roots = Intersection::curve_plane(planar_parameters,
                         Plane::from_point_normal(origin, normal), error);
                     cuts.insert(cuts.end(), roots.begin(), roots.end());
@@ -14175,7 +14228,13 @@ std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> Intersection::surfac
         return result;
     }
 
-    AnalyticResult analytic = analytic_ssi(a, b, tolerance);
+    // Where the exact curve's pcurves are not certified on a support, the sampled and marched routes below take the pair: they certify their own.
+    AnalyticResult analytic;
+    try {
+        analytic = analytic_ssi(a, b, tolerance);
+    } catch (const std::runtime_error&) {
+        analytic = AnalyticResult();
+    }
 
     if (analytic.status != AnalyticResult::NOT_ANALYTIC) {
         drop_point_sections(analytic.triples, tolerance);

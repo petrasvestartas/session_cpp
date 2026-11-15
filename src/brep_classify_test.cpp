@@ -426,6 +426,31 @@ MINI_TEST("BRep Native Classification", "Parity Ray Stays Clear Of Corner Gaps")
     MINI_CHECK(brep_classify::clear_ray_height({&first, &second}, 0.5, 1e-10) == 0.5);
 }
 
+MINI_TEST("BRep Native Classification", "Parity Ray Crosses The Gap Between Pcurves") {
+    BRep shape;
+    auto surface = NurbsSurface::create(false, false, 1, 1, 2, 2,
+        {Point(-2,-2,0), Point(-2,2,0), Point(2,-2,0), Point(2,2,0)});
+    MINI_CHECK(surface.set_domain(0, -2, 2) && surface.set_domain(1, -2, 2));
+    const int support = shape.add_surface(surface);
+    const std::vector<Point> corners = {Point(1,-1,0), Point(1,1,0), Point(-1,1,0), Point(-1,0,0), Point(-1,-1,0)};
+    for (const Point& corner : corners)
+        shape.add_vertex(corner);
+    std::vector<BRepRef> edges;
+    for (int i = 0; i < 5; ++i) {
+        const Point& a = corners[i];
+        const Point& b = corners[(i + 1) % 5];
+        const int edge = shape.add_edge(shape.add_curve_3d(NurbsCurve::create(false, 1, {a, b})), i, (i + 1) % 5);
+        const Point start(a[0], a[1] + (i == 3 ? 7e-12 : 0.0), 0);
+        shape.add_pcurve(edge, support, shape.add_curve_2d(NurbsCurve::create(false, 1, {start, b})));
+        edges.push_back({edge, BRepOrientation::Forward});
+    }
+    shape.add_face(support, {{shape.add_wire(edges), BRepOrientation::Forward}});
+    const auto boundary = brep_face_boundary::extract(shape, 0);
+    MINI_CHECK(brep_classify::face_uv(boundary, Point(-1.5, 0, 0), 1e-12) == brep_classify::State::Outside);
+    MINI_CHECK(brep_classify::face_uv(boundary, Point(0, 0, 0), 1e-12) == brep_classify::State::Inside);
+    MINI_CHECK(brep_classify::face_uv(shape, 0, Point(-1.5, 0, 0), 1e-12) == brep_classify::State::Outside);
+}
+
 MINI_TEST("BRep Native Classification", "Prepared Solid Answers As The Model") {
     const std::vector<BRep> shapes = {BRep::create_box(2, 2, 2), BRep::create_sphere(1.0), BRep::create_torus(1.0, 0.25),
         BRep::create_block_with_hole(2, 2, 1, 0.3).transformed(Xform::rotation(Vector(1, 2, 3), 0.7))};

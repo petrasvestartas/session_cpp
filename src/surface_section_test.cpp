@@ -1177,3 +1177,57 @@ MINI_TEST("Surface Section Native", "Plane Section Between Seed Grid Lines Is Fo
     MINI_CHECK(std::abs(ends[0][0]) <= 1e-9 && std::abs(ends[0][1] - 0.325) <= 1e-7);
     MINI_CHECK(std::abs(ends[1][0]) <= 1e-9 && std::abs(ends[1][1] - 0.425) <= 1e-7);
 }
+
+MINI_TEST("Surface Section Native", "Plane Across A Bore Meets Both Of Its Sides") {
+    // A bracket's bore, radius 16 about the x axis through a plate 3 thick, and a tilted box face across it, as read from a STEP part: the plane meets the bore in two short arcs near y = 14 and y = -13.5.
+    // The arc's ends are cut where its parameter crosses the plate's faces, a root a part in 1e14 of the curve's size off them: checked against the bound's size it was dropped, and with it a piece of the part.
+    const double w = 0.70710678118654757;
+    const double bore_controls[9][2][4] = {
+        {{3.0000000000000004, 16, 30, 1}, {0, 16, 30, 1}},
+        {{3, 16, 13.999999999999998, w}, {0, 16, 13.999999999999998, w}},
+        {{3.0000000000000004, 9.7971743931788257e-16, 14, 1}, {0, 9.7971743931788257e-16, 14, 1}},
+        {{3, -15.999999999999998, 13.999999999999996, w}, {0, -15.999999999999998, 13.999999999999996, w}},
+        {{3.0000000000000004, -16, 29.999999999999996, 1}, {0, -16, 29.999999999999996, 1}},
+        {{3, -16.000000000000004, 46, w}, {0, -16.000000000000004, 46, w}},
+        {{3.0000000000000004, -2.9391523179536475e-15, 46, 1}, {0, -2.9391523179536475e-15, 46, 1}},
+        {{3, 15.999999999999998, 46, w}, {0, 15.999999999999998, 46, w}},
+        {{3.0000000000000004, 16, 30.000000000000004, 1}, {0, 16, 30.000000000000004, 1}}};
+    NurbsSurface bore(3, true, 3, 2, 9, 2);
+    bore.m_nurbsknot[0] = {0, 0, 1, 1, 2, 2, 3, 3, 4, 4};
+    bore.m_nurbsknot[1] = {-3.0000000000000004, 0};
+    for (int i = 0; i < 9; ++i)
+        for (int j = 0; j < 2; ++j) {
+            bore.set_cv(i, j, {bore_controls[i][j][0], bore_controls[i][j][1], bore_controls[i][j][2]});
+            bore.set_weight(i, j, bore_controls[i][j][3]);
+        }
+    const std::vector<Point> corners = {{-0.56709399803319371, -26.997197943804668, 21.020496628547509},
+        {40.840408369442919, -21.058456581872182, 17.258834931433817}, {-7.3103457214971428, 21.668903090624358, 23.624179846749477},
+        {34.09715664597897, 27.607644452556844, 19.862518149635783}};
+    const NurbsSurface face = NurbsSurface::create(false, false, 1, 1, 2, 2, corners);
+    MINI_CHECK(bore.is_valid() && face.is_valid());
+    const auto sections = Intersection::surface_surface(bore, face, 1.25e-8, true);
+    MINI_CHECK(sections.size() == 2);
+    std::array<bool, 2> sides{};
+    for (const auto& section : sections) {
+        const NurbsCurve& world = std::get<0>(section);
+        sides[world.point_at(world.domain_start())[1] > 0.0] = true;
+        for (const double t : {world.domain_start(), world.domain_end()}) {
+            const double x = world.point_at(t)[0];
+            MINI_CHECK(std::abs(x) <= 1e-9 || std::abs(x - 3.0) <= 1e-9);
+        }
+    }
+    MINI_CHECK(sides[0] && sides[1]);
+}
+
+MINI_TEST("Surface Section Native", "Freeform Pair Past The Bernstein Degree Limit") {
+    // Degree 13 along one parameter: the normal's polynomial would have degree 38, past the kernels' limit of 32, so the search in four parameters takes the pair.
+    const auto sheet = [](double height, double tilt) {
+        std::vector<Point> points;
+        for (int i = 0; i < 14; ++i)
+            for (int j = 0; j < 3; ++j)
+                points.push_back({i / 13.0, j / 2.0, height + tilt * j / 2.0 + 0.05 * std::sin(i)});
+        return NurbsSurface::create(false, false, 13, 2, 14, 3, points);
+    };
+    const auto sections = Intersection::surface_surface(sheet(0.0, 0.2), sheet(0.1, -0.2), 1e-7);
+    MINI_CHECK(sections.size() == 1);
+}

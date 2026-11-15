@@ -135,13 +135,16 @@ State curve_winding(const NurbsCurve& curve, const xyz& query, double height, do
     return State::Unknown;
 }
 
-/// The v of both ends of a pcurve; checked: its owner is known to be valid.
-std::array<double, 2> end_heights(const NurbsCurve& curve, bool checked) {
+/// The first or last end of a pcurve; checked: its owner is known to be valid.
+xyz end_point(const NurbsCurve& curve, bool last, bool checked) {
     // The ends of a valid straight piece without weights are its two control points to the bit.
     const bool plain = curve.order() == 2 && curve.cv_count() == 2 && !curve.is_rational() &&
         curve.dimension() > 1 && (checked || curve.is_valid());
-    return {plain ? curve.cv(0)[1] : curve.point(curve.domain_start())[1],
-        plain ? curve.cv(1)[1] : curve.point(curve.domain_end())[1]};
+    return plain ? control(curve, last ? 1 : 0) : curve.point(last ? curve.domain_end() : curve.domain_start());
+}
+
+std::array<double, 2> end_heights(const NurbsCurve& curve, bool checked) {
+    return {end_point(curve, false, checked)[1], end_point(curve, true, checked)[1]};
 }
 
 double clear_height(const std::vector<std::array<double, 2>>& ends, double height, double tolerance) {
@@ -186,6 +189,20 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const s
         if (state == State::Boundary || state == State::Unknown)
             return state;
         winding += edge.orientation == BRepOrientation::Reversed ? -contribution : contribution;
+    }
+    // Pcurves meet within their edges' tolerance, not to the bit: the ray also crosses the gaps between them.
+    const std::vector<std::array<double, 2>>& ends = known ? *known : found;
+    std::vector<size_t> active;
+    for (size_t i = 0; i < wire.uses.size() && ends.size() == wire.uses.size(); ++i)
+        if (wire.uses[i].edge.orientation == BRepOrientation::Forward || wire.uses[i].edge.orientation == BRepOrientation::Reversed)
+            active.push_back(i);
+    for (size_t k = 0; k < active.size(); ++k) {
+        const size_t i = active[k], j = active[(k + 1) % active.size()];
+        const bool from = wire.uses[i].edge.orientation == BRepOrientation::Forward;
+        const bool to = wire.uses[j].edge.orientation == BRepOrientation::Reversed;
+        if ((ends[i][from] > height) != (ends[j][to] > height))
+            winding += crossing(end_point(brep.m_curves_2d[wire.uses[i].pcurve], from, known != nullptr),
+                end_point(brep.m_curves_2d[wire.uses[j].pcurve], to, known != nullptr), {uv[0], height, 0.0});
     }
     return winding == 0 ? State::Outside : State::Inside;
 }

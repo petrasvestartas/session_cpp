@@ -1020,6 +1020,9 @@ bool boundary_equivalent(const BoundaryEvent& p,const BoundaryEvent& q,
     const auto& y=event_source(q,a,b);
     if (p.operand==q.operand && p.edge==q.edge)
         return interval_event(x,p.hit.t,q.hit.t,q.hit.point,tolerance);
+    // Every agreement below holds x at p within the tolerance of q: events apart ask no intersection.
+    if (x.point_at(p.hit.t).distance(q.hit.point)>2.0*tolerance)
+        return false;
     const auto& events=met({p.operand,p.edge,q.operand,q.edge},x,y,tolerance);
     if (!events.complete)
         throw std::runtime_error(events.failure);
@@ -1160,9 +1163,13 @@ void boundary_nodes(FaceResult& result,const BRep& a,const BRep& b,double tolera
                 if (point.hit.t>=std::min(common.a0,common.a1) && point.hit.t<=std::max(common.a0,common.a1)) {
                     if (common.a0==common.a1)
                         throw std::runtime_error("Positive common range has a zero source raw interval");
-                    // Proposal only: the direct target singleton certificate is authoritative.
+                    // Proposal only: the direct target singleton certificate is authoritative. Two laws of one
+                    // geometry are not proportional, so a proposal off the point is replaced by its closest point.
                     const double fraction=(point.hit.t-common.a0)/(common.a1-common.a0);
-                    own(point.hit.t,std::lerp(common.b0,common.b1,fraction));
+                    const double proposal=std::lerp(common.b0,common.b1,fraction);
+                    own(point.hit.t,detail::owns_point(curve.world,proposal,point.hit.point,tolerance)?proposal:
+                        std::clamp(Closest::curve_point(curve.world,point.hit.point).first,
+                            std::min(common.b0,common.b1),std::max(common.b0,common.b1)));
                 }
         }
         size_t node=result.nodes.size();

@@ -128,7 +128,11 @@ std::vector<double> clip_parameters(const NurbsCurve& pcurve, const Extrusion& e
         origin[extrusion.direction] = bound;
         normal[extrusion.direction] = 1.0;
         const Plane plane = Plane::from_point_normal(origin, normal);
-        const double error = 128.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::abs(bound));
+        // The root is checked on the curve's coordinate, rounded as the curve's size is, not as the bound's.
+        double reach = std::max(1.0, std::abs(bound));
+        for (int i = 0; i < pcurve.cv_count(); ++i)
+            reach = std::max(reach, std::abs(pcurve.get_cv(i)[extrusion.direction]));
+        const double error = 128.0 * std::numeric_limits<double>::epsilon() * reach;
         const std::vector<double> roots = Intersection::curve_plane(pcurve, plane, error);
         cuts.insert(cuts.end(), roots.begin(), roots.end());
     }
