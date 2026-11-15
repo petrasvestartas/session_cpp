@@ -25,9 +25,25 @@ inline bool c1(const NurbsSurface& surface) {
     return true;
 }
 
+/// A cell's coefficients for evaluation in doubles: their midpoints, the largest midpoint magnitude and the largest radius.
+struct Midpoints {
+    std::vector<double> values;
+    double size = 0.0;
+    double spread = 0.0;
+
+    explicit Midpoints(const Grid& grid) {
+        for (const Interval& value : grid.values) {
+            values.push_back(std::midpoint(value.lo, value.hi));
+            size = std::max(size, std::abs(values.back()));
+            spread = std::max(spread, std::max(value.hi - values.back(), values.back() - value.lo));
+        }
+    }
+};
+
 struct Primitive {
     std::vector<double> u, v;
     std::vector<Grid> cells;
+    std::vector<Midpoints> middles;
     using Key = std::tuple<int, int, size_t, size_t>;
     std::map<Key, Interval> derivatives;
     bool shared = false;
@@ -113,6 +129,7 @@ struct Primitive {
                 const Grid value = polynomial::product(point[2], cross, charge);
                 cells.push_back(
                     polynomial::antiderivative(value, Interval(u[i]) - Interval(u[i - 1]), prefix, charge));
+                middles.emplace_back(cells.back());
             }
         }
     }
@@ -134,10 +151,31 @@ struct Primitive {
             std::min(static_cast<size_t>(std::upper_bound(v.begin(), v.end(), second) - v.begin()),
                      v.size() - 1) -
             1;
-        return polynomial::evaluate(
-            cells[j * (u.size() - 1) + i],
-            (Interval(first) - Interval(u[i])) / (Interval(u[i + 1]) - Interval(u[i])),
-            (Interval(second) - Interval(v[j])) / (Interval(v[j + 1]) - Interval(v[j])));
+        const Interval x = (Interval(first) - Interval(u[i])) / (Interval(u[i + 1]) - Interval(u[i]));
+        const Interval y = (Interval(second) - Interval(v[j])) / (Interval(v[j + 1]) - Interval(v[j]));
+        const Grid& grid = cells[j * (u.size() - 1) + i];
+        if (grid.u > 31 || grid.v > 31)
+            return polynomial::evaluate(grid, x, y);
+        const Midpoints& middle = middles[j * (u.size() - 1) + i];
+        // De Casteljau in doubles at the midpoints of x and y: every step a convex combination, so the result lies within the largest
+        // coefficient radius, three roundings of the largest coefficient per step, and the partials' bound times the widths of x and y.
+        const double a = std::clamp(std::midpoint(x.lo, x.hi), 0.0, 1.0), b = std::clamp(std::midpoint(y.lo, y.hi), 0.0, 1.0);
+        double row[32], column[32];
+        for (int l = 0; l <= grid.v; ++l) {
+            for (int k = 0; k <= grid.u; ++k)
+                column[k] = middle.values[k * (grid.v + 1) + l];
+            for (int count = grid.u; count > 0; --count)
+                for (int k = 0; k < count; ++k)
+                    column[k] = (1.0 - a) * column[k] + a * column[k + 1];
+            row[l] = column[0];
+        }
+        for (int count = grid.v; count > 0; --count)
+            for (int l = 0; l < count; ++l)
+                row[l] = (1.0 - b) * row[l] + b * row[l + 1];
+        const double bound = middle.size + middle.spread;
+        const double reach = (middle.spread + 3.0 * (grid.u + grid.v + 1) * std::numeric_limits<double>::epsilon() * middle.size
+            + 2.0 * grid.u * bound * std::max(x.hi - a, a - x.lo) + 2.0 * grid.v * bound * std::max(y.hi - b, b - y.lo)) * (1.0 + 1e-9);
+        return nurbs_interval::outward(row[0] - reach, row[0] + reach);
     }
 };
 } // namespace session_cpp::brep_measure::plane

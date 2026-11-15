@@ -35,16 +35,25 @@ inline double binomial(int n, int k) {
     return result;
 }
 
+/// The weights of a product of Bernstein polynomials of degrees first and second along one axis: C(first, k) C(second, i - k) / C(first +
+/// second, i) at [i][k].
+inline std::vector<Interval> product_weights(int first, int second) {
+    std::vector<Interval> weights((first + second + 1) * (first + 1));
+    for (int i = 0; i <= first + second; ++i)
+        for (int k = std::max(0, i - second); k <= std::min(first, i); ++k)
+            weights[i * (first + 1) + k] = Interval(binomial(first, k)) * Interval(binomial(second, i - k)) / Interval(binomial(first + second, i));
+    return weights;
+}
+
 inline Grid product(const Grid& a, const Grid& b, const std::function<void()>& charge) {
     Grid result(a.u + b.u, a.v + b.v);
+    const std::vector<Interval> along_u = product_weights(a.u, b.u), along_v = product_weights(a.v, b.v);
     for (int i = 0; i <= result.u; ++i)
         for (int j = 0; j <= result.v; ++j) {
             charge();
             for (int k = std::max(0, i - b.u); k <= std::min(a.u, i); ++k)
                 for (int l = std::max(0, j - b.v); l <= std::min(a.v, j); ++l) {
-                    const Interval weight = Interval(binomial(a.u, k)) * Interval(binomial(b.u, i - k))
-                        / Interval(binomial(result.u, i)) * Interval(binomial(a.v, l))
-                        * Interval(binomial(b.v, j - l)) / Interval(binomial(result.v, j));
+                    const Interval weight = along_u[i * (a.u + 1) + k] * along_v[j * (a.v + 1) + l];
                     result.at(i, j) = result.at(i, j) + weight * a.at(k, l) * b.at(i - k, j - l);
                 }
         }
@@ -54,14 +63,13 @@ inline Grid product(const Grid& a, const Grid& b, const std::function<void()>& c
 inline Grid cross_component(const Grid& a, const Grid& b, const Grid& c, const Grid& d,
                             const std::function<void()>& charge) {
     Grid result(a.u + b.u, a.v + b.v);
+    const std::vector<Interval> along_u = product_weights(a.u, b.u), along_v = product_weights(a.v, b.v);
     for (int i = 0; i <= result.u; ++i)
         for (int j = 0; j <= result.v; ++j) {
             charge();
             for (int k = std::max(0, i - b.u); k <= std::min(a.u, i); ++k)
                 for (int l = std::max(0, j - b.v); l <= std::min(a.v, j); ++l) {
-                    const Interval weight = Interval(binomial(a.u, k)) * Interval(binomial(b.u, i - k))
-                        / Interval(binomial(result.u, i)) * Interval(binomial(a.v, l))
-                        * Interval(binomial(b.v, j - l)) / Interval(binomial(result.v, j));
+                    const Interval weight = along_u[i * (a.u + 1) + k] * along_v[j * (a.v + 1) + l];
                     const Interval determinant = a.at(k, l) * b.at(i - k, j - l)
                         - c.at(k, l) * d.at(i - k, j - l);
                     result.at(i, j) = result.at(i, j) + weight * determinant;
@@ -125,17 +133,19 @@ inline Interval evaluate(const Grid& grid, Interval u, Interval v) {
     nurbsknot::Scratch<Interval, 32> storage(grid.u + grid.v + 2);
     Interval* row = storage.data;
     Interval* column = row + grid.v + 1;
+    // The weights of each step, classified once.
+    const nurbs_interval::Factor before_u(Interval(1) - u), after_u(u), before_v(Interval(1) - v), after_v(v);
     for (int j = 0; j <= grid.v; ++j) {
         for (int i = 0; i <= grid.u; ++i)
             column[i] = grid.at(i, j);
         for (int count = grid.u; count > 0; --count)
             for (int i = 0; i < count; ++i)
-                column[i] = (Interval(1) - u) * column[i] + u * column[i + 1];
+                column[i] = before_u * column[i] + after_u * column[i + 1];
         row[j] = column[0];
     }
     for (int count = grid.v; count > 0; --count)
         for (int j = 0; j < count; ++j)
-            row[j] = (Interval(1) - v) * row[j] + v * row[j + 1];
+            row[j] = before_v * row[j] + after_v * row[j + 1];
     return row[0];
 }
 

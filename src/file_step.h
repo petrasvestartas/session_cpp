@@ -34,8 +34,15 @@ struct StepIds {
 /// without faces per GEOMETRIC_CURVE_SET or GEOMETRIC_SET, its points as vertices and its B-spline curves as edges;
 /// throws std::runtime_error naming the first face whose geometry or topology cannot be read, so no face is dropped.
 /// Linear tolerance for pcurve certification and fitting, in input-coordinate units; edge and vertex tolerances carry larger gaps of the file.
-/// ids, when given, receives the entity ids of each BRep.
-std::vector<BRep> read_file_step_breps(const std::string& filepath, double tolerance = 1e-7, std::vector<StepIds>* ids = nullptr);
+/// ids, when given, receives the entity ids of each BRep; parts and instances, when given, receive each part once where it was modelled
+/// and, per BRep, its part's index with the placement that moves the part there (identity outside an assembly).
+std::vector<BRep> read_file_step_breps(
+    const std::string& filepath,
+    double tolerance = 1e-7,
+    std::vector<StepIds>* ids = nullptr,
+    std::vector<BRep>* parts = nullptr,
+    std::vector<std::pair<int, Xform>>* instances = nullptr
+);
 
 /// Number of entity instances per type, a complex instance named by its types joined with '+'.
 std::map<std::string, int> read_file_step_entity_counts(const std::string& filepath);
@@ -57,6 +64,16 @@ bool write_file_step_brep(const BRep& brep, const std::string& filepath);
 
 /// One AP214 file holding several breps side by side, each face colored from its brep's surfacecolor; false when the file cannot be written.
 bool write_file_step_breps(const std::vector<const BRep*>& breps, const std::string& name, const std::string& filepath);
+
+/// One AP214 assembly as STEPControl_Writer writes one: each part once as a product of its own, each instance a
+/// NEXT_ASSEMBLY_USAGE_OCCURRENCE of the root product placed by an ITEM_DEFINED_TRANSFORMATION (CONTEXT_DEPENDENT_SHAPE_REPRESENTATION);
+/// an instance is (index into parts, placement); false when an index is out of range or the file cannot be written.
+bool write_file_step_assembly(
+    const std::vector<BRep>& parts,
+    const std::vector<std::pair<int, Xform>>& instances,
+    const std::string& name,
+    const std::string& filepath
+);
 
 } // namespace file_step
 } // namespace session_cpp

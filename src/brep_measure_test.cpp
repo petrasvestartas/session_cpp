@@ -149,6 +149,16 @@ MINI_TEST("BRep Native Measure", "Nonuniform Dense Polynomial Support") {
     MINI_CHECK(std::abs(measured_fixture(source, "native_measure_dense_polynomial") - 24) < 1e-7);
 }
 
+MINI_TEST("BRep Native Measure", "Curved Pcurves Split Where They Cross Support Knots") {
+    // quintic pcurves over 128 nonuniform spans each way: every knot line they cross bends the integrand, and each is a piece of its own
+    BRep source = BRep::create_box(2, 3, 4);
+    source.m_surfaces[0] = dense_plane(source.m_surfaces[0]);
+    for (const BRepRef& wire : source.m_faces[0].wires)
+        for (const BRepRef& edge : source.wire_edges(wire))
+            MINI_CHECK(source.m_curves_2d[source.pcurve_index(edge.index, 0, edge.orientation)].increase_degree(5));
+    MINI_CHECK(std::abs(brep_measure::volume(source, 1e-8) - 24) < 24e-14);
+}
+
 MINI_TEST("BRep Native Measure", "Exact Rational Walls And Weighted Boundary Parameters") {
     BRep source = BRep::create_box(2, 3, 4);
     for (NurbsSurface& surface : source.m_surfaces)

@@ -1934,6 +1934,7 @@ struct PendingEdge {
     int edge = -1; // Brep edge index.
     bool reversed = false; // Whether the edge runs against the loop.
     NurbsCurve c2d; // Parameter-space curve.
+    NurbsCurve along; // The curve in the edge's direction when it came so, stored without reversing it twice (not exact in floating point).
 };
 
 /// One edge use with its parameter-space samples in curve order; pc2d is an exact pcurve when exact.
@@ -2254,7 +2255,7 @@ static std::vector<PendingEdge> pending_of(const Loop& lp) {
         if (le.reversed && !crv2d.reverse())
             throw std::runtime_error("STEP pcurve could not be reversed");
 
-        pl.push_back({le.edge_idx, le.reversed, crv2d});
+        pl.push_back({le.edge_idx, le.reversed, crv2d, le.pc2d});
     }
 
     return pl;
@@ -3147,6 +3148,23 @@ public:
                 }
             }
 
+        // A loop that comes back to one of its vertices at the same point of the surface is two loops, split there
+        // (ShapeFix_Face::FixLoopWire); at a seam or across a pole the points differ.
+        const auto start = [&](const PendingEdge& pe) { return pe.reversed ? brep.m_edges[pe.edge].end_vertex : brep.m_edges[pe.edge].start_vertex; };
+        bool split = false;
+        for (size_t k = 0; k < loops.size(); k++)
+            for (size_t a = 0; a < loops[k].size(); a++)
+                for (size_t b = a + 2; b < loops[k].size() && b - a < loops[k].size() - 1; b++) {
+                    const Point p = loops[k][a].c2d.point_at_start(), q = loops[k][b].c2d.point_at_start();
+                    if (start(loops[k][a]) != start(loops[k][b]) || p.distance(q) > 1e-9 * (1.0 + std::abs(p[0]) + std::abs(p[1])))
+                        continue;
+                    std::vector<PendingEdge> piece(loops[k].begin() + a, loops[k].begin() + b);
+                    loops[k].erase(loops[k].begin() + a, loops[k].begin() + b);
+                    loops.push_back(std::move(piece));
+                    split = true;
+                    b = a + 1;
+                }
+
         // Loops running counterclockwise each bound a face of their own with the clockwise loops inside them (ShapeFix_Face::FixSplitFace).
         std::vector<std::vector<Point>> polygons;
         std::vector<double> areas;
@@ -3164,6 +3182,14 @@ public:
                 const Point& b = polygons.back()[(k + 1) % polygons.back().size()];
                 areas.back() += a[0] * b[1] - b[0] * a[1];
             }
+        }
+
+        // The outer loop runs counterclockwise: a clockwise first loop a split left first gives way to the largest that does.
+        const size_t largest = std::max_element(areas.begin(), areas.end()) - areas.begin();
+        if (split && areas[0] < 0.0 && areas[largest] > 0.0) {
+            std::swap(loops[0], loops[largest]);
+            std::swap(polygons[0], polygons[largest]);
+            std::swap(areas[0], areas[largest]);
         }
 
         const auto inside = [](const std::vector<Point>& polygon, const Point& p) {
@@ -3202,9 +3228,9 @@ public:
                 std::vector<BRepRef> refs;
 
                 for (const PendingEdge& pe : loops[k]) {
-                    NurbsCurve c = pe.c2d;
+                    NurbsCurve c = pe.reversed && pe.along.is_valid() ? pe.along : pe.c2d;
 
-                    if (!pe.reversed || c.reverse())
+                    if (!pe.reversed || pe.along.is_valid() || c.reverse())
                         attach_pcurve(pe.edge, si, brep.add_curve_2d(c), pe.reversed);
 
                     refs.push_back({pe.edge, pe.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
@@ -4602,21 +4628,19 @@ public:
         return write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
     }
 
-    /// AP214 PRODUCT and SHAPE_DEFINITION_REPRESENTATION skeleton importers need to find the bodies; uncertainty is the sewing tolerance.
-    void finish_product(
-        const std::vector<int>& bodies,
-        bool closed,
-        const std::string& name,
-        double uncertainty = 1e-6,
-        const std::vector<int>& styled_items = {}
-    ) {
+    /// AXIS2_PLACEMENT_3D of a placement's frame: its translation, its z and x columns.
+    int write_axis(const Xform& x) {
 
-        const int o = write_point(0, 0, 0);
-        const int dz = write_raw("DIRECTION('',(0.,0.,1.))");
-        const int dx = write_raw("DIRECTION('',(1.,0.,0.))");
-        const int ax = write_raw(
-            "AXIS2_PLACEMENT_3D('',#" + std::to_string(o) + ",#" + std::to_string(dz) + ",#" + std::to_string(dx) + ")"
-        );
+        const int o = write_point(x.m[12], x.m[13], x.m[14]);
+        const int dz = write_raw("DIRECTION('',(" + fmt(x.m[8]) + "," + fmt(x.m[9]) + "," + fmt(x.m[10]) + "))");
+        const int dx = write_raw("DIRECTION('',(" + fmt(x.m[0]) + "," + fmt(x.m[1]) + "," + fmt(x.m[2]) + "))");
+
+        return write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(o) + ",#" + std::to_string(dz) + ",#" + std::to_string(dx) + ")");
+    }
+
+    /// Representation context (millimetres, radians, uncertainty the sewing tolerance) and AP214 application context; returns the
+    /// representation, application, product and product definition contexts.
+    std::array<int, 4> write_context(double uncertainty) {
 
         const int lu = write_raw("(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
         const int au = write_raw("(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.))");
@@ -4643,30 +4667,48 @@ public:
         );
 
         const int pc = write_raw("PRODUCT_CONTEXT('',#" + std::to_string(ac) + ",'mechanical')");
-        const int pr = write_raw("PRODUCT('" + name + "','" + name + "','',(#" + std::to_string(pc) + "))");
-        const int pf = write_raw("PRODUCT_DEFINITION_FORMATION('','',#" + std::to_string(pr) + ")");
         const int dc = write_raw("PRODUCT_DEFINITION_CONTEXT('part definition',#" + std::to_string(ac) + ",'design')");
-        const int pd =
-            write_raw("PRODUCT_DEFINITION('design','',#" + std::to_string(pf) + ",#" + std::to_string(dc) + ")");
 
+        return {gc, ac, pc, dc};
+    }
+
+    /// PRODUCT with its definition, its representation of the items and the SHAPE_DEFINITION_REPRESENTATION joining them; returns the
+    /// product definition and the representation.
+    std::pair<int, int> write_product(const std::string& name, const std::string& type, const std::vector<int>& items, const std::array<int, 4>& c) {
+
+        const int pr = write_raw("PRODUCT('" + name + "','" + name + "','',(#" + std::to_string(c[2]) + "))");
+        const int pf = write_raw("PRODUCT_DEFINITION_FORMATION('','',#" + std::to_string(pr) + ")");
+        const int pd = write_raw("PRODUCT_DEFINITION('design','',#" + std::to_string(pf) + ",#" + std::to_string(c[3]) + ")");
         const int ps = write_raw("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(pd) + ")");
-        std::string rep_type = "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
-
-        if (bodies.empty())
-            rep_type = "SHAPE_REPRESENTATION";
-        else if (closed)
-            rep_type = "ADVANCED_BREP_SHAPE_REPRESENTATION";
-
-        std::vector<int> items = {ax};
-        items.insert(items.end(), bodies.begin(), bodies.end());
-
-        const int rp = write_raw(rep_type + "('" + name + "'," + fmt_ref_list(items) + ",#" + std::to_string(gc) + ")");
+        const int rp = write_raw(type + "('" + name + "'," + fmt_ref_list(items) + ",#" + std::to_string(c[0]) + ")");
         write_raw("SHAPE_DEFINITION_REPRESENTATION(#" + std::to_string(ps) + ",#" + std::to_string(rp) + ")");
+
+        return {pd, rp};
+    }
+
+    /// Representation type of bodies: advanced B-rep when one is closed, manifold surface otherwise, plain shape without any.
+    static std::string representation_type(const std::vector<int>& bodies, bool closed) {
+        return bodies.empty() ? "SHAPE_REPRESENTATION" : closed ? "ADVANCED_BREP_SHAPE_REPRESENTATION" : "MANIFOLD_SURFACE_SHAPE_REPRESENTATION";
+    }
+
+    /// AP214 PRODUCT and SHAPE_DEFINITION_REPRESENTATION skeleton importers need to find the bodies; uncertainty is the sewing tolerance.
+    void finish_product(
+        const std::vector<int>& bodies,
+        bool closed,
+        const std::string& name,
+        double uncertainty = 1e-6,
+        const std::vector<int>& styled_items = {}
+    ) {
+
+        std::vector<int> items = {write_axis(Xform::identity())};
+        const std::array<int, 4> c = write_context(uncertainty);
+        items.insert(items.end(), bodies.begin(), bodies.end());
+        write_product(name, representation_type(bodies, closed), items, c);
 
         if (!styled_items.empty())
             write_raw(
                 "MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION(''," + fmt_ref_list(styled_items) + ",#" +
-                std::to_string(gc) + ")"
+                std::to_string(c[0]) + ")"
             );
     }
 
@@ -5110,7 +5152,13 @@ static std::vector<std::pair<int, std::optional<Xform>>> placed_models(StepReade
     return out.empty() ? unplaced : out;
 }
 
-std::vector<BRep> read_file_step_breps(const std::string& filepath, double tolerance, std::vector<StepIds>* ids) {
+std::vector<BRep> read_file_step_breps(
+    const std::string& filepath,
+    double tolerance,
+    std::vector<StepIds>* ids,
+    std::vector<BRep>* parts,
+    std::vector<std::pair<int, Xform>>* instances
+) {
 
     if (!std::isfinite(tolerance) || tolerance <= 0)
         throw std::invalid_argument("STEP BRep tolerance must be finite and positive");
@@ -5125,7 +5173,16 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath, double toler
     std::sort(order.begin(), order.end());
 
     std::map<int, std::vector<std::pair<BRep, StepIds>>> built;
+    std::map<int, int> first_part; // Index in parts of a model's first BRep.
+    int part_count = 0;
     std::vector<BRep> out;
+    const auto record = [&](const BRep& part, int index, const Xform& placement) {
+        if (parts && index == (int)parts->size())
+            parts->push_back(part);
+
+        if (instances)
+            instances->push_back({index, placement});
+    };
 
     for (const auto& [model, placement] : placed_models(r, order)) {
         if (!built.count(model)) {
@@ -5149,10 +5206,15 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath, double toler
                         built[model].push_back({std::move(b), std::move(part)});
                 }
             }
+
+            first_part[model] = part_count;
+            part_count += (int)built[model].size();
         }
 
-        for (const auto& [b, part] : built[model]) {
+        for (size_t k = 0; k < built[model].size(); k++) {
+            const auto& [b, part] = built[model][k];
             out.push_back(placement ? b.transformed(*placement) : b);
+            record(b, first_part[model] + (int)k, placement.value_or(Xform::identity()));
 
             if (ids)
                 ids->push_back(part);
@@ -5184,6 +5246,7 @@ std::vector<BRep> read_file_step_breps(const std::string& filepath, double toler
                 b.add_edge(b.add_curve_3d(curve), b.add_vertex(curve.point_at_start()), b.add_vertex(curve.point_at_end()));
         }
 
+        record(b, part_count++, Xform::identity());
         out.push_back(std::move(b));
 
         if (ids)
@@ -5314,6 +5377,68 @@ bool write_file_step_breps(
     }
 
     w.finish_product(bodies, any_closed, name, diag * 1e-4, styled);
+    return write_step_string(w.emit(), filepath);
+}
+
+bool write_file_step_assembly(
+    const std::vector<BRep>& parts,
+    const std::vector<std::pair<int, Xform>>& instances,
+    const std::string& name,
+    const std::string& filepath
+) {
+
+    if (std::any_of(instances.begin(), instances.end(), [&](const std::pair<int, Xform>& i) { return i.first < 0 || i.first >= (int)parts.size(); }))
+        return false;
+
+    StepWriter w;
+    double diag = 1.0;
+
+    for (const BRep& part : parts)
+        diag = std::max(diag, vertex_diagonal(part));
+
+    const int origin = w.write_axis(Xform::identity());
+    const std::array<int, 4> c = w.write_context(diag * 1e-4);
+    std::vector<std::pair<int, int>> made;
+
+    for (const BRep& part : parts) {
+        std::vector<int> bodies;
+        bool closed = false;
+
+        for (const std::pair<std::vector<int>, bool>& group : emit_brep_shells(w, part)) {
+            const int body = w.write_body(group.first, group.second);
+
+            if (body >= 0)
+                bodies.push_back(body);
+
+            closed = closed || group.second;
+        }
+
+        std::vector<int> items = {origin};
+        items.insert(items.end(), bodies.begin(), bodies.end());
+        made.push_back(w.write_product(part.name.empty() ? "part" : part.name, StepWriter::representation_type(bodies, closed), items, c));
+    }
+
+    std::vector<int> axes = {origin};
+
+    for (const std::pair<int, Xform>& instance : instances)
+        axes.push_back(w.write_axis(instance.second));
+
+    const auto [root, assembly] = w.write_product(name, "SHAPE_REPRESENTATION", axes, c);
+
+    // Each instance: the part's representation related to the assembly's by the transformation from the part's origin to the
+    // instance's axis, in the context of the occurrence.
+    for (size_t k = 0; k < instances.size(); k++) {
+        const auto [definition, representation] = made[instances[k].first];
+        const int use = w.write_raw("NEXT_ASSEMBLY_USAGE_OCCURRENCE('" + std::to_string(k + 1) + "','','',#" + std::to_string(root) + ",#" +
+                                    std::to_string(definition) + ",$)");
+        const int shape = w.write_raw("PRODUCT_DEFINITION_SHAPE('','',#" + std::to_string(use) + ")");
+        const int transform = w.write_raw("ITEM_DEFINED_TRANSFORMATION('','',#" + std::to_string(origin) + ",#" + std::to_string(axes[k + 1]) + ")");
+        const int relation = w.write_raw("(REPRESENTATION_RELATIONSHIP('','',#" + std::to_string(representation) + ",#" + std::to_string(assembly) +
+                                         ")REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#" + std::to_string(transform) +
+                                         ")SHAPE_REPRESENTATION_RELATIONSHIP())");
+        w.write_raw("CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#" + std::to_string(relation) + ",#" + std::to_string(shape) + ")");
+    }
+
     return write_step_string(w.emit(), filepath);
 }
 

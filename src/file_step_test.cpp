@@ -1136,6 +1136,30 @@ MINI_TEST("FileStep", "BRep Read Assembly Places Each Instance") {
         MINI_CHECK(shapes[i].is_solid() && std::abs(shapes[i].volume_exact() - 1.0) < 1e-12);
     }
 }
+MINI_TEST("FileStep", "BRep Write Assembly Places Each Instance") {
+    // one cube written once and placed twice, the second turned a quarter about z; read back with its part and placements, each
+    // instance the cube as a file of its own reads it, placed
+    const auto cube = step_read_text(step_fixture("senses_cube.step"), "senses_cube.step");
+    const Xform moved = Xform::translation(10, 0, 0);
+    const Xform turned = Xform::from_matrix({0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 5, 0, 1});
+    const std::string path = serialization_path("assembly_written.step");
+    MINI_CHECK(file_step::write_file_step_brep(cube[0], path));
+    const auto alone = file_step::read_file_step_breps(path);
+    MINI_CHECK(file_step::write_file_step_assembly(cube, {{0, moved}, {0, turned}}, "assembly", path));
+    MINI_CHECK(!file_step::write_file_step_assembly(cube, {{1, moved}}, "assembly", path));
+    std::vector<BRep> parts;
+    std::vector<std::pair<int, Xform>> instances;
+    const auto shapes = file_step::read_file_step_breps(path, 1e-7, nullptr, &parts, &instances);
+    std::filesystem::remove(path);
+    MINI_CHECK(shapes.size() == 2 && parts.size() == 1 && instances.size() == 2);
+    MINI_CHECK(instances[0].first == 0 && instances[1].first == 0 && instances[0].second.m == moved.m && instances[1].second.m == turned.m);
+    for (size_t i = 0; i < shapes.size(); i++) {
+        const BRep expected = alone[0].transformed(i == 0 ? moved : turned);
+        for (size_t k = 0; k < expected.m_vertices.size(); k++)
+            MINI_CHECK(shapes[i].m_vertices[k].point.distance(expected.m_vertices[k].point) == 0.0);
+        MINI_CHECK(shapes[i].is_solid() && shapes[i].volume_exact() == expected.volume_exact());
+    }
+}
 MINI_TEST("FileStep", "BRep Read Geometric Curve Set As Vertices And Edges") {
     std::string text = step_fixture("senses_cube.step");
     text.insert(text.rfind("ENDSEC;"), "#930=CARTESIAN_POINT('',(1.,2.,3.));#931=GEOMETRIC_CURVE_SET('',(#930));\n");
@@ -1149,5 +1173,26 @@ MINI_TEST("FileStep", "BRep Read Face Of Two Outer Loops As Two Faces") {
     MINI_CHECK(shapes.size() == 1 && shapes[0].face_count() == 2);
     for (const auto& face : shapes[0].m_faces)
         MINI_CHECK(face.wires.size() == 1);
+}
+MINI_TEST("FileStep", "BRep Read Loop Back Through Its Vertex As Two Wires") {
+    // one loop around a square and on from the same vertex around a clockwise triangle: the boundary and a hole touching it, as
+    // ShapeFix_Face::FixLoopWire splits them
+    const auto shapes = step_read_text(step_fixture("keyhole_loop.step"), "keyhole_loop.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].face_count() == 1 && shapes[0].m_faces[0].wires.size() == 2);
+    MINI_CHECK(shapes[0].wire_edges(shapes[0].m_faces[0].wires[0]).size() == 5 && shapes[0].wire_edges(shapes[0].m_faces[0].wires[1]).size() == 3);
+}
+MINI_TEST("FileStep", "BRep Read Degenerated Edge Only Where A Gap Spans No Length") {
+    // a projected gap at a collapsed row takes a degenerated edge; one along the surface between edge ends around their vertex does not,
+    // as ShapeFix_Wire::FixLacking asks ShapeAnalysis_Surface::IsDegenerated at ratio 10
+    const auto shapes = step_read_text(step_fixture("lacking_gaps.step"), "lacking_gaps.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].face_count() == 2);
+    std::array<int, 2> degenerated = {0, 0}, edges = {0, 0};
+    for (int f = 0; f < 2; f++)
+        for (const auto& wire : shapes[0].m_faces[f].wires)
+            for (const auto& edge : shapes[0].wire_edges(wire)) {
+                edges[f]++;
+                degenerated[f] += shapes[0].m_edges[edge.index].degenerated;
+            }
+    MINI_CHECK(edges[0] == 4 && degenerated[0] == 1 && edges[1] == 3 && degenerated[1] == 0);
 }
 }

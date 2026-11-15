@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <tuple>
 #include <map>
+#include <memory>
 #include <cstdint>
 #include <bit>
 #include <array>
@@ -104,6 +105,8 @@ struct Work {
 struct Sums {
     std::map<std::array<std::uint64_t, 4>, std::array<double, 3>> found;
     std::array<std::uint64_t, 2> line{}; // Support and v of the inner integrals now asked for.
+    std::map<int, std::pair<std::shared_ptr<const plane::Primitive>, double>> primitives; // Polynomial caches by face, with their gauge residuals.
+    std::map<std::pair<int, int>, std::vector<double>> pieces; // Integration pieces by pcurve and support.
 };
 
 template<typename Function>
@@ -145,10 +148,6 @@ double integrate(const Function& function, double first, double last,
     }
     ++(inner ? work.inner_subdivisions : work.outer_subdivisions);
     const double middle = (first + last) * 0.5;
-    // An outer interval 2^-22 of its pcurve span still unresolved holds a jump of a loose boundary (a corner off its knots, a gap between
-    // edges within tolerance): it adds its value, an error the size of the interval.
-    if (!inner && depth >= 22)
-        return fine;
     if (depth >= 22 || middle == first || middle == last)
         throw std::runtime_error("Native BRep volume did not converge at the requested tolerance");
     return integrate(function, first, middle, tolerance * 0.5, work, depth + 1, inner, sums) +
@@ -402,16 +401,18 @@ struct SurfaceEvaluator {
 
 // One immutable BRep/frame and one sum_volume pass own this memo. Raw support
 // identity and exact argument bits avoid approximate geometry/key equivalence.
-using PrimitiveKey = std::tuple<int, std::uint64_t, std::uint64_t, std::uint64_t>;
+using PrimitiveKey = std::tuple<int, size_t, std::uint64_t, std::uint64_t, std::uint64_t>;
 using PrimitiveMemo = std::map<PrimitiveKey, double>;
 
+/// The inner integral along u at v from the knot first, the face's anchor: any constant anchor gives one flux around a closed loop,
+/// and the last knot below the face spares the spans before it.
 double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance, Work& work,
-    int support, PrimitiveMemo& memo, Sums& sums) {
+    int support, size_t first, PrimitiveMemo& memo, Sums& sums) {
     const bool cacheable = support >= 0 && std::isfinite(u) && std::isfinite(v)
         && std::isfinite(tolerance) && tolerance > 0;
     PrimitiveKey key{};
     if (cacheable) {
-        key = {support, std::bit_cast<std::uint64_t>(u), std::bit_cast<std::uint64_t>(v),
+        key = {support, first, std::bit_cast<std::uint64_t>(u), std::bit_cast<std::uint64_t>(v),
             std::bit_cast<std::uint64_t>(tolerance)};
         const auto found = memo.find(key);
         if (found != memo.end())
@@ -421,7 +422,7 @@ double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance
     const std::vector<double>& knots = surface.knots[0];
     sums.line = {static_cast<std::uint64_t>(support), std::bit_cast<std::uint64_t>(v)};
     double value = 0.0;
-    for (size_t i = 1; i < knots.size() && knots[i - 1] < u; ++i)
+    for (size_t i = first + 1; i < knots.size() && knots[i - 1] < u; ++i)
         value += integrate([&](double parameter) { return surface.integrand(parameter, v); },
             knots[i - 1], std::min(u, knots[i]), tolerance / knots.size(), work, 0, true, cacheable ? &sums : nullptr);
     // Every stored miss performed charged inner work. Thus memo size is bounded
@@ -431,10 +432,31 @@ double primitive(SurfaceEvaluator& surface, double u, double v, double tolerance
     return value;
 }
 
-std::vector<double> boundary_parameters(const NurbsCurve& curve, const std::vector<double>& vknots) {
+/// The pcurve's knots and where it crosses a knot line of the surface, its integrand bending there: a straight pcurve's v crossings in
+/// closed form, a curved one's u and v crossings bisected to the last bit from sign changes between samples of each span.
+std::vector<double> boundary_parameters(const NurbsCurve& curve, const std::array<std::vector<double>, 2>& surface_knots) {
     std::vector<double> parameters = curve.get_span_vector();
-    if (curve.degree() != 1 || curve.cv_count() != 2)
+    const std::vector<double>& vknots = surface_knots[1];
+    if (curve.degree() != 1 || curve.cv_count() != 2) {
+        const std::vector<double> spans = parameters;
+        for (size_t i = 1; i < spans.size(); ++i)
+            for (int k = 0; k < 16; ++k) {
+                const double a = spans[i - 1] + (spans[i] - spans[i - 1]) * k / 16, b = k == 15 ? spans[i] : spans[i - 1] + (spans[i] - spans[i - 1]) * (k + 1) / 16;
+                const Point pa = curve.point_at(a), pb = curve.point_at(b);
+                for (int d = 0; d < 2; ++d)
+                    for (auto knot_at = std::upper_bound(surface_knots[d].begin(), surface_knots[d].end(), std::min(pa[d], pb[d]));
+                         knot_at != surface_knots[d].end() && *knot_at < std::max(pa[d], pb[d]); ++knot_at) {
+                        const double knot = *knot_at;
+                        double lo = a, hi = b;
+                        for (double middle = 0.5 * (lo + hi); middle > lo && middle < hi; middle = 0.5 * (lo + hi))
+                            ((curve.point_at(middle)[d] - knot) * (pa[d] - knot) > 0.0 ? lo : hi) = middle;
+                        parameters.push_back(hi);
+                    }
+            }
+        std::sort(parameters.begin(), parameters.end());
+        parameters.erase(std::unique(parameters.begin(), parameters.end()), parameters.end());
         return parameters;
+    }
     const double scale = std::max(curve.weight(0), curve.weight(1));
     const double first_weight = curve.weight(0) / scale;
     const double last_weight = curve.weight(1) / scale;
@@ -680,25 +702,46 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
     const int rectangle = rectangle_orientation(brep, face, surface);
     if (!surface.is_rational() && rectangle && surface.degree(0) <= 21 && surface.degree(1) <= 21)
         return polynomial_volume(evaluator, rectangle, work);
-    const plane::Primitive cache(
-        surface, trim_hull(brep, face, surface), cached ? budget - work.total : 0,
-        [&]() {
-            ++work.polynomial_coefficients;
-            if (++work.total > budget)
-                throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
-        },
-        [&](double anchor, size_t required) {
-            // Check the gauge BEFORE spending the coefficient budget. Every
-            // certificate rectangle is charged, even if this cache is declined.
-            const double residual = gauge_error(brep, face, surface, anchor, work);
-            if (!std::isfinite(residual) || residual > tolerance * .125 || required > budget - work.total)
-                return false;
-            const auto remaining = nurbs_interval::Interval(tolerance) - nurbs_interval::Interval(residual);
-            if (!nurbs_interval::finite(remaining) || remaining.lo <= 0)
-                return false;
-            tolerance = remaining.lo; // Directed reservation of the full gap bound.
-            return true;
-        });
+    // The gauge's residual taken out of this pass's tolerance, as a directed reservation of the full gap bound; false when it does not fit.
+    const auto reserve = [&](double residual) {
+        if (!std::isfinite(residual) || residual > tolerance * .125)
+            return false;
+        const auto remaining = nurbs_interval::Interval(tolerance) - nurbs_interval::Interval(residual);
+        if (!nurbs_interval::finite(remaining) || remaining.lo <= 0)
+            return false;
+        tolerance = remaining.lo;
+        return true;
+    };
+    // The polynomial cache is built once per face for every pass of a volume; each pass checks its gauge against its own tolerance.
+    std::shared_ptr<const plane::Primitive> cache;
+    const auto stored = cached ? sums.primitives.find(face) : sums.primitives.end();
+    if (stored != sums.primitives.end()) {
+        if (reserve(stored->second.second))
+            cache = stored->second.first;
+    } else {
+        double residual = NAN;
+        auto built = std::make_shared<const plane::Primitive>(
+            surface, trim_hull(brep, face, surface), cached ? budget - work.total : 0,
+            [&]() {
+                ++work.polynomial_coefficients;
+                if (++work.total > budget)
+                    throw std::runtime_error("Native BRep volume exceeded its quadrature budget");
+            },
+            [&](double anchor, size_t required) {
+                // Check the gauge BEFORE spending the coefficient budget. Every
+                // certificate rectangle is charged, even if this cache is declined.
+                residual = gauge_error(brep, face, surface, anchor, work);
+                return required <= budget - work.total && reserve(residual);
+            });
+        if (!built->cells.empty()) {
+            cache = built;
+            if (cached)
+                sums.primitives[face] = {built, residual};
+        }
+    }
+    const double lowest = trim_hull(brep, face, surface)[0];
+    const size_t anchor = std::isfinite(lowest) && lowest > evaluator.knots[0].front()
+        ? static_cast<size_t>(std::upper_bound(evaluator.knots[0].begin(), evaluator.knots[0].end(), lowest) - evaluator.knots[0].begin()) - 1 : 0;
     double value = 0.0;
     for (const BRepRef& wire : boundary.wires)
         for (const BRepRef& edge : brep.wire_edges(wire)) {
@@ -706,17 +749,20 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
             if (index < 0)
                 throw std::runtime_error("Native BRep volume requires every face pcurve");
             const NurbsCurve& curve = brep.m_curves_2d[index];
-            const std::vector<double> knots = boundary_parameters(curve, evaluator.knots[1]);
+            auto known = sums.pieces.find({index, boundary.surface_index});
+            if (known == sums.pieces.end())
+                known = sums.pieces.emplace(std::pair<int, int>{index, boundary.surface_index}, boundary_parameters(curve, evaluator.knots)).first;
+            const std::vector<double>& knots = known->second;
             const double sign = edge.orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
             for (size_t i = 1; i < knots.size(); ++i) {
                 const double allowed = tolerance / (knots.size() * boundary.wires.size());
-                if (!cache.cells.empty())
+                if (cache)
                     value += sign * integrate_polynomial([&](double parameter) {
                         std::array<xyz, 3> d;
                         curve.jet(parameter, 1, d);
                         if (d[1][1] == 0.0)
                             return nurbs_interval::Interval();
-                        const nurbs_interval::Interval primitive = cache.at(d[0][0], d[0][1]);
+                        const nurbs_interval::Interval primitive = cache->at(d[0][0], d[0][1]);
                         const nurbs_interval::Interval integrand = primitive * nurbs_interval::Interval(d[1][1]);
                         if (!nurbs_interval::finite(integrand)) {
                             const nlohmann::ordered_json witness = {
@@ -728,7 +774,7 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
                                 {"uv", {d[0][0], d[0][1]}},
                                 {"dv_dt", d[1][1]},
                                 {"cache_domain",
-                                 {cache.u.front(), cache.u.back(), cache.v.front(), cache.v.back()}},
+                                 {cache->u.front(), cache->u.back(), cache->v.front(), cache->v.back()}},
                                 {"primitive_finite", nurbs_interval::finite(primitive)},
                                 {"primitive", {primitive.lo, primitive.hi}},
                                 {"curve", curve.jsondump()},
@@ -743,7 +789,7 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
                         curve.jet(parameter, 1, d);
                         if (d[1][1] == 0.0)
                             return 0.0;
-                        return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work, boundary.surface_index, memo, sums) * d[1][1];
+                        return primitive(evaluator, d[0][0], d[0][1], tolerance * 0.05, work, boundary.surface_index, anchor, memo, sums) * d[1][1];
                     }, knots[i - 1], knots[i], allowed, work);
             }
         }
@@ -795,7 +841,14 @@ double volume(const BRep& brep, double tolerance) {
         throw std::invalid_argument("Native BRep volume requires a closed oriented solid");
     const Frame bounds = frame(brep);
     Sums sums;
-    const double estimate = sum_volume(brep, bounds, tolerance * 0.01, sums);
+    // The estimate only sizes the requested accuracy to within a percent: coarse passes in the unit frame, each tighter one only while
+    // the estimate is under a hundred times the tolerance of the last.
+    double coarse = 1e-4;
+    double estimate = sum_volume(brep, bounds, coarse, sums);
+    while (std::abs(estimate) < 100.0 * coarse && coarse > tolerance * 0.01) {
+        coarse = std::max(tolerance * 0.01, std::min(coarse * 1e-2, std::abs(estimate) * 1e-2));
+        estimate = sum_volume(brep, bounds, coarse, sums);
+    }
     const double requested = tolerance * std::abs(estimate) * 0.1;
     if (requested < 64 * std::numeric_limits<double>::epsilon() * std::abs(estimate))
         throw std::runtime_error("Native BRep volume tolerance is below numerical resolution");
