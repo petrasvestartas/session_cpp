@@ -1157,6 +1157,8 @@ std::vector<std::pair<double, Point>> grid_edge_samples(const BRep& b, int fi, c
     for (const std::pair<double, Point>& pt : pts)
         samples.push_back({t0 + (pt.first - sp[varying]) / (ep[varying] - sp[varying]) * (t1 - t0), pt.second});
 
+    std::sort(samples.begin(), samples.end(), parameter_less);
+
     return samples;
 }
 
@@ -1384,7 +1386,7 @@ double canonical_parameter(const NurbsSurface& srf, const NurbsCurve& crv, const
     return crv.closest_parameter(Point(u, v, 0.0));
 }
 
-/// Phase 3: map the canonical points of edge `ei` onto pcurve `ci` of face `fi`, checked in model space, each point seeded by the parameters of the two before it since the points run along the edge; a point the pcurve cannot reach within tolerance keeps the nearest parameter, since the canonical position is what the face places and the parameter only orders the loop
+/// Phase 3: map the canonical points of edge `ei` onto pcurve `ci` of face `fi`, checked in model space, each point seeded by the parameters of the two before it since the points run along the edge; a point the pcurve cannot reach within tolerance keeps the nearest parameter, since the canonical position is what the face places. Every face keeps every canonical point in its order along the edge, the whole run reversed where the pcurve runs against it: sorted point by point, points closer than a pcurve resolves would merge or swap on one face and not on the other.
 void lift_canonical(
     const BRep& b,
     int fi,
@@ -1443,22 +1445,31 @@ void lift_canonical(
         samples.push_back({t, q, p});
     }
 
-    std::sort(samples.begin(), samples.end(), sample_less);
-    samples.erase(std::unique(samples.begin(), samples.end(), sample_equal), samples.end());
+    if (closed && samples.size() > 1 && same_boundary_point(points.front(), points.back()) && !cached) {
+        const double start = std::get<0>(samples.front());
+        const double end = start - ends.first < ends.second - start ? ends.second : ends.first;
+        samples.back() = {end, crv.point_at(end), points.back()};
+    }
+
+    // a pcurve may run against the edge: then the whole sequence turns round, never point by point
+    const size_t inner = closed && samples.size() > 3 ? 1 : 0;
+
+    if (samples.size() > 1 && std::get<0>(samples[inner]) > std::get<0>(samples[samples.size() - 1 - inner]))
+        std::reverse(samples.begin(), samples.end());
 }
 
 std::array<std::vector<double>, 2> parametric_crease_knots(const NurbsSurface& surface) {
-    std::array<std::vector<double>, 2> result;
-    for (int direction = 0; direction < 2; ++direction) {
-        const std::pair<double, double> domain = surface.domain(direction);
-        const std::vector<double>& knots = surface.m_nurbsknot[direction];
-        for (double knot : knots)
-            if (knot > domain.first && knot < domain.second
-                && std::count(knots.begin(), knots.end(), knot) >= surface.degree(direction)
-                && std::find(result[direction].begin(), result[direction].end(), knot) == result[direction].end())
-                result[direction].push_back(knot);
-    }
-    return result;
+    return NurbsSurfaceTrimmed::crease_knots(surface);
+}
+
+/// A UV point within 1e-9 of the domain of a crease knot moved onto it, as the trimmed mesher moves every loop point: two
+/// samples beside one crease, one on it and one a rounding off, would become one point on one face and two on the other
+void pin_to_creases(const NurbsSurface& surface, const std::array<std::vector<double>, 2>& creases, Point& uv) {
+
+    for (int dir = 0; dir < 2; ++dir)
+        for (double knot : creases[dir])
+            if (std::abs(uv[dir] - knot) <= 1e-9 * (surface.domain(dir).second - surface.domain(dir).first))
+                uv[dir] = knot;
 }
 
 /// Phase 3: fresh samples of a pcurve nobody has sampled yet, its ends on the edge's vertices, refined to the face's angle and chord
@@ -1482,6 +1493,9 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
 
     // a sample on every crease the pcurve crosses, so the face across the edge gets that vertex too
     const std::array<std::vector<double>, 2> creases = parametric_crease_knots(srf);
+
+    for (Point& point : points)
+        pin_to_creases(srf, creases, point);
 
     for (int dir = 0; dir < 2; ++dir)
         for (double knot : creases[dir])
@@ -1588,15 +1602,21 @@ bool edge_use_samples(
 
     const NurbsCurve& crv = b.m_curves_2d[ci];
 
-    if (boundary.points.count(ei)) {
+    // a degenerated edge has no points to lift, only its vertex: every use samples its own pcurve
+    if (boundary.points.count(ei) && !edge.degenerated) {
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
-        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, b.m_curves_3d[edge.curve_3d_index], edge_ends(b, ei), scale, angle, chord);
+        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge.degenerated ? crv : b.m_curves_3d[edge.curve_3d_index], edge_ends(b, ei), scale, angle, chord);
         add_other_face_creases(b, fi, edge, crv, samples);
         std::vector<Point> positions;
 
-        for (const std::tuple<double, Point, Point>& sample : samples)
+        // A degenerated edge is its vertex: the surface only reaches it within rounding along a pole or an apex.
+        for (std::tuple<double, Point, Point>& sample : samples) {
+            if (edge.degenerated)
+                std::get<2>(sample) = b.m_vertices[edge.start_vertex].point;
+
             positions.push_back(std::get<2>(sample));
+        }
 
         boundary.points[ei] = positions;
     }
@@ -1648,13 +1668,12 @@ bool align_parametric_use(const std::vector<ParametricBoundarySample>& canonical
 using ParametricPin = std::tuple<size_t, int, double>;
 using ParametricCuts = std::map<double, std::vector<ParametricPin>>;
 
-ParametricCuts parametric_segment_cuts(const BRep& brep, const std::vector<ParametricBoundaryUse>& uses,
-                                      size_t segment) {
+ParametricCuts parametric_segment_cuts(const std::vector<ParametricBoundaryUse>& uses,
+                                      const std::vector<std::array<std::vector<double>, 2>>& creases, size_t segment) {
     ParametricCuts cuts = {{0, {}}, {1, {}}};
     for (size_t index = 0; index < uses.size(); ++index) {
         const ParametricBoundaryUse& use = uses[index];
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
-        const std::array<std::vector<double>, 2> knots = parametric_crease_knots(surface);
+        const std::array<std::vector<double>, 2>& knots = creases[index];
         const Point& first = std::get<1>(use.samples[segment]);
         const Point& last = std::get<1>(use.samples[segment + 1]);
         for (int direction = 0; direction < 2; ++direction)
@@ -1671,9 +1690,7 @@ ParametricCuts parametric_segment_cuts(const BRep& brep, const std::vector<Param
     return cuts;
 }
 
-void verify_parametric_partition(const BRep& brep, const ParametricBoundaryUse& use) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
-    const std::array<std::vector<double>, 2> knots = parametric_crease_knots(surface);
+void verify_parametric_partition(const ParametricBoundaryUse& use, const std::array<std::vector<double>, 2>& knots) {
     for (size_t i = 1; i < use.samples.size(); ++i) {
         const Point& first = std::get<1>(use.samples[i - 1]);
         const Point& last = std::get<1>(use.samples[i]);
@@ -1690,10 +1707,17 @@ bool split_parametric_edge(const BRep& brep, std::vector<ParametricBoundaryUse>&
     for (size_t i = 1; i < uses.size(); ++i)
         if (!align_parametric_use(canonical, uses[i]))
             throw std::runtime_error("Native tessellation has incompatible shared edge sample ancestry");
+    std::vector<std::array<std::vector<double>, 2>> creases;
+    for (ParametricBoundaryUse& use : uses) {
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
+        creases.push_back(parametric_crease_knots(surface));
+        for (ParametricBoundarySample& sample : use.samples)
+            pin_to_creases(surface, creases.back(), std::get<1>(sample));
+    }
     std::vector<std::vector<ParametricBoundarySample>> expanded(uses.size());
     bool changed = false;
     for (size_t segment = 0; segment + 1 < canonical.size(); ++segment) {
-        const ParametricCuts cuts = parametric_segment_cuts(brep, uses, segment);
+        const ParametricCuts cuts = parametric_segment_cuts(uses, creases, segment);
         changed |= cuts.size() > 2;
         for (const auto& cut : cuts) {
             if (cut.first == 1 && segment + 2 < canonical.size())
@@ -1719,7 +1743,7 @@ bool split_parametric_edge(const BRep& brep, std::vector<ParametricBoundaryUse>&
     }
     for (size_t i = 0; i < uses.size(); ++i) {
         uses[i].samples = std::move(expanded[i]);
-        verify_parametric_partition(brep, uses[i]);
+        verify_parametric_partition(uses[i], creases[i]);
         if (uses[i].reversed)
             std::reverse(uses[i].samples.begin(), uses[i].samples.end());
     }
@@ -2580,8 +2604,26 @@ void ruled_boundaries(const BRep& b, const std::vector<int>& face_ruled, EdgeBou
         }
 
         if (!changed)
-            return;
+            break;
     }
+
+    // a loop's points along its edge, as every other canonical boundary, since a face lifting them keeps their order
+    for (size_t fi = 0; fi < face_ruled.size(); ++fi)
+        for (const int k : {0, 2}) {
+            if (face_ruled[fi] < 0)
+                continue;
+
+            const BRepRef er = ruled_edges(b, (int)fi, face_ruled[fi])[k];
+            const std::vector<std::tuple<double, Point, Point>> lifted = ruled_lift(b, (int)fi, er, boundary);
+            std::vector<Point>& points = boundary.points[er.index];
+
+            if (lifted.size() == points.size()) {
+                points.clear();
+
+                for (const std::tuple<double, Point, Point>& sample : lifted)
+                    points.push_back(std::get<2>(sample));
+            }
+        }
 }
 
 /// Phase 1: the order of lifted samples by increasing u

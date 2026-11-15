@@ -463,6 +463,14 @@ MINI_TEST("RemeshCDT", "Collinear Boundary Runs") {
     MINI_CHECK(failures == 0);
 }
 
+MINI_TEST("RemeshCDT", "Concave Hole Pocket") {
+    // the triangles closing the notch of a U-shaped hole have every corner on the hole ring and still belong to the face
+    const std::vector<std::pair<double, double>> border = {{-2.0, -2.0}, {2.0, -2.0}, {2.0, 2.0}, {-2.0, 2.0}};
+    const std::vector<std::pair<double, double>> hole = {{-1.0, -1.0}, {-1.0, 1.0}, {-0.5, 1.0}, {-0.5, -0.5}, {0.5, -0.5},
+        {0.5, 1.0}, {1.0, 1.0}, {1.0, -1.0}};
+    MINI_CHECK(run_covers(border, {hole}));
+}
+
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
     // using session_cpp::RemeshCDT;
     // using session_cpp::Polyline;

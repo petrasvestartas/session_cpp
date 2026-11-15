@@ -14,6 +14,7 @@
 #include <set>
 #include <stdexcept>
 #include <tuple>
+#include <unordered_map>
 
 namespace session_cpp {
 
@@ -2433,7 +2434,34 @@ void subdivide_edge(
     }
 }
 
-/// Interior knots per direction whose multiplicity reaches the degree: the C0 lines of the surface.
+/// True when the normal turns across knot line `knot` of direction `dir` somewhere along it: a knot of full multiplicity is
+/// only C0 in the parameters, and the rational arcs of a sphere or torus join there without any turn of the surface
+bool turns_across(const NurbsSurface& surface, int dir, double knot) {
+
+    const std::pair<double, double> span = surface.domain(dir);
+    const std::pair<double, double> along = surface.domain(1 - dir);
+    const double step = 1e-7 * (span.second - span.first);
+
+    for (int k = 0; k < 9; ++k) {
+        const double w = along.first + (k + 0.5) / 9 * (along.second - along.first);
+        Vector normals[2];
+        bool defined = true;
+
+        for (int side = 0; side < 2; ++side) {
+            const double t = knot + (side ? step : -step);
+            const std::vector<Vector> d = dir == 0 ? surface.evaluate(t, w, 1) : surface.evaluate(w, t, 1);
+            normals[side] = d[1].cross(d[2]);
+            defined = defined && normals[side].normalize_self();
+        }
+
+        if (defined && normals[0].dot(normals[1]) < 1 - 1e-8)
+            return true;
+    }
+
+    return false;
+}
+
+/// Interior knots per direction whose multiplicity reaches the degree and across which the normal turns: the creases of the surface.
 std::array<std::vector<double>, 2> find_crease_knots(const NurbsSurface& surface) {
 
     std::array<std::vector<double>, 2> crease_knots;
@@ -2447,7 +2475,7 @@ std::array<std::vector<double>, 2> find_crease_knots(const NurbsSurface& surface
                 std::find(crease_knots[dir].begin(), crease_knots[dir].end(), knot) != crease_knots[dir].end())
                 continue;
 
-            if (std::count(knots.begin(), knots.end(), knot) >= surface.degree(dir))
+            if (std::count(knots.begin(), knots.end(), knot) >= surface.degree(dir) && turns_across(surface, dir, knot))
                 crease_knots[dir].push_back(knot);
         }
     }
@@ -2808,6 +2836,207 @@ void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_u
 
         if (!inside_loops(cu, cv, loops_uv, bounds))
             tri.alive = false;
+    }
+}
+
+/// The constrained sides of the live triangulation, as vertex pairs in increasing order.
+std::set<std::pair<int, int>> constrained_sides(const Delaunay2D& dt) {
+
+    std::set<std::pair<int, int>> sides;
+
+    for (const Triangle& tri : dt.triangles)
+        if (tri.alive)
+            for (int k = 0; k < 3; ++k)
+                if (tri.constrained[k])
+                    sides.insert(std::minmax(tri.v[(k + 1) % 3], tri.v[(k + 2) % 3]));
+
+    return sides;
+}
+
+/// Flip every free edge whose two opposite angles on the surface sum past a half turn, while both new triangles keep
+/// their UV orientation: a Delaunay test in UV makes needles wherever the surface stretches UV unevenly, as along the
+/// meridians near a pole, and the same test on the surface points removes them. Constrained edges stay.
+void flip_to_surface(const Delaunay2D& dt, const std::vector<Point>& points, std::vector<std::array<int, 3>>& tris) {
+
+    const std::set<std::pair<int, int>> fixed = constrained_sides(dt);
+    const auto angle = [&](int apex, int a, int b) {
+        Vector first = points[a] - points[apex];
+        Vector second = points[b] - points[apex];
+        return first.normalize_self() && second.normalize_self() ? std::acos(std::clamp(first.dot(second), -1.0, 1.0)) : -1.0;
+    };
+    const auto ccw = [&](int a, int b, int c) {
+        return Delaunay2D::orient2d(dt.vertices[a].x, dt.vertices[a].y, dt.vertices[b].x, dt.vertices[b].y,
+            dt.vertices[c].x, dt.vertices[c].y) > 0;
+    };
+    std::unordered_map<int64_t, size_t> owner;
+    const auto edge = [](int from, int to) { return (static_cast<int64_t>(from) << 32) | static_cast<uint32_t>(to); };
+
+    for (size_t t = 0; t < tris.size(); ++t)
+        for (int k = 0; k < 3; ++k)
+            owner[edge(tris[t][k], tris[t][(k + 1) % 3])] = t;
+
+    std::vector<std::pair<int, int>> queue;
+
+    for (const std::array<int, 3>& tri : tris)
+        for (int k = 0; k < 3; ++k)
+            queue.push_back(std::minmax(tri[k], tri[(k + 1) % 3]));
+
+    for (size_t budget = 10 * tris.size() + 100; !queue.empty() && budget > 0; --budget) {
+        const auto [a, b] = queue.back();
+        queue.pop_back();
+        const auto first = owner.find(edge(a, b));
+        const auto second = owner.find(edge(b, a));
+
+        if (first == owner.end() || second == owner.end() || fixed.count(std::minmax(a, b)))
+            continue;
+
+        const std::array<int, 3>& t1 = tris[first->second];
+        const std::array<int, 3>& t2 = tris[second->second];
+        const int c = t1[0] != a && t1[0] != b ? t1[0] : t1[1] != a && t1[1] != b ? t1[1] : t1[2];
+        const int d = t2[0] != a && t2[0] != b ? t2[0] : t2[1] != a && t2[1] != b ? t2[1] : t2[2];
+        const double gamma = angle(c, a, b);
+        const double delta = angle(d, b, a);
+
+        if (gamma < 0 || delta < 0 || gamma + delta <= Tolerance::PI * (1 + 1e-9) || !ccw(c, a, d) || !ccw(d, b, c)
+            || angle(a, c, d) < 0 || angle(b, d, c) < 0)
+            continue;
+
+        const size_t i1 = first->second, i2 = second->second;
+
+        for (const std::array<int, 3>& tri : {tris[i1], tris[i2]})
+            for (int k = 0; k < 3; ++k)
+                owner.erase(edge(tri[k], tri[(k + 1) % 3]));
+
+        tris[i1] = {c, a, d};
+        tris[i2] = {d, b, c};
+
+        for (size_t t : {i1, i2})
+            for (int k = 0; k < 3; ++k)
+                owner[edge(tris[t][k], tris[t][(k + 1) % 3])] = t;
+
+        for (const std::pair<int, int>& edge : {std::make_pair(a, c), std::make_pair(c, b), std::make_pair(b, d), std::make_pair(d, a)})
+            queue.push_back(std::minmax(edge.first, edge.second));
+    }
+}
+
+/// True when the flat triangle over corners uv leaves the surface by more than deflection or tilts from its normal past the
+/// angle, measured as certification measures it: at the corners, the side midpoints and the centroid
+bool off_surface(const NurbsSurface& surface, const std::array<std::array<double, 2>, 3>& uv, const std::array<Point, 3>& corners,
+    double deflection, double cos_max_angle) {
+
+    // a triangle with two corners on one point, along a pole line, is not on the surface at all: its centroid only creeps
+    // toward the pole
+    for (int k = 0; k < 3; ++k)
+        if (corners[k].distance(corners[(k + 1) % 3]) <= 1e-9 * corners[k].distance(corners[(k + 2) % 3]))
+            return false;
+
+    Vector plane = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
+
+    if (!plane.normalize_self())
+        return false;
+
+    const double third = 1.0 / 3.0;
+
+    for (const std::array<double, 3>& w : {std::array<double, 3>{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {.5, .5, 0}, {0, .5, .5},
+             {.5, 0, .5}, {third, third, third}}) {
+        double u = 0, v = 0;
+
+        for (int k = 0; k < 3; ++k) {
+            const double weight = .999 * w[k] + .001 * third;
+            u += weight * uv[k][0];
+            v += weight * uv[k][1];
+        }
+
+        const std::vector<Vector> d = surface.evaluate(u, v, 1);
+
+        if (std::abs((Point(d[0][0], d[0][1], d[0][2]) - corners[0]).dot(plane)) > deflection)
+            return true;
+
+        Vector normal = d[1].cross(d[2]);
+
+        if (normal.normalize_self() && std::abs(normal.dot(plane)) < cos_max_angle)
+            return true;
+    }
+
+    return false;
+}
+
+/// Refine until the surface-flipped triangles inside the loops hold the certified bounds: each round flips a copy of the
+/// UV triangulation and inserts the centroid of every triangle off the surface, unless that point lies within the
+/// diametral sphere of one of its constrained sides, where it would only make a thinner triangle against a side that
+/// cannot split. The triangulation itself stays Delaunay in UV, so insertion stays valid.
+void surface_refine(Delaunay2D& dt, const NurbsSurface& surface, const std::vector<std::vector<Point>>& loops_uv,
+    const std::array<double, 4>& bounds, double deflection, double cos_max_angle) {
+
+    std::vector<Point> points;
+    std::map<std::array<int, 3>, bool> inside, held;
+    const auto key = [](std::array<int, 3> tri) {
+        std::sort(tri.begin(), tri.end());
+        return tri;
+    };
+
+    for (int round = 0; round < 32 && dt.vertices.size() < 200000; ++round) {
+        for (size_t vi = points.size(); vi < dt.vertices.size(); ++vi)
+            points.push_back(surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y));
+
+        std::vector<std::array<int, 3>> tris;
+
+        for (const std::array<int, 3>& tri : dt.get_triangles()) {
+            const auto found = inside.try_emplace(key(tri), false);
+
+            if (found.second)
+                found.first->second = inside_loops((dt.vertices[tri[0]].x + dt.vertices[tri[1]].x + dt.vertices[tri[2]].x) / 3,
+                    (dt.vertices[tri[0]].y + dt.vertices[tri[1]].y + dt.vertices[tri[2]].y) / 3, loops_uv, bounds);
+
+            if (found.first->second)
+                tris.push_back(tri);
+        }
+
+        flip_to_surface(dt, points, tris);
+        std::vector<std::array<Point, 2>> sides;
+        std::vector<std::array<double, 4>> boxes;
+
+        for (const std::pair<int, int>& side : constrained_sides(dt)) {
+            const Vertex2D& a = dt.vertices[side.first];
+            const Vertex2D& b = dt.vertices[side.second];
+            const double reach = 0.5 * std::hypot(b.x - a.x, b.y - a.y);
+            sides.push_back({points[side.first], points[side.second]});
+            boxes.push_back({std::min(a.x, b.x) - reach, std::max(a.x, b.x) + reach, std::min(a.y, b.y) - reach, std::max(a.y, b.y) + reach});
+        }
+
+        std::vector<std::array<double, 2>> centroids;
+
+        for (const std::array<int, 3>& tri : tris) {
+            std::array<std::array<double, 2>, 3> uv;
+
+            for (int k = 0; k < 3; ++k)
+                uv[k] = {dt.vertices[tri[k]].x, dt.vertices[tri[k]].y};
+
+            const auto found = held.try_emplace(key(tri), false);
+
+            if (found.second)
+                found.first->second = !off_surface(surface, uv, {points[tri[0]], points[tri[1]], points[tri[2]]}, deflection, cos_max_angle);
+
+            if (found.first->second)
+                continue;
+
+            const std::array<double, 2> center = {(uv[0][0] + uv[1][0] + uv[2][0]) / 3, (uv[0][1] + uv[1][1] + uv[2][1]) / 3};
+            const Point point = surface.point_at(center[0], center[1]);
+            bool encroaches = false;
+
+            for (size_t k = 0; k < sides.size() && !encroaches; ++k)
+                encroaches = center[0] >= boxes[k][0] && center[0] <= boxes[k][1] && center[1] >= boxes[k][2] && center[1] <= boxes[k][3]
+                    && (sides[k][0] - point).dot(sides[k][1] - point) <= 0;
+
+            if (!encroaches)
+                centroids.push_back(center);
+        }
+
+        if (centroids.empty())
+            return;
+
+        for (const std::array<double, 2>& center : centroids)
+            dt.insert(center[0], center[1]);
     }
 }
 
@@ -3323,6 +3552,11 @@ Mesh NurbsSurfaceTrimmed::mesh_q(double max_angle_deg, double chord_factor) cons
     return triangulate(loops, max_angle_deg, chord_factor);
 }
 
+std::array<std::vector<double>, 2> NurbsSurfaceTrimmed::crease_knots(const NurbsSurface& surface) {
+
+    return find_crease_knots(surface);
+}
+
 Mesh NurbsSurfaceTrimmed::mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const {
 
     if (loops.uv.empty() || !std::isfinite(max_angle_deg) || max_angle_deg <= 0.0 || !std::isfinite(chord_factor) ||
@@ -3702,19 +3936,18 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& given, double max_angle_d
 
     // a trim along a crease knot is on it exactly: a sample a bit off would lie beside the crease's own constraint
     TrimLoops loops = given;
-    const std::array<std::vector<double>, 2> creases = find_crease_knots(m_surface);
+    const std::array<std::vector<double>, 2> crease_knots = find_crease_knots(m_surface);
 
     for (std::vector<Point>& loop : loops.uv)
         for (Point& point : loop)
             for (int dir = 0; dir < 2; ++dir)
-                for (double knot : creases[dir])
+                for (double knot : crease_knots[dir])
                     if (std::abs(point[dir] - knot) <= 1e-9 * (m_surface.domain(dir).second - m_surface.domain(dir).first))
                         point[dir] = knot;
 
     const double bbox_diag = bbox_diagonal();
     const double deflection = bbox_diag * chord_factor;
     const double cos_max_angle = std::cos(std::min(std::max(max_angle_deg, 0.1), 179.0) * Tolerance::PI / 180.0);
-    const std::array<std::vector<double>, 2> crease_knots = find_crease_knots(m_surface);
     const std::array<double, 4> bounds = loop_bounds(loops.uv[0]);
 
     Delaunay2D dt(bounds[0], bounds[1], bounds[2], bounds[3], crease_knots);
@@ -3726,9 +3959,21 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& given, double max_angle_d
         if (inside_loops(p[0], p[1], loops.uv, bounds))
             dt.insert(p[0], p[1]);
 
-    refine(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
+    if (mesh_parametric_metadata::capture_depth)
+        surface_refine(dt, m_surface, loops.uv, bounds, deflection, cos_max_angle);
+    else
+        refine(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
     trim_outside(dt, loops.uv, bounds);
-    const std::vector<std::array<int, 3>> tris = dt.get_triangles();
+    std::vector<std::array<int, 3>> tris = dt.get_triangles();
+
+    if (mesh_parametric_metadata::capture_depth) {
+        std::vector<Point> points;
+
+        for (const Vertex2D& vertex : dt.vertices)
+            points.push_back(m_surface.point_at(vertex.x, vertex.y));
+
+        flip_to_surface(dt, points, tris);
+    }
 
     if (tris.empty() || crosses_crease(tris, dt, crease_knots))
         return Mesh();

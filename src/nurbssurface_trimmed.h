@@ -7,6 +7,7 @@
 #include "nurbscurve.h"
 #include "nurbssurface.h"
 #include "xform.h"
+#include <array>
 #include <string>
 #include <utility>
 #include <vector>
@@ -180,6 +181,9 @@ public:
 
     /// Mesh sampled loops (outer first, then holes) keeping every loop vertex, tagged boundary/{loop}/{sample}; knot crossings add boundary_interval/{loop}/{segment}; empty mesh on invalid input.
     Mesh mesh_loops(const TrimLoops& loops, double max_angle_deg, double chord_factor) const;
+
+    /// Interior knots of full multiplicity across which the surface normal turns, per direction: the lines a mesh must hold.
+    static std::array<std::vector<double>, 2> crease_knots(const NurbsSurface& surface);
 
     /// Mesh of the half (S-q0).n <= 0: span-adaptive grid, marching-squares clip with Newton-refined crossings, seams welded.
     Mesh mesh_by_plane(const Point& q0, const Vector& normal, double max_angle_deg, double chord_factor) const;

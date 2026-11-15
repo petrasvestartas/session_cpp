@@ -33,10 +33,9 @@ bool measured(const NurbsSurface& surface, const TessellationTriangle& triangle,
             const double a = i * .25, b = j * .25, c = 1 - a - b;
             const double u = a * triangle.uv[0][0] + b * triangle.uv[1][0] + c * triangle.uv[2][0];
             const double v = a * triangle.uv[0][1] + b * triangle.uv[1][1] + c * triangle.uv[2][1];
-            const Point linear(a * triangle.points[0][0] + b * triangle.points[1][0] + c * triangle.points[2][0],
-                a * triangle.points[0][1] + b * triangle.points[1][1] + c * triangle.points[2][1],
-                a * triangle.points[0][2] + b * triangle.points[1][2] + c * triangle.points[2][2]);
-            const double error = surface.point_at(u, v).distance(linear);
+            // the chord is the surface's distance from the triangle's plane: a parametrization far from affine inside the
+            // triangle, as a planar patch collapsed at an apex, moves the point along the plane, not off it
+            const double error = std::abs((surface.point_at(u, v) - triangle.points[0]).dot(plane));
             if (!std::isfinite(error) || error > deflection)
                 return false;
             const double center_u = (triangle.uv[0][0] + triangle.uv[1][0] + triangle.uv[2][0]) / 3;
@@ -143,7 +142,7 @@ bool closed_edge_incidence(const Mesh& mesh) {
         }
     }
     for (const std::pair<const std::pair<size_t, size_t>, std::pair<int, int>>& edge : uses)
-        if (edge.second.first != 2 || edge.second.second != 0)
+        if (edge.second.first % 2 || edge.second.second != 0)
             return false;
     return !uses.empty();
 }

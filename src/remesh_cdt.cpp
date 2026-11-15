@@ -167,8 +167,8 @@ bool segments_intersect(
     return cp < 0 && u > cp;
 }
 
-/// Even-odd test of an integer point against an integer ring.
-bool inside_path64(const std::array<int64_t, 2>& p, const std::vector<std::array<int64_t, 2>>& poly) {
+/// Even-odd test of a point against an integer ring.
+bool inside_path64(const std::array<double, 2>& p, const std::vector<std::array<int64_t, 2>>& poly) {
 
     bool inside = false;
     const size_t n = poly.size();
@@ -180,7 +180,7 @@ bool inside_path64(const std::array<int64_t, 2>& p, const std::vector<std::array
                 static_cast<double>(p[1] - poly[i][1]) * static_cast<double>(poly[j][0] - poly[i][0]) /
                     static_cast<double>(poly[j][1] - poly[i][1]);
 
-            if (static_cast<double>(p[0]) < x)
+            if (p[0] < x)
                 inside = !inside;
         }
 
@@ -1259,18 +1259,12 @@ std::unordered_map<std::array<int64_t, 2>, int, Point64Hash> index_map(
     return indices;
 }
 
-/// A triangle lies in a hole when all its corners are on one hole ring or its centroid is outside the border or inside a hole.
-bool inside_hole(
-    const std::array<std::array<int64_t, 2>, 3>& tri,
-    const std::vector<std::vector<std::array<int64_t, 2>>>& paths,
-    const std::vector<std::unordered_set<std::array<int64_t, 2>, Point64Hash>>& hole_sets
-) {
+/// A triangle lies in a hole when its centroid, unrounded, is outside the border or inside a hole.
+bool inside_hole(const std::array<std::array<int64_t, 2>, 3>& tri, const std::vector<std::vector<std::array<int64_t, 2>>>& paths) {
 
-    for (const std::unordered_set<std::array<int64_t, 2>, Point64Hash>& set : hole_sets)
-        if (set.count(tri[0]) && set.count(tri[1]) && set.count(tri[2]))
-            return true;
-
-    const std::array<int64_t, 2> c = {(tri[0][0] + tri[1][0] + tri[2][0]) / 3, (tri[0][1] + tri[1][1] + tri[2][1]) / 3};
+    // corners alone do not decide: a triangle with every corner on a concave hole's ring can close a pocket of the face
+    const std::array<double, 2> c = {(static_cast<double>(tri[0][0]) + tri[1][0] + tri[2][0]) / 3,
+        (static_cast<double>(tri[0][1]) + tri[1][1] + tri[2][1]) / 3};
 
     if (!inside_path64(c, paths[0]))
         return true;
@@ -1288,16 +1282,11 @@ void remove_hole_triangles(
     const std::vector<std::vector<std::array<int64_t, 2>>>& paths
 ) {
 
-    std::vector<std::unordered_set<std::array<int64_t, 2>, Point64Hash>> hole_sets;
-
-    for (size_t h = 1; h < paths.size(); ++h)
-        hole_sets.emplace_back(paths[h].begin(), paths[h].end());
-
     std::vector<std::array<std::array<int64_t, 2>, 3>> kept;
     kept.reserve(tris.size());
 
     for (const std::array<std::array<int64_t, 2>, 3>& tri : tris)
-        if (!inside_hole(tri, paths, hole_sets))
+        if (!inside_hole(tri, paths))
             kept.push_back(tri);
 
     tris = kept;

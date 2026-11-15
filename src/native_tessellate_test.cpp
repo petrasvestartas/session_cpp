@@ -15,6 +15,7 @@
 #include "xform.h"
 #include <cmath>
 #include <limits>
+#include <random>
 #include <stdexcept>
 using namespace session_cpp::mini_test;
 namespace session_cpp {
@@ -248,6 +249,8 @@ MINI_TEST("BRep Native Tessellate", "Shared C0 Boundary Nodes Precede Face Trian
     const std::pair<double, double> u = support.domain(0), v = support.domain(1);
     const double knot = u.first + (u.second - u.first) * .37109375;
     MINI_CHECK(support.insert_nurbsknot(0, knot));
+    // a knot only turns the mesh when it turns the surface: a ridge along it, inside the face, leaves the edges as they are
+    MINI_CHECK(support.increase_degree(1, 2) && support.set_cv(1, 1, support.get_cv(1, 1) + Vector(0, 0, .2)));
     for (const BRepRef& wire : shape.m_faces[cap].wires)
         for (const BRepRef& use : shape.wire_edges(wire)) {
             const int pc = shape.pcurve_index(use.index, cap, use.orientation);
@@ -288,7 +291,76 @@ MINI_TEST("BRep Native Tessellate", "Shared C0 Boundary Nodes Precede Face Trian
     }
     const Mesh result = shape.tessellate(.005, .15);
     MINI_CHECK(result.is_closed());
-    MINI_CHECK(std::abs(std::abs(result.volume()) - 8) < .08);
+    MINI_CHECK(std::abs(std::abs(result.volume()) - shape.volume_exact()) < shape.volume_exact() * .01);
+}
+
+MINI_TEST("BRep Native Tessellate", "Crease Crossing On A Circle Edge Is One Shared Node") {
+    const BRep shape = BRep::create_block_with_hole(2, 2, 1, .3);
+    const Mesh mesh = shape.tessellate(.005, .15);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(std::abs(mesh.volume()) - shape.volume_exact()) < shape.volume_exact() * .01);
+}
+
+MINI_TEST("BRep Native Tessellate", "Closed Edge Lifted From Its Other Face") {
+    // the cap circle of a cone cut by a box reaches the cone's pcurve a rounding past its start: the closing sample still
+    // takes the other end, or the cone's loop folds across its whole domain
+    std::mt19937 engine(1 * 7919 + 0 * 31 + 3);
+    const auto unit = [&engine] { return engine() / 4294967296.0; };
+    std::array<double, 9> random;
+    for (double& value : random)
+        value = unit();
+    const BRep box = BRep::create_box(.6 + random[0], .6 + random[1], .6 + random[2]);
+    const BRep cone = BRep::create_cone(.6 * (.6 + random[3]), .6 + random[4])
+        .transformed(Xform::translation(.45 * (2 * random[6] - 1), .45 * (2 * random[7] - 1), .45 * (2 * random[8] - 1)));
+    const BRep shape = box.boolean_intersection(cone);
+    MINI_CHECK(shape.is_valid() && shape.face_count() == 3);
+    for (const Mesh& face : shape.face_meshes())
+        MINI_CHECK(!face.face.empty());
+    const Mesh mesh = shape.tessellate(.005, .35);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(std::abs(mesh.volume()) - shape.volume_exact()) < shape.volume_exact() * .01);
+}
+
+MINI_TEST("BRep Native Tessellate", "Apex Collapsed Planar Patches Measured By Their Chord") {
+    const BRep shape = BRep::create_pyramid(2, 3);
+    const Mesh mesh = shape.tessellate(.005, .15);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(std::abs(mesh.volume()) - 4) < 1e-9);
+}
+
+MINI_TEST("BRep Native Tessellate", "Boolean Edge Uses Share Every Boundary Node") {
+    std::mt19937 engine(1 * 7919 + 1 * 31 + 2);
+    const auto unit = [&engine] { return engine() / 4294967296.0; };
+    std::array<double, 12> random;
+    for (double& value : random)
+        value = unit();
+    const BRep cylinder = BRep::create_cylinder(.5 * (.6 + random[0]), .6 + random[1]);
+    BRep sphere = BRep::create_sphere(.6 * (.6 + random[3]));
+    sphere.transform(Xform::translation(.45 * (2 * random[6] - 1), .45 * (2 * random[7] - 1), .45 * (2 * random[8] - 1))
+        * Xform::rotation(Vector(2 * random[9] - 1, 2 * random[10] - 1, 2 * random[11] - 1), 3 * (2 * unit() - 1)));
+    const BRep shape = cylinder.boolean_intersection(sphere);
+    MINI_CHECK(shape.is_valid() && shape.face_count() == 3);
+    std::vector<Mesh> meshes;
+    {
+        const mesh_parametric_metadata::Capture capture;
+        meshes = shape.face_meshes_q(true, 10, .0025);
+    }
+    for (int edge = 0; edge < shape.edge_count(); ++edge) {
+        std::vector<std::set<std::array<double, 3>>> uses;
+        for (const BRepRef& use : shape.edge_faces(edge)) {
+            std::set<std::array<double, 3>> nodes;
+            for (const auto& vertex : meshes[use.index].vertex)
+                for (const auto& attribute : vertex.second.attributes)
+                    if (attribute.first.starts_with("brep_edge/" + std::to_string(edge) + "/")) {
+                        const Point point = vertex.second.position();
+                        nodes.insert({point[0], point[1], point[2]});
+                    }
+            uses.push_back(nodes);
+        }
+        if (shape.m_edges[edge].degenerated || uses.size() < 2)
+            continue;
+        MINI_CHECK(uses[0].size() > 1 && uses[0] == uses[1]);
+    }
 }
 
 }
