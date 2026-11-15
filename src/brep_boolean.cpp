@@ -735,8 +735,10 @@ void select(
     }
 }
 
+}
+
 /// One curve of two that meet end to start, or false when they do not.
-bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, std::pair<double, double> domain_a,
+static bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, std::pair<double, double> domain_a,
                   std::pair<double, double> domain_b, double tolerance, NurbsCurve& out) {
 
     if (flip_a)
@@ -754,9 +756,7 @@ bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, std::pai
     return true;
 }
 
-/// Keep each edge whole, as OCCT does: two edges at a vertex no other edge meets, used one after the other by the same wires
-/// and lying on the same surfaces, become one. A section piece ends where it crosses a knot line of a NURBS surface or where
-/// a closed section closes; an analytic surface has neither.
+/// A section piece ends where it crosses a knot line of a NURBS surface or where a closed section closes; an analytic surface has neither.
 BRep joined_edges(BRep b, double tolerance) {
 
     const BRepOrientation F = BRepOrientation::Forward;
@@ -901,6 +901,8 @@ BRep joined_edges(BRep b, double tolerance) {
 
     return b;
 }
+
+namespace {
 
 bool empty(const BRep& brep) {
     return brep.m_faces.empty() && brep.m_vertices.empty() && brep.m_edges.empty()

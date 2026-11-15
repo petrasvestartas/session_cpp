@@ -421,6 +421,7 @@ set(MINITEST_SOURCES
     src/brep_offset_mixed_test.cpp
     src/surface_ray_test.cpp
     src/brep_boolean_test.cpp
+    src/bop_test.cpp
     src/nurbs_offset_test.cpp
     src/surface_section_test.cpp
     src/file_obj_test.cpp
