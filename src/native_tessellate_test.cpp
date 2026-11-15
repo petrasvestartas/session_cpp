@@ -20,6 +20,25 @@
 using namespace session_cpp::mini_test;
 namespace session_cpp {
 namespace {
+// A pair of native_boolean_bench: kinds 1 cylinder, 2 sphere, 3 cone, 5 torus; b placed by its seed, turned in mode 0.
+std::pair<BRep, BRep> bench_pair(int ka, int kb, int seed, int mode) {
+    std::mt19937 engine(seed * 7919 + ka * 31 + kb);
+    const auto unit = [&engine] { return engine() / 4294967296.0; };
+    std::array<double, 13> random;
+    for (double& value : random)
+        value = unit();
+    const auto primitive = [](int kind, const double* s) {
+        return kind == 1 ? BRep::create_cylinder(.5 * (.6 + s[0]), .6 + s[1]) : kind == 2 ? BRep::create_sphere(.6 * (.6 + s[0]))
+            : kind == 3 ? BRep::create_cone(.6 * (.6 + s[0]), .6 + s[1]) : BRep::create_torus(.8 * (.6 + s[0]), .25 * (.6 + s[1]));
+    };
+    BRep b = primitive(kb, &random[3]);
+    Xform placed = Xform::translation(.45 * (2 * random[6] - 1), .45 * (2 * random[7] - 1), .45 * (2 * random[8] - 1));
+    if (mode == 0)
+        placed = placed * Xform::rotation(Vector(2 * random[9] - 1, 2 * random[10] - 1, 2 * random[11] - 1), 3 * (2 * random[12] - 1));
+    b.transform(placed);
+    return {primitive(ka, &random[0]), b};
+}
+
 Mesh observed_tessellation(const BRep& shape, double chord, double angle, const std::string& label) {
     const char* folder = std::getenv("SESSION_TESSELLATE_PROGRESS");
     if (!folder)
@@ -361,6 +380,72 @@ MINI_TEST("BRep Native Tessellate", "Boolean Edge Uses Share Every Boundary Node
             continue;
         MINI_CHECK(uses[0].size() > 1 && uses[0] == uses[1]);
     }
+}
+
+MINI_TEST("BRep Native Tessellate", "Seam Vertex Of A Closed Edge Lifts To The End Its Run Leaves From") {
+    // the section circle of a sphere and a torus starts on the torus seam: lifted to the far end of the pcurve, the loop
+    // runs its whole span backwards and the face meshes empty
+    const auto [sphere, torus] = bench_pair(2, 5, 1, 0);
+    for (const BRep& shape : {sphere.boolean_intersection(torus), sphere.boolean_difference(torus)}) {
+        MINI_CHECK(shape.is_valid());
+        for (const Mesh& face : shape.face_meshes())
+            MINI_CHECK(!face.face.empty());
+        const Mesh mesh = shape.tessellate(.005, .35);
+        MINI_CHECK(mesh.is_closed());
+        MINI_CHECK(std::abs(std::abs(mesh.volume()) - shape.volume_exact()) < shape.volume_exact() * .01);
+    }
+}
+
+MINI_TEST("BRep Native Tessellate", "Point Beside A Seam Lifts Onward From Its Neighbour") {
+    // a section point a rounding from the cone's seam has its closest pcurve point at either end: searched onward from the
+    // point before it, it stays on its side and the cone's face keeps its area
+    const auto [cone, cylinder] = bench_pair(3, 1, 3, 0);
+    const BRep shape = cone.boolean_xor(cylinder);
+    MINI_CHECK(shape.is_valid());
+    double area = 0;
+    for (const Mesh& face : shape.face_meshes())
+        area += face.area();
+    const Mesh mesh = shape.tessellate(.005, .35);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(area / mesh.area() - 1) < .02);
+}
+
+MINI_TEST("BRep Native Tessellate", "Fitted Section Edge Is Sampled By Its Turning") {
+    // a section curve fitted with hundreds of control points turns once: sampled by its control points, its trims are
+    // dense and every triangle beside them a needle
+    const auto [cylinder, sphere] = bench_pair(1, 2, 1, 0);
+    const BRep shape = cylinder.boolean_xor(sphere);
+    double smallest = 180;
+    for (const Mesh& face : shape.face_meshes()) {
+        const auto [vertices, faces] = face.to_vertices_and_faces();
+        for (const auto& triangle : faces)
+            for (size_t k = 0; k < triangle.size(); ++k) {
+                Vector a = vertices[triangle[(k + 1) % triangle.size()]] - vertices[triangle[k]];
+                Vector b = vertices[triangle[(k + 2) % triangle.size()]] - vertices[triangle[k]];
+                if (a.normalize_self() && b.normalize_self())
+                    smallest = std::min(smallest, std::acos(std::clamp(a.dot(b), -1.0, 1.0)) * 180 / Tolerance::PI);
+            }
+    }
+    MINI_CHECK(smallest > 2);
+    const Mesh mesh = shape.tessellate(.005, .35);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(std::abs(mesh.volume()) - shape.volume_exact()) < shape.volume_exact() * .01);
+}
+
+MINI_TEST("BRep Native Tessellate", "Loops Passing Close Keep Every Loop Point") {
+    // the section of a cone and a cylinder runs a hair from the cone's cap circle: a chord of one reaching across the other
+    // would be split on one face alone, so the point goes onto the edge and every face meshes with all its loop points
+    const auto [cone, cylinder] = bench_pair(3, 1, 1, 0);
+    const BRep shape = cone.boolean_intersection(cylinder);
+    MINI_CHECK(shape.is_valid());
+    double area = 0;
+    for (const Mesh& face : shape.face_meshes()) {
+        MINI_CHECK(!face.face.empty());
+        area += face.area();
+    }
+    const Mesh mesh = shape.tessellate(.005, .35);
+    MINI_CHECK(mesh.is_closed());
+    MINI_CHECK(std::abs(area / mesh.area() - 1) < .02);
 }
 
 }

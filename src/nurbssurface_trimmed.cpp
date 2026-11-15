@@ -1598,6 +1598,7 @@ private:
     std::vector<int> visit_stamp_; // Last search stamp per triangle.
     mutable std::vector<int> bad_; // Triangles whose circumcircle holds the new point.
     mutable std::vector<BEdge> polygon_; // Cavity boundary of the current insertion.
+    std::vector<int> incident_; // A triangle made last at each vertex, so a fan is found without a scan.
 
 public:
     std::vector<Vertex2D> vertices; // Vertices, the super triangle first.
@@ -1750,6 +1751,12 @@ double Delaunay2D::orient2d(double ax, double ay, double bx, double by, double c
 void Delaunay2D::register_edges(int ti) {
 
     const Triangle& t = triangles[ti];
+
+    for (int v : t.v) {
+        if (v >= (int)incident_.size())
+            incident_.resize(v + 1, -1);
+        incident_[v] = ti;
+    }
 
     for (int k = 0; k < 3; ++k) {
         const int a = t.v[(k + 1) % 3];
@@ -2068,35 +2075,44 @@ bool Delaunay2D::insert_constraint(int v0, int v1) {
 
 bool Delaunay2D::constrain_existing(int v0, int v1) {
 
-    for (int ti = 0; ti < (int)triangles.size(); ++ti) {
-        if (!triangles[ti].alive)
-            continue;
+    // the fan around v0, both ways from one of its triangles
+    const int start = first_triangle_at(v0);
 
-        for (int k = 0; k < 3; ++k) {
-            const int e0 = triangles[ti].v[(k + 1) % 3];
-            const int e1 = triangles[ti].v[(k + 2) % 3];
+    for (int way = 1; way <= 2 && start >= 0; ++way)
+        for (int ti = start, steps = 0; ti >= 0 && triangles[ti].alive && steps < 4096; ++steps) {
+            const int at = vertex_index(ti, v0);
 
-            if (!((e0 == v0 && e1 == v1) || (e0 == v1 && e1 == v0)))
-                continue;
+            for (int j = 0; j < 3; ++j) {
+                if (j == at || triangles[ti].v[j] != v1)
+                    continue;
 
-            triangles[ti].constrained[k] = true;
-            const int nb = triangles[ti].adj[k];
+                const int edge = 3 - at - j;
+                triangles[ti].constrained[edge] = true;
+                const int nb = triangles[ti].adj[edge];
 
-            if (nb >= 0 && triangles[nb].alive)
-                for (int kk = 0; kk < 3; ++kk)
-                    if (triangles[nb].adj[kk] == ti) {
-                        triangles[nb].constrained[kk] = true;
-                        break;
-                    }
+                if (nb >= 0 && triangles[nb].alive)
+                    for (int kk = 0; kk < 3; ++kk)
+                        if (triangles[nb].adj[kk] == ti) {
+                            triangles[nb].constrained[kk] = true;
+                            break;
+                        }
 
-            return true;
+                return true;
+            }
+
+            ti = triangles[ti].adj[(at + way) % 3];
+
+            if (ti == start)
+                break;
         }
-    }
 
     return false;
 }
 
 int Delaunay2D::first_triangle_at(int v) const {
+
+    if (v < (int)incident_.size() && incident_[v] >= 0 && triangles[incident_[v]].alive && has_vertex(incident_[v], v))
+        return incident_[v];
 
     for (int ti = 0; ti < (int)triangles.size(); ++ti)
         if (triangles[ti].alive && has_vertex(ti, v))
@@ -2702,126 +2718,6 @@ void insert_crease_lines(
     }
 }
 
-/// Smallest dot product between the crease-side normals at the corners of triangle ABC around its centroid.
-double min_normal_dot(
-    const NurbsSurface& surface,
-    const std::array<std::vector<double>, 2>& crease_knots,
-    const std::array<double, 2>& center,
-    const Vertex2D& A,
-    const Vertex2D& B,
-    const Vertex2D& C
-) {
-
-    const Vector na = crease_side_normal(surface, crease_knots, center, {A.x, A.y});
-    const Vector nb = crease_side_normal(surface, crease_knots, center, {B.x, B.y});
-    const Vector nc2 = crease_side_normal(surface, crease_knots, center, {C.x, C.y});
-    const double d1 = na.dot(nb);
-    const double d2 = nb.dot(nc2);
-    const double d3 = na.dot(nc2);
-
-    return std::min(d1, std::min(d2, d3));
-}
-
-/// Centroids of the live triangles inside the loops whose chord leaves deflection or whose corner normals turn past the angle bound.
-std::vector<std::array<double, 2>> refinement_points(
-    const Delaunay2D& dt,
-    const NurbsSurface& surface,
-    const std::vector<std::vector<Point>>& loops_uv,
-    const std::array<double, 4>& bounds,
-    const std::array<std::vector<double>, 2>& crease_knots,
-    double deflection,
-    double cos_max_angle
-) {
-
-    std::vector<std::array<double, 2>> to_insert;
-
-    for (const Triangle& tri : dt.triangles) {
-        if (!tri.alive)
-            continue;
-
-        const Vertex2D& A = dt.vertices[tri.v[0]];
-        const Vertex2D& B = dt.vertices[tri.v[1]];
-        const Vertex2D& C = dt.vertices[tri.v[2]];
-        const double cu = (A.x + B.x + C.x) / 3.0;
-        const double cv = (A.y + B.y + C.y) / 3.0;
-
-        if (!inside_loops(cu, cv, loops_uv, bounds))
-            continue;
-
-        const Point pa = surface.point_at(A.x, A.y);
-        const Point pb = surface.point_at(B.x, B.y);
-        const Point pc = surface.point_at(C.x, C.y);
-        const Point pm = surface.point_at(cu, cv);
-        const Vector n = (pb - pa).cross(pc - pa);
-        const double nl = std::sqrt(n.magnitude_squared());
-
-        if (nl < 1e-30)
-            continue;
-
-        double dev = std::abs((pm - pa).dot(n) / nl);
-
-        // A certified mesh answers for its whole triangle: the same distances the certification measures, and no point beside a constrained edge, which a centroid only ever brings closer.
-        if (mesh_parametric_metadata::capture_depth) {
-            const std::array<const Vertex2D*, 3> corners = {&A, &B, &C};
-            const std::array<Point, 3> points = {pa, pb, pc};
-            bool thin = false;
-
-            for (int k = 0; k < 3; ++k) {
-                const int first = (k + 1) % 3;
-                const int second = (k + 2) % 3;
-                const Point chord((points[first][0] + points[second][0]) * 0.5, (points[first][1] + points[second][1]) * 0.5,
-                    (points[first][2] + points[second][2]) * 0.5);
-                const double mu = (corners[first]->x + corners[second]->x) * 0.5;
-                const double mv = (corners[first]->y + corners[second]->y) * 0.5;
-                dev = std::max(dev, surface.point_at(mu, mv).distance(chord));
-                const double length = points[first].distance(points[second]);
-                thin = thin || (tri.constrained[k] && nl / length < 0.1 * length);
-            }
-
-            if (thin)
-                continue;
-        }
-
-        if (dev > deflection || min_normal_dot(surface, crease_knots, {cu, cv}, A, B, C) < cos_max_angle)
-            to_insert.push_back({cu, cv});
-    }
-
-    return to_insert;
-}
-
-/// Insert refinement centroids for up to eight rounds, until none is needed or the vertex cap is hit.
-void refine(
-    Delaunay2D& dt,
-    const NurbsSurface& surface,
-    const std::vector<std::vector<Point>>& loops_uv,
-    const std::array<double, 4>& bounds,
-    const std::array<std::vector<double>, 2>& crease_knots,
-    double deflection,
-    double cos_max_angle
-) {
-
-    const int MAX_ITERS = 8;
-    const size_t MAX_VERTS = 200000;
-
-    for (int iter = 0; iter < MAX_ITERS; ++iter) {
-        const std::vector<std::array<double, 2>> to_insert =
-            refinement_points(dt, surface, loops_uv, bounds, crease_knots, deflection, cos_max_angle);
-
-        if (to_insert.empty())
-            break;
-
-        for (const std::array<double, 2>& uv : to_insert) {
-            if (dt.vertices.size() >= MAX_VERTS)
-                break;
-
-            dt.insert(uv[0], uv[1]);
-        }
-
-        if (dt.vertices.size() >= MAX_VERTS)
-            break;
-    }
-}
-
 /// Drop the super triangle and every triangle whose centroid lies outside the loops.
 void trim_outside(Delaunay2D& dt, const std::vector<std::vector<Point>>& loops_uv, const std::array<double, 4>& bounds) {
 
@@ -2961,6 +2857,105 @@ bool off_surface(const NurbsSurface& surface, const std::array<std::array<double
     return false;
 }
 
+/// The parameter lines along which the surface collapses to one point, as (fixed direction, value): a sphere's poles, a cone's apex.
+std::vector<std::pair<int, double>> pole_lines(const NurbsSurface& surface) {
+
+    std::vector<std::pair<int, double>> lines;
+
+    for (int side = 0; side < 4; ++side)
+        if (surface.is_singular(side)) {
+            const int dir = side % 2 == 0 ? 1 : 0;
+            lines.push_back({dir, side == 0 || side == 3 ? surface.domain(dir).first : surface.domain(dir).second});
+        }
+
+    return lines;
+}
+
+/// A corner on a pole line is one point for every parameter along the line: it takes the mean of the other two corners
+/// there, so the triangle's UV spans the meridians its blade spans and nothing beyond.
+void seat_poles(const std::vector<std::pair<int, double>>& lines, std::array<std::array<double, 2>, 3>& uv) {
+
+    for (const std::pair<int, double>& line : lines)
+        for (int k = 0; k < 3; ++k)
+            if (uv[k][line.first] == line.second && uv[(k + 1) % 3][line.first] != line.second && uv[(k + 2) % 3][line.first] != line.second)
+                uv[k][1 - line.first] = (uv[(k + 1) % 3][1 - line.first] + uv[(k + 2) % 3][1 - line.first]) / 2;
+}
+
+/// The constrained sides as surface chords, each with its UV box grown by half its UV length and how far the surface bends
+/// off the chord at its middle.
+struct Barriers {
+    std::vector<std::array<Point, 2>> chords;
+    std::vector<std::array<double, 5>> boxes;
+    double cell = 1; // UV size of the grid cells the boxes are filed under.
+    std::unordered_map<int64_t, std::vector<int>> cells;
+
+    int64_t key(double u, double v) const {
+        return (static_cast<int64_t>(std::floor(u / cell)) << 32) ^ static_cast<int64_t>(static_cast<uint32_t>(std::floor(v / cell)));
+    }
+};
+
+Barriers barriers(const Delaunay2D& dt, const NurbsSurface& surface, const std::vector<Point>& points) {
+
+    Barriers result;
+
+    for (const std::pair<int, int>& side : constrained_sides(dt)) {
+        const Vertex2D& a = dt.vertices[side.first];
+        const Vertex2D& b = dt.vertices[side.second];
+        const double sag = surface.point_at((a.x + b.x) / 2, (a.y + b.y) / 2).distance(points[side.first] + (points[side.second] - points[side.first]) * 0.5);
+        const double reach = 0.5 * std::hypot(b.x - a.x, b.y - a.y);
+        result.chords.push_back({points[side.first], points[side.second]});
+        result.boxes.push_back({std::min(a.x, b.x) - reach, std::max(a.x, b.x) + reach, std::min(a.y, b.y) - reach, std::max(a.y, b.y) + reach, sag});
+    }
+
+    std::vector<double> sizes;
+
+    for (const std::array<double, 5>& box : result.boxes)
+        sizes.push_back(std::max(box[1] - box[0], box[3] - box[2]));
+
+    if (sizes.empty())
+        return result;
+
+    std::nth_element(sizes.begin(), sizes.begin() + sizes.size() / 2, sizes.end());
+    result.cell = std::max(sizes[sizes.size() / 2], 1e-12);
+
+    for (int k = 0; k < (int)result.boxes.size(); ++k) {
+        const std::array<double, 5>& box = result.boxes[k];
+
+        for (double u = std::floor(box[0] / result.cell); u <= std::floor(box[1] / result.cell); ++u)
+            for (double v = std::floor(box[2] / result.cell); v <= std::floor(box[3] / result.cell); ++v)
+                result.cells[result.key((u + .5) * result.cell, (v + .5) * result.cell)].push_back(k);
+    }
+
+    return result;
+}
+
+/// True when the point at uv lies inside the diametral sphere of a constrained side close enough for the surface's bend
+/// off that side to tilt the thin triangle it would make past the angle: a straight side, as a ruling, takes any point.
+bool blocked(const Barriers& sides, const NurbsSurface& surface, const std::array<double, 2>& uv, double slope) {
+
+    const auto filed = sides.cells.find(sides.key(uv[0], uv[1]));
+
+    if (filed == sides.cells.end())
+        return false;
+
+    const Point point = surface.point_at(uv[0], uv[1]);
+
+    for (int k : filed->second) {
+        const std::array<double, 5>& box = sides.boxes[k];
+
+        if (uv[0] < box[0] || uv[0] > box[1] || uv[1] < box[2] || uv[1] > box[3]
+            || (sides.chords[k][0] - point).dot(sides.chords[k][1] - point) > 0)
+            continue;
+
+        const Vector along = sides.chords[k][1] - sides.chords[k][0];
+
+        if (box[4] > 0.25 * slope * along.cross(point - sides.chords[k][0]).magnitude() / std::max(along.magnitude(), 1e-300))
+            return true;
+    }
+
+    return false;
+}
+
 /// Refine until the surface-flipped triangles inside the loops hold the certified bounds: each round flips a copy of the
 /// UV triangulation and inserts the centroid of every triangle off the surface, unless that point lies within the
 /// diametral sphere of one of its constrained sides, where it would only make a thinner triangle against a side that
@@ -2969,11 +2964,19 @@ void surface_refine(Delaunay2D& dt, const NurbsSurface& surface, const std::vect
     const std::array<double, 4>& bounds, double deflection, double cos_max_angle) {
 
     std::vector<Point> points;
-    std::map<std::array<int, 3>, bool> inside, held;
+    std::unordered_map<uint64_t, bool> inside, held;
+    const std::vector<std::pair<int, double>> poles = pole_lines(surface);
+    const double slope = std::sqrt(1 - cos_max_angle * cos_max_angle) / cos_max_angle;
     const auto key = [](std::array<int, 3> tri) {
         std::sort(tri.begin(), tri.end());
-        return tri;
+        return (static_cast<uint64_t>(tri[0]) << 42) ^ (static_cast<uint64_t>(tri[1]) << 21) ^ static_cast<uint64_t>(tri[2]);
     };
+
+    for (const Vertex2D& vertex : dt.vertices)
+        points.push_back(surface.point_at(vertex.x, vertex.y));
+
+    // the constrained sides never change while points go in
+    const Barriers sides = barriers(dt, surface, points);
 
     for (int round = 0; round < 32 && dt.vertices.size() < 200000; ++round) {
         for (size_t vi = points.size(); vi < dt.vertices.size(); ++vi)
@@ -2993,17 +2996,6 @@ void surface_refine(Delaunay2D& dt, const NurbsSurface& surface, const std::vect
         }
 
         flip_to_surface(dt, points, tris);
-        std::vector<std::array<Point, 2>> sides;
-        std::vector<std::array<double, 4>> boxes;
-
-        for (const std::pair<int, int>& side : constrained_sides(dt)) {
-            const Vertex2D& a = dt.vertices[side.first];
-            const Vertex2D& b = dt.vertices[side.second];
-            const double reach = 0.5 * std::hypot(b.x - a.x, b.y - a.y);
-            sides.push_back({points[side.first], points[side.second]});
-            boxes.push_back({std::min(a.x, b.x) - reach, std::max(a.x, b.x) + reach, std::min(a.y, b.y) - reach, std::max(a.y, b.y) + reach});
-        }
-
         std::vector<std::array<double, 2>> centroids;
 
         for (const std::array<int, 3>& tri : tris) {
@@ -3012,23 +3004,22 @@ void surface_refine(Delaunay2D& dt, const NurbsSurface& surface, const std::vect
             for (int k = 0; k < 3; ++k)
                 uv[k] = {dt.vertices[tri[k]].x, dt.vertices[tri[k]].y};
 
+            std::array<std::array<double, 2>, 3> seated = uv;
+            seat_poles(poles, seated);
             const auto found = held.try_emplace(key(tri), false);
 
             if (found.second)
-                found.first->second = !off_surface(surface, uv, {points[tri[0]], points[tri[1]], points[tri[2]]}, deflection, cos_max_angle);
+                found.first->second = !off_surface(surface, seated, {points[tri[0]], points[tri[1]], points[tri[2]]}, deflection, cos_max_angle);
 
             if (found.first->second)
                 continue;
 
-            const std::array<double, 2> center = {(uv[0][0] + uv[1][0] + uv[2][0]) / 3, (uv[0][1] + uv[1][1] + uv[2][1]) / 3};
-            const Point point = surface.point_at(center[0], center[1]);
-            bool encroaches = false;
+            // a blade of the fan at a pole splits at its seated centroid, between the meridians it spans; one seated flat
+            // against a seam has nothing inside to split
+            const std::array<double, 2> center = {(seated[0][0] + seated[1][0] + seated[2][0]) / 3, (seated[0][1] + seated[1][1] + seated[2][1]) / 3};
+            const double twice_area = (seated[1][0] - seated[0][0]) * (seated[2][1] - seated[0][1]) - (seated[2][0] - seated[0][0]) * (seated[1][1] - seated[0][1]);
 
-            for (size_t k = 0; k < sides.size() && !encroaches; ++k)
-                encroaches = center[0] >= boxes[k][0] && center[0] <= boxes[k][1] && center[1] >= boxes[k][2] && center[1] <= boxes[k][3]
-                    && (sides[k][0] - point).dot(sides[k][1] - point) <= 0;
-
-            if (!encroaches)
+            if (twice_area != 0 && !blocked(sides, surface, center, slope))
                 centroids.push_back(center);
         }
 
@@ -3136,7 +3127,7 @@ std::vector<size_t> weld_vertices(
 
 /// One face per triangle over its welded vertices, collapsed ones skipped.
 void add_faces(Mesh& mesh, const Delaunay2D& dt,
-    const std::vector<std::array<int, 3>>& tris, const std::vector<size_t>& vert_map) {
+    const std::vector<std::array<int, 3>>& tris, const std::vector<size_t>& vert_map, const std::vector<std::pair<int, double>>& poles) {
 
     for (const std::array<int, 3>& tri : tris) {
         const size_t v0 = vert_map[tri[0]];
@@ -3148,10 +3139,11 @@ void add_faces(Mesh& mesh, const Delaunay2D& dt,
 
         const std::optional<size_t> face = mesh.add_face({v0, v1, v2});
         if (face && mesh_parametric_metadata::capture_depth) {
-            const std::array<mesh_parametric_metadata::UV, 3> uv = {{
+            std::array<mesh_parametric_metadata::UV, 3> uv = {{
                 {dt.vertices[tri[0]].x, dt.vertices[tri[0]].y},
                 {dt.vertices[tri[1]].x, dt.vertices[tri[1]].y},
                 {dt.vertices[tri[2]].x, dt.vertices[tri[2]].y}}};
+            seat_poles(poles, uv);
             mesh_parametric_metadata::triangle(mesh, *face, {v0, v1, v2}, uv, 5);
         }
     }
@@ -3955,25 +3947,26 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& given, double max_angle_d
     const std::vector<std::vector<int>> loop_vids = insert_loops(dt, loops.uv, crease_knots, boundary_intervals);
     insert_crease_lines(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
 
+    std::vector<Point> points;
+
+    for (const Vertex2D& vertex : dt.vertices)
+        points.push_back(m_surface.point_at(vertex.x, vertex.y));
+
+    const Barriers sides = barriers(dt, m_surface, points);
+    const double slope = std::sqrt(1 - cos_max_angle * cos_max_angle) / cos_max_angle;
+
     for (const Point& p : loops.interior_uv)
-        if (inside_loops(p[0], p[1], loops.uv, bounds))
+        if (inside_loops(p[0], p[1], loops.uv, bounds) && !blocked(sides, m_surface, {p[0], p[1]}, slope))
             dt.insert(p[0], p[1]);
 
-    if (mesh_parametric_metadata::capture_depth)
-        surface_refine(dt, m_surface, loops.uv, bounds, deflection, cos_max_angle);
-    else
-        refine(dt, m_surface, loops.uv, bounds, crease_knots, deflection, cos_max_angle);
+    surface_refine(dt, m_surface, loops.uv, bounds, deflection, cos_max_angle);
     trim_outside(dt, loops.uv, bounds);
     std::vector<std::array<int, 3>> tris = dt.get_triangles();
 
-    if (mesh_parametric_metadata::capture_depth) {
-        std::vector<Point> points;
+    for (size_t vi = points.size(); vi < dt.vertices.size(); ++vi)
+        points.push_back(m_surface.point_at(dt.vertices[vi].x, dt.vertices[vi].y));
 
-        for (const Vertex2D& vertex : dt.vertices)
-            points.push_back(m_surface.point_at(vertex.x, vertex.y));
-
-        flip_to_surface(dt, points, tris);
-    }
+    flip_to_surface(dt, points, tris);
 
     if (tris.empty() || crosses_crease(tris, dt, crease_knots))
         return Mesh();
@@ -3981,7 +3974,7 @@ Mesh NurbsSurfaceTrimmed::triangulate(const TrimLoops& given, double max_angle_d
     Mesh result;
     VertexWelder welder(result, loops.xyz.empty() ? bbox_diag * 1e-5 : 0.0, bbox_diag * 1e-5);
     const std::vector<size_t> vert_map = weld_vertices(welder, m_surface, dt, tris, loops, loop_vids, boundary_intervals);
-    add_faces(result, dt, tris, vert_map);
+    add_faces(result, dt, tris, vert_map, pole_lines(m_surface));
     set_vertex_normals(result, m_surface, dt, vert_map);
     tag_boundary(result, loop_vids, boundary_intervals, vert_map);
     RemeshNurbsSurfaceGrid::split_crease_normals(m_surface, result);

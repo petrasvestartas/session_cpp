@@ -788,11 +788,9 @@ std::pair<double, double> golden_parameter(const NurbsSurface& surface, const Nu
     return da < db ? std::make_pair(a, da) : std::make_pair(b, db);
 }
 
-/// Parameter of the lifted pcurve closest to `point`: a coarse scan then golden-section steps in the best cell, and in the cell at the other end too when a closed pcurve scans best at an end, since both ends are one point
-double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point) {
+/// Parameter of the lifted pcurve closest to `point` within [start, end]: a coarse scan then golden-section steps in the best cell, and in the cell at the other end too when a closed pcurve scans best at an end, since both ends are one point
+double boundary_parameter(const NurbsSurface& surface, const NurbsCurve& curve, const Point& point, double start, double end) {
 
-    const double start = curve.domain().first;
-    const double end = curve.domain().second;
     const int count = std::clamp(curve.cv_count() * 4, 32, 4096);
     const double step = (end - start) / count;
     double best = start;
@@ -1429,8 +1427,12 @@ void lift_canonical(
         const double scale = std::max({std::abs(p[0]), std::abs(p[1]), std::abs(p[2]), 1.0});
         const double tolerance = std::max({edge.tolerance, face.tolerance, std::sqrt(std::numeric_limits<double>::epsilon()) * scale});
 
+        // past the second point the search runs on from the last one: near a seam the closest point at the far end of the
+        // pcurve is as close as the right one at this end
         if (srf.point_at(q[0], q[1]).distance(p) > tolerance) {
-            t = boundary_parameter(srf, crv, p);
+            const bool onward = lifted.size() >= 2 && !(closed && lifted.size() == 2);
+            const bool rising = onward && lifted.back() > lifted[lifted.size() - 2];
+            t = boundary_parameter(srf, crv, p, onward && rising ? lifted.back() : ends.first, onward && !rising ? lifted.back() : ends.second);
             q = crv.point_at(t);
         }
 
@@ -1445,10 +1447,17 @@ void lift_canonical(
         samples.push_back({t, q, p});
     }
 
-    if (closed && samples.size() > 1 && same_boundary_point(points.front(), points.back()) && !cached) {
-        const double start = std::get<0>(samples.front());
-        const double end = start - ends.first < ends.second - start ? ends.second : ends.first;
-        samples.back() = {end, crv.point_at(end), points.back()};
+    // the seam vertex of a closed edge lifts to either end of its pcurve: the first takes the end beside the next point,
+    // a closing one the other end
+    if (closed && samples.size() > 2 && !cached) {
+        const double next = std::get<0>(samples[1]);
+        const double start = next - ends.first <= ends.second - next ? ends.first : ends.second;
+        samples.front() = {start, crv.point_at(start), points.front()};
+
+        if (same_boundary_point(points.front(), points.back())) {
+            const double end = start == ends.first ? ends.second : ends.first;
+            samples.back() = {end, crv.point_at(end), points.back()};
+        }
     }
 
     // a pcurve may run against the edge: then the whole sequence turns round, never point by point
@@ -1484,10 +1493,16 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
             parameters.push_back(crv.greville_abcissa(k));
         }
     } else {
-        // A pcurve fitted through a curved patch can carry far more control points than the edge has turns: the simpler
-        // of the two sets the start, and the chord refinement below adds what the surface needs.
-        const int shape = std::min(crv.cv_count(), std::max(world.cv_count(), 2));
-        const int count = std::min(std::max(shape * 4, (int)std::ceil(360.0 / std::max(angle, 0.1))), 4096);
+        // A fitted curve carries far more control points than it has turns: its control polygon bounds how far it turns,
+        // two spans per angle step of that, and no fewer than a full turn takes, set the start; the refinement below adds
+        // what chord and surface need.
+        double turning = 0;
+        for (int k = 2; k < world.cv_count(); ++k) {
+            const Vector a = world.get_cv(k - 1) - world.get_cv(k - 2), b = world.get_cv(k) - world.get_cv(k - 1);
+            if (a.magnitude() > 0 && b.magnitude() > 0)
+                turning += std::acos(std::clamp(a.dot(b) / (a.magnitude() * b.magnitude()), -1.0, 1.0)) * 180 / Tolerance::PI;
+        }
+        const int count = std::min((int)std::ceil(std::max(2 * turning, 360.0) / std::max(angle, 0.1)) + 1, 4096);
         std::tie(points, parameters) = crv.divide_by_count(count, true);
     }
 
@@ -1854,6 +1869,104 @@ bool trim_loops(
     }
 
     return true;
+}
+
+/// Phase 3: a chord of a CDT face's loops that another part of its loops reaches into, a loop point inside its bulge or a
+/// flatter chord crossing it, where the CDT would split it on this face alone, split on its edge at the pcurve point closest
+/// to that point, so every face using the edge has it, as loops touching at a point or passing close need; true when any
+/// was added. Edges shared with a grid, strip or ruled face stay as they are.
+bool split_bulging_chords(const BRep& b, int fi, const std::vector<bool>& cdt, EdgeBoundary& boundary, double scale, double angle, double chord) {
+
+    struct Chord {
+        int edge, pcurve;
+        std::tuple<double, Point, Point> first, last;
+        double bulge;
+    };
+    std::vector<Chord> chords;
+
+    for (const BRepRef& wire : b.m_faces[fi].wires)
+        for (const BRepRef& er : b.wire_edges(wire)) {
+            std::vector<std::tuple<double, Point, Point>> samples;
+
+            if (!edge_use_samples(b, fi, er, boundary, scale, angle, chord, samples))
+                return false;
+
+            for (size_t k = 0; k + 1 < samples.size(); ++k)
+                chords.push_back({er.index, b.pcurve_index(er.index, fi, er.orientation), samples[k], samples[k + 1], 0});
+        }
+
+    const auto off = [](const Point& p, const Point& a, const Point& c) {
+        const double dx = c[0] - a[0], dy = c[1] - a[1], length = dx * dx + dy * dy;
+        const double s = length > 0 ? std::clamp(((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length, 0.0, 1.0) : 0.0;
+        return std::hypot(p[0] - a[0] - s * dx, p[1] - a[1] - s * dy);
+    };
+    const auto cross = [](const Point& o, const Point& a, const Point& c) { return (a[0] - o[0]) * (c[1] - o[1]) - (a[1] - o[1]) * (c[0] - o[0]); };
+
+    for (Chord& c : chords)
+        c.bulge = off(b.m_curves_2d[c.pcurve].point_at((std::get<0>(c.first) + std::get<0>(c.last)) / 2), std::get<1>(c.first), std::get<1>(c.last));
+
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+
+    for (const Chord& c : chords) {
+        const std::vector<BRepRef> faces = b.edge_faces(c.edge);
+
+        if (b.m_edges[c.edge].degenerated || std::any_of(faces.begin(), faces.end(), [&](const BRepRef& use) { return !cdt[use.index]; }))
+            continue;
+
+        // a straight chord still takes a point lying on it, which the CDT would split it at
+        const Point &a = std::get<1>(c.first), &z = std::get<1>(c.last);
+        const double length = std::hypot(z[0] - a[0], z[1] - a[1]), reach = std::max(c.bulge, 1e-6 * length);
+
+        for (const Chord& other : chords) {
+            const Point &p = std::get<1>(other.first), &q = std::get<1>(other.last);
+            const bool shares = same_boundary_point(std::get<2>(other.first), std::get<2>(c.first)) || same_boundary_point(std::get<2>(other.first), std::get<2>(c.last));
+            const bool crosses = !shares && other.bulge <= c.bulge && !same_boundary_point(std::get<2>(other.last), std::get<2>(c.first))
+                && !same_boundary_point(std::get<2>(other.last), std::get<2>(c.last)) && cross(a, z, p) * cross(a, z, q) < 0 && cross(p, q, a) * cross(p, q, z) < 0;
+
+            if (!crosses && (shares || off(p, a, z) > reach))
+                continue;
+
+            // the point the pcurve must pass: the loop point itself, or where the flatter chord crosses
+            Point target = p;
+
+            if (crosses) {
+                const double share = cross(p, q, a) / (cross(p, q, a) - cross(p, q, z));
+                target = Point(a[0] + share * (z[0] - a[0]), a[1] + share * (z[1] - a[1]), 0);
+            }
+
+            const NurbsCurve& crv = b.m_curves_2d[c.pcurve];
+            const double from = std::min(std::get<0>(c.first), std::get<0>(c.last)), to = std::max(std::get<0>(c.first), std::get<0>(c.last));
+            double low = from, high = to;
+
+            for (int step = 0; step < 60; ++step) {
+                const double left = low + (high - low) * .382, right = high - (high - low) * .382;
+
+                if (crv.point_at(left).distance(target) < crv.point_at(right).distance(target))
+                    high = right;
+                else
+                    low = left;
+            }
+
+            std::vector<Point>& canonical = boundary.points[c.edge];
+            const auto at = [&](const Point& point) {
+                return std::find_if(canonical.begin(), canonical.end(), [&](const Point& known) { return same_boundary_point(point, known); }) - canonical.begin();
+            };
+            const long i = at(std::get<2>(c.first)), j = at(std::get<2>(c.last)), n = canonical.size();
+            const long slot = std::abs(i - j) == 1 ? std::max(i, j) : std::min(i, j) == 0 && std::max(i, j) == n - 1 ? n : -1;
+            const double t = (low + high) / 2;
+            const Point uv = crv.point_at(t);
+
+            if (slot < 0 || uv.distance(a) <= .05 * length || uv.distance(z) <= .05 * length)
+                continue;
+
+            canonical.insert(canonical.begin() + slot, srf.point_at(uv[0], uv[1]));
+            boundary.samples.erase(c.edge);
+            boundary.basis.erase(c.edge);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /// Plane coordinates of the points in the frame (origin, xaxis, yaxis)
@@ -4060,6 +4173,21 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         if (rebuild_grid[fi])
             face_direct[fi] = false;
 
+    // the plain meshes split a chord where another loop of the face reaches into it: that point goes onto the edge first
+    std::vector<bool> cdt(nf);
+    for (int fi = 0; fi < nf; ++fi)
+        cdt[fi] = !face_strip[fi] && face_ruled[fi] < 0 && !face_direct[fi];
+
+    for (int added = 0; !mesh_parametric_metadata::capture_depth && added < 64;) {
+        int round = 0;
+        for (int fi = 0; fi < nf; ++fi)
+            while (cdt[fi] && added + round < 64 && split_bulging_chords(*this, fi, cdt, boundary, scale, angle, chord))
+                ++round;
+        if (!round)
+            break;
+        added += round;
+    }
+
     for (int fi = 0; fi < nf; ++fi) {
         if (face_strip[fi] || face_ruled[fi] >= 0 || face_direct[fi])
             continue;
@@ -4067,8 +4195,12 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
         TrimLoops loops;
 
+        // a curved face starts from the interior rows of a grid at its angle and chord: refinement alone grows inward from the
+        // loops, and around a pole or an apex joins points along one meridian into needles
         if (rebuild_grid[fi])
             loops.interior_uv = grid_interior_uv(srf, fmesh[fi]);
+        else if (!is_planar_patch(srf))
+            loops.interior_uv = grid_interior_uv(srf, RemeshNurbsSurfaceGrid::from_u_v_q(srf, 0, 0, angle, chord));
 
         std::vector<std::tuple<int, size_t, size_t, size_t>> uses;
 
