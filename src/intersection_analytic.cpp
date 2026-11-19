@@ -1,4 +1,5 @@
 #include "intersection_analytic.h"
+#include "intersection_sweep.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -204,6 +205,10 @@ Curve2d pcurve(const Curve& curve, const Conic* conic, const Surface& surface, d
             return Curve2d(Curve::circle(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, t0, t1));
         if (conic && conic->kind == ConicKind::Ellipse)
             return Curve2d(Curve::ellipse(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, conic->minor, t0, t1));
+        if (conic && conic->kind == ConicKind::Parabola)
+            return Curve2d(Curve::parabola(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, t0, t1));
+        if (conic && conic->kind == ConicKind::Hyperbola)
+            return Curve2d(Curve::hyperbola(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, conic->minor, t0, t1));
         // A NURBS section: the image of its control points, with their weights.
         NurbsCurve image = curve.nurbs();
         for (int i = 0; i < image.cv_count(); ++i) {
@@ -362,15 +367,10 @@ struct Builder {
             section = Curve::circle(o, x, y, c.radius);
         } else if (c.kind == ConicKind::Ellipse) {
             section = Curve::ellipse(o, x, y, c.radius, c.minor);
+        } else if (c.kind == ConicKind::Parabola) {
+            section = Curve::parabola(o, x, y, c.radius, range.first, range.second);
         } else {
-            // One arc of degree two: its end tangents meet in the middle control point, the point at the middle parameter gives its weight.
-            const xyz p0 = c.point(range.first), p2 = c.point(range.second), d0 = c.tangent(range.first), d2 = c.tangent(range.second), w = c.point(0.5 * (range.first + range.second));
-            const xyz n = d0.cross(d2);
-            const xyz p1 = p0 + d0 * ((p2 - p0).cross(d2).dot(n) / n.dot(n));
-            const xyz area = (p1 - p0).cross(p2 - p0);
-            const double la = (p1 - w).cross(p2 - w).dot(area) / area.dot(area), lc = (p0 - w).cross(p1 - w).dot(area) / area.dot(area);
-            NurbsCurve arc = NurbsCurve::create_from_parameters({Point(p0), Point(p1), Point(p2)}, {1.0, (1.0 - la - lc) / (2.0 * std::sqrt(la * lc)), 1.0}, {range.first, range.second}, {3, 3}, 2);
-            section = Curve(arc);
+            section = Curve::hyperbola(o, x, y, c.radius, c.minor, range.first, range.second);
         }
         add(section, &c, tangent, 0.0);
     }
@@ -875,6 +875,8 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
     Result none;
     if (first.kind() == Surface::Kind::Nurbs || second.kind() == Surface::Kind::Nurbs)
         return none;
+    if (first.kind() > Surface::Kind::Torus || second.kind() > Surface::Kind::Torus)
+        return intersection_sweep::surface_surface(first, second, tolerance);
     Builder out{first, second, form(first), form(second), tolerance, {}, {}};
     const Form &a = out.a, &b = out.b;
     Result& r = out.result;
@@ -941,7 +943,7 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
 
 Result curve_surface(const Curve& given, const Surface& on, double tolerance) {
     Result r;
-    if (given.kind() == Curve::Kind::Nurbs || on.kind() == Surface::Kind::Nurbs)
+    if (given.kind() == Curve::Kind::Nurbs || on.kind() == Surface::Kind::Nurbs || given.kind() > Curve::Kind::Ellipse || on.kind() > Surface::Kind::Torus)
         return r;
     const Form surface = form(on);
     const xyz cx(given.x()), cy(given.y());

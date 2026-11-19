@@ -152,4 +152,85 @@ MINI_TEST("Curve2d", "Line And Arc") {
     MINI_CHECK(freeform.kind() == Curve::Kind::Nurbs && freeform.shifted(1.0, 0.0).point_at(freeform.domain().first).distance(Point(1, 0, 0)) < 1e-15);
 }
 
+namespace {
+
+std::vector<Curve> open_conics() {
+    return {Curve::parabola(O, X, Y, 1.5, -2.0, 3.0), Curve::parabola(O, X, Y, 0.4, 1.0, 2.5), Curve::hyperbola(O, X, Y, 2.0, 1.2, -1.0, 1.5), Curve::hyperbola(O, X, Y, 0.7, 3.0, 0.5, 4.2)};
+}
+
+}
+
+MINI_TEST("Curve", "Parabola And Hyperbola") {
+    for (const Curve& c : open_conics()) {
+        const bool parabola = c.kind() == Curve::Kind::Parabola;
+        const auto [t0, t1] = c.domain();
+        const NurbsCurve& n = c.nurbs();
+        MINI_CHECK(c.is_valid() && n.is_valid() && n.domain() == c.domain() && &c.nurbs() == &n && c.period() == 0.0 && !c.is_closed());
+        MINI_CHECK(n.degree() == 2 && n.is_rational() == !parabola);
+        double size = 0.0, worst = 0.0, same = 0.0, implicit = 0.0;
+        for (int i = 0; i <= 64; ++i)
+            size = std::max(size, c.point_at(t0 + (t1 - t0) * i / 64).distance(O));
+        for (int i = 0; i <= 64; ++i) {
+            const double t = t0 + (t1 - t0) * i / 64;
+            const Point p = n.point_at(t);
+            worst = std::max(worst, c.closest_point(p).distance(p));
+            same = std::max(same, p.distance(c.point_at(t)));
+            const double a = (p - O).dot(c.x()), b = (p - O).dot(c.y());
+            implicit = std::max(implicit, parabola ? std::abs(b * b - 4.0 * c.radius() * a) : std::abs(a * a / (c.radius() * c.radius()) - b * b / (c.minor() * c.minor()) - 1.0));
+            MINI_CHECK(std::abs((p - O).dot(c.z())) <= 1e-12 * size && (parabola || a > 0.0));
+        }
+        MINI_CHECK(worst <= 1e-12 * size && implicit <= 1e-12 * size * size);
+        // The NURBS of a parabola runs in the parabola's own parameter.
+        MINI_CHECK(!parabola || same <= 1e-12 * size);
+        MINI_CHECK(n.point_at(t0).distance(c.point_at(t0)) <= 1e-12 * size && n.point_at(t1).distance(c.point_at(t1)) <= 1e-12 * size);
+        const double t = 0.5 * (t0 + t1) + 0.1, h = 1e-4;
+        const std::vector<Vector> d = c.evaluate(t, 2);
+        const auto at = [&](double a) { const Point p = c.point_at(t + a * h); return Vector(p[0], p[1], p[2]); };
+        MINI_CHECK(d.size() == 3 && ((at(1) - at(-1)) * (0.5 / h) - d[1]).magnitude() < 1e-6 * size && ((at(1) + at(-1) - at(0) * 2.0) * (1.0 / (h * h)) - d[2]).magnitude() < 1e-5 * size);
+        MINI_CHECK((c.tangent_at(t) * d[1].magnitude() - d[1]).magnitude() < 1e-12 * size);
+        for (int i = 0; i <= 16; ++i) {
+            const double at = t0 + (t1 - t0) * i / 16.3;
+            const Vector out = c.evaluate(at, 1)[1].cross(c.z());
+            MINI_CHECK(std::abs(c.closest_parameter(c.point_at(at)) - at) < 1e-12 * size);
+            MINI_CHECK(std::abs(c.closest_parameter(c.point_at(at) + c.z() * 0.5) - at) < 1e-12 * size);
+            for (double side : {-0.2, 0.2})
+                MINI_CHECK(std::abs(c.closest_parameter(c.point_at(at) + out * (side / out.magnitude())) - at) < 1e-10 * size);
+        }
+        const Xform rigid = Xform::translation(1.0, -4.0, 2.0) * Xform::rotation_z(0.8) * Xform::rotation_x(-0.3);
+        for (const Xform& x : {rigid, Xform::scale_xyz(1.0, -1.0, 1.0)}) {
+            const Curve moved = c.transformed(x);
+            MINI_CHECK(moved.kind() == c.kind() && std::abs(moved.domain().second - t1) < 1e-12 && moved.point_at(t).distance(x.transform_point(c.point_at(t))) < 1e-12 * size);
+        }
+        // A parabola's parameter is a length and grows with the curve; a hyperbola's is not.
+        const Xform grow = Xform::scale_xyz(2.0, 2.0, 2.0), stretch = Xform::scale_xyz(1.0, 2.0, 1.0);
+        const Curve grown = c.transformed(grow);
+        MINI_CHECK(grown.kind() == c.kind() && grown.radius() == 2.0 * c.radius() && grown.domain().second == (parabola ? 2.0 : 1.0) * t1);
+        MINI_CHECK(grown.point_at(parabola ? 2.0 * t : t).distance(grow.transform_point(c.point_at(t))) < 1e-12 * size);
+        const Curve stretched = c.transformed(stretch);
+        MINI_CHECK(stretched.kind() == Curve::Kind::Nurbs && stretched.point_at(t1).distance(stretch.transform_point(c.point_at(t1))) < 1e-12 * size);
+        Curve back = c;
+        back.reverse();
+        MINI_CHECK(back.point_at(-t).distance(c.point_at(t)) < 1e-12 * size && back.tangent_at(-t).dot(c.tangent_at(t)) < -1.0 + 1e-12);
+        MINI_CHECK(back.domain().first == -t1 && back.domain().second == -t0 && back.nurbs().point_at_start().distance(c.nurbs().point_at_end()) < 1e-12 * size);
+        Curve part = c;
+        MINI_CHECK(part.set_domain(t, t1) && part.nurbs().point_at_start().distance(c.point_at(t)) < 1e-12 * size);
+        const Curve loaded = Curve::jsonload(nlohmann::json::parse(c.jsondump().dump()));
+        MINI_CHECK(loaded.kind() == c.kind() && loaded.domain() == c.domain() && loaded.point_at(t1).distance(c.point_at(t1)) < 1e-12);
+        MINI_CHECK(std::abs(c.aabb().hx - AABB::from_nurbscurve(n, 0.0, true).hx) < 1e-12);
+    }
+    // A long hyperbola arc is cut into spans; inside the evolute of a parabola the nearest of three feet is taken.
+    const Curve wide = Curve::hyperbola(O, X, Y, 1.0, 1.0, -3.2, 3.2);
+    MINI_CHECK(wide.nurbs().cv_count() == 15 && wide.closest_point(wide.nurbs().point_at(2.9)).distance(wide.nurbs().point_at(2.9)) < 1e-11);
+    const Curve bowl = Curve::parabola(Point(0, 0, 0), Vector(1, 0, 0), Vector(0, 1, 0), 0.25, -3.0, 3.0);
+    MINI_CHECK(std::abs(bowl.closest_parameter(Point(4.0, 0.5, 0)) - 1.9056) < 1e-3 && std::abs(bowl.closest_parameter(Point(4.0, -0.5, 0)) + 1.9056) < 1e-3);
+}
+
+MINI_TEST("Curve2d", "Parabola And Hyperbola") {
+    const Curve2d parabola = Curve::parabola(Point(1, 2, 0), Vector(0, 1, 0), Vector(1, 0, 0), 0.5, -1.0, 2.0);
+    MINI_CHECK(parabola.kind() == Curve::Kind::Parabola && parabola.point_at(2.0).distance(Point(3, 4, 0)) < 1e-15 && parabola.z()[2] == -1.0);
+    MINI_CHECK(parabola.shifted(2.0 * PI, 0.0).point_at(2.0).distance(Point(3 + 2.0 * PI, 4, 0)) < 1e-14 && parabola.nurbs().point_at(0.5).distance(parabola.point_at(0.5)) < 1e-14);
+    const Curve2d hyperbola = Curve::hyperbola(Point(1, 2, 0), Vector(1, 0, 0), Vector(0, 1, 0), 3.0, 2.0, -1.0, 1.0);
+    MINI_CHECK(hyperbola.kind() == Curve::Kind::Hyperbola && hyperbola.point_at(0.0).distance(Point(4, 2, 0)) < 1e-15 && std::abs(hyperbola.closest_parameter(hyperbola.point_at(0.7)) - 0.7) < 1e-13);
+}
+
 }

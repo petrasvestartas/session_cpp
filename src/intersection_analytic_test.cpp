@@ -107,14 +107,14 @@ MINI_TEST("Intersection Analytic", "Plane Cone") {
     const double a = pi / 6;
     const Surface c = surface(Kind::Cone, Point(0, 0, 0), Z, 1, a);
     const Point apex(0, 0, -1 / std::tan(a));
-    for (const auto& [normal, kind] : {std::pair{Point(0.2, 0, 1), Shape::Ellipse}, {Z, Shape::Circle}, {Point(std::cos(a), 0, -std::sin(a)), Shape::Nurbs}}) {
+    for (const auto& [normal, kind] : {std::pair{Point(0.2, 0, 1), Shape::Ellipse}, {Z, Shape::Circle}, {Point(std::cos(a), 0, -std::sin(a)), Shape::Parabola}}) {
         const Surface p = surface(Kind::Plane, Point(0.3, 0, 1), normal);
         const Result r = surface_surface(p, c, 1e-7);
-        MINI_CHECK(kinds(r, {kind}) && worst(p, c, r) < 1e-8);
+        MINI_CHECK(kinds(r, {kind}) && worst(p, c, r) < 1e-8 && r.curves[0].on_a.kind() == kind);
     }
     const Surface along = surface(Kind::Plane, Point(0.5, 0, 0), X);
     const Result hyperbola = surface_surface(along, c, 1e-7);
-    MINI_CHECK(kinds(hyperbola, {Shape::Nurbs, Shape::Nurbs}) && worst(along, c, hyperbola) < 1e-8);
+    MINI_CHECK(kinds(hyperbola, {Shape::Hyperbola, Shape::Hyperbola}) && worst(along, c, hyperbola) < 1e-8 && hyperbola.curves[1].on_a.kind() == Shape::Hyperbola);
     const Result point = surface_surface(surface(Kind::Plane, apex, Z), c, 1e-7);
     MINI_CHECK(kinds(point, {}, 1) && !point.points[0].tangent && point.points[0].point.distance(apex) < 1e-9);
     MINI_CHECK(kinds(surface_surface(surface(Kind::Plane, apex, X), c, 1e-7), {Shape::Line, Shape::Line, Shape::Line, Shape::Line}));

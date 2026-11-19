@@ -9,7 +9,7 @@ namespace session_cpp {
 namespace {
 
 const double TWO_PI = 2.0 * std::numbers::pi;
-const char* const NAMES[] = {"nurbs", "plane", "cylinder", "cone", "sphere", "torus"};
+const char* const NAMES[] = {"nurbs", "plane", "cylinder", "cone", "sphere", "torus", "revolution", "extrusion"};
 
 Vector unit(const Vector& v) {
     const double length = v.magnitude();
@@ -124,6 +124,8 @@ bool Surface::right_handed() const {
 bool Surface::is_valid() const {
     if (m_kind == Kind::Nurbs)
         return m_nurbs && m_nurbs->is_valid();
+    if (m_profile)
+        return m_profile->is_valid();
     switch (m_kind) {
     case Kind::Plane: return true;
     case Kind::Cone: return m_radius >= 0.0 && std::abs(m_minor) < 0.5 * std::numbers::pi;
@@ -152,6 +154,10 @@ bool Surface::set_domain(int dir, double t0, double t1) {
 }
 
 double Surface::period(int dir) const {
+    if (m_profile && dir == (m_kind == Kind::Extrusion ? 0 : 1))
+        return m_profile->period();
+    if (m_kind == Kind::Extrusion)
+        return 0.0;
     return (dir == 0 && m_kind != Kind::Nurbs && m_kind != Kind::Plane) || (dir == 1 && m_kind == Kind::Torus) ? TWO_PI : 0.0;
 }
 
@@ -169,6 +175,8 @@ std::pair<double, double> Surface::adjusted(double u, double v, const std::array
 int Surface::coincident(const Surface& other, double tolerance) const {
     if (m_kind == Kind::Nurbs || other.m_kind == Kind::Nurbs)
         return m_kind == other.m_kind && m_nurbs == other.m_nurbs && m_nurbs ? 1 : 0;
+    if (m_profile || other.m_profile)
+        return sweep_coincident(other, tolerance);
     if (m_kind != other.m_kind || std::abs(m_radius - other.m_radius) > tolerance * (m_kind == Kind::Cone ? 1e300 : 1.0) ||
         std::abs(std::abs(m_minor) - std::abs(other.m_minor)) > (m_kind == Kind::Cone ? tolerance / (1.0 + m_radius + other.m_radius) : tolerance))
         return 0;
@@ -198,6 +206,8 @@ std::array<double, 6> Surface::profile(double v) const {
 Point Surface::point_at(double u, double v) const {
     if (m_kind == Kind::Nurbs)
         return m_nurbs->point_at(u, v);
+    if (m_profile)
+        return Point(xyz(sweep_evaluate(u, v, 0)[0]));
     if (m_kind == Kind::Plane)
         return m_origin + m_x * u + m_y * v;
     const std::array<double, 6> f = profile(v);
@@ -207,6 +217,8 @@ Point Surface::point_at(double u, double v) const {
 std::vector<Vector> Surface::evaluate(double u, double v, int num_derivs) const {
     if (m_kind == Kind::Nurbs)
         return m_nurbs->evaluate(u, v, num_derivs);
+    if (m_profile)
+        return sweep_evaluate(u, v, num_derivs);
     const Vector zero(0, 0, 0);
     std::vector<Vector> result = {as_vector(point_at(u, v))};
     if (m_kind == Kind::Plane) {
@@ -241,6 +253,8 @@ Vector Surface::normal_at(double u, double v) const {
 std::pair<double, double> Surface::closest_parameters(const Point& point) const {
     if (m_kind == Kind::Nurbs)
         return m_nurbs->closest_parameters(point);
+    if (m_profile)
+        return sweep_parameters(point);
     const Vector d = point - m_origin;
     const double a = d.dot(m_x), b = d.dot(m_y), h = d.dot(m_z), rho = std::hypot(a, b);
     if (m_kind == Kind::Plane)
@@ -273,6 +287,8 @@ AABB Surface::aabb() const {
 }
 
 void Surface::transform(const Xform& xform) {
+    if (m_profile && sweep_transform(xform))
+        return;
     const Vector x = xform.transform_vector(m_x), y = xform.transform_vector(m_y), z = xform.transform_vector(m_z);
     double s = Curve::similarity(xform);
     const bool flat = m_kind == Kind::Plane && std::abs(x.dot(y)) <= 1e-12 * x.magnitude() * y.magnitude() && x.magnitude() > 0.0 && y.magnitude() > 0.0;
@@ -312,6 +328,8 @@ void Surface::reverse(int dir) {
         m_nurbs = std::make_shared<const NurbsSurface>(std::move(reversed));
         return;
     }
+    if (m_profile)
+        return sweep_reverse(dir);
     if (m_kind == Kind::Plane)
         (dir == 0 ? m_x : m_y) *= -1.0;
     else if (dir == 0)
@@ -329,6 +347,8 @@ const NurbsSurface& Surface::nurbs() const {
     static const NurbsSurface invalid;
     if (m_nurbs || !is_valid() || !(m_domain[0] < m_domain[1]) || !(m_domain[2] < m_domain[3]))
         return m_nurbs ? *m_nurbs : invalid;
+    if (m_profile)
+        return sweep_nurbs();
     // Along u and along v: controls (a, b, weight) and knots. A control is O + a_u x + b_u y on a plane, O + rho (a_u x + b_u y) + h z about an axis with (rho, h) from the control along v.
     std::vector<std::array<double, 3>> cu, cv;
     std::vector<double> ku, kv;
@@ -377,6 +397,8 @@ nlohmann::ordered_json Surface::jsondump() const {
     else {
         j["minor"] = m_minor;
         j["origin"] = triple(m_origin);
+        if (m_profile)
+            j["profile"] = m_profile->jsondump();
         j["radius"] = m_radius;
     }
     j["type"] = "Surface";
@@ -403,7 +425,9 @@ Surface Surface::jsonload(const nlohmann::json& data) {
     s.m_radius = data.at("radius");
     s.m_minor = data.at("minor");
     s.m_domain = data.at("domain").get<std::array<double, 4>>();
-    return s.m_kind > Kind::Torus ? Surface() : s;
+    if (data.contains("profile"))
+        s.m_profile = std::make_shared<const Curve>(Curve::jsonload(data["profile"]));
+    return s.m_kind > Kind::Extrusion || (s.m_kind > Kind::Torus) != static_cast<bool>(s.m_profile) ? Surface() : s;
 }
 
 } // namespace session_cpp

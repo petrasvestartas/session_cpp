@@ -13,10 +13,10 @@
 
 namespace session_cpp {
 
-/// Geom_Curve: a line, circle or ellipse kept as such, in its true parameter (length along a line, angle from x toward y on a conic, periodic), or a NURBS curve for freeform. One interface for all; the NURBS of an analytic curve over its domain is made on demand
+/// Geom_Curve: a line, circle, ellipse, parabola or hyperbola kept as such, in its true parameter (length along a line, angle from x toward y on a circle or ellipse, periodic; ElCLib's parameter on a parabola and hyperbola), or a NURBS curve for freeform. One interface for all; the NURBS of an analytic curve over its domain is made on demand
 class Curve {
 public:
-    enum class Kind { Nurbs, Line, Circle, Ellipse };
+    enum class Kind { Nurbs, Line, Circle, Ellipse, Parabola, Hyperbola };
 
 private:
     Kind m_kind = Kind::Nurbs; // What the curve is.
@@ -49,6 +49,12 @@ public:
 
     /// Ellipse center + radius cos t x + minor sin t y over [t0, t1]
     static Curve ellipse(const Point& center, const Vector& x, const Vector& y, double radius, double minor, double t0 = 0.0, double t1 = 2.0 * 3.14159265358979323846);
+
+    /// Parabola vertex + t t / (4 focal) x + t y over [t0, t1] (Geom_Parabola): x the axis toward the focus at distance `focal`, t the length along y
+    static Curve parabola(const Point& vertex, const Vector& x, const Vector& y, double focal, double t0, double t1);
+
+    /// The branch center + radius cosh t x + minor sinh t y of a hyperbola over [t0, t1] (Geom_Hyperbola)
+    static Curve hyperbola(const Point& center, const Vector& x, const Vector& y, double radius, double minor, double t0, double t1);
 
     /// The line, circle or ellipse a NURBS curve lies on within tolerance times its size, over the same extent and in the same direction; the freeform curve otherwise
     static Curve recognized(const NurbsCurve& nurbs, double tolerance = 1e-10);
@@ -123,7 +129,7 @@ public:
     // ═══════════════════════════════════════════════════════════════════════════
     // NURBS
     // ═══════════════════════════════════════════════════════════════════════════
-    /// The curve over its domain as a NURBS curve, made once: a line of degree 1 in its own parameter, a conic as rational quadratic arcs of at most a quarter turn with knots at their angles.
+    /// The curve over its domain as a NURBS curve, made once: a line of degree 1 in its own parameter, a circle or ellipse as rational quadratic arcs of at most a quarter turn with knots at their angles, a parabola as one polynomial arc of degree 2 in its own parameter, a hyperbola as rational quadratic arcs of at most a unit of its parameter.
     const NurbsCurve& nurbs() const;
 
     /// Controls (cos, sin, weight) and knots of the unit arc from a0 to a1 in quarter turns or less.

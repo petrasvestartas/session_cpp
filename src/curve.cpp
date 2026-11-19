@@ -8,7 +8,7 @@ namespace session_cpp {
 namespace {
 
 const double TWO_PI = 2.0 * std::numbers::pi;
-const char* const NAMES[] = {"nurbs", "line", "circle", "ellipse"};
+const char* const NAMES[] = {"nurbs", "line", "circle", "ellipse", "parabola", "hyperbola"};
 
 Vector unit(const Vector& v) {
     const double length = v.magnitude();
@@ -17,6 +17,39 @@ Vector unit(const Vector& v) {
 
 nlohmann::ordered_json triple(const Point& p) {
     return {p[0], p[1], p[2]};
+}
+
+// The parameter of the point of a parabola (minor 0, radius its focal length) or hyperbola branch nearest to (u, v) in its frame.
+double open_parameter(double radius, double minor, double u, double v) {
+    const auto gap = [&](double t) { return minor > 0.0 ? std::hypot(radius * std::cosh(t) - u, minor * std::sinh(t) - v) : std::hypot(t * t / (4.0 * radius) - u, t - v); };
+    std::vector<double> starts;
+    if (minor > 0.0)
+        starts = {std::asinh(v / minor), std::acosh(std::max(1.0, u / radius)), -std::acosh(std::max(1.0, u / radius))};
+    else {
+        // The feet of the normals: t^3 + p t + q = 0.
+        const double p = 8.0 * radius * radius - 4.0 * radius * u, q = -8.0 * radius * radius * v, disc = 0.25 * q * q + p * p * p / 27.0;
+        if (disc >= 0.0)
+            starts = {std::cbrt(-0.5 * q + std::sqrt(disc)) + std::cbrt(-0.5 * q - std::sqrt(disc))};
+        else
+            for (int k = 0; k < 3; ++k)
+                starts.push_back(2.0 * std::sqrt(-p / 3.0) * std::cos((std::acos(std::clamp(1.5 * q / p * std::sqrt(-3.0 / p), -1.0, 1.0)) - TWO_PI * k) / 3.0));
+    }
+    double best = starts[0];
+    for (double t : starts) {
+        for (int i = 0; i < 60; ++i) {
+            const double c = minor > 0.0 ? std::cosh(t) : 0.0, s = minor > 0.0 ? std::sinh(t) : 0.0;
+            const double x = minor > 0.0 ? radius * c : t * t / (4.0 * radius), dx = minor > 0.0 ? radius * s : t / (2.0 * radius), ddx = minor > 0.0 ? x : 1.0 / (2.0 * radius);
+            const double y = minor > 0.0 ? minor * s : t, dy = minor > 0.0 ? minor * c : 1.0, ddy = minor > 0.0 ? y : 0.0;
+            const double f = (x - u) * dx + (y - v) * dy, slope = dx * dx + dy * dy + (x - u) * ddx + (y - v) * ddy;
+            const double step = slope > 0.0 ? std::clamp(-f / slope, -1.0, 1.0) : f > 0.0 ? -0.5 : 0.5;
+            t += step;
+            if (std::abs(step) <= 1e-16 * (1.0 + std::abs(t)))
+                break;
+        }
+        if (gap(t) < gap(best))
+            best = t;
+    }
+    return best;
 }
 
 }
@@ -51,6 +84,18 @@ Curve Curve::ellipse(const Point& center, const Vector& x, const Vector& y, doub
     c.m_radius = radius;
     c.m_minor = minor;
     c.m_domain = {t0, t1};
+    return c;
+}
+
+Curve Curve::parabola(const Point& vertex, const Vector& x, const Vector& y, double focal, double t0, double t1) {
+    Curve c = ellipse(vertex, x, y, focal, 0.0, t0, t1);
+    c.m_kind = Kind::Parabola;
+    return c;
+}
+
+Curve Curve::hyperbola(const Point& center, const Vector& x, const Vector& y, double radius, double minor, double t0, double t1) {
+    Curve c = ellipse(center, x, y, radius, minor, t0, t1);
+    c.m_kind = Kind::Hyperbola;
     return c;
 }
 
@@ -125,7 +170,7 @@ Curve Curve::recognized(const NurbsCurve& nurbs, double tolerance) {
 }
 
 bool Curve::is_valid() const {
-    return m_kind == Kind::Nurbs ? m_nurbs && m_nurbs->is_valid() : m_kind == Kind::Line || (m_radius > 0.0 && m_minor > 0.0);
+    return m_kind == Kind::Nurbs ? m_nurbs && m_nurbs->is_valid() : m_kind == Kind::Line || (m_radius > 0.0 && (m_minor > 0.0 || m_kind == Kind::Parabola));
 }
 
 std::pair<double, double> Curve::domain() const {
@@ -151,7 +196,7 @@ double Curve::period() const {
 }
 
 bool Curve::is_closed() const {
-    return m_kind == Kind::Nurbs ? m_nurbs && m_nurbs->is_closed() : m_kind != Kind::Line && m_domain[1] - m_domain[0] >= TWO_PI * (1.0 - 1e-15);
+    return m_kind == Kind::Nurbs ? m_nurbs && m_nurbs->is_closed() : period() > 0.0 && m_domain[1] - m_domain[0] >= TWO_PI * (1.0 - 1e-15);
 }
 
 double Curve::wrapped(double t, double start, double period) {
@@ -165,6 +210,8 @@ Point Curve::point_at(double t) const {
     switch (m_kind) {
     case Kind::Nurbs: return m_nurbs->point_at(t);
     case Kind::Line: return m_origin + m_x * t;
+    case Kind::Parabola: return m_origin + m_x * (t * t / (4.0 * m_radius)) + m_y * t;
+    case Kind::Hyperbola: return m_origin + m_x * (m_radius * std::cosh(t)) + m_y * (m_minor * std::sinh(t));
     default: return m_origin + m_x * (m_radius * std::cos(t)) + m_y * (m_minor * std::sin(t));
     }
 }
@@ -174,6 +221,14 @@ std::vector<Vector> Curve::evaluate(double t, int derivative_count) const {
         return m_nurbs->evaluate(t, derivative_count);
     const Point p = point_at(t);
     std::vector<Vector> result = {Vector(p[0], p[1], p[2])};
+    if (m_kind == Kind::Parabola || m_kind == Kind::Hyperbola) {
+        const bool parabola = m_kind == Kind::Parabola;
+        if (derivative_count > 0)
+            result.push_back(parabola ? m_x * (t / (2.0 * m_radius)) + m_y : m_x * (m_radius * std::sinh(t)) + m_y * (m_minor * std::cosh(t)));
+        if (derivative_count > 1)
+            result.push_back(parabola ? m_x * (1.0 / (2.0 * m_radius)) : m_x * (m_radius * std::cosh(t)) + m_y * (m_minor * std::sinh(t)));
+        return result;
+    }
     const double c = m_radius * std::cos(t), s = m_minor * std::sin(t);
     if (derivative_count > 0)
         result.push_back(m_kind == Kind::Line ? m_x : m_x * (-m_radius * std::sin(t)) + m_y * (m_minor * std::cos(t)));
@@ -192,6 +247,8 @@ double Curve::closest_parameter(const Point& point) const {
     const Vector d = point - m_origin;
     if (m_kind == Kind::Line)
         return d.dot(m_x);
+    if (m_kind == Kind::Parabola || m_kind == Kind::Hyperbola)
+        return open_parameter(m_radius, m_minor, d.dot(m_x), d.dot(m_y));
     const double u = d.dot(m_x), v = d.dot(m_y);
     double t = std::atan2(v / m_minor, u / m_radius);
     // On an ellipse the foot of the normal: Newton on (C(t) - point) . C'(t) from the angle of the scaled point.
@@ -234,7 +291,7 @@ void Curve::transform(const Xform& xform) {
     m_y = unit(xform.transform_vector(m_y));
     m_radius *= s;
     m_minor *= s;
-    if (m_kind == Kind::Line)
+    if (m_kind == Kind::Line || m_kind == Kind::Parabola)
         m_domain = {m_domain[0] * s, m_domain[1] * s};
     m_nurbs.reset();
 }
@@ -279,6 +336,21 @@ const NurbsCurve& Curve::nurbs() const {
     if (m_kind == Kind::Line) {
         c = NurbsCurve::create(false, 1, {point_at(m_domain[0]), point_at(m_domain[1])});
         c.set_domain(m_domain[0], m_domain[1]);
+    } else if (m_kind == Kind::Parabola || m_kind == Kind::Hyperbola) {
+        // Arcs whose end tangents meet in the middle control point: of a parabola one, of weight 1; of a hyperbola each of weight cosh of half its span.
+        const bool parabola = m_kind == Kind::Parabola;
+        const int spans = parabola ? 1 : std::max(1, static_cast<int>(std::ceil(m_domain[1] - m_domain[0] - 1e-9)));
+        const double step = (m_domain[1] - m_domain[0]) / spans, w = parabola ? 1.0 : std::cosh(0.5 * step);
+        c = NurbsCurve(3, !parabola, 3, 2 * spans + 1);
+        for (int k = 0; k <= spans; ++k) {
+            const double t = k == spans ? m_domain[1] : m_domain[0] + k * step, mid = t - 0.5 * step;
+            const Point p = point_at(t), q = parabola ? m_origin + m_x * ((t - step) * t / (4.0 * m_radius)) + m_y * mid : m_origin + m_x * (m_radius * std::cosh(mid) / w) + m_y * (m_minor * std::sinh(mid) / w);
+            if (k > 0)
+                c.set_cv_4d(2 * k - 1, q[0] * w, q[1] * w, q[2] * w, w);
+            c.set_cv_4d(2 * k, p[0], p[1], p[2], 1.0);
+            c.set_nurbsknot(2 * k, t);
+            c.set_nurbsknot(2 * k + 1, t);
+        }
     } else {
         std::vector<std::array<double, 3>> controls;
         std::vector<double> knots;
@@ -329,7 +401,7 @@ Curve Curve::jsonload(const nlohmann::json& data) {
     c.m_radius = data.at("radius");
     c.m_minor = data.at("minor");
     c.m_domain = {data.at("domain").at(0), data.at("domain").at(1)};
-    return c.m_kind > Kind::Ellipse ? Curve() : c;
+    return c.m_kind > Kind::Hyperbola ? Curve() : c;
 }
 
 Curve2d Curve2d::line(double u0, double v0, double u1, double v1) {

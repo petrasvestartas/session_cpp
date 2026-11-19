@@ -11,3 +11,6 @@ Copyright (c) 1999-2026 OPEN CASCADE SAS. Licensed under the GNU Lesser General 
 - src/bop_builder_solid.h, src/bop_builder_solid.cpp: BOPAlgo_BuilderSolid, BOPAlgo_ShellSplitter, BOPTools_AlgoTools::GetFaceOff
 - src/bop.h, src/bop.cpp: BOPAlgo_Builder (FillImagesFaces, FillSameDomainFaces), BOPAlgo_BOP (BuildRC, BuildShape), BOPTools_AlgoTools::ComputeState
 src/intersection_analytic.h, src/intersection_analytic.cpp: IntAna_QuadQuadGeo, IntAna_IntConicQuad, IntAna_Quadric, ElSLib, ElCLib
+- src/curve.h, src/curve.cpp (parabola, hyperbola): Geom_Parabola, Geom_Hyperbola, ElCLib (ParabolaValue, HyperbolaValue, their derivatives and parameters)
+- src/surface.h, src/surface.cpp, src/surface_sweep.cpp (revolution, extrusion): Geom_SurfaceOfRevolution, Geom_SurfaceOfLinearExtrusion (parametrisation, derivatives, periods)
+- src/intersection_sweep.h, src/intersection_sweep.cpp: IntAna2d_AnaIntersection (its cases _1 to _8: a parametrised line or conic in the equation of the other), IntAna2d_Conic, math_DirectPolynomialRoots
