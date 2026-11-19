@@ -1,5 +1,7 @@
 #include "bop_ff.h"
 #include "closest.h"
+#include "curve_intersection.h"
+#include "intersection_analytic.h"
 #include "nurbs_coincidence.h"
 #include "nurbs_implicit.h"
 #include <algorithm>
@@ -948,6 +950,309 @@ void march(const Context& c, const std::vector<std::pair<Node, double>>& found, 
     }
 }
 
+// The (u, v) of a point of the section on a face's surface: Newton from the parameters of the point before it, which keeps the
+// side of a seam, else from the nearest point of a grid of the surface and around its seams.
+std::array<double, 2> locate(const Side& side, const P3& p, const std::array<double, 2>* near, double tol) {
+    std::array<double, 2> uv{};
+    for (int attempt = near ? 0 : 1; attempt < 2; ++attempt) {
+        if (attempt == 0)
+            uv = *near;
+        else {
+            const int nu = 8 * side.surface.span_count(0), nv = 8 * side.surface.span_count(1);
+            double best = infinity;
+            for (int i = 0; i <= nu; ++i)
+                for (int k = 0; k <= nv; ++k) {
+                    const double u = side.box[0] + i * (side.box[1] - side.box[0]) / nu, v = side.box[2] + k * (side.box[3] - side.box[2]) / nv;
+                    const double d = (side.surface.point(u, v) - xyz(p)).length();
+                    if (d < best)
+                        best = d, uv = {u, v};
+                }
+        }
+        for (int it = 0; it < 30; ++it) {
+            const Jet j = jet(side.surface, uv[0], uv[1]);
+            const xyz r = xyz(p) - j.p;
+            const double e = j.du.dot(j.du), f = j.du.dot(j.dv), g = j.dv.dot(j.dv), det = e * g - f * f;
+            if (!(det > 1e-30 * e * g))
+                break;
+            const double du = (g * j.du.dot(r) - f * j.dv.dot(r)) / det, dv = (e * j.dv.dot(r) - f * j.du.dot(r)) / det;
+            uv = {uv[0] + du, uv[1] + dv};
+            for (int d = 0; d < 2; ++d) {
+                const double lo = side.box[2 * d], hi = side.box[2 * d + 1];
+                uv[d] = attempt && side.closed[d] ? lo + std::fmod(std::fmod(uv[d] - lo, hi - lo) + (hi - lo), hi - lo) : std::clamp(uv[d], lo, hi);
+            }
+            if (std::abs(du) <= 1e-15 * (side.box[1] - side.box[0]) && std::abs(dv) <= 1e-15 * (side.box[3] - side.box[2]))
+                break;
+        }
+        if ((side.surface.point(uv[0], uv[1]) - xyz(p)).length() <= tol)
+            break;
+    }
+    return uv;
+}
+
+// The pcurves of an exact section on both faces in the curve's own parameter: interpolated through the surface parameters of its
+// points, with points added where a pcurve leaves the curve by more than the target.
+bool exact_curve(const Context& c, const NurbsCurve& c3d, double fit, Curve& out) {
+    const std::vector<double> spans = c3d.get_span_vector();
+    std::vector<double> t = {spans.front()};
+    for (size_t i = 0; i + 1 < spans.size(); ++i)
+        for (int k = 1; k <= 4; ++k)
+            if (spans[i] + 0.25 * k * (spans[i + 1] - spans[i]) > t.back() + 1e-9 * (spans.back() - spans.front()))
+                t.push_back(spans[i] + 0.25 * k * (spans[i + 1] - spans[i]));
+    t.back() = spans.back();
+    const double target = std::min(0.1 * c.tol, 1e-9 * c.size) + 2.0 * fit;
+    NurbsCurve on_a, on_b;
+    for (int round = 0; round < 12; ++round) {
+        const size_t n = t.size(), mid = n / 2;
+        std::array<std::vector<P3>, 2> uv{std::vector<P3>(n), std::vector<P3>(n)};
+        for (int s = 0; s < 2; ++s) {
+            const Side& side = s ? c.b : c.a;
+            std::array<double, 2> last = locate(side, c3d.point_at(t[mid]), nullptr, c.tol);
+            const std::array<double, 2> middle = last;
+            for (size_t i = mid; i < n; ++i)
+                last = locate(side, c3d.point_at(t[i]), &last, c.tol), uv[s][i] = P3(last[0], last[1], 0);
+            last = middle;
+            for (size_t i = mid; i-- > 0;)
+                last = locate(side, c3d.point_at(t[i]), &last, c.tol), uv[s][i] = P3(last[0], last[1], 0);
+        }
+        on_a = NurbsCurve::create_interpolated(uv[0], t), on_b = NurbsCurve::create_interpolated(uv[1], t);
+        if (!on_a.is_valid() || !on_b.is_valid())
+            return false;
+        std::vector<double> more = {t.front()};
+        for (size_t i = 1; i < n; ++i) {
+            const double m = 0.5 * (t[i - 1] + t[i]);
+            const P3 p = c3d.point_at(m), ua = on_a.point_at(m), ub = on_b.point_at(m);
+            if (n + more.size() < 4000 && std::max(p.distance(c.a.full->point_at(ua[0], ua[1])), p.distance(c.b.full->point_at(ub[0], ub[1]))) > target)
+                more.push_back(m);
+            more.push_back(t[i]);
+        }
+        if (more.size() == n)
+            break;
+        t = std::move(more);
+    }
+    out = make_curve(c, c3d, std::move(on_a), std::move(on_b));
+    return true;
+}
+
+// IntPatch_ImpImpIntersection with GeomInt_LineConstructor: the closed-form sections of two recognised surfaces, each kept where it
+// passes the uv boxes of both faces and cut where it crosses a seam of a face that closes around it or another section of the pair.
+// False where no closed form applies.
+bool closed_form(const Context& c, Result& result) {
+    const std::array<const Side*, 2> sides = {&c.a, &c.b};
+    std::array<Surface, 2> form;
+    struct Seam {
+        int side, d;
+        double angle;
+    };
+    std::vector<Seam> seams;
+    for (int s = 0; s < 2; ++s) {
+        // Only a form the surface has to rounding: a loose one moves the section off the face it is to cut.
+        form[s] = Surface::recognized(sides[s]->surface, 1e-10 * sides[s]->size);
+        if (form[s].kind() == Surface::Kind::Nurbs)
+            return false;
+        // Where a face runs all or nearly all the way around, its section is cut at the angle its box starts from.
+        for (int d = 0; d < 2; ++d)
+            if (form[s].period(d) > 0 && form[s].domain(d).second - form[s].domain(d).first > 0.9 * form[s].period(d))
+                seams.push_back({s, d, form[s].domain(d).first});
+    }
+    const intersection_analytic::Result exact = intersection_analytic::surface_surface(form[0], form[1], c.tol);
+    if (!exact.done || exact.coincident)
+        return false;
+    // How far inside the uv box of a face a point of a section lies, negative outside, and beside which bound of it.
+    const auto margin = [&](int s, const P3& p, std::array<int, 2>* bound = nullptr) {
+        const std::pair<double, double> uv = form[s].closest_parameters(p);
+        double least = infinity;
+        for (int d = 0; d < 2; ++d) {
+            const auto [lo, hi] = form[s].domain(d);
+            const double period = form[s].period(d), w = d ? uv.second : uv.first, e = 1e-9 * (hi - lo);
+            least = std::min(least, e + (period > 0 && w > hi ? -std::min(w - hi, lo + period - w) : std::min(w - lo, hi - w)));
+            if (bound)
+                (*bound)[d] = std::abs(std::remainder(w - lo, period > 0 ? period : 1e300)) <= e ? 0 : std::abs(std::remainder(w - hi, period > 0 ? period : 1e300)) <= e ? 1 : -1;
+        }
+        return least;
+    };
+    const auto both = [&](const intersection_analytic::Section& s, double t) { return std::min(margin(0, s.curve.point_at(t)), margin(1, s.curve.point_at(t))); };
+    const auto bisect = [](double lo, double hi, const auto& low) {
+        for (int it = 0; it < 60; ++it)
+            (low(0.5 * (lo + hi)) ? lo : hi) = 0.5 * (lo + hi);
+        return 0.5 * (lo + hi);
+    };
+    const int n = 256;
+    std::vector<std::vector<double>> cuts(exact.curves.size());
+    for (size_t i = 0; i < exact.curves.size(); ++i) {
+        const intersection_analytic::Section& s = exact.curves[i];
+        const auto [t0, t1] = s.curve.domain();
+        const auto at = [&](int k) { return t0 + (t1 - t0) * k / n; };
+        const auto leave = [&](double in, double out) { cuts[i].push_back(bisect(in, out, [&](double t) { return both(s, t) >= 0; })); };
+        cuts[i] = {t0, t1};
+        std::vector<double> m(n + 1);
+        for (int k = 0; k <= n; ++k)
+            m[k] = both(s, at(k));
+        for (int k = 0; k < n; ++k) {
+            if ((m[k] >= 0) != (m[k + 1] >= 0))
+                leave(m[k] >= 0 ? at(k) : at(k + 1), m[k] >= 0 ? at(k + 1) : at(k));
+            // A piece shorter than the sampling: the margin peaks between two samples outside.
+            if (k > 0 && m[k] < 0 && m[k] >= m[k - 1] && m[k] >= m[k + 1]) {
+                double lo = at(k - 1), hi = at(k + 1);
+                const double golden = 0.5 * (std::sqrt(5.0) - 1.0);
+                for (int it = 0; it < 60; ++it) {
+                    const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
+                    (both(s, m1) > both(s, m2) ? hi : lo) = both(s, m1) > both(s, m2) ? m2 : m1;
+                }
+                if (both(s, 0.5 * (lo + hi)) >= 0)
+                    leave(0.5 * (lo + hi), at(k - 1)), leave(0.5 * (lo + hi), at(k + 1));
+            }
+            for (const Seam& seam : seams) {
+                const auto side_of = [&](double t) {
+                    const std::pair<double, double> uv = form[seam.side].closest_parameters(s.curve.point_at(t));
+                    return std::remainder((seam.d ? uv.second : uv.first) - seam.angle, form[seam.side].period(seam.d));
+                };
+                const double g0 = side_of(at(k)), g1 = side_of(at(k + 1));
+                if ((g0 < 0) != (g1 < 0) && std::abs(g0) < 1.0 && std::abs(g1) < 1.0)
+                    cuts[i].push_back(bisect(at(k), at(k + 1), [&](double t) { return (side_of(t) < 0) == (g0 < 0); }));
+            }
+        }
+        for (size_t j = 0; j < i; ++j)
+            try {
+                const intersection_analytic::Section& o = exact.curves[j];
+                for (const curve_intersection::Hit& hit : curve_intersection::intersect(s.curve.nurbs(), o.curve.nurbs(), c.tol).points) {
+                    cuts[i].push_back(session_cpp::Curve::wrapped(s.curve.closest_parameter(hit.point), t0, s.curve.period()));
+                    cuts[j].push_back(session_cpp::Curve::wrapped(o.curve.closest_parameter(hit.point), o.curve.domain().first, o.curve.period()));
+                }
+            } catch (const std::exception&) {
+            }
+    }
+    for (size_t i = 0; i < exact.curves.size(); ++i) {
+        const intersection_analytic::Section& s = exact.curves[i];
+        std::sort(cuts[i].begin(), cuts[i].end());
+        // The ellipses of two cylinders keep a vertex where IntAna_QuadQuadGeo starts them: on the axis d1 - d2 of the one normal to d1 + d2 and the reverse, d the axes along their surfaces' lengths.
+        const bool origin = s.curve.kind() == session_cpp::Curve::Kind::Ellipse && form[0].kind() == Surface::Kind::Cylinder && form[1].kind() == Surface::Kind::Cylinder;
+        double start = 0.0;
+        if (origin) {
+            std::array<Vector, 2> axis;
+            for (int k = 0; k < 2; ++k) {
+                const NurbsSurface& full = *sides[k]->full;
+                const int d = full.degree(0) == 1 ? 0 : 1;
+                const double m = 0.5 * (full.domain(1 - d).first + full.domain(1 - d).second);
+                const P3 p0 = d ? full.point_at(m, full.domain(1).first) : full.point_at(full.domain(0).first, m), p1 = d ? full.point_at(m, full.domain(1).second) : full.point_at(full.domain(0).second, m);
+                axis[k] = form[k].z() * (form[k].z().dot(p1 - p0) < 0 ? -1.0 : 1.0);
+            }
+            Vector sum = axis[0] + axis[1], difference = axis[0] - axis[1];
+            sum.normalize_self();
+            difference.normalize_self();
+            const Vector x = std::abs(s.curve.z().dot(sum)) > std::abs(s.curve.z().dot(difference)) ? difference : sum;
+            const P3 centre = s.curve.origin();
+            start = session_cpp::Curve::wrapped(s.curve.closest_parameter(P3(centre[0] + x[0] * s.curve.radius(), centre[1] + x[1] * s.curve.radius(), centre[2] + x[2] * s.curve.radius())), s.curve.domain().first, s.curve.period());
+            cuts[i].push_back(start);
+            std::sort(cuts[i].begin(), cuts[i].end());
+        }
+        const auto at_start = [&](double t) { return origin && std::abs(std::remainder(t - start, s.curve.period())) <= 1e-12; };
+        // Any other closed section cut elsewhere runs on through its own origin.
+        if (cuts[i].size() > 2 && s.curve.period() > 0 && s.curve.is_closed()) {
+            cuts[i].erase(cuts[i].begin());
+            cuts[i].back() = cuts[i].front() + s.curve.period();
+        }
+        for (size_t k = 0; k + 1 < cuts[i].size(); ++k) {
+            const double a = cuts[i][k], b = cuts[i][k + 1];
+            // A piece no wider than the slack of the boxes is the corner two cuts leave, no section.
+            if (b - a <= 1e-8 * (s.curve.domain().second - s.curve.domain().first) || both(s, 0.5 * (a + b)) < 0 || s.curve.point_at(a).distance(s.curve.point_at(0.5 * (a + b))) + s.curve.point_at(b).distance(s.curve.point_at(0.5 * (a + b))) <= c.tol)
+                continue;
+            // IntPatch_Restriction: a tangent section along a bound of a face's box, no seam, is an edge of that face lying on the other.
+            bool edge = false;
+            for (int side = 0; side < 2 && s.tangent; ++side)
+                for (int d = 0; d < 2; ++d) {
+                    std::array<int, 2> first{}, bound{};
+                    margin(side, s.curve.point_at(a), &first);
+                    bool along = first[d] >= 0 && !(form[side].period(d) > 0 && form[side].domain(d).second - form[side].domain(d).first >= (1.0 - 1e-9) * form[side].period(d));
+                    for (int m = 1; m <= 8 && along; ++m) {
+                        margin(side, s.curve.point_at(a + (b - a) * m / 8), &bound);
+                        along = bound[d] == first[d];
+                    }
+                    edge = edge || along;
+                }
+            if (edge)
+                continue;
+            session_cpp::Curve piece = s.curve;
+            Curve curve;
+            if (piece.set_domain(a, b) && exact_curve(c, piece.nurbs(), s.fit, curve)) {
+                // A piece its pcurves cannot follow is not of these patches: the form's extent is not the face's.
+                if (curve.tolerance > std::max(c.tol, 1e-6 * c.size))
+                    return false;
+                curve.bound = {at_start(a), at_start(b)};
+                result.curves.push_back(std::move(curve));
+            } else
+                return false;
+        }
+    }
+    for (const intersection_analytic::Hit& hit : exact.points)
+        if (margin(0, hit.point) >= 0 && margin(1, hit.point) >= 0) {
+            const std::array<double, 2> ua = locate(c.a, hit.point, nullptr, c.tol), ub = locate(c.b, hit.point, nullptr, c.tol);
+            result.points.push_back({hit.point, P3(ua[0], ua[1], 0), P3(ub[0], ub[1], 0), c.tol});
+        }
+    result.certified = true;
+    return true;
+}
+
+// PostTreatFF in short: marched sections of one pair that cross each other away from their ends are cut there, so that a vertex stands at the crossing.
+void cut_crossings(std::vector<Curve>& curves) {
+    const int n = 64;
+    std::vector<std::vector<double>> cuts(curves.size());
+    std::vector<std::vector<xyz>> samples(curves.size());
+    for (size_t i = 0; i < curves.size(); ++i)
+        for (int k = 0; k <= n; ++k)
+            samples[i].push_back(xyz(curves[i].curve.point_at(curves[i].curve.domain_start() + (curves[i].curve.domain_end() - curves[i].curve.domain_start()) * k / n)));
+    for (size_t i = 0; i < curves.size(); ++i)
+        for (size_t j = 0; j < curves.size(); ++j) {
+            if (i == j)
+                continue;
+            // Where the samples of one come nearest to the polyline of the other, the two curves are brought together.
+            std::vector<double> d(n + 1, infinity);
+            for (int k = 0; k <= n; ++k)
+                for (int m = 0; m < n; ++m)
+                    d[k] = std::min(d[k], segment_gap(samples[i][k], samples[j][m], samples[j][m + 1]));
+            const NurbsCurve &a = curves[i].curve, &b = curves[j].curve;
+            const double step = (a.domain_end() - a.domain_start()) / n, tol = curves[i].tolerance + curves[j].tolerance + 1e-7;
+            for (int k = 1; k < n; ++k) {
+                // A crossing shows as a sharp dip of the distance; curves running side by side are no crossing.
+                const double length = 0.5 * (samples[i][k + 1] - samples[i][k - 1]).length();
+                if (d[k] > d[k - 1] || d[k] > d[k + 1] || d[k] > length || std::max(d[k - 1], d[k + 1]) < 0.2 * length)
+                    continue;
+                double t = a.domain_start() + k * step, s = 0.0, gap = infinity;
+                for (int it = 0; it < 30 && gap > 0.1 * tol; ++it) {
+                    s = b.closest_parameter(a.point_at(t));
+                    t = std::clamp(a.closest_parameter(b.point_at(s)), t - step, t + step);
+                    gap = a.point_at(t).distance(b.point_at(s));
+                }
+                Vector ta = a.tangent_at(t), tb = b.tangent_at(s);
+                ta.normalize_self();
+                tb.normalize_self();
+                if (gap <= tol && ta.cross(tb).magnitude() > 0.1 && std::min(s - b.domain_start(), b.domain_end() - s) > 1e-3 * (b.domain_end() - b.domain_start()))
+                    cuts[i].push_back(t);
+            }
+        }
+    std::vector<Curve> result;
+    for (size_t i = 0; i < curves.size(); ++i) {
+        const double t0 = curves[i].curve.domain_start(), t1 = curves[i].curve.domain_end(), e = 1e-3 * (t1 - t0);
+        std::vector<double> at = {t0};
+        std::sort(cuts[i].begin(), cuts[i].end());
+        for (double t : cuts[i])
+            if (t > at.back() + e && t < t1 - e)
+                at.push_back(t);
+        at.push_back(t1);
+        for (size_t k = 0; k + 1 < at.size() && at.size() > 2; ++k) {
+            Curve piece = curves[i];
+            if (!piece.curve.trim(at[k], at[k + 1]) || !piece.pcurve_a.trim(at[k], at[k + 1]) || !piece.pcurve_b.trim(at[k], at[k + 1])) {
+                at.clear();
+                break;
+            }
+            piece.closed = false;
+            result.push_back(std::move(piece));
+        }
+        if (at.size() <= 2)
+            result.push_back(curves[i]);
+    }
+    curves = std::move(result);
+}
+
 }
 
 // IntTools_FaceFace::Perform: face tolerances grown by half the fuzzy value (at least Precision::Confusion), planes by
@@ -971,10 +1276,26 @@ Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fu
         const double small = std::max(1e-300, std::min(sa.size, sb.size)), size = std::max(sa.size, sb.size);
         const Context c{sa, sb, tol, size, 1e-14 * std::max(1.0, size), 0.02 * small, 1e-9 * small, 0.1 * small};
         const std::vector<std::pair<Node, double>> found = seeds(c);
+        // The closed form stands where every crossing the grids found lies on one of its sections.
+        try {
+            bool whole = closed_form(c, result);
+            for (size_t i = 0; i < found.size() && whole; i += found.size() / 24 + 1) {
+                bool on = found[i].second < c.flat;
+                for (size_t k = 0; k < result.curves.size() && !on; ++k)
+                    on = result.curves[k].curve.closest_point(P3(found[i].first.p)).distance(P3(found[i].first.p)) <= std::max(100 * c.tol, 1e-6 * c.size);
+                whole = on;
+            }
+            if (whole)
+                return result;
+        } catch (const std::exception&) {
+        }
+        result = {};
         if (overlap(c, found))
             result.same_domain = true;
-        else
+        else {
             march(c, found, result);
+            cut_crossings(result.curves);
+        }
     } catch (const std::exception&) {
     }
     return result;

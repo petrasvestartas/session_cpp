@@ -2,6 +2,7 @@
 #include "bop_ff.h"
 #include "curve_intersection.h"
 #include "curve_surface_intersection.h"
+#include "intersection_analytic.h"
 #include "nurbs_implicit.h"
 #include <algorithm>
 #include <cmath>
@@ -59,6 +60,74 @@ std::vector<int> active_faces(const BRep& brep) {
 struct Filler {
     DS& ds;
     std::array<std::vector<int>, 2> act_v, act_e, act_f;
+    std::map<int, Curve> edge_forms;
+    std::map<int, Surface> face_forms;
+
+    /// The line, circle or ellipse an edge is to rounding, recognized while the pools hold freeform curves
+    const Curve& form(int e) {
+        const auto found = edge_forms.find(e);
+        return found != edge_forms.end() ? found->second : edge_forms[e] = Curve::recognized(ds.curve_of(ds.edges[e]));
+    }
+
+    /// The plane, cylinder, cone, sphere or torus a face's surface is to rounding
+    const Surface& form(const Face& f, int id) {
+        const auto found = face_forms.find(id);
+        if (found != face_forms.end())
+            return found->second;
+        const Box box = surface_box(ds.surface_of(f), 0.0);
+        return face_forms[id] = Surface::recognized(ds.surface_of(f), 1e-10 * Point(box.lo[0], box.lo[1], box.lo[2]).distance(Point(box.hi[0], box.hi[1], box.hi[2])));
+    }
+
+    /// IntAna_IntConicQuad for an edge and a face that have forms: the clean crossings of the edge's range with the whole surface. False where there is no closed form, where the edge touches the surface or meets it at a shallow angle, or comes within the tolerance of it without crossing: those are the tolerant intersection's.
+    bool closed_form_ef(int e, int fid, double tolerance, curve_surface_intersection::Result& r) {
+        const Edge& edge = ds.edges[e];
+        const Curve& curve = form(e);
+        const Surface& surface = form(ds.faces[fid], fid);
+        if (curve.kind() == Curve::Kind::Nurbs || surface.kind() == Surface::Kind::Nurbs)
+            return false;
+        const intersection_analytic::Result exact = intersection_analytic::curve_surface(curve, surface, tolerance);
+        if (!exact.done || exact.coincident)
+            return false;
+        const NurbsCurve& c = ds.curve_of(edge);
+        const NurbsSurface& s = ds.surface_of(ds.faces[fid]);
+        const auto [d0, d1] = curve.domain();
+        std::vector<curve_surface_intersection::Hit> hits;
+        for (const intersection_analytic::Hit& hit : exact.points) {
+            if (hit.t < d0 - 1e-9 * (d1 - d0) || hit.t > d1 + 1e-9 * (d1 - d0))
+                continue;
+            const double t = std::clamp(c.closest_parameter(hit.point), edge.t0, edge.t1);
+            const auto [u, v] = s.closest_parameters(hit.point);
+            Vector along = c.tangent_at(t), normal = s.normal_at(u, v);
+            along.normalize_self();
+            normal.normalize_self();
+            if (hit.tangent || c.point_at(t).distance(hit.point) > tolerance || s.point_at(u, v).distance(hit.point) > tolerance || std::abs(along.dot(normal)) < 0.02)
+                return false;
+            hits.push_back({hit.point, t, u, v, false});
+        }
+        // Where the edge comes nearest to the surface without a crossing there, it must stay clear of the tolerance.
+        const int n = 32;
+        const auto gap = [&](double t) { return surface.distance(c.point_at(t)); };
+        std::vector<double> d(n + 1);
+        for (int i = 0; i <= n; ++i)
+            d[i] = gap(edge.t0 + (edge.t1 - edge.t0) * i / n);
+        for (int i = 0; i <= n; ++i) {
+            if ((i > 0 && d[i] > d[i - 1]) || (i < n && d[i] > d[i + 1]))
+                continue;
+            double lo = edge.t0 + (edge.t1 - edge.t0) * std::max(i - 1, 0) / n, hi = edge.t0 + (edge.t1 - edge.t0) * std::min(i + 1, n) / n;
+            for (int k = 0; k < 50; ++k) {
+                const double m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+                (gap(m1) < gap(m2) ? hi : lo) = gap(m1) < gap(m2) ? m2 : m1;
+            }
+            const Point p = c.point_at(0.5 * (lo + hi));
+            bool crossing = surface.distance(p) > tolerance;
+            for (const curve_surface_intersection::Hit& hit : hits)
+                crossing = crossing || hit.point.distance(p) <= 100.0 * tolerance;
+            if (!crossing)
+                return false;
+        }
+        r.points = hits;
+        return true;
+    }
 
     double tol(int v) const { return ds.vertices[ds.real(v)].tolerance; }
     const Point& at(int v) const { return ds.vertices[ds.real(v)].point; }
@@ -217,6 +286,12 @@ struct Filler {
         return (edge.t1 - edge.t0) * std::max(1e-2, 4.0 * tolerance / std::max(length, 1e-300));
     }
 
+    /// How far an edge runs, closed or not: its ends by way of its middle
+    static double extent(const NurbsCurve& c, const Edge& edge) {
+        const Point mid = c.point_at(0.5 * (edge.t0 + edge.t1));
+        return c.point_at(edge.t0).distance(mid) + mid.distance(c.point_at(edge.t1));
+    }
+
     void perform_vv() {
         std::vector<int> parent(ds.vertices.size());
         std::iota(parent.begin(), parent.end(), 0);
@@ -267,7 +342,8 @@ struct Filler {
                 const double tolerance = a.tolerance + b.tolerance + ds.fuzzy;
                 curve_intersection::Result r;
                 try {
-                    r = curve_intersection::intersect(ds.curve_of(a), ds.curve_of(b), tolerance);
+                    if (!circles(ea, eb, tolerance, r))
+                        r = curve_intersection::intersect(ds.curve_of(a), ds.curve_of(b), tolerance);
                 } catch (const std::exception& error) {
                     ds.log.push_back(std::string("EE ") + error.what());
                     continue;
@@ -279,6 +355,55 @@ struct Filler {
                 if (!r.complete || tolerance > 1e-6)
                     tolerant_ee(ea, eb, tolerance);
             }
+    }
+
+    /// IntAna2d and IntAna_IntConicQuad for two circular edges: where the circles cross cleanly, kept where both arcs hold the point; nothing for two arcs of one circle, which meet in their vertices. False for other curves and where the circles touch or pass within a hundred tolerances without crossing.
+    bool circles(int ea, int eb, double tolerance, curve_intersection::Result& r) {
+        const Curve &a = form(ea), &b = form(eb);
+        if (a.kind() != Curve::Kind::Circle || b.kind() != Curve::Kind::Circle)
+            return false;
+        const Vector na = a.z(), nb = b.z(), between(b.origin()[0] - a.origin()[0], b.origin()[1] - a.origin()[1], b.origin()[2] - a.origin()[2]);
+        const double wide = 100.0 * tolerance, height = between.dot(na);
+        std::vector<Point> found;
+        if (na.cross(nb).magnitude() > 1e-3) {
+            // Where b passes the plane of a: A cos + B sin + C = 0.
+            const double A = b.radius() * b.x().dot(na), B = b.radius() * b.y().dot(na), R = std::hypot(A, B);
+            if (std::abs(height) > R + wide)
+                return true;
+            if (std::abs(height) > R - wide)
+                return false;
+            for (double sign : {-1.0, 1.0}) {
+                const Point p = b.point_at(std::atan2(B, A) + sign * std::acos(-height / R));
+                const double gap = std::abs(p.distance(a.origin()) - a.radius());
+                if (gap > tolerance && gap <= wide)
+                    return false;
+                if (gap <= tolerance)
+                    found.push_back(p);
+            }
+        } else if (na.cross(nb).magnitude() > 1e-9 || (std::abs(height) > tolerance && std::abs(height) <= wide))
+            return false;
+        else if (std::abs(height) <= tolerance) {
+            Vector along = between - na * height;
+            const double d = along.magnitude(), sum = a.radius() + b.radius(), difference = std::abs(a.radius() - b.radius());
+            if (d <= tolerance && difference <= tolerance)
+                return true;
+            if (std::abs(d - sum) <= wide || std::abs(d - difference) <= wide)
+                return false;
+            if (d < sum && d > difference) {
+                along.normalize_self();
+                const Vector across = na.cross(along);
+                const double k = (a.radius() * a.radius() - b.radius() * b.radius() + d * d) / (2.0 * d), h = std::sqrt(std::max(a.radius() * a.radius() - k * k, 0.0));
+                for (double sign : {-1.0, 1.0})
+                    found.push_back(Point(a.origin()[0] + along[0] * k + across[0] * sign * h, a.origin()[1] + along[1] * k + across[1] * sign * h, a.origin()[2] + along[2] * k + across[2] * sign * h));
+            }
+        }
+        const Edge &x = ds.edges[ea], &y = ds.edges[eb];
+        for (const Point& p : found) {
+            const double ta = std::clamp(ds.curve_of(x).closest_parameter(p), x.t0, x.t1), tb = std::clamp(ds.curve_of(y).closest_parameter(p), y.t0, y.t1);
+            if (ds.curve_of(x).point_at(ta).distance(p) <= tolerance && ds.curve_of(y).point_at(tb).distance(p) <= tolerance)
+                r.points.push_back({p, ta, tb, false});
+        }
+        return true;
     }
 
     void ee_point(int ea, int eb, double ta, double tb) {
@@ -304,6 +429,13 @@ struct Filler {
             v = ds.add_vertex(p, std::max(a.tolerance, b.tolerance) + 0.5 * d);
         add_pave(ea, v, ta);
         add_pave(eb, v, tb);
+        // The common part of a crossing runs where the edges stay within the tolerance of each other: far along them at a shallow angle.
+        Vector da = ca.tangent_at(ta), db = ds.curve_of(b).tangent_at(tb);
+        da.normalize_self();
+        db.normalize_self();
+        Vertex& made = ds.vertices[ds.real(v)];
+        if (made.operand < 0)
+            made.reach = std::max(made.reach, std::min(tolerance / std::max(da.cross(db).magnitude(), 1e-12), extent(ca, a)));
     }
 
     /// IntTools_EdgeEdge within the tolerance: local minima of the distance between two edges that come within it away from a common part
@@ -385,7 +517,13 @@ struct Filler {
                         ++on;
                     }
                     curve_surface_intersection::Result r;
-                    if (on < 5)
+                    bool exact = false;
+                    try {
+                        exact = on < 5 && closed_form_ef(e, fid, tolerance, r);
+                    } catch (const std::exception&) {
+                        r = {};
+                    }
+                    if (on < 5 && !exact)
                         try {
                             r = curve_surface_intersection::intersect(c, f.patch, tolerance);
                         } catch (const std::exception& error) {
@@ -431,12 +569,12 @@ struct Filler {
         tangent.normalize_self();
         normal.normalize_self();
         const Point p = c.point_at(t);
-        const double reach = std::min(tolerance / std::max(std::abs(tangent.dot(normal)), 1e-12), c.point_at(edge.t0).distance(c.point_at(edge.t1)));
+        const double reach = std::min(tolerance / std::max(std::abs(tangent.dot(normal)), 1e-12), extent(c, edge));
         // PerformEF, a common part that reaches a pave of the edge: no new vertex, the pave's vertex grows to cover a real crossing.
         if (s.point_at(uv[0], uv[1]).distance(p) < confusion)
             for (const Pave& pave : edge.paves) {
                 const double d = at(pave.vertex).distance(p), limit = tol(pave.vertex) < 0.01 ? std::min(1e4 * tol(pave.vertex), 0.1) : 1e4 * tol(pave.vertex);
-                if (d - reach > tol(pave.vertex) || d >= limit)
+                if (d - reach > std::max(tol(pave.vertex), ds.vertices[ds.real(pave.vertex)].reach) || d >= limit)
                     continue;
                 grow(pave.vertex, d);
                 const std::vector<int> known = face_vertices(f);
@@ -787,9 +925,16 @@ struct Filler {
         for (int b : face_blocks(ds.faces[ia]))
             if (face_has(ds.faces[ib], b))
                 used.insert(used.end(), {ds.real(ds.blocks[b].first.vertex), ds.real(ds.blocks[b].last.vertex)});
+        // A vertex on a boundary edge of each face is where two edges cross: no section of the pair has to pass there.
+        const auto on_boundary = [&](int f, int v) {
+            for (int e : ds.faces[f].edges)
+                if (has_pave(e, v))
+                    return true;
+            return false;
+        };
         int missed = 0;
         for (int v : both)
-            missed += ds.vertices[v].reach > 0.0 && std::find(used.begin(), used.end(), v) == used.end();
+            missed += ds.vertices[v].reach > 0.0 && std::find(used.begin(), used.end(), v) == used.end() && !(on_boundary(ia, v) && on_boundary(ib, v));
         if (missed > 0)
             ds.log.push_back("FF incomplete: " + std::to_string(missed) + " edge crossings on no section");
     }
@@ -969,26 +1114,28 @@ struct Filler {
             if (d > std::max(tol(v), ds.vertices[ds.real(v)].reach) + c.tolerance + ds.fuzzy)
                 continue;
             grow(v, d);
-            c.paves.push_back({v, t});
-            if (closed && (std::abs(t - t0) < 1e-9 * (t1 - t0) || std::abs(t - t1) < 1e-9 * (t1 - t0)))
-                c.paves.push_back({v, std::abs(t - t0) < std::abs(t - t1) ? t1 : t0});
+            // A vertex over the bound of a closed curve is the pave of both its ends.
+            if (closed && at(v).distance(w.point_at(t0)) <= tol(v) + c.tolerance)
+                c.paves.insert(c.paves.end(), {{v, t0}, {v, t1}});
+            else
+                c.paves.push_back({v, t});
         }
         const auto near = [&](double t) {
             for (const Pave& p : c.paves)
-                if (at(p.vertex).distance(w.point_at(t)) <= tol(p.vertex) + c.tolerance)
+                if (at(p.vertex).distance(w.point_at(t)) <= std::max(tol(p.vertex), ds.vertices[ds.real(p.vertex)].reach) + c.tolerance)
                     return true;
             return false;
         };
         if (!near(t0)) {
             const int v = ds.add_vertex(w.point_at(t0), c.tolerance);
-            ds.vertices[v].joint = true;
+            ds.vertices[v].joint = !section.bound[0];
             c.paves.push_back({v, t0});
             if (closed)
                 c.paves.push_back({v, t1});
         }
         if (!near(t1)) {
             c.paves.push_back({ds.add_vertex(w.point_at(t1), c.tolerance), t1});
-            ds.vertices.back().joint = true;
+            ds.vertices.back().joint = !section.bound[1];
         }
         // PutBoundPaveOnCurve: a closed curve keeps a vertex at its bound unless one sits there already.
         const double bound = origin ? w.closest_parameter(*origin) : t0;
@@ -1053,6 +1200,9 @@ struct Filler {
                     bool on = existing < 0;
                     for (int v : {block.first.vertex, block.last.vertex})
                         on = on && (v == old.first.vertex || v == old.last.vertex || on_block(old, at(v), reach + tol(v)));
+                    // HasSameBounds: the block ends where the piece ends, not somewhere along it.
+                    for (int v : {old.first.vertex, old.last.vertex})
+                        on = on && (v == block.first.vertex || v == block.last.vertex || std::min(at(v).distance(at(block.first.vertex)), at(v).distance(at(block.last.vertex))) <= reach + tol(v) + fat);
                     if (on && on_block(old, mid, reach))
                         existing = b;
                 }
@@ -1078,7 +1228,7 @@ struct Filler {
 DS fill(const BRep& a, const BRep& b, double fuzzy) {
     DS ds;
     ds.fuzzy = fuzzy;
-    Filler filler{ds, {}, {}, {}};
+    Filler filler{ds, {}, {}, {}, {}, {}};
     filler.init(a, b);
     filler.perform_vv();
     filler.perform_ve();

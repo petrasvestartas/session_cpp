@@ -65,7 +65,14 @@ struct Builder {
     EdgeUse use_of(int b, bool backwards, Span pcurve, bool internal, const Face& f) const {
         const PaveBlock& block = ds.blocks[b];
         const int r = image(b);
-        const double gap = 2.0 * std::max(ds.vertices[block.first.vertex].tolerance, ds.vertices[block.last.vertex].tolerance) * f.region.eps / f.tolerance;
+        // The tolerance of its vertices in uv: across the slower parameter of the surface a length is a longer way.
+        double slow = 1e300;
+        for (double end : {0.0, 1.0}) {
+            const Point uv = pcurve.at(end);
+            const std::vector<Vector> d = ds.surface_of(f).evaluate(uv[0], uv[1], 1);
+            slow = std::min(slow, std::max(std::min(d[1].magnitude(), d[2].magnitude()), 1e-2 * std::max(d[1].magnitude(), d[2].magnitude())));
+        }
+        const double gap = 2.0 * std::max(ds.vertices[block.first.vertex].tolerance, ds.vertices[block.last.vertex].tolerance) / std::max(slow, 1e-300);
         return {r, backwards ? block.last.vertex : block.first.vertex, backwards ? block.first.vertex : block.last.vertex,
             std::move(pcurve), backwards == along(b, r), internal, gap};
     }
@@ -278,7 +285,14 @@ struct Builder {
             }
         for (const auto& [unused, group] : groups) {
             const int other = 1 - ds.faces[pieces[group[0]].face].operand;
-            int state = 2, first = -1;
+            int state = 2, first = -1, in = 0, out = 0;
+            for (int k : group) {
+                in += votes[k][0];
+                out += votes[k][1];
+            }
+            // Shared edges that all say the same decide, as they would against the point classifier: it is asked only where they are silent or split.
+            if ((in > 0) != (out > 0))
+                state = in > 0 ? 1 : -1;
             for (size_t i = 0; i < group.size() && i < 4 && state == 2; ++i) {
                 Piece& piece = pieces[group[i]];
                 if (!sample(piece))
@@ -307,11 +321,6 @@ struct Builder {
             }
             if (state == 2)
                 report.log.push_back("piece without an interior point");
-            int in = 0, out = 0;
-            for (int k : group) {
-                in += votes[k][0];
-                out += votes[k][1];
-            }
             if (in > 0 && out > 0)
                 report.log.push_back("classification conflict: a block of pieces is inside at " + std::to_string(in) + " shared edges and outside at " + std::to_string(out));
             else if (in + out > 0 && (in > 0) != (state == 1)) {

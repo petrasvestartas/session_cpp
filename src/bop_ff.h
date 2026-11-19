@@ -1,6 +1,7 @@
 #pragma once
 
 #include "brep.h"
+#include <array>
 #include <vector>
 
 namespace session_cpp::bop_ff {
@@ -12,6 +13,7 @@ struct Curve {
     NurbsCurve pcurve_b;
     double tolerance = 0.0;
     bool closed = false;
+    std::array<bool, 2> bound{}; // its start, its end: a vertex of the section whatever else meets there (the origin of an ellipse two cylinders share)
 };
 
 /// IntTools_PntOn2Faces: an isolated tangent point, its (u, v, 0) on both faces and the gap between the surfaces there.

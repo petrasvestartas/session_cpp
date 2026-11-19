@@ -124,30 +124,40 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
                 return false;
         return true;
     };
+    // Only a closed shell bounds a cavity or holds one.
+    std::vector<bool> closed;
+    for (const std::vector<BRepRef>& shell : list) {
+        std::map<int, int> count;
+        for (const BRepRef& face : shell)
+            for (const BRepRef& wire : result.m_faces[face.index].wires)
+                for (const BRepRef& use : result.m_wires[wire.index].edges)
+                    if (!result.m_edges[use.index].degenerated)
+                        ++count[use.index];
+        closed.push_back(std::all_of(count.begin(), count.end(), [](const auto& c) { return c.second == 2; }));
+    }
     std::vector<int> around(list.size(), -1);
     for (size_t h = 0; h < list.size(); ++h) {
-        Point p;
-        bool sampled = false;
-        for (size_t i = 0; i < list[h].size() && !sampled; ++i) {
+        // A point the classifier cannot decide is no answer: the next face's is tried before the mesh; one on the other shell is not inside it.
+        std::vector<Point> samples;
+        for (size_t i = 0; i < list[h].size() && samples.size() < 4 && closed[h]; ++i) {
             Point uv;
             const Region region = face_region(result, list[h][i].index, 1e-7);
-            if (region.interior(uv)) {
-                p = result.m_surfaces[result.m_faces[list[h][i].index].surface_index].nurbs().point_at(uv[0], uv[1]);
-                sampled = true;
-            }
+            if (region.interior(uv))
+                samples.push_back(result.m_surfaces[result.m_faces[list[h][i].index].surface_index].nurbs().point_at(uv[0], uv[1]));
         }
-        for (size_t o = 0; o < list.size() && sampled; ++o) {
-            if (o == h || !inside(boxes[h], boxes[o]) || size(boxes[o]) <= size(boxes[h]) || (around[h] >= 0 && size(boxes[o]) >= size(boxes[around[h]])))
+        for (size_t o = 0; o < list.size() && !samples.empty(); ++o) {
+            if (o == h || !closed[o] || !inside(boxes[h], boxes[o]) || size(boxes[o]) <= size(boxes[h]) || (around[h] >= 0 && size(boxes[o]) >= size(boxes[around[h]])))
                 continue;
             const BRep part = subset(result, list[o]);
             brep_classify::State state = brep_classify::State::Unknown;
-            try {
-                state = brep_classify::point(part, p, 1e-7);
-            } catch (const std::exception&) {
-            }
+            for (size_t i = 0; i < samples.size() && state == brep_classify::State::Unknown; ++i)
+                try {
+                    state = brep_classify::point(part, samples[i], 1e-7);
+                } catch (const std::exception&) {
+                }
             if (state == brep_classify::State::Unknown)
                 try {
-                    state = std::abs(winding(part.tessellate(1e-2 * std::cbrt(size(boxes[o])), 0.8), p)) > 0.5 ? brep_classify::State::Inside : brep_classify::State::Outside;
+                    state = std::abs(winding(part.tessellate(1e-2 * std::cbrt(size(boxes[o])), 0.8), samples[0])) > 0.5 ? brep_classify::State::Inside : brep_classify::State::Outside;
                 } catch (const std::exception&) {
                 }
             if (state == brep_classify::State::Inside)
