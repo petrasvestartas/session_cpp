@@ -117,9 +117,9 @@ MINI_TEST("Intersection Analytic", "Plane Cone") {
     MINI_CHECK(kinds(hyperbola, {Shape::Nurbs, Shape::Nurbs}) && worst(along, c, hyperbola) < 1e-8);
     const Result point = surface_surface(surface(Kind::Plane, apex, Z), c, 1e-7);
     MINI_CHECK(kinds(point, {}, 1) && !point.points[0].tangent && point.points[0].point.distance(apex) < 1e-9);
-    MINI_CHECK(kinds(surface_surface(surface(Kind::Plane, apex, X), c, 1e-7), {Shape::Line, Shape::Line}));
+    MINI_CHECK(kinds(surface_surface(surface(Kind::Plane, apex, X), c, 1e-7), {Shape::Line, Shape::Line, Shape::Line, Shape::Line}));
     const Result ruling = surface_surface(surface(Kind::Plane, apex, Point(std::cos(a), 0, -std::sin(a))), c, 1e-7);
-    MINI_CHECK(kinds(ruling, {Shape::Line}) && ruling.curves[0].tangent);
+    MINI_CHECK(kinds(ruling, {Shape::Line, Shape::Line}) && ruling.curves[0].tangent && straight(ruling.curves[0].on_b) && ruling.curves[0].deviation_b < 1e-12);
 }
 
 MINI_TEST("Intersection Analytic", "Plane Torus") {
@@ -132,7 +132,12 @@ MINI_TEST("Intersection Analytic", "Plane Torus") {
     const Surface through = surface(Kind::Plane, Point(0, 0, 0), X);
     const Result tubes = surface_surface(through, t, 1e-7);
     MINI_CHECK(kinds(tubes, {Shape::Circle, Shape::Circle}) && worst(through, t, tubes) < 1e-12);
-    MINI_CHECK(!surface_surface(surface(Kind::Plane, Point(0, 0, 0), Point(1, 0, 1)), t, 1e-7).done);
+    const Surface general = surface(Kind::Plane, Point(0, 0, 0.2), Point(1, 0, 1));
+    const Result spiric = surface_surface(general, t, 1e-7);
+    MINI_CHECK(kinds(spiric, {Shape::Nurbs, Shape::Nurbs}) && worst(general, t, spiric) < 1e-7 && spiric.curves[0].fit < 1e-7 && spiric.curves[0].deviation_b < 1e-7);
+    const Surface villarceau = surface(Kind::Plane, Point(0, 0, 0), Point(std::sin(std::asin(1.0 / 3)), 0, std::cos(std::asin(1.0 / 3))));
+    const Result circles = surface_surface(villarceau, t, 1e-7);
+    MINI_CHECK(circles.done && circles.curves.size() == 2 && worst(villarceau, t, circles) < 1e-7);
 }
 
 MINI_TEST("Intersection Analytic", "Sphere Sphere") {
@@ -156,7 +161,14 @@ MINI_TEST("Intersection Analytic", "Cylinder Cylinder") {
     const Surface turned = surface(Kind::Cylinder, Point(0, 0, 0), Point(0, std::sin(5 * pi / 180), std::cos(5 * pi / 180)), 1);
     const Result ellipses = surface_surface(a, turned, 1e-7);
     MINI_CHECK(kinds(ellipses, {Shape::Ellipse, Shape::Ellipse}) && worst(a, turned, ellipses) < 1e-8);
-    MINI_CHECK(!surface_surface(a, surface(Kind::Cylinder, Point(0, 0, 0), X, 0.5), 1e-7).done);
+    const Surface through = surface(Kind::Cylinder, Point(0, 0, 0), X, 0.5);
+    const Result loops = surface_surface(a, through, 1e-7);
+    MINI_CHECK(kinds(loops, {Shape::Nurbs, Shape::Nurbs}) && worst(a, through, loops) < 1e-7 && loops.curves[0].fit < 1e-7);
+    MINI_CHECK(loops.curves[0].deviation_a < 1e-7 && loops.curves[0].deviation_b < 1e-7 && loops.curves[0].curve.is_closed());
+    const Surface grazing = surface(Kind::Cylinder, Point(1.5, 0, 0), Point(0, 1, 0), 0.5);
+    const Result touch_point = surface_surface(a, grazing, 1e-7);
+    MINI_CHECK(kinds(touch_point, {}, 1) && touch_point.points[0].tangent && touch_point.points[0].point.distance(Point(1, 0, 0)) < 1e-6);
+    MINI_CHECK(kinds(surface_surface(a, surface(Kind::Cylinder, Point(1.6, 0, 0), Point(0, 1, 0), 0.5), 1e-7), {}));
 }
 
 MINI_TEST("Intersection Analytic", "Coaxial") {
@@ -174,6 +186,26 @@ MINI_TEST("Intersection Analytic", "Coaxial") {
     MINI_CHECK(four.done && four.curves.size() == 2 && worst(sphere, torus, four) < 1e-8);
     const Result rim = surface_surface(surface(Kind::Cylinder, Point(0, 0, 0), Z, 1.5), torus, 1e-7);
     MINI_CHECK(kinds(rim, {Shape::Circle}) && rim.curves[0].tangent);
+}
+
+MINI_TEST("Intersection Analytic", "Quadric Pairs") {
+    const Surface sphere = surface(Kind::Sphere, Point(0, 0, 0), Z, 2), cylinder = surface(Kind::Cylinder, Point(1.2, 0, 0), Z, 0.5);
+    const Result loops = surface_surface(sphere, cylinder, 1e-7);
+    MINI_CHECK(kinds(loops, {Shape::Nurbs, Shape::Nurbs}) && loops.curves[0].curve.is_closed() && loops.curves[0].fit < 1e-7);
+    MINI_CHECK(worst(sphere, cylinder, loops) < 1e-7 && loops.curves[0].deviation_a < 1e-7 && loops.curves[1].deviation_b < 1e-7);
+    const Surface wide = surface(Kind::Cylinder, Point(1.8, 0, 0), Z, 0.5);
+    const Result one = surface_surface(wide, sphere, 1e-7);
+    MINI_CHECK(kinds(one, {Shape::Nurbs}) && one.curves[0].curve.is_closed() && worst(wide, sphere, one) < 1e-7);
+    const Surface cone = surface(Kind::Cone, Point(0, 0, 0), Z, 1, pi / 6), across = surface(Kind::Cylinder, Point(0.2, 0, 1), X, 0.4);
+    const Result pierced = surface_surface(cone, across, 1e-7);
+    MINI_CHECK(kinds(pierced, {Shape::Nurbs, Shape::Nurbs}) && worst(cone, across, pierced) < 1e-7 && pierced.curves[0].fit < 1e-7);
+    const Result touching = surface_surface(sphere, surface(Kind::Cylinder, Point(2.5, 0, 0), Z, 0.5), 1e-7);
+    MINI_CHECK(kinds(touching, {}, 1) && touching.points[0].tangent && touching.points[0].point.distance(Point(2, 0, 0)) < 1e-6);
+    // A great circle through the poles of the sphere is cut at them: two meridians, straight in its parameters.
+    const Surface upright = surface(Kind::Plane, Point(0, 0, 0), X);
+    const Result meridians = surface_surface(upright, sphere, 1e-7);
+    MINI_CHECK(kinds(meridians, {Shape::Circle, Shape::Circle}) && straight(meridians.curves[0].on_b) && straight(meridians.curves[1].on_b));
+    MINI_CHECK(meridians.curves[0].deviation_b < 1e-6 && meridians.curves[1].deviation_b < 1e-6);
 }
 
 MINI_TEST("Intersection Analytic", "Curve Surface") {
