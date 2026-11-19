@@ -12,6 +12,7 @@ using P2 = std::array<double, 2>;
 constexpr double two_pi = 2.0 * M_PI;
 constexpr double angular = 1e-12;
 constexpr double infinity = std::numeric_limits<double>::infinity();
+const double golden = 0.5 * (std::sqrt(5.0) - 1.0);
 
 xyz unit(const xyz& v) {
     const double l = v.length();
@@ -147,104 +148,506 @@ std::vector<xyz> singular(const Surface& s) {
     return {};
 }
 
-// (u, v) of the curve's point at t on the surface, followed from the start of its domain: each step takes the nearest turn of
-// an angle and is halved while it is long or the angle moves by more than half a radian, so that the turn taken is the continuous one.
-P2 lift(const Curve& curve, const Surface& surface, double t, double inset = 0.0) {
-    // An end on a pole of a sphere has no angle of its own: it takes the one just inside.
-    const double first = curve.domain().first + inset, last = curve.domain().second - inset;
-    const auto at = [&](double v) { return parameters(surface, xyz(curve.point_at(std::clamp(v, first, last)))); };
-    const double limit = curve.period() > 0 ? 0.5 : (curve.domain().second - curve.domain().first) / 16;
-    const std::function<void(double, std::pair<double, double>&, double, int)> follow = [&](double from, std::pair<double, double>& uv, double to, int depth) {
-        std::pair<double, double> next = at(to);
-        bool far = false;
-        for (int d = 0; d < 2; ++d) {
-            double& now = d ? next.second : next.first;
-            const double before = d ? uv.second : uv.first, period = surface.period(d);
-            if (period > 0)
-                now += period * std::round((before - now) / period), far = far || std::abs(now - before) > 0.5;
+// A function of one parameter as its Taylor coefficients up to a fixed order; products, quotients and roots are cut there.
+struct Series {
+    std::vector<double> c;
+
+    explicit Series(size_t n = 0, double value = 0.0) : c(n, 0.0) {
+        if (n)
+            c[0] = value;
+    }
+
+    Series operator+(const Series& o) const {
+        Series r = *this;
+        for (size_t i = 0; i < c.size(); ++i)
+            r.c[i] += o.c[i];
+        return r;
+    }
+
+    Series operator*(double f) const {
+        Series r = *this;
+        for (double& v : r.c)
+            v *= f;
+        return r;
+    }
+
+    Series operator-(const Series& o) const { return *this + o * -1.0; }
+
+    Series operator*(const Series& o) const {
+        Series r(c.size());
+        for (size_t i = 0; i < c.size(); ++i)
+            for (size_t j = 0; i + j < c.size(); ++j)
+                r.c[i + j] += c[i] * o.c[j];
+        return r;
+    }
+
+    Series operator/(const Series& o) const {
+        Series r(c.size());
+        for (size_t i = 0; i < c.size(); ++i) {
+            r.c[i] = c[i];
+            for (size_t j = 1; j <= i; ++j)
+                r.c[i] -= o.c[j] * r.c[i - j];
+            r.c[i] /= o.c[0];
         }
-        if ((far || std::abs(to - from) > limit) && depth < 40) {
-            follow(from, uv, 0.5 * (from + to), depth + 1);
-            follow(0.5 * (from + to), uv, to, depth + 1);
-        } else {
-            uv = next;
+        return r;
+    }
+
+    Series root() const {
+        Series r(c.size(), std::sqrt(c[0]));
+        for (size_t i = 1; i < c.size(); ++i) {
+            r.c[i] = c[i];
+            for (size_t j = 1; j < i; ++j)
+                r.c[i] -= r.c[j] * r.c[i - j];
+            r.c[i] /= 2 * r.c[0];
         }
-    };
-    std::pair<double, double> uv = at(curve.domain().first);
-    follow(curve.domain().first, uv, t, 0);
-    return {uv.first, uv.second};
+        return r;
+    }
+
+    Series rate() const {
+        Series r(c.size());
+        for (size_t i = 1; i < c.size(); ++i)
+            r.c[i - 1] = i * c[i];
+        return r;
+    }
+
+    // Times the parameter (by 1) or over it, the constant term dropped (by -1).
+    Series moved(int by) const {
+        Series r(c.size());
+        for (size_t i = by < 0 ? 1 : 0; i < c.size() - (by > 0 ? 1 : 0); ++i)
+            r.c[i + by] = c[i];
+        return r;
+    }
+};
+
+// A curve about one of its parameters as Taylor coefficients: the point, the first derivative, half the second, ...
+using Jet = std::vector<xyz>;
+
+Series along(const Jet& p, const xyz& v) {
+    Series r(p.size());
+    for (size_t i = 0; i < p.size(); ++i)
+        r.c[i] = p[i].dot(v);
+    return r;
 }
 
-// The pcurve of a section on a surface, on the section's parameter.
+Series dot(const Jet& p, const Jet& q) {
+    Series r(p.size());
+    for (size_t i = 0; i < p.size(); ++i)
+        for (size_t j = 0; i + j < p.size(); ++j)
+            r.c[i + j] += p[i].dot(q[j]);
+    return r;
+}
+
+// The angle of (x, y), from its rate (x y' - y x') / (x x + y y).
+Series angle(const Series& y, const Series& x) {
+    const Series rate = (x * y.rate() - y * x.rate()) / (x * x + y * y);
+    Series a(x.c.size(), std::atan2(y.c[0], x.c[0]));
+    for (size_t k = 1; k < a.c.size(); ++k)
+        a.c[k] = rate.c[k - 1] / k;
+    return a;
+}
+
+// The same curve about the parameter further on by `by`.
+Jet shifted(Jet p, double by) {
+    for (size_t i = 0; i + 1 < p.size(); ++i)
+        for (size_t k = p.size() - 1; k > i; --k)
+            p[k - 1] += p[k] * by;
+    return p;
+}
+
+// The equation of a surface (zero on it) along a curve.
+Series implicit(const Form& s, Jet p) {
+    p[0] -= s.kind == FormKind::Cone ? s.frame.o - s.frame.z * (s.radius / std::tan(s.angle)) : s.frame.o;
+    const Series h = along(p, s.frame.z), dd = dot(p, p), one(p.size(), 1.0);
+    switch (s.kind) {
+    case FormKind::Plane: return h;
+    case FormKind::Cylinder: return dd - h * h - one * (s.radius * s.radius);
+    case FormKind::Cone: return dd - h * h * (1.0 / (std::cos(s.angle) * std::cos(s.angle)));
+    case FormKind::Sphere: return dd - one * (s.radius * s.radius);
+    default: {
+        const Series w = dd + one * (s.radius * s.radius - s.minor * s.minor);
+        return w * w - (dd - h * h) * (4 * s.radius * s.radius);
+    }
+    }
+}
+
+xyz gradient(const Form& s, const xyz& p) {
+    xyz g{0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        Jet line = {p, xyz{0, 0, 0}};
+        line[1][i] = 1.0;
+        g[i] = implicit(s, line).c[1];
+    }
+    return g;
+}
+
+// The section of two surfaces about a point of both, by its length run in the sense of `toward`: the tangent is across both
+// normals, and each further coefficient is the one unknown, linear, in that order of the two equations and of unit speed. The
+// sine of the angle between the normals is returned; where they are parallel the jet stops at the direction given.
+double section(const Form& a, const Form& b, const xyz& p, const xyz& toward, int order, Jet& jet) {
+    jet.assign(order + 1, xyz{0, 0, 0});
+    jet[0] = p;
+    const xyz ga = gradient(a, p), gb = gradient(b, p), n = ga.cross(gb);
+    const double sine = n.length() / (ga.length() * gb.length());
+    jet[1] = unit(sine > 0 ? n * (n.dot(toward) < 0 ? -1.0 : 1.0) : toward);
+    if (!(sine > 0))
+        return 0.0;
+    const double det = ga.dot(gb.cross(jet[1]));
+    for (int k = 2; k <= order; ++k) {
+        Jet rate(jet.size(), xyz{0, 0, 0});
+        for (int i = 1; i < k; ++i)
+            rate[i - 1] = jet[i] * i;
+        jet[k] = (gb.cross(jet[1]) * -implicit(a, jet).c[k] + jet[1].cross(ga) * -implicit(b, jet).c[k] + n * (-dot(rate, rate).c[k - 1] / (2 * k))) / det;
+    }
+    return sine;
+}
+
+// An exact curve about t, n coefficients.
+Jet taylor(const Curve& curve, double t, size_t n) {
+    Jet p(n, xyz{0, 0, 0});
+    const xyz x(curve.x()), y(curve.y());
+    double f = 1.0;
+    if (curve.kind() == Curve::Kind::Line)
+        p[0] = xyz(curve.origin()) + x * t, p[1] = x;
+    else if (curve.kind() == Curve::Kind::Nurbs) {
+        const std::vector<Vector> d = curve.nurbs().evaluate(t, static_cast<int>(n) - 1);
+        for (size_t k = 0; k < n; f /= ++k)
+            p[k] = xyz(d[k]) * f;
+    } else if (curve.kind() == Curve::Kind::Parabola) {
+        p[0] = xyz(curve.origin()) + x * (t * t / (4 * curve.radius())) + y * t, p[1] = x * (t / (2 * curve.radius())) + y, p[2] = x * (1 / (4 * curve.radius()));
+    } else if (curve.kind() == Curve::Kind::Hyperbola) {
+        for (size_t k = 0; k < n; f /= ++k)
+            p[k] = (x * (curve.radius() * (k % 2 ? std::sinh(t) : std::cosh(t))) + y * (curve.minor() * (k % 2 ? std::cosh(t) : std::sinh(t)))) * f;
+        p[0] += xyz(curve.origin());
+    } else {
+        for (size_t k = 0; k < n; f /= ++k)
+            p[k] = (x * (curve.radius() * std::cos(t + 0.5 * M_PI * k)) + y * ((curve.kind() == Curve::Kind::Circle ? curve.radius() : curve.minor()) * std::sin(t + 0.5 * M_PI * k))) * f;
+        p[0] += xyz(curve.origin());
+    }
+    return p;
+}
+
+// (u, v) of a surface along a curve on it. Within tol of a pole of a sphere or the apex of a cone the curve is taken through it:
+// (u, v) are regular in the curve's parameter there, the angle that of the curve's rate, on the side (1 after, -1 before) the
+// piece lies; beyond the apex of a cone the angle is the opposite one, as its signed radius has it.
+Jet mapped(const Surface& surface, const Form& s, Jet p, int side, double tol) {
+    const bool cone = s.kind == FormKind::Cone, sphere = s.kind == FormKind::Sphere;
+    p[0] -= cone ? s.frame.o - s.frame.z * (s.radius / std::tan(s.angle)) : s.frame.o;
+    Series x = along(p, s.frame.x), y = along(p, s.frame.y), h = along(p, s.frame.z), u = x, v = y;
+    if (s.kind != FormKind::Plane) {
+        const bool pole = (cone || sphere) && std::hypot(x.c[0], y.c[0]) <= tol;
+        if (pole)
+            x = x.moved(-1), y = y.moved(-1);
+        const double flip = cone ? (h.c[pole ? 1 : 0] * std::tan(s.angle) < 0 ? -1.0 : 1.0) : pole ? side : 1.0;
+        u = angle(y * flip, x * flip);
+        Series rho = (x * x + y * y).root() * flip;
+        if (pole)
+            rho = rho.moved(1);
+        rho.c[0] -= s.kind == FormKind::Torus ? s.radius : 0.0;
+        v = cone ? h * (1.0 / std::cos(s.angle)) : s.kind == FormKind::Cylinder ? h : angle(h, rho);
+        v.c[0] -= cone ? s.radius / std::sin(s.angle) : 0.0;
+    }
+    Jet uv(p.size(), xyz{0, 0, 0});
+    for (size_t k = 0; k < p.size(); ++k)
+        uv[k] = {u.c[k], v.c[k], 0.0};
+    for (int d = 0; d < 2; ++d)
+        uv[0][d] = Curve::wrapped(uv[0][d], surface.domain(d).first, surface.period(d));
+    return uv;
+}
+
+// The later parameters moved by whole periods next to where the earlier ones and the rates at both ends put them.
+void follow(const Surface& surface, const Jet& from, Jet& to, double h) {
+    for (int d = 0; d < 2; ++d)
+        if (const double period = surface.period(d); period > 0)
+            to[0][d] += period * std::round((from[0][d] + 0.5 * h * (from[1][d] + to[1][d]) + h * h / 6 * (from[2][d] - to[2][d]) - to[0][d]) / period);
+}
+
+// Derivatives matched at each knot: position, tangent, curvature and one more, on pieces of degree seven.
+constexpr int contact = 4;
+
+// Control points of the curve of degree 2 contact - 1 with the given Taylor coefficients at each parameter: its knots have
+// multiplicity `contact`, and the control points about a knot are blossoms of the jet there alone.
+std::vector<xyz> controls(const std::vector<double>& t, const std::vector<Jet>& jets) {
+    const int n = static_cast<int>(t.size()), degree = 2 * contact - 1;
+    std::vector<xyz> points;
+    for (int i = 0; i < n; ++i) {
+        const double before = t[std::max(i - 1, 0)] - t[i], after = t[std::min(i + 1, n - 1)] - t[i];
+        for (int j = 0; j < contact; ++j) {
+            // Elementary symmetric functions of the other arguments: contact - 1 - j at the knot before, j at the one after.
+            std::array<double, contact> e{1.0};
+            for (int q = 0; q < contact - 1; ++q)
+                for (int k = contact - 1; k > 0; --k)
+                    e[k] += (q < j ? after : before) * e[k - 1];
+            xyz p{0, 0, 0};
+            double f = 1.0;
+            for (int k = 0; k < contact; f *= (k + 1.0) / (degree - k), ++k)
+                p += jets[i][k] * (e[k] * f);
+            points.push_back(p);
+        }
+    }
+    return points;
+}
+
+NurbsCurve spline(const std::vector<double>& t, const std::vector<Jet>& jets) {
+    std::vector<Point> points;
+    for (const xyz& p : controls(t, jets))
+        points.push_back(Point(p));
+    std::vector<int> mults(t.size(), contact);
+    mults.front() = mults.back() = 2 * contact;
+    return NurbsCurve::create_from_parameters(points, std::vector<double>(points.size(), 1.0), t, mults, 2 * contact - 1);
+}
+
+xyz bezier(std::vector<xyz> c, double f) {
+    for (size_t n = c.size(); n > 1; --n)
+        for (size_t i = 0; i + 1 < n; ++i)
+            c[i] = c[i] * (1 - f) + c[i + 1] * f;
+    return c[0];
+}
+
+// A knot of a guide: the curve about it and the parameter span of the piece it starts.
+struct Node {
+    Jet jet;
+    double span = 0.0;
+};
+
+// Keys respaced until every piece between them measures within the target: each piece asks for as many pieces as its error
+// calls for at the order of the fit, aiming at half the target, and the new keys go where those run evenly. The lightest
+// spacing that passed is returned; without one, pieces over the target are halved.
+std::vector<double> refine(std::vector<double> keys, const std::function<std::vector<double>(const std::vector<double>&)>& errors, double target, int order) {
+    std::vector<double> best;
+    for (int round = 0; round < 10; ++round) {
+        const std::vector<double> e = errors(keys);
+        std::vector<double> want = {0.0};
+        for (double v : e) {
+            const double pieces = std::pow(v / (0.5 * target), 1.0 / order);
+            want.push_back(want.back() + (pieces < 4.0 ? std::max(pieces, 0.2) : 4.0));
+        }
+        const bool within = *std::max_element(e.begin(), e.end()) <= target;
+        const size_t count = std::max<size_t>(2, static_cast<size_t>(std::ceil(want.back())));
+        if (within && (best.empty() || keys.size() < best.size()))
+            best = keys;
+        if ((within && count + 1 >= 0.85 * keys.size()) || count > 4000)
+            break;
+        std::vector<double> next = {keys.front()};
+        for (size_t j = 1; j < count; ++j) {
+            const double w = want.back() * j / count;
+            const size_t i = std::min<size_t>(std::upper_bound(want.begin(), want.end(), w) - want.begin(), want.size() - 1) - 1;
+            next.push_back(keys[i] + (keys[i + 1] - keys[i]) * (w - want[i]) / (want[i + 1] - want[i]));
+        }
+        next.push_back(keys.back());
+        keys = std::move(next);
+    }
+    if (!best.empty())
+        return best;
+    for (int round = 0; round < 30 && keys.size() < 8000; ++round) {
+        const std::vector<double> e = errors(keys);
+        std::vector<double> next = {keys.front()};
+        for (size_t i = 0; i + 1 < keys.size(); ++i) {
+            if (e[i] > target && keys[i + 1] - keys[i] > 1e-9 * (keys.back() - keys.front()))
+                next.push_back(0.5 * (keys[i] + keys[i + 1]));
+            next.push_back(keys[i + 1]);
+        }
+        if (next.size() == keys.size())
+            break;
+        keys = std::move(next);
+    }
+    return keys;
+}
+
+// The pcurve piece between two nodes as Bezier control points over the first node's span.
+std::vector<xyz> between(const Surface& surface, const Form& s, const Node& from, const Node& to, double tol) {
+    const Jet a = mapped(surface, s, from.jet, 1, tol);
+    Jet b = mapped(surface, s, to.jet, -1, tol);
+    follow(surface, a, b, from.span);
+    return controls({0.0, from.span}, {a, b});
+}
+
+// The pcurve through the nodes at the parameters t.
+NurbsCurve laid(const std::vector<Node>& nodes, const std::vector<double>& t, const Surface& surface, const Form& s, double tol) {
+    std::vector<Jet> jets;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        jets.push_back(mapped(surface, s, nodes[i].jet, i ? -1 : 1, tol));
+        if (i)
+            follow(surface, jets[i - 1], jets[i], t[i] - t[i - 1]);
+    }
+    return spline(t, jets);
+}
+
+// (u, v) of a point of the surface, next to the guide's by whole periods; the guide's own at a pole or an apex.
+xyz beside(const Surface& surface, const Form& s, const xyz& p, const xyz& guide, double tol) {
+    for (const xyz& q : singular(surface))
+        if ((p - q).length() <= tol)
+            return guide;
+    xyz uv = mapped(surface, s, {p}, 1, -1.0)[0];
+    for (int d = 0; d < 2; ++d)
+        if (const double period = surface.period(d); period > 0)
+            uv[d] += period * std::round((guide[d] - uv[d]) / period);
+    return uv;
+}
+
+// The point of both surfaces nearest p; p itself where they are too nearly tangent to say.
+xyz polished(const Form& a, const Form& b, xyz p) {
+    for (int it = 0; it < 3; ++it) {
+        const xyz ga = gradient(a, p), gb = gradient(b, p);
+        const double fa = implicit(a, {p}).c[0], fb = implicit(b, {p}).c[0], aa = ga.dot(ga), ab = ga.dot(gb), bb = gb.dot(gb), det = aa * bb - ab * ab;
+        if (!(det > 1e-10 * aa * bb))
+            break;
+        p -= ga * ((fa * bb - fb * ab) / det) + gb * ((fb * aa - fa * ab) / det);
+    }
+    return p;
+}
+
+// A section point and its (u, v) on both surfaces.
+using Row = std::array<double, 7>;
+constexpr int degree = 7;
+
+// Control rows of the spline of degree seven with simple knots at the breaks that takes the rows at(t) at its Greville sites:
+// the collocation matrix is banded and totally positive, eliminated without pivoting.
+std::vector<Row> interpolated(const std::vector<double>& breaks, const std::function<Row(double)>& at) {
+    std::vector<double> u(degree, breaks.front());
+    u.insert(u.end(), breaks.begin(), breaks.end());
+    u.insert(u.end(), degree, breaks.back());
+    const int n = static_cast<int>(breaks.size()) + degree - 1;
+    std::vector<std::array<double, 2 * degree + 1>> band(n, std::array<double, 2 * degree + 1>{});
+    std::vector<Row> rows(n);
+    for (int i = 0; i < n; ++i) {
+        double t = 0.0;
+        for (int k = 1; k <= degree; ++k)
+            t += u[i + k] / degree;
+        rows[i] = at(t);
+        const int span = std::clamp(static_cast<int>(std::upper_bound(u.begin(), u.end(), t) - u.begin()) - 1, degree, n - 1);
+        // The B-splines that are not zero at t (The NURBS Book, A2.2).
+        std::array<double, degree + 1> b{1.0}, left{}, right{};
+        for (int j = 1; j <= degree; ++j) {
+            left[j] = t - u[span + 1 - j], right[j] = u[span + j] - t;
+            double saved = 0.0;
+            for (int r = 0; r < j; ++r) {
+                const double part = b[r] / (right[r + 1] + left[j - r]);
+                b[r] = saved + right[r + 1] * part;
+                saved = left[j - r] * part;
+            }
+            b[j] = saved;
+        }
+        for (int j = 0; j <= degree; ++j)
+            band[i][span + j - i] = b[j];
+    }
+    for (int i = 0; i < n; ++i)
+        for (int r = i + 1; r < std::min(n, i + degree + 1); ++r) {
+            const double f = band[r][degree + i - r] / band[i][degree];
+            for (int c = i; c < std::min(n, i + degree + 1); ++c)
+                band[r][degree + c - r] -= f * band[i][degree + c - i];
+            for (int k = 0; k < 7; ++k)
+                rows[r][k] -= f * rows[i][k];
+        }
+    for (int i = n - 1; i >= 0; --i)
+        for (int k = 0; k < 7; ++k) {
+            for (int c = i + 1; c < std::min(n, i + degree + 1); ++c)
+                rows[i][k] -= band[i][degree + c - i] * rows[c][k];
+            rows[i][k] /= band[i][degree];
+        }
+    return rows;
+}
+
+struct Fit {
+    NurbsCurve curve;
+    std::array<NurbsCurve, 2> on;
+};
+
+// The light curves: a section and its pcurves of degree seven on one simple knot vector through the rows at(t), the breaks
+// respaced until error(fit, t) is within the target all along.
+Fit lightened(const std::vector<double>& breaks, const std::function<Row(double)>& at, const std::function<double(const Fit&, double)>& error, double target) {
+    Fit fit;
+    const auto errors = [&](const std::vector<double>& keys) {
+        std::array<std::vector<Point>, 3> points;
+        for (const Row& row : interpolated(keys, at))
+            for (int k = 0; k < 3; ++k)
+                points[k].push_back(k ? Point(row[1 + 2 * k], row[2 + 2 * k], 0) : Point(row[0], row[1], row[2]));
+        std::vector<int> mults(keys.size(), 1);
+        mults.front() = mults.back() = degree + 1;
+        const auto curve = [&](int k) { return NurbsCurve::create_from_parameters(points[k], std::vector<double>(points[k].size(), 1.0), keys, mults, degree); };
+        fit = {curve(0), {curve(1), curve(2)}};
+        std::vector<double> e(keys.size() - 1, 0.0);
+        for (size_t i = 0; i + 1 < keys.size(); ++i)
+            for (int j = 0; j <= 8; ++j)
+                e[i] = std::max(e[i], error(fit, keys[i] + (keys[i + 1] - keys[i]) * j / 8));
+        return e;
+    };
+    errors(refine(breaks, errors, target, degree + 1));
+    return fit;
+}
+
+// The pcurve of an exact section on a surface, on the section's parameter.
 Curve2d pcurve(const Curve& curve, const Conic* conic, const Surface& surface, double tol) {
     const auto [t0, t1] = curve.domain();
-    const auto pole = [&](double t) {
-        const std::vector<xyz> points = singular(surface);
-        return std::any_of(points.begin(), points.end(), [&](const xyz& q) { return (xyz(curve.point_at(t)) - q).length() <= tol; });
-    };
-    const double inset = pole(t0) || pole(t1) ? 1e-11 * (t1 - t0) : 0.0;
-    const auto lift = [&](const Curve& c, const Surface& on, double t) { return intersection_analytic::lift(c, on, t, inset); };
-    // Straight at unit speed, judged between two points inside the range.
-    const double ta = t0 + 0.25 * (t1 - t0), tb = t0 + 0.75 * (t1 - t0);
-    const P2 pa = lift(curve, surface, ta), pb = lift(curve, surface, tb);
-    const P2 d = {(pb[0] - pa[0]) / (tb - ta), (pb[1] - pa[1]) / (tb - ta)}, p0 = {pa[0] - (ta - t0) * d[0], pa[1] - (ta - t0) * d[1]};
-    bool straight = std::abs(std::hypot(d[0], d[1]) - 1.0) <= 1e-10;
-    for (double f : {0.08, 0.41, 0.5, 0.93}) {
-        const double t = t0 + f * (t1 - t0);
-        const P2 p = lift(curve, surface, t);
-        for (int k = 0; k < 2; ++k)
-            straight = straight && std::abs(p[k] - (p0[k] + (t - t0) * d[k])) <= 1e-10 * (1.0 + std::abs(p0[k]) + std::abs(t - t0));
-    }
-    // A ruling or a circle about the axis: a 2D line run at unit speed.
-    if (straight)
-        return Curve2d(Curve::line(Point(p0[0] - t0 * d[0], p0[1] - t0 * d[1], 0), Vector(d[0], d[1], 0), t0, t1));
-    if (surface.kind() == Surface::Kind::Plane) {
-        const auto flat = [&](const xyz& v) { return Vector(v.dot(xyz(surface.x())), v.dot(xyz(surface.y())), 0); };
-        const Vector centre = conic ? flat(conic->frame.o - xyz(surface.origin())) : Vector(0, 0, 0);
-        if (conic && conic->kind == ConicKind::Circle)
-            return Curve2d(Curve::circle(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, t0, t1));
-        if (conic && conic->kind == ConicKind::Ellipse)
-            return Curve2d(Curve::ellipse(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, conic->minor, t0, t1));
-        if (conic && conic->kind == ConicKind::Parabola)
-            return Curve2d(Curve::parabola(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, t0, t1));
-        if (conic && conic->kind == ConicKind::Hyperbola)
-            return Curve2d(Curve::hyperbola(Point(centre[0], centre[1], 0), flat(conic->frame.x), flat(conic->frame.y), conic->radius, conic->minor, t0, t1));
-        // A NURBS section: the image of its control points, with their weights.
+    const Form s = form(surface);
+    const auto flat = [&](const xyz& v) { return Vector(v.dot(s.frame.x), v.dot(s.frame.y), 0); };
+    if (surface.kind() == Surface::Kind::Plane && curve.kind() == Curve::Kind::Nurbs) {
+        // The image of its control points, with their weights.
         NurbsCurve image = curve.nurbs();
         for (int i = 0; i < image.cv_count(); ++i) {
-            const Vector uv = flat(xyz(curve.nurbs().get_cv(i)) - xyz(surface.origin()));
+            const Vector uv = flat(xyz(curve.nurbs().get_cv(i)) - s.frame.o);
             const double w = image.is_rational() ? image.weight(i) : 1.0;
             image.set_cv_4d(i, uv[0] * w, uv[1] * w, 0.0, w);
         }
         return Curve2d(image);
     }
-    // Anything else (an ellipse on a cylinder, a conic on a cone, a tilted circle on a sphere): interpolated at the section's
-    // parameters, refined until the surface point under it is on the section.
-    std::vector<double> t;
-    const int first = std::max(32, curve.kind() == Curve::Kind::Nurbs ? 2 * curve.nurbs().cv_count() : 0);
-    for (int i = 0; i <= first; ++i)
-        t.push_back(t0 + (t1 - t0) * i / first);
-    NurbsCurve fitted;
-    for (int round = 0; round < 30; ++round) {
-        std::vector<Point> points;
-        for (double v : t) {
-            const P2 p = lift(curve, surface, v);
-            points.push_back(Point(p[0], p[1], 0));
+    const auto node = [&](double t) { return Node{taylor(curve, t, contact + 1)}; };
+    // A ruling or a circle about the axis: a 2D line run at unit speed.
+    const Jet start = mapped(surface, s, node(t0).jet, 1, tol);
+    bool straight = std::abs(start[1].length() - 1.0) <= 1e-10;
+    for (double f : {0.08, 0.41, 0.5, 0.93, 1.0}) {
+        const double t = t0 + f * (t1 - t0);
+        const Jet uv = mapped(surface, s, node(t).jet, f < 1 ? 1 : -1, tol);
+        straight = straight && (uv[1] - start[1]).length() <= 1e-10 && uv[2].length() <= 1e-10;
+        for (int d = 0; d < 2; ++d) {
+            const double gap = uv[0][d] - start[0][d] - (t - t0) * start[1][d], period = surface.period(d);
+            straight = straight && std::abs(period > 0 ? std::remainder(gap, period) : gap) <= 1e-10 * (1.0 + std::abs(start[0][d]) + std::abs(t - t0));
         }
-        fitted = NurbsCurve::create_interpolated(points, t);
-        std::vector<double> more = {t.front()};
-        for (size_t i = 1; i < t.size(); ++i) {
-            const double middle = 0.5 * (t[i - 1] + t[i]);
-            const Point uv = fitted.point_at(middle);
-            if (surface.point_at(uv[0], uv[1]).distance(curve.point_at(middle)) > 0.01 * tol)
-                more.push_back(middle);
-            more.push_back(t[i]);
-        }
-        if (more.size() == t.size() || more.size() > 8000)
-            break;
-        t = std::move(more);
     }
-    return Curve2d(fitted);
+    if (straight)
+        return Curve2d(Curve::line(Point(start[0] - start[1] * t0), Vector(start[1]), t0, t1));
+    if (surface.kind() == Surface::Kind::Plane) {
+        const Vector centre = flat(conic->frame.o - s.frame.o);
+        const Point o(centre[0], centre[1], 0);
+        const Vector x = flat(conic->frame.x), y = flat(conic->frame.y);
+        switch (conic->kind) {
+        case ConicKind::Circle: return Curve2d(Curve::circle(o, x, y, conic->radius, t0, t1));
+        case ConicKind::Ellipse: return Curve2d(Curve::ellipse(o, x, y, conic->radius, conic->minor, t0, t1));
+        case ConicKind::Parabola: return Curve2d(Curve::parabola(o, x, y, conic->radius, t0, t1));
+        default: return Curve2d(Curve::hyperbola(o, x, y, conic->radius, conic->minor, t0, t1));
+        }
+    }
+    // Anything else (an ellipse on a cylinder, a conic on a cone, a tilted circle on a sphere): a guide whose pieces take the
+    // true parameters and their derivatives at the knots, then the light curve through the true parameters, each until the
+    // surface point under it is on the section.
+    std::vector<Node> nodes;
+    std::vector<double> t;
+    for (int i = 0; i <= 8; ++i)
+        t.push_back(i < 8 ? t0 + (t1 - t0) * i / 8 : t1);
+    const auto pieces = [&](const std::vector<double>& keys) {
+        nodes.clear();
+        for (double key : keys)
+            nodes.push_back(node(key));
+        std::vector<double> e(keys.size() - 1, 0.0);
+        for (size_t i = 0; i + 1 < keys.size(); ++i) {
+            nodes[i].span = keys[i + 1] - keys[i];
+            const std::vector<xyz> c = between(surface, s, nodes[i], nodes[i + 1], tol);
+            for (int j = 1; j < 16; ++j) {
+                const xyz uv = bezier(c, j / 16.0);
+                e[i] = std::max(e[i], surface.point_at(uv.x, uv.y).distance(curve.point_at(keys[i] + nodes[i].span * j / 16)));
+            }
+        }
+        return e;
+    };
+    t = refine(t, pieces, 0.07 * tol, 2 * contact);
+    pieces(t);
+    const NurbsCurve guide = laid(nodes, t, surface, s, tol);
+    return Curve2d(lightened(t, [&](double v) {
+        const xyz uv = beside(surface, s, xyz(curve.point_at(v)), xyz(guide.point_at(v)), tol);
+        return Row{0, 0, 0, uv.x, uv.y, 0, 0};
+    }, [&](const Fit& fit, double v) {
+        const Point uv = fit.on[0].point_at(v);
+        return surface.point_at(uv[0], uv[1]).distance(curve.point_at(v));
+    }, 0.07 * tol).on[0]);
 }
 
 // IntAna_IntQuadQuad's parametrisation: one surface swept by an angle (the rulings of a cylinder or cone, the tube circles of
@@ -253,6 +656,7 @@ Curve2d pcurve(const Curve& curve, const Conic* conic, const Surface& surface, d
 struct Pencil {
     std::function<double(double)> discriminant;
     std::function<xyz(double, int)> point; // at an angle on the branch -1 or +1; on branch 0, or with a discriminant below zero, the turning point between them
+    std::function<Conic(double)> ruling = nullptr; // the swept line at an angle, where the sweep is of lines
 };
 
 Pencil ruled(const Form& swept, const Form& other) {
@@ -275,10 +679,23 @@ Pencil ruled(const Form& swept, const Form& other) {
             },
             [=](double angle, int branch) {
                 xyz from, along;
-                const std::array<double, 3> k = terms(angle, from, along);
+                std::array<double, 3> k = terms(angle, from, along);
+                // On a ruling that the other surface has too the quadratic is nothing: the points next to it are the roots of
+                // its rate over the angle.
+                if (std::max({std::abs(k[0]), std::abs(k[1]), std::abs(k[2])}) <= 1e-8 * (1.0 + (from - q.c).dot(from - q.c) + std::abs(q.r2))) {
+                    xyz other;
+                    const std::array<double, 3> before = terms(angle - 1e-4, other, other), after = terms(angle + 1e-4, other, other);
+                    k = {after[0] - before[0], after[1] - before[1], after[2] - before[2]};
+                }
                 const double root = std::sqrt(std::max(k[1] * k[1] - 4 * k[0] * k[2], 0.0));
                 // The branches by the sign of the root over the leading term: they stay continuous where it changes sign.
                 return from + along * (std::abs(k[0]) > 1e-14 ? (-k[1] + branch * root) / (2 * k[0]) : branch > 0 ? -k[2] / k[1] : infinity);
+            },
+            [=](double angle) {
+                xyz from, along;
+                ruling(angle, from, along);
+                const Axes about = Axes::about(from, along);
+                return Conic{ConicKind::Line, {from, along, about.x, about.y}};
             }};
 }
 
@@ -295,7 +712,7 @@ Pencil tubes(const Form& torus, const Form& plane) {
             },
             [=](double u, int branch) {
                 const std::array<double, 3> k = terms(u);
-                const double v = std::atan2(k[1], k[0]) + (branch < 0 ? -1 : 1) * std::acos(std::clamp(-k[2] / std::hypot(k[0], k[1]), -1.0, 1.0));
+                const double half = std::acos(std::clamp(-k[2] / std::hypot(k[0], k[1]), -1.0, 1.0)), v = std::atan2(k[1], k[0]) + (branch ? branch * half : half < 0.5 * M_PI ? 0.0 : M_PI);
                 return torus.frame.o + (torus.frame.x * std::cos(u) + torus.frame.y * std::sin(u)) * (torus.radius + torus.minor * std::cos(v)) + torus.frame.z * (torus.minor * std::sin(v));
             }};
 }
@@ -313,13 +730,18 @@ double deviation(const Curve& curve, const Curve2d& on, const Surface& surface) 
     return worst;
 }
 
+struct Builder;
+void plane_quadric(const Form& plane, const Form& other, double tol, Builder& out);
+
 struct Builder {
     const Surface& sa;
     const Surface& sb;
     Form a, b;
     double tol;
     Result result;
-    std::vector<Conic> circles;
+    std::vector<Conic> conics;
+    std::vector<Conic>* collect = nullptr; // where curve() leaves its conics instead of making sections
+    std::vector<xyz> specks; // points a sweep met that may stand alone
 
     // The parameters where an open section passes the boxes of both surfaces' domains.
     std::pair<double, double> reach(const Conic& c) const {
@@ -337,6 +759,8 @@ struct Builder {
     }
 
     void curve(const Conic& c, bool tangent = false) {
+        if (collect)
+            return collect->push_back(c);
         std::pair<double, double> range = c.closed() ? std::pair{0.0, two_pi} : reach(c);
         if (!(range.second > range.first))
             return;
@@ -372,11 +796,11 @@ struct Builder {
         } else {
             section = Curve::hyperbola(o, x, y, c.radius, c.minor, range.first, range.second);
         }
-        add(section, &c, tangent, 0.0);
+        add(section, &c, tangent);
     }
 
     // A section over a pole of a sphere or the apex of a cone is cut there: the angle about the axis jumps.
-    void add(const Curve& whole, const Conic* c, bool tangent, double fit) {
+    void add(const Curve& whole, const Conic* c, bool tangent) {
         const auto [t0, t1] = whole.domain();
         std::vector<double> cuts;
         for (const Surface* s : {&sa, &sb})
@@ -405,119 +829,239 @@ struct Builder {
             Curve section = whole;
             if (pieces.size() > 1 || from != t0 || to != t1)
                 section.set_domain(from, to);
-            piece(section, c, tangent, fit);
+            piece(section, c, tangent);
         }
     }
 
-    void piece(const Curve& section, const Conic* c, bool tangent, double fit) {
-        Section made{section, pcurve(section, c, sa, tol), pcurve(section, c, sb, tol), tangent, fit, 0.0, 0.0};
+    void piece(const Curve& section, const Conic* c, bool tangent) {
+        Section made{section, pcurve(section, c, sa, tol), pcurve(section, c, sb, tol), tangent, 0.0, 0.0, 0.0};
         made.deviation_a = deviation(section, made.on_a, sa), made.deviation_b = deviation(section, made.on_b, sb);
         result.curves.push_back(std::move(made));
     }
 
-    // A section given by its points along a key. A circle (the Villarceau circles of a torus) is returned as one, once; anything
-    // else as a least-squares NURBS curve of degree five with as few control points as keep it within a tenth of the tolerance
-    // of both surfaces, its measured distance from them going with it.
+    // A section through the points at(key) of both surfaces. A planar one is the conic its plane cuts from the first quadric,
+    // returned as such, once. Anything else is cut where it passes a pole or an apex and fitted between.
     void fitted(const std::function<xyz(double)>& at, double k0, double k1) {
-        const auto off = [&](const xyz& p) { return std::max(std::abs(a.distance(p)), std::abs(b.distance(p))); };
-        // Points evenly along the curve, not along the key: the keys are respaced by the length run so far, twice.
-        const int m = 1024;
-        std::vector<double> keys(m + 1);
+        const int m = 512;
+        std::vector<xyz> samples(m + 1);
         for (int i = 0; i <= m; ++i)
-            keys[i] = k0 + (k1 - k0) * i / m;
-        std::vector<Point> samples(m + 1);
-        for (int pass = 0; pass < 3; ++pass) {
-            std::vector<double> run(m + 1, 0.0);
-            for (int i = 0; i <= m; ++i) {
-                samples[i] = Point(at(keys[i]));
-                if (i)
-                    run[i] = run[i - 1] + samples[i].distance(samples[i - 1]);
-            }
-            if (pass == 2 || !(run[m] > 0))
-                break;
-            std::vector<double> even(m + 1);
-            for (int i = 0, j = 0; i <= m; ++i) {
-                const double want = run[m] * i / m;
-                while (j + 1 < m && run[j + 1] < want)
-                    ++j;
-                even[i] = keys[j] + (keys[j + 1] - keys[j]) * (run[j + 1] > run[j] ? (want - run[j]) / (run[j + 1] - run[j]) : 0.0);
-            }
-            even[0] = k0, even[m] = k1;
-            keys = even;
-        }
-        const xyz p0(samples[m / 6]), p1(samples[m / 2]), p2(samples[5 * m / 6]), normal = unit((p1 - p0).cross(p2 - p0));
-        if (normal.length() > 0) {
-            // The circle through three points inside the arc (its ends may be crossings, known less well): its centre is where the
-            // two chords' middle planes meet its plane.
-            const xyz u = p1 - p0, v = p2 - p0;
-            const double uu = u.dot(u), vv = v.dot(v), uv = u.dot(v), det = 2 * (uu * vv - uv * uv);
-            const xyz centre = p0 + u * (vv * (uu - uv) / det) + v * (uu * (vv - uv) / det);
-            const double radius = (p0 - centre).length();
-            const Conic circle = make(ConicKind::Circle, centre, unit(p0 - centre), normal, radius);
-            bool round = true;
-            for (int i = 0; i <= m && round; i += 16)
-                round = std::abs((xyz(samples[i]) - centre).length() - radius) <= 10 * tol && std::abs((xyz(samples[i]) - centre).dot(normal)) <= 10 * tol;
-            for (int i = 0; i < 64 && round; ++i)
-                round = off(circle.point(two_pi * i / 64)) <= 0.1 * tol;
-            if (round) {
-                const bool known = std::any_of(circles.begin(), circles.end(), [&](const Conic& c) { return (c.frame.o - centre).length() <= tol && std::abs(c.radius - radius) <= tol && c.frame.z.cross(normal).length() <= 1e-9; });
+            samples[i] = at(k0 + (k1 - k0) * i / m);
+        if (std::all_of(samples.begin(), samples.end(), [&](const xyz& p) { return !((p - samples[0]).length() > tol); }))
+            return specks.push_back(samples[0]);
+        if (!std::all_of(samples.begin(), samples.end(), [](const xyz& p) { return std::isfinite(p.x + p.y + p.z); }))
+            return;
+        const xyz p0 = samples[m / 6], normal = unit((samples[m / 2] - p0).cross(samples[5 * m / 6] - p0));
+        bool planar = normal.length() > 0 && a.kind != FormKind::Plane && a.kind != FormKind::Torus && b.kind != FormKind::Plane && b.kind != FormKind::Torus;
+        for (int i = 0; i <= m && planar; i += 8)
+            planar = std::abs((samples[i] - p0).dot(normal)) <= tol;
+        if (planar) {
+            std::vector<Conic> found;
+            Builder probe{sa, sb, a, b, tol, {}, {}, &found, {}};
+            plane_quadric({FormKind::Plane, Axes::about(p0, normal)}, a, tol, probe);
+            for (const Conic& c : found) {
+                bool on = true;
+                for (int i = 0; i <= m && on; i += 8) {
+                    const xyz q = c.point(c.closed() ? two_pi * i / m : c.parameter(samples[i]));
+                    on = std::abs(b.distance(q)) <= 0.1 * tol && (c.point(c.parameter(samples[i])) - samples[i]).length() <= tol;
+                }
+                if (!on)
+                    continue;
+                const bool known = std::any_of(conics.begin(), conics.end(), [&](const Conic& k) {
+                    const xyz d = c.frame.o - k.frame.o, turned = k.frame.x.cross(c.frame.x);
+                    const bool line = c.kind == ConicKind::Line, round = c.kind == ConicKind::Circle, open = !c.closed();
+                    return k.kind == c.kind && std::abs(k.radius - c.radius) <= tol && std::abs(k.minor - c.minor) <= tol && (line ? d.cross(k.frame.x) : d).length() <= tol
+                        && (line || k.frame.z.cross(c.frame.z).length() <= 1e-9) && (round || (turned.length() <= 1e-9 && (!open || line || k.frame.x.dot(c.frame.x) > 0)));
+                });
                 if (!known)
-                    circles.push_back(circle), curve(circle);
+                    conics.push_back(c), curve(c);
                 return;
             }
         }
-        NurbsCurve fit;
-        double reached = infinity;
-        for (int count = 12; count <= 96; count += std::max(4, count / 3)) {
-            const NurbsCurve trial = NurbsCurve::create_fitted(samples, count, 5);
-            if (!trial.is_valid())
-                continue;
-            double worst = 0.0;
-            for (int i = 0; i <= 16 * count; ++i)
-                worst = std::max(worst, off(xyz(trial.point_at(trial.domain_start() + (trial.domain_end() - trial.domain_start()) * i / (16 * count)))));
-            if (worst < reached)
-                fit = trial, reached = worst;
-            if (worst <= 0.1 * tol)
-                break;
-        }
-        if (reached <= 0.1 * tol)
-            return add(Curve(fit), nullptr, false, reached);
-        // Too sharp for a light fit: interpolated through as many points as it takes.
-        interpolated(at, k0, k1);
+        std::vector<std::pair<double, xyz>> stops = {{k0, samples[0]}, {k1, samples[m]}};
+        for (const Surface* s : {&sa, &sb})
+            for (const xyz& q : singular(*s)) {
+                const auto gap = [&](double key) { return (at(key) - q).length(); };
+                for (int i = 0; i <= m; ++i) {
+                    const double here = (samples[i] - q).length();
+                    if (i == 0 || i == m) {
+                        if (here <= tol)
+                            stops[i ? 1 : 0].second = q;
+                        continue;
+                    }
+                    if (here > (samples[i - 1] - q).length() || here >= (samples[i + 1] - q).length() || here > 4 * (samples[i + 1] - samples[i - 1]).length())
+                        continue;
+                    double lo = k0 + (k1 - k0) * (i - 1) / m, hi = k0 + (k1 - k0) * (i + 1) / m;
+                    for (int it = 0; it < 80; ++it) {
+                        const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
+                        const bool left = gap(m1) < gap(m2);
+                        (left ? hi : lo) = left ? m2 : m1;
+                    }
+                    if (gap(0.5 * (lo + hi)) <= tol && 0.5 * (lo + hi) > k0 && 0.5 * (lo + hi) < k1)
+                        stops.push_back({0.5 * (lo + hi), q});
+                }
+            }
+        std::sort(stops.begin(), stops.end(), [](const auto& l, const auto& r) { return l.first < r.first; });
+        for (size_t i = 0; i + 1 < stops.size(); ++i)
+            stretch(at, stops[i].first, stops[i].second, stops[i + 1].first, stops[i + 1].second);
     }
 
-    void interpolated(const std::function<xyz(double)>& at, double k0, double k1) {
-        const auto off = [&](const Point& p) { return std::max(std::abs(a.distance(xyz(p))), std::abs(b.distance(xyz(p)))); };
-        std::vector<double> keys;
-        for (int i = 0; i <= 48; ++i)
-            keys.push_back(k0 + (k1 - k0) * i / 48);
-        NurbsCurve curve;
-        for (int round = 0; round < 10; ++round) {
-            std::vector<Point> points;
-            for (double k : keys)
-                points.push_back(Point(at(k)));
-            curve = NurbsCurve::create_interpolated(points);
-            const std::vector<double> spans = curve.get_span_vector();
-            std::vector<double> more = {keys.front()};
-            for (size_t i = 1; i < keys.size(); ++i) {
-                if (i < spans.size() && off(curve.point_at(0.5 * (spans[i - 1] + spans[i]))) > 0.1 * tol)
-                    more.push_back(0.5 * (keys[i - 1] + keys[i]));
-                more.push_back(keys[i]);
-            }
-            if (more.size() == keys.size() || more.size() > 4000)
-                break;
-            keys = std::move(more);
+    // A section from p0 at the key k0 to p1 at k1 as pieces of degree seven that take the true section's position, tangent,
+    // curvature and third derivative at their ends, by its length; split until curve and pcurves measure within 0.07 tol of the
+    // surfaces and of each other. Where the surfaces touch at an end (a crossing of branches) the derivatives are carried there
+    // from a point further in.
+    void stretch(const std::function<xyz(double)>& at, double k0, const xyz& p0, double k1, const xyz& p1) {
+        const auto off = [&](const xyz& p) { return std::max(std::abs(a.distance(p)), std::abs(b.distance(p))); };
+        const int m = 256;
+        std::vector<double> run(m + 1, 0.0);
+        xyz before = p0;
+        for (int i = 1; i <= m; ++i) {
+            const xyz p = i < m ? at(k0 + (k1 - k0) * i / m) : p1;
+            run[i] = run[i - 1] + (p - before).length();
+            before = p;
         }
-        double fit = 0.0;
-        for (int i = 0; i <= 8 * curve.cv_count(); ++i)
-            fit = std::max(fit, off(curve.point_at(curve.domain_start() + (curve.domain_end() - curve.domain_start()) * i / (8 * curve.cv_count()))));
-        add(Curve(curve), nullptr, false, fit);
+        const double length = run[m], step = 1e-6 * (k1 - k0);
+        if (!(length > tol))
+            return specks.push_back(p0);
+        const auto key = [&](double l) {
+            const int i = std::clamp(static_cast<int>(std::upper_bound(run.begin(), run.end(), l) - run.begin()) - 1, 0, m - 1);
+            return k0 + (k1 - k0) * (i + (run[i + 1] > run[i] ? (l - run[i]) / (run[i + 1] - run[i]) : 0.0)) / m;
+        };
+        const auto jet = [&](double l, int order, Jet& made) {
+            const double k = key(l);
+            return section(a, b, l <= 0 ? p0 : l >= length ? p1 : at(k), at(std::min(k + step, k1)) - at(std::max(k - step, k0)), order, made);
+        };
+        const auto node = [&](double l) {
+            Node made;
+            // At an end where the surfaces touch, or at an apex, the section has no normals to go by: its derivatives are
+            // carried there from a point further in.
+            if ((jet(l, contact, made.jet) >= 0.03 && !apex(made.jet[0])) || (l > 0 && l < length))
+                return made;
+            const xyz tangent = made.jet[1];
+            made.jet.assign(contact + 1, xyz{0, 0, 0});
+            made.jet[0] = l <= 0 ? p0 : p1, made.jet[1] = tangent;
+            for (double f = 1e-3; f < 0.2; f *= 2) {
+                Jet inner;
+                if (jet(l <= 0 ? f * length : length - f * length, contact + 6, inner) < 0.03)
+                    continue;
+                const xyz p = made.jet[0];
+                double by = (p - inner[0]).length() * (l <= 0 ? -1.0 : 1.0);
+                for (int it = 0; it < 6; ++it)
+                    by += (p - shifted(inner, by)[0]).dot(shifted(inner, by)[1]);
+                made.jet = shifted(inner, by);
+                made.jet.resize(contact + 1);
+                made.jet[0] = p;
+                break;
+            }
+            return made;
+        };
+        const std::array<const Surface*, 2> surfaces = {&sa, &sb};
+        const std::array<const Form*, 2> forms = {&a, &b};
+        std::vector<Node> nodes;
+        const auto pieces = [&](const std::vector<double>& keys) {
+            nodes.clear();
+            for (double l : keys)
+                nodes.push_back(node(l));
+            std::vector<double> e(keys.size() - 1, 0.0);
+            for (size_t n = 0; n + 1 < keys.size(); ++n) {
+                // The span of a piece is its own length.
+                Node &from = nodes[n], &to = nodes[n + 1];
+                const double chord = (to.jet[0] - from.jet[0]).length();
+                from.span = chord;
+                std::vector<xyz> c;
+                for (int it = 0; it < 5; ++it) {
+                    c = controls({0.0, from.span}, {from.jet, to.jet});
+                    if (it == 4)
+                        break;
+                    double run = 0.0;
+                    for (int i = 0; i < 8; ++i)
+                        for (double g : {-1.0, 1.0}) {
+                            const double f = (i + 0.5 + g * 0.5 / std::sqrt(3.0)) / 8;
+                            run += (bezier({c.begin() + 1, c.end()}, f) - bezier({c.begin(), c.end() - 1}, f)).length() * (c.size() - 1.0) / 16;
+                        }
+                    from.span = std::clamp(run, chord, 2 * chord);
+                }
+                std::array<std::vector<xyz>, 2> on;
+                for (int k = 0; k < 2; ++k)
+                    if (forms[k]->kind != FormKind::Plane)
+                        on[k] = between(*surfaces[k], *forms[k], from, to, tol);
+                for (int i = 1; i < 16; ++i) {
+                    const xyz p = bezier(c, i / 16.0);
+                    e[n] = std::max(e[n], off(p));
+                    for (int k = 0; k < 2; ++k)
+                        if (!on[k].empty()) {
+                            const xyz uv = bezier(on[k], i / 16.0);
+                            e[n] = std::max(e[n], (xyz(surfaces[k]->point_at(uv.x, uv.y)) - p).length());
+                        }
+                }
+            }
+            return e;
+        };
+        std::vector<double> keys;
+        for (int i = 0; i <= 8; ++i)
+            keys.push_back(length * i / 8);
+        pieces(refine(keys, pieces, 0.07 * tol, 2 * contact));
+        std::vector<double> t = {0.0};
+        std::vector<Jet> jets;
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            jets.push_back(nodes[i].jet);
+            if (i)
+                t.push_back(t.back() + nodes[i - 1].span);
+        }
+        const NurbsCurve guide = spline(t, jets);
+        std::array<NurbsCurve, 2> guides;
+        for (int k = 0; k < 2; ++k)
+            if (forms[k]->kind != FormKind::Plane)
+                guides[k] = laid(nodes, t, *surfaces[k], *forms[k], tol);
+        // The light curves through true points of the section at the guide's parameters.
+        const Fit fit = lightened(t, [&](double v) {
+            const xyz p = v <= 0 || v >= t.back() ? xyz(guide.point_at(v)) : polished(a, b, xyz(guide.point_at(v)));
+            Row row{p.x, p.y, p.z};
+            for (int k = 0; k < 2; ++k)
+                if (forms[k]->kind != FormKind::Plane) {
+                    const xyz uv = beside(*surfaces[k], *forms[k], p, xyz(guides[k].point_at(v)), tol);
+                    row[3 + 2 * k] = uv.x, row[4 + 2 * k] = uv.y;
+                }
+            return row;
+        }, [&](const Fit& f, double v) {
+            const Point p = f.curve.point_at(v);
+            double worst = off(xyz(p));
+            for (int k = 0; k < 2; ++k)
+                if (forms[k]->kind != FormKind::Plane) {
+                    const Point uv = f.on[k].point_at(v);
+                    worst = std::max(worst, surfaces[k]->point_at(uv[0], uv[1]).distance(p));
+                }
+            return worst;
+        }, 0.07 * tol);
+        Section made{Curve(fit.curve), {}, {}, false, 0.0, 0.0, 0.0};
+        const int count = 16 * fit.curve.cv_count();
+        for (int i = 0; i <= count; ++i)
+            made.fit = std::max(made.fit, off(xyz(fit.curve.point_at(t.back() * i / count))));
+        if (!std::isfinite(t.back() + made.fit))
+            made.fit = infinity;
+        made.on_a = a.kind == FormKind::Plane ? pcurve(made.curve, nullptr, sa, tol) : Curve2d(fit.on[0]);
+        made.on_b = b.kind == FormKind::Plane ? pcurve(made.curve, nullptr, sb, tol) : Curve2d(fit.on[1]);
+        made.deviation_a = deviation(made.curve, made.on_a, sa), made.deviation_b = deviation(made.curve, made.on_b, sb);
+        result.curves.push_back(std::move(made));
     }
 
     // The sections of a pencil: over each stretch of angles with two real points, the two branches run out and back as one
     // closed curve; with two real points all round, each branch is a closed curve of its own; a discriminant that only
     // reaches zero is a touching point. Parts outside the boxes of the domains are left out.
     void sweep(const Pencil& pencil) {
+        swept(pencil);
+        // A point met alone, where a branch stays in one place or the discriminant only reaches zero: touching, but for an apex.
+        for (const xyz& p : specks) {
+            bool alone = std::isfinite(p.x) && std::max(std::abs(a.distance(p)), std::abs(b.distance(p))) <= tol;
+            for (const Section& s : result.curves)
+                alone = alone && (xyz(s.curve.point_at(s.curve.domain().first)) - p).length() > tol && (xyz(s.curve.point_at(s.curve.domain().second)) - p).length() > tol;
+            for (const Hit& h : result.points)
+                alone = alone && (xyz(h.point) - p).length() > tol;
+            if (alone)
+                point(p, !apex(p));
+        }
+    }
+
+    void swept(const Pencil& pencil) {
         const int n = 1440;
         std::vector<double> d(n + 1);
         for (int i = 0; i <= n; ++i)
@@ -529,23 +1073,27 @@ struct Builder {
                     return false;
             return true;
         };
-        // A closed chain cut to the keys inside the boxes, one key past them on each side.
+        // A closed chain cut to the keys inside the boxes, each end where it passes out of them.
         const auto chain = [&](const std::function<xyz(double)>& at, double k0, double k1) {
             const int m = 720;
+            const auto key = [&](int i) { return k0 + (k1 - k0) * i / m; };
             std::vector<char> in(m + 1);
             for (int i = 0; i <= m; ++i)
-                in[i] = inside(at(k0 + (k1 - k0) * i / m));
+                in[i] = inside(at(key(i)));
             if (std::all_of(in.begin(), in.end(), [](char v) { return v; }))
                 return fitted(at, k0, k1);
+            const auto edge = [&](double within, double out) {
+                for (int it = 0; it < 50; ++it)
+                    (inside(at(0.5 * (within + out))) ? within : out) = 0.5 * (within + out);
+                return within;
+            };
             for (int i = 0; i <= m; ++i)
                 if (in[i] && (i == 0 || !in[i - 1])) {
                     int j = i;
                     while (j < m && in[j + 1])
                         ++j;
-                    const auto finite = [&](int k) { return std::isfinite(at(k0 + (k1 - k0) * k / m).length()); };
-                    const int first = i > 0 && finite(i - 1) ? i - 1 : i, last = j < m && finite(j + 1) ? j + 1 : j;
-                    if (last - first >= 2)
-                        fitted(at, k0 + (k1 - k0) * first / m, k0 + (k1 - k0) * last / m);
+                    if (j > i)
+                        fitted(at, i > 0 ? edge(key(i), key(i - 1)) : k0, j < m ? edge(key(j), key(j + 1)) : k1);
                     i = j;
                 }
         };
@@ -556,24 +1104,68 @@ struct Builder {
             }
             return 0.5 * (lo + hi);
         };
-        // Where the discriminant touches zero from above two branches cross: the section is cut there into simple arcs.
-        const double top = *std::max_element(d.begin(), d.end()), golden = 0.5 * (std::sqrt(5.0) - 1.0);
-        std::vector<double> crossings;
-        for (int i = 0; i < n; ++i) {
-            const double before = d[i > 0 ? i - 1 : n - 1], after = d[i + 1];
-            if (!(d[i] >= 0 && before >= d[i] && after > d[i] && before >= 0 && after >= 0 && d[i] <= 1e-4 * top))
+        // Where the discriminant touches zero its slope changes sign: found there closer than its lowest value can be.
+        const auto turning = [&](double lo, double hi, double sign) {
+            const auto slope = [&](double angle) { return sign * (pencil.discriminant(angle + 1e-5) - pencil.discriminant(angle - 1e-5)); };
+            for (int it = 0; it < 60; ++it)
+                (slope(0.5 * (lo + hi)) < 0 ? lo : hi) = 0.5 * (lo + hi);
+            return 0.5 * (lo + hi);
+        };
+        const double top = *std::max_element(d.begin(), d.end()), size = std::max(top, -*std::min_element(d.begin(), d.end()));
+        // A double root is zero only up to the rounding of the discriminant, which shows in how it scatters about the angle and is no less
+        // than a few last places of its largest value.
+        const auto touching = [&](double angle) {
+            const double least = pencil.discriminant(angle);
+            double noise = 0.0;
+            for (int k = -4; k <= 4; ++k)
+                noise = std::max(noise, std::abs(pencil.discriminant(angle + k * 1e-11) - least));
+            return std::abs(least) <= 8 * noise + 64 * std::numeric_limits<double>::epsilon() * size;
+        };
+        // A swept line that lies on the other surface is a line of the section, tangent where the surfaces touch along it.
+        // The discriminant is zero there without the branches turning or crossing.
+        std::vector<double> shared;
+        const auto along = [&](double angle) { return std::any_of(shared.begin(), shared.end(), [&](double v) { return std::abs(std::remainder(angle - v, two_pi)) < 1e-6; }); };
+        for (int i = 0; i < n && pencil.ruling && a.kind != FormKind::Sphere && b.kind != FormKind::Sphere; ++i) {
+            const double here = std::abs(d[i]);
+            if (here > std::abs(d[i > 0 ? i - 1 : n - 1]) || here >= std::abs(d[i + 1]) || here > 1e-6 * size)
                 continue;
-            double lo = two_pi * (i - 1) / n, hi = two_pi * (i + 1) / n;
-            for (int it = 0; it < 80; ++it) {
-                const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
-                const bool left = pencil.discriminant(m1) < pencil.discriminant(m2);
-                (left ? hi : lo) = left ? m2 : m1;
+            const double angle = turning(two_pi * (i - 1) / n, two_pi * (i + 1) / n, d[i + 1] < 0 ? -1.0 : 1.0);
+            const Conic line = pencil.ruling(angle);
+            const std::pair<double, double> range = reach(line);
+            bool on = range.second - range.first > std::sqrt(tol);
+            for (int k = 0; k <= 8 && on; ++k)
+                on = std::max(std::abs(a.distance(line.point(range.first + (range.second - range.first) * k / 8))), std::abs(b.distance(line.point(range.first + (range.second - range.first) * k / 8)))) <= 0.1 * tol;
+            Jet jet;
+            if (on)
+                shared.push_back(angle), curve(line, std::max(section(a, b, line.point(range.first + 0.3 * (range.second - range.first)), line.frame.x, 1, jet), section(a, b, line.point(range.first + 0.6 * (range.second - range.first)), line.frame.x, 1, jet)) <= 1e-6);
+        }
+        // Where it touches zero from above two branches cross: the section is cut there into simple arcs. Where it passes
+        // zero and comes back between two samples, a narrow gap or a small loop, the two zeros are taken.
+        std::vector<double> crossings, rise, fall;
+        for (int i = 0; i < n; ++i) {
+            const double before = d[i > 0 ? i - 1 : n - 1], after = d[i + 1], lo = two_pi * (i - 1) / n, hi = two_pi * (i + 1) / n;
+            if (d[i] >= 0 && before >= d[i] && after > d[i] && before >= 0 && after >= 0 && d[i] <= 1e-4 * top) {
+                const double angle = turning(lo, hi, 1.0), least = pencil.discriminant(angle), gap = (pencil.point(angle, 1) - pencil.point(angle, -1)).length();
+                const xyz p = pencil.point(angle, 0);
+                if (along(angle))
+                    continue;
+                if (((touching(angle) && gap <= std::sqrt(tol)) || (least >= 0 && gap <= tol)) && std::max(std::abs(a.distance(p)), std::abs(b.distance(p))) <= tol)
+                    crossings.push_back(turn(angle));
+                else if (least < 0)
+                    fall.push_back(zero(lo, angle)), rise.push_back(zero(angle, hi));
+            } else if (d[i] < 0 && before <= d[i] && after < d[i]) {
+                // Where it only comes up to zero the surfaces may meet in a point.
+                const double angle = turning(lo, hi, -1.0);
+                const xyz p = pencil.point(angle, 0);
+                if (pencil.discriminant(angle) > 0)
+                    rise.push_back(zero(lo, angle)), fall.push_back(zero(angle, hi));
+                else if (std::isfinite(p.x) && inside(p))
+                    specks.push_back(p);
             }
-            const double angle = 0.5 * (lo + hi);
-            if ((pencil.point(angle, 1) - pencil.point(angle, -1)).length() <= tol)
-                crossings.push_back(turn(angle));
         }
         std::sort(crossings.begin(), crossings.end());
+        // At a crossing both branches take the one point between them.
+        const auto crossed = [&](double angle) { return std::any_of(crossings.begin(), crossings.end(), [&](double c) { return std::abs(std::remainder(angle - c, two_pi)) < 1e-12; }); };
         // A closed chain over a turn of its key, cut at the given keys.
         const auto arcs = [&](const std::function<xyz(double)>& at, std::vector<double> cuts) {
             std::sort(cuts.begin(), cuts.end());
@@ -582,45 +1174,35 @@ struct Builder {
             for (size_t i = 0; i < cuts.size(); ++i)
                 chain(at, cuts[i], i + 1 < cuts.size() ? cuts[i + 1] : cuts[0] + two_pi);
         };
-        std::vector<double> rise, fall;
         for (int i = 0; i < n; ++i) {
             if (d[i] < 0 && d[i + 1] >= 0)
                 rise.push_back(zero(two_pi * i / n, two_pi * (i + 1) / n));
             if (d[i] >= 0 && d[i + 1] < 0)
                 fall.push_back(zero(two_pi * i / n, two_pi * (i + 1) / n));
         }
-        // A dip of the discriminant below zero that closes within the tolerance is a crossing met with rounding, not a turn.
-        bool dips = !rise.empty() && rise.size() == fall.size();
-        std::vector<double> met;
-        for (size_t i = 0; i < rise.size() && dips; ++i) {
-            double from = -infinity;
-            for (double f : fall)
-                from = std::max(from, f < rise[i] ? f : f - two_pi);
-            dips = (pencil.point(from, 0) - pencil.point(rise[i], 0)).length() <= tol && rise[i] - from < 0.1;
-            met.push_back(turn(0.5 * (from + rise[i])));
+        // A dip of the discriminant below zero no deeper than its rounding, or that closes within the tolerance, is a crossing
+        // met with rounding, not a turn.
+        for (size_t i = 0; i < rise.size() && rise.size() == fall.size();) {
+            size_t last = 0;
+            const auto before = [&](size_t k) { return fall[k] < rise[i] ? fall[k] : fall[k] - two_pi; };
+            for (size_t k = 1; k < fall.size(); ++k)
+                last = before(k) > before(last) ? k : last;
+            const double from = before(last), angle = rise[i] - from < 0.1 ? turning(from, rise[i], 1.0) : 0.0;
+            const double gap = (pencil.point(from, 0) - pencil.point(rise[i], 0)).length();
+            if (rise[i] - from < 0.1 && (along(angle) || gap <= tol || (touching(angle) && gap <= std::sqrt(tol)))) {
+                if (!along(angle))
+                    crossings.push_back(turn(angle));
+                rise.erase(rise.begin() + i);
+                fall.erase(fall.begin() + last);
+            } else {
+                ++i;
+            }
         }
-        if (dips) {
-            crossings.insert(crossings.end(), met.begin(), met.end());
-            std::sort(crossings.begin(), crossings.end());
-            rise.clear();
-        }
+        std::sort(crossings.begin(), crossings.end());
         if (rise.empty()) {
-            if (d[0] >= 0 || dips) {
+            if (top >= 0)
                 for (int branch : {-1, 1})
-                    arcs([&, branch](double angle) { return pencil.point(angle, branch); }, crossings);
-                return;
-            }
-            // Never two points: where the discriminant comes nearest to zero the surfaces may touch.
-            const int top = static_cast<int>(std::max_element(d.begin(), d.end()) - d.begin());
-            double lo = two_pi * (top - 1) / n, hi = two_pi * (top + 1) / n;
-            for (int it = 0; it < 80; ++it) {
-                const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
-                const bool left = pencil.discriminant(m1) > pencil.discriminant(m2);
-                (left ? hi : lo) = left ? m2 : m1;
-            }
-            const xyz p = pencil.point(0.5 * (lo + hi), 0);
-            if (std::isfinite(p.x) && std::abs(a.distance(p)) <= tol && std::abs(b.distance(p)) <= tol && inside(p))
-                point(p, true);
+                    arcs([&, branch](double angle) { return pencil.point(angle, crossed(angle) ? 0 : branch); }, crossings);
             return;
         }
         for (double from : rise) {
@@ -630,7 +1212,8 @@ struct Builder {
             // Out on one branch and back on the other, evenly in the angle of a half turn so that the ends, where the root
             // goes as a square root, are sampled finely; a loop no larger than the tolerance is a touching point.
             const std::function<xyz(double)> loop = [&, from, to](double key) {
-                return pencil.point(0.5 * (from + to) - 0.5 * (to - from) * std::cos(key), std::abs(std::sin(key)) < 1e-12 ? 0 : std::sin(key) > 0 ? 1 : -1);
+                const double angle = 0.5 * (from + to) - 0.5 * (to - from) * std::cos(key);
+                return pencil.point(angle, std::abs(std::sin(key)) < 1e-12 || crossed(angle) ? 0 : std::sin(key) > 0 ? 1 : -1);
             };
             // A crossing inside the stretch is met once on the way out and once on the way back.
             std::vector<double> cuts;
@@ -646,6 +1229,10 @@ struct Builder {
                 arcs(loop, cuts);
             }
         }
+    }
+
+    bool apex(const xyz& p) const {
+        return (sa.kind() == Surface::Kind::Cone && (singular(sa)[0] - p).length() <= tol) || (sb.kind() == Surface::Kind::Cone && (singular(sb)[0] - p).length() <= tol);
     }
 
     void point(const xyz& p, bool tangent) { result.points.push_back({Point(p), 0.0, parameters(sa, p), parameters(sb, p), tangent}); }
@@ -834,50 +1421,53 @@ std::vector<double> real_roots(std::vector<double> c, std::vector<double>* turns
     return found;
 }
 
-// Roots of a distance along a curve: sign changes by bisection, and minima within tol where it only touches zero.
+// Roots of a distance along a curve: sign changes by bisection; where it turns toward zero between samples, two crossings if it
+// passes zero by more than tol, a touching point if it comes within tol.
 std::vector<std::pair<double, bool>> roots(const std::function<double(double)>& f, double t0, double t1, int n, bool periodic, double tol, bool& all) {
     std::vector<double> v(n + 1);
     all = true;
+    const auto at = [&](int i) { return t0 + (t1 - t0) * i / n; };
     for (int i = 0; i <= n; ++i)
-        v[i] = f(t0 + (t1 - t0) * i / n), all = all && std::abs(v[i]) <= tol;
+        v[i] = f(at(i)), all = all && std::abs(v[i]) <= tol;
     std::vector<std::pair<double, bool>> found;
-    const double step = (t1 - t0) / n, golden = 0.5 * (std::sqrt(5.0) - 1.0);
+    const double step = (t1 - t0) / n;
+    // Between lo, where the distance is flo, and hi, where it has the other sign.
+    const auto crossing = [&](double lo, double hi, double flo) {
+        for (int it = 0; it < 80 && flo != 0.0; ++it) {
+            const double mid = 0.5 * (lo + hi), fm = f(mid);
+            (fm * flo > 0 ? lo : hi) = mid;
+            flo = fm * flo > 0 ? fm : flo;
+        }
+        return flo == 0.0 ? lo : 0.5 * (lo + hi);
+    };
     for (int i = 0; i < n && !all; ++i) {
         if (v[i] == 0.0 || v[i] * v[i + 1] < 0) {
-            double lo = t0 + i * step, hi = lo + step, flo = v[i];
-            for (int it = 0; it < 80 && flo != 0.0; ++it) {
-                const double mid = 0.5 * (lo + hi), fm = f(mid);
-                (fm * flo > 0 ? lo : hi) = mid;
-                flo = fm * flo > 0 ? fm : flo;
-            }
-            found.push_back({flo == 0.0 ? lo : 0.5 * (lo + hi), false});
+            found.push_back({crossing(at(i), at(i + 1), v[i]), false});
             continue;
         }
-        const double before = i > 0 ? v[i - 1] : periodic ? v[n - 1] : v[i];
+        const double before = i > 0 ? v[i - 1] : periodic ? v[n - 1] : v[i], sign = v[i] < 0 ? -1.0 : 1.0;
         if (std::abs(v[i]) > std::abs(before) || std::abs(v[i]) > std::abs(v[i + 1]) || v[i] * before < 0)
             continue;
-        double lo = t0 + (i - 1) * step, hi = t0 + (i + 1) * step;
+        double lo = at(i - 1), hi = at(i + 1);
         for (int it = 0; it < 80; ++it) {
             const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
-            const bool left = std::abs(f(m1)) < std::abs(f(m2));
+            const bool left = sign * f(m1) < sign * f(m2);
             (left ? hi : lo) = left ? m2 : m1;
         }
         const double t = 0.5 * (lo + hi);
-        if (std::abs(f(t)) <= tol && (found.empty() || std::abs(found.back().first - t) > 4 * step))
+        if (sign * f(t) < -tol)
+            found.insert(found.end(), {{crossing(at(i - 1), t, before), false}, {crossing(t, at(i + 1), f(t)), false}});
+        else if (sign * f(t) <= tol && (found.empty() || std::abs(found.back().first - t) > 4 * step))
             found.push_back({t, true});
     }
     return found;
 }
 
-}
-
-Result surface_surface(const Surface& first, const Surface& second, double tolerance) {
+Result sections(const Surface& first, const Surface& second, double tolerance) {
     Result none;
     if (first.kind() == Surface::Kind::Nurbs || second.kind() == Surface::Kind::Nurbs)
         return none;
-    if (first.kind() > Surface::Kind::Torus || second.kind() > Surface::Kind::Torus)
-        return intersection_sweep::surface_surface(first, second, tolerance);
-    Builder out{first, second, form(first), form(second), tolerance, {}, {}};
+    Builder out{first, second, form(first), form(second), tolerance, {}, {}, nullptr, {}};
     const Form &a = out.a, &b = out.b;
     Result& r = out.result;
     r.done = true;
@@ -899,7 +1489,12 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
         const xyz across = other.frame.z.cross(plane.frame.z);
         if (coaxial(other.frame.o, other.frame.z, tolerance, out))
             return r;
-        if (std::abs(other.frame.z.dot(plane.frame.z)) > angular || std::abs((other.frame.o - plane.frame.o).dot(plane.frame.z)) > tolerance)
+        const bool centred = std::abs((other.frame.o - plane.frame.o).dot(plane.frame.z)) <= tolerance;
+        if (centred && std::abs(across.length() * other.radius - other.minor) <= tolerance)
+            // A plane through the centre that touches the tube on both sides: the two Villarceau circles.
+            for (double side : {-1.0, 1.0})
+                out.curve(make(ConicKind::Circle, other.frame.o + unit(across) * (side * other.minor), unit(across), plane.frame.z, other.radius));
+        else if (std::abs(other.frame.z.dot(plane.frame.z)) > angular || !centred)
             out.sweep(tubes(other, plane));
         else
             for (double side : {-1.0, 1.0})
@@ -917,7 +1512,22 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
             return r;
         const xyz cross = a.frame.z.cross(b.frame.z);
         const bool cylinders = a.kind == FormKind::Cylinder && b.kind == FormKind::Cylinder;
-        if (!cylinders || (cross.length() > angular && !(std::abs(a.radius - b.radius) <= tolerance && std::abs(d.dot(unit(cross))) <= tolerance))) {
+        const xyz apex = singular(first).empty() ? a.frame.o : singular(first)[0];
+        if (a.kind == FormKind::Cone && b.kind == FormKind::Cone && (singular(second)[0] - apex).length() <= tolerance) {
+            // Cones from one apex meet in the rulings they share: directions at the two semi-angles from the two axes, on either
+            // side of the plane of the axes; one where the cones touch.
+            const double c = a.frame.z.dot(b.frame.z), s2 = cross.dot(cross);
+            for (double side : {1.0, -1.0}) {
+                const double ca = std::cos(a.angle), cb = side * std::cos(b.angle), alpha = (ca - cb * c) / s2, beta = (cb - ca * c) / s2;
+                const double out2 = 1.0 - (alpha * alpha + beta * beta + 2 * alpha * beta * c);
+                for (double up : {1.0, -1.0})
+                    if (out2 > -1e-14 && (up > 0 || out2 > 1e-14)) {
+                        const xyz along = unit(a.frame.z * alpha + b.frame.z * beta + unit(cross) * (up * std::sqrt(std::max(out2, 0.0))));
+                        const Axes about = Axes::about(apex, along);
+                        out.curve(Conic{ConicKind::Line, {apex, along, about.x, about.y}}, out2 <= 1e-14);
+                    }
+            }
+        } else if (!cylinders || (cross.length() > angular && !(std::abs(a.radius - b.radius) <= tolerance && std::abs(d.dot(unit(cross))) <= tolerance))) {
             // Two quadrics in general position: swept over the angle of a cylinder, else of a cone.
             const bool first = a.kind == FormKind::Cylinder || (ruled_a && b.kind != FormKind::Cylinder);
             out.sweep(first ? ruled(a, b) : ruled(b, a));
@@ -938,6 +1548,18 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
             r.done = true;
         }
     }
+    return r;
+}
+
+}
+
+Result surface_surface(const Surface& a, const Surface& b, double tolerance) {
+    if (a.kind() > Surface::Kind::Torus || b.kind() > Surface::Kind::Torus)
+        return intersection_sweep::surface_surface(a, b, tolerance);
+    Result r = sections(a, b, tolerance);
+    // A section that measures off its surfaces or its pcurves by more than the tolerance is not an answer.
+    for (const Section& s : r.curves)
+        r.done = r.done && std::max({s.fit, s.deviation_a, s.deviation_b}) <= tolerance;
     return r;
 }
 
@@ -1015,13 +1637,17 @@ Result curve_surface(const Curve& given, const Surface& on, double tolerance) {
     r.coincident = inside ? 1 : 0;
     std::sort(found.begin(), found.end());
     // Two crossings with the curve within tolerance of the surface between them are one touching point.
-    for (size_t i = 0; i + 1 < found.size();)
-        if (std::abs(distance(0.5 * (found[i].first + found[i + 1].first))) <= tolerance && (curve.point(found[i].first) - curve.point(found[i + 1].first)).length() <= std::sqrt(tolerance)) {
-            found[i] = {0.5 * (found[i].first + found[i + 1].first), true};
-            found.erase(found.begin() + i + 1);
+    for (size_t i = 0; i < found.size() && found.size() > 1;) {
+        // On a closed curve the last and the first are neighbours too.
+        const size_t j = (i + 1) % found.size();
+        const double next = found[j].first + (j ? 0.0 : two_pi), middle = 0.5 * (found[i].first + next);
+        if ((j || !line) && std::abs(distance(middle)) <= tolerance && (curve.point(found[i].first) - curve.point(next)).length() <= std::sqrt(tolerance)) {
+            found[i] = {line ? middle : turn(middle), true};
+            found.erase(found.begin() + j);
         } else {
             ++i;
         }
+    }
     // A hit where the curve runs along the surface is a touching one, however the roots fell.
     for (const auto& [t, tangent] : found) {
         const double slope = std::abs(distance(t + 1e-6) - distance(t - 1e-6)) / (2e-6 * curve.tangent(t).length());

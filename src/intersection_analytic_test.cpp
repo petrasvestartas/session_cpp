@@ -63,6 +63,22 @@ bool straight(const Curve2d& on) {
     return on.kind() == Shape::Line;
 }
 
+// Whether every section is within `limit` of both surfaces and of the surface points under its pcurves all along, by the measures it carries.
+bool within(const Result& r, double limit) {
+    for (const Section& s : r.curves)
+        if (std::max({s.fit, s.deviation_a, s.deviation_b}) > limit)
+            return false;
+    return r.done;
+}
+
+int heaviest(const Result& r) {
+    int count = 0;
+    for (const Section& s : r.curves)
+        for (const Curve* c : {&s.curve, static_cast<const Curve*>(&s.on_a), static_cast<const Curve*>(&s.on_b)})
+            count = std::max(count, c->kind() == Shape::Nurbs ? c->nurbs().cv_count() : 0);
+    return count;
+}
+
 const Point Z(0, 0, 1);
 const Point X(1, 0, 0);
 const Vector Xv(1, 0, 0);
@@ -137,7 +153,7 @@ MINI_TEST("Intersection Analytic", "Plane Torus") {
     MINI_CHECK(kinds(spiric, {Shape::Nurbs, Shape::Nurbs}) && worst(general, t, spiric) < 1e-7 && spiric.curves[0].fit < 1e-7 && spiric.curves[0].deviation_b < 1e-7);
     const Surface villarceau = surface(Kind::Plane, Point(0, 0, 0), Point(std::sin(std::asin(1.0 / 3)), 0, std::cos(std::asin(1.0 / 3))));
     const Result circles = surface_surface(villarceau, t, 1e-7);
-    MINI_CHECK(circles.done && circles.curves.size() == 2 && worst(villarceau, t, circles) < 1e-7);
+    MINI_CHECK(kinds(circles, {Shape::Circle, Shape::Circle}) && worst(villarceau, t, circles) < 1e-8);
 }
 
 MINI_TEST("Intersection Analytic", "Sphere Sphere") {
@@ -206,6 +222,119 @@ MINI_TEST("Intersection Analytic", "Quadric Pairs") {
     const Result meridians = surface_surface(upright, sphere, 1e-7);
     MINI_CHECK(kinds(meridians, {Shape::Circle, Shape::Circle}) && straight(meridians.curves[0].on_b) && straight(meridians.curves[1].on_b));
     MINI_CHECK(meridians.curves[0].deviation_b < 1e-6 && meridians.curves[1].deviation_b < 1e-6);
+}
+
+MINI_TEST("Intersection Analytic", "Villarceau") {
+    // A plane through the centre of a torus that touches the tube on both sides, wherever the two lie: two exact circles of the major radius.
+    const Surface torus = surface(Kind::Torus, Point(0, 0, 0), Z, 3, 1), plane = surface(Kind::Plane, Point(0, 0, 0), Point(1.0 / 3, 0, std::sqrt(8.0) / 3));
+    for (double turn : {0.0, 0.7, 1.9, 2.6, 4.1, 5.3}) {
+        const Xform motion = Xform::translation(1.3 * turn, -2.1, 0.7) * Xform::rotation(Vector(0.3, -0.5 + turn, 0.8), turn);
+        const Surface p = plane.transformed(motion), t = torus.transformed(motion);
+        const Result r = surface_surface(p, t, 1e-7), swapped = surface_surface(t, p, 1e-7);
+        MINI_CHECK(kinds(r, {Shape::Circle, Shape::Circle}) && kinds(swapped, {Shape::Circle, Shape::Circle}) && within(r, 1e-8) && within(swapped, 1e-8) && worst(p, t, r) < 1e-8);
+        MINI_CHECK(std::abs(r.curves[0].curve.radius() - 3) < 1e-12 && std::abs(r.curves[0].curve.origin().distance(r.curves[1].curve.origin()) - 2) < 1e-9);
+    }
+    // Off the centre by more than the tolerance the circles open where they crossed into one curve that does not meet itself.
+    const Result near = surface_surface(surface(Kind::Plane, Point(0, 0, 1e-4), Point(1.0 / 3, 0, std::sqrt(8.0) / 3)), torus, 1e-7);
+    MINI_CHECK(kinds(near, {Shape::Nurbs}) && near.curves[0].curve.is_closed() && within(near, 1e-8));
+}
+
+MINI_TEST("Intersection Analytic", "Apex") {
+    const Surface cone = surface(Kind::Cone, Point(0, 0, 0), Z, 1, pi / 6);
+    const Point apex(0, 0, -std::sqrt(3.0));
+    // Two cones whose section winds about one axis near its apex: the pcurve keeps to the section all the way.
+    const Surface first = surface(Kind::Cone, Point(-4.135657, -0.347133, 1.967461), Point(-0.103541, -0.077841, 0.991575), 0.920141, 0.538084);
+    const Surface second = surface(Kind::Cone, Point(-4.432875, -0.056893, 2.160909), Point(-0.460488, 0.722611, 0.515543), 0.984918, 0.444715);
+    const Result winding = surface_surface(first, second, 1e-7);
+    MINI_CHECK(!winding.curves.empty() && within(winding, 1e-8) && worst(first, second, winding) < 1e-8 && heaviest(winding) <= 300);
+    // A sphere through the apex across the cone: a loop on each side of it, cut there, with pcurves regular through it.
+    const Surface across = surface(Kind::Sphere, Point(1, 0, apex[2]), Z, 1);
+    const Result eight = surface_surface(across, cone, 1e-7);
+    MINI_CHECK(kinds(eight, {Shape::Nurbs, Shape::Nurbs}) && within(eight, 1e-8) && heaviest(eight) <= 60);
+    for (const Section& s : eight.curves)
+        MINI_CHECK(s.curve.point_at(s.curve.domain().first).distance(apex) < 1e-9 && s.curve.point_at(s.curve.domain().second).distance(apex) < 1e-9);
+    // A sphere that only reaches the apex: the apex alone, and a loop elsewhere.
+    const Result alone = surface_surface(surface(Kind::Sphere, Point(0.6, 0, apex[2] + 0.8), Z, 1), cone, 1e-7);
+    MINI_CHECK(kinds(alone, {Shape::Nurbs}, 1) && within(alone, 1e-8) && !alone.points[0].tangent && alone.points[0].point.distance(apex) < 1e-9);
+    // A cylinder that passes the apex by a hundred tolerances: the two branches stay apart, each turning sharply past it.
+    const Surface by = surface(Kind::Cylinder, Point(0, 0.4 + 1e-5, apex[2]), X, 0.4);
+    const Result past = surface_surface(by, cone, 1e-7);
+    MINI_CHECK(past.curves.size() >= 2 && within(past, 1e-8) && worst(by, cone, past) < 1e-8);
+    for (const Section& s : past.curves)
+        MINI_CHECK(s.curve.closest_point(apex).distance(apex) > 5e-6);
+}
+
+MINI_TEST("Intersection Analytic", "Pole") {
+    // A cylinder through the north pole of a sphere: the sections end exactly at the pole, with the angle they arrive at.
+    const Surface sphere = surface(Kind::Sphere, Point(0, 0, 0), Z, 2), cylinder = surface(Kind::Cylinder, Point(0, 0, 1.3), Point(1, 0.3, 0), 0.7);
+    for (double turn : {0.0, 1.3, 2.9}) {
+        const Xform motion = Xform::translation(0.4, turn, -1.1) * Xform::rotation(Vector(0.6, 0.2, -0.3 + turn), turn);
+        const Surface s = sphere.transformed(motion), c = cylinder.transformed(motion);
+        const Result r = surface_surface(s, c, 1e-7);
+        MINI_CHECK(kinds(r, {Shape::Nurbs, Shape::Nurbs}) && within(r, 1e-8) && worst(s, c, r) < 1e-8 && heaviest(r) <= 60);
+        int ends = 0;
+        for (const Section& section : r.curves)
+            for (double t : {section.curve.domain().first, section.curve.domain().second})
+                ends += std::abs(section.on_a.point_at(t)[1] - 0.5 * pi) < 1e-12 && s.point_at(section.on_a.point_at(t)[0], 0.5 * pi).distance(section.curve.point_at(t)) < 1e-12;
+        MINI_CHECK(ends == 4);
+    }
+    // Viviani's curve: through both poles and across itself on the equator, four arcs.
+    const Surface half = surface(Kind::Cylinder, Point(1, 0, 0), Z, 1);
+    const Result viviani = surface_surface(sphere, half, 1e-7);
+    MINI_CHECK(viviani.curves.size() == 4 && within(viviani, 1e-8) && heaviest(viviani) <= 40);
+}
+
+MINI_TEST("Intersection Analytic", "Light Sections") {
+    // Ordinary loops take a few dozen control points, the pcurves the same, all within a tenth of the tolerance.
+    const Surface sphere = surface(Kind::Sphere, Point(0.1, 0, 0), Z, 2), thin = surface(Kind::Cylinder, Point(0, 0, 0), Z, 0.7);
+    const Result loops = surface_surface(sphere, thin, 1e-7);
+    MINI_CHECK(kinds(loops, {Shape::Nurbs, Shape::Nurbs}) && within(loops, 1e-8) && heaviest(loops) <= 40);
+    const Surface wide = surface(Kind::Cylinder, Point(0, 0, 0), Z, 1.5), through = surface(Kind::Cylinder, Point(0.1, 0, 0.3), Point(1, 0.2, 0.1), 0.6);
+    const Result pierced = surface_surface(wide, through, 1e-7);
+    MINI_CHECK(kinds(pierced, {Shape::Nurbs, Shape::Nurbs}) && within(pierced, 1e-8) && heaviest(pierced) <= 60);
+    const Surface torus = surface(Kind::Torus, Point(0, 0, 0), Z, 3, 1), slanted = surface(Kind::Plane, Point(0, 0, 0.2), Point(1, 0, 1));
+    const Result spiric = surface_surface(slanted, torus, 1e-7);
+    MINI_CHECK(kinds(spiric, {Shape::Nurbs, Shape::Nurbs}) && within(spiric, 1e-8) && heaviest(spiric) <= 80);
+    // An ellipse on a cylinder and a hyperbola on a cone: exact sections, light pcurves.
+    const Result ellipse = surface_surface(surface(Kind::Plane, Point(0, 0, 0.3), Point(1, 0, 1)), wide, 1e-7);
+    MINI_CHECK(kinds(ellipse, {Shape::Ellipse}) && within(ellipse, 1e-8) && heaviest(ellipse) <= 40);
+}
+
+MINI_TEST("Intersection Analytic", "Exact Sections") {
+    // A cylinder and a cone about one sphere meet in two ellipses.
+    const double a = pi / 6;
+    const Surface cylinder = surface(Kind::Cylinder, Point(0, 0, 0), Z, 1);
+    const Vector tilt(std::sin(0.8), 0, std::cos(0.8));
+    const Surface around = Surface::cone(Point(0, 0, 0) + tilt * (-1 / std::sin(a) + 0.5 / std::tan(a)), tilt, Yv, 0.5, a, {0, 2 * pi, -10, 10});
+    const Result ellipses = surface_surface(cylinder, around, 1e-7);
+    MINI_CHECK(kinds(ellipses, {Shape::Ellipse, Shape::Ellipse}) && within(ellipses, 1e-8) && worst(cylinder, around, ellipses) < 1e-8);
+    // A cone that touches the cylinder along a ruling through its apex: the ruling, cut at the apex and tangent, and an ellipse.
+    const Vector lean(-std::sin(a), 0, std::cos(a));
+    const Surface touching = Surface::cone(Point(1, 0, -2) + lean * (0.5 / std::tan(a)), lean, Yv, 0.5, a, {0, 2 * pi, -10, 10});
+    const Result ruling = surface_surface(cylinder.transformed(Xform::rotation_z(0.3)), touching.transformed(Xform::rotation_z(0.3)), 1e-7);
+    MINI_CHECK(kinds(ruling, {Shape::Line, Shape::Line, Shape::Ellipse}) && ruling.curves[0].tangent && ruling.curves[1].tangent && !ruling.curves[2].tangent && within(ruling, 1e-8));
+    // Cones from one apex share two rulings, each cut at the apex.
+    const Surface upright = surface(Kind::Cone, Point(0, 0, 0), Z, 1, 0.4);
+    const Vector slant(std::sin(0.5), 0, std::cos(0.5));
+    const Surface leaning = Surface::cone(Point(0, 0, -1 / std::tan(0.4)) + slant * (0.5 / std::tan(0.3)), slant, Yv, 0.5, 0.3, {0, 2 * pi, -10, 10});
+    const Result rulings = surface_surface(upright, leaning, 1e-7);
+    MINI_CHECK(kinds(rulings, {Shape::Line, Shape::Line, Shape::Line, Shape::Line}) && within(rulings, 1e-12) && straight(rulings.curves[0].on_a) && straight(rulings.curves[0].on_b));
+}
+
+MINI_TEST("Intersection Analytic", "Curve Torus Touching") {
+    const Surface torus = surface(Kind::Torus, Point(0, 0, 0), Z, 3, 1);
+    for (double turn : {0.0, 0.9, 2.2}) {
+        const Xform motion = Xform::translation(turn, 0.5, -0.2) * Xform::rotation(Vector(0.1 + turn, 0.4, 0.7), turn);
+        const Surface t = torus.transformed(motion);
+        // A circle, an ellipse and a line that touch the outer equator at (4, 0, 0), the conics where their parameter starts.
+        for (const Curve& c : {Curve::circle(Point(5.5, 0, 0), Xv * -1.0, Yv, 1.5), Curve::ellipse(Point(6.5, 0, 0), Xv * -1.0, Yv, 2.5, 1.1), Curve::line(Point(4, -3, -1.5), Vector(0, 2, 1), 0, 8)}) {
+            const Result touch = curve_surface(c.transformed(motion), t, 1e-7);
+            MINI_CHECK(touch.done && touch.points.size() == 1 && touch.points[0].tangent && touch.points[0].point.distance(Point(4, 0, 0).transformed(motion)) < 1e-6);
+        }
+        // Pushed in by more than the tolerance the circle crosses twice, close together.
+        const Result crossing = curve_surface(Curve::circle(Point(5.5 - 1e-5, 0, 0), Xv * -1.0, Yv, 1.5).transformed(motion), t, 1e-7);
+        MINI_CHECK(crossing.points.size() == 2 && !crossing.points[0].tangent && !crossing.points[1].tangent && crossing.points[0].point.distance(crossing.points[1].point) < 0.02);
+    }
 }
 
 MINI_TEST("Intersection Analytic", "Curve Surface") {
