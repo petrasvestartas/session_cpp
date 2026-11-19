@@ -181,7 +181,7 @@ Curve2d pcurve(const Curve& curve, const Conic* conic, const Surface& surface, d
         const std::vector<xyz> points = singular(surface);
         return std::any_of(points.begin(), points.end(), [&](const xyz& q) { return (xyz(curve.point_at(t)) - q).length() <= tol; });
     };
-    const double inset = pole(t0) || pole(t1) ? 1e-7 * (t1 - t0) : 0.0;
+    const double inset = pole(t0) || pole(t1) ? 1e-11 * (t1 - t0) : 0.0;
     const auto lift = [&](const Curve& c, const Surface& on, double t) { return intersection_analytic::lift(c, on, t, inset); };
     // Straight at unit speed, judged between two points inside the range.
     const double ta = t0 + 0.25 * (t1 - t0), tb = t0 + 0.75 * (t1 - t0);
@@ -314,6 +314,7 @@ struct Builder {
     Form a, b;
     double tol;
     Result result;
+    std::vector<Conic> circles;
 
     // The parameters where an open section passes the boxes of both surfaces' domains.
     std::pair<double, double> reach(const Conic& c) const {
@@ -414,9 +415,78 @@ struct Builder {
         result.curves.push_back(std::move(made));
     }
 
-    // A section given by its points along a key: a NURBS curve through them, with points added where it leaves the surfaces by
-    // more than a tenth of the tolerance; its measured distance from them goes with it.
+    // A section given by its points along a key. A circle (the Villarceau circles of a torus) is returned as one, once; anything
+    // else as a least-squares NURBS curve of degree five with as few control points as keep it within a tenth of the tolerance
+    // of both surfaces, its measured distance from them going with it.
     void fitted(const std::function<xyz(double)>& at, double k0, double k1) {
+        const auto off = [&](const xyz& p) { return std::max(std::abs(a.distance(p)), std::abs(b.distance(p))); };
+        // Points evenly along the curve, not along the key: the keys are respaced by the length run so far, twice.
+        const int m = 1024;
+        std::vector<double> keys(m + 1);
+        for (int i = 0; i <= m; ++i)
+            keys[i] = k0 + (k1 - k0) * i / m;
+        std::vector<Point> samples(m + 1);
+        for (int pass = 0; pass < 3; ++pass) {
+            std::vector<double> run(m + 1, 0.0);
+            for (int i = 0; i <= m; ++i) {
+                samples[i] = Point(at(keys[i]));
+                if (i)
+                    run[i] = run[i - 1] + samples[i].distance(samples[i - 1]);
+            }
+            if (pass == 2 || !(run[m] > 0))
+                break;
+            std::vector<double> even(m + 1);
+            for (int i = 0, j = 0; i <= m; ++i) {
+                const double want = run[m] * i / m;
+                while (j + 1 < m && run[j + 1] < want)
+                    ++j;
+                even[i] = keys[j] + (keys[j + 1] - keys[j]) * (run[j + 1] > run[j] ? (want - run[j]) / (run[j + 1] - run[j]) : 0.0);
+            }
+            even[0] = k0, even[m] = k1;
+            keys = even;
+        }
+        const xyz p0(samples[m / 6]), p1(samples[m / 2]), p2(samples[5 * m / 6]), normal = unit((p1 - p0).cross(p2 - p0));
+        if (normal.length() > 0) {
+            // The circle through three points inside the arc (its ends may be crossings, known less well): its centre is where the
+            // two chords' middle planes meet its plane.
+            const xyz u = p1 - p0, v = p2 - p0;
+            const double uu = u.dot(u), vv = v.dot(v), uv = u.dot(v), det = 2 * (uu * vv - uv * uv);
+            const xyz centre = p0 + u * (vv * (uu - uv) / det) + v * (uu * (vv - uv) / det);
+            const double radius = (p0 - centre).length();
+            const Conic circle = make(ConicKind::Circle, centre, unit(p0 - centre), normal, radius);
+            bool round = true;
+            for (int i = 0; i <= m && round; i += 16)
+                round = std::abs((xyz(samples[i]) - centre).length() - radius) <= 10 * tol && std::abs((xyz(samples[i]) - centre).dot(normal)) <= 10 * tol;
+            for (int i = 0; i < 64 && round; ++i)
+                round = off(circle.point(two_pi * i / 64)) <= 0.1 * tol;
+            if (round) {
+                const bool known = std::any_of(circles.begin(), circles.end(), [&](const Conic& c) { return (c.frame.o - centre).length() <= tol && std::abs(c.radius - radius) <= tol && c.frame.z.cross(normal).length() <= 1e-9; });
+                if (!known)
+                    circles.push_back(circle), curve(circle);
+                return;
+            }
+        }
+        NurbsCurve fit;
+        double reached = infinity;
+        for (int count = 12; count <= 96; count += std::max(4, count / 3)) {
+            const NurbsCurve trial = NurbsCurve::create_fitted(samples, count, 5);
+            if (!trial.is_valid())
+                continue;
+            double worst = 0.0;
+            for (int i = 0; i <= 16 * count; ++i)
+                worst = std::max(worst, off(xyz(trial.point_at(trial.domain_start() + (trial.domain_end() - trial.domain_start()) * i / (16 * count)))));
+            if (worst < reached)
+                fit = trial, reached = worst;
+            if (worst <= 0.1 * tol)
+                break;
+        }
+        if (reached <= 0.1 * tol)
+            return add(Curve(fit), nullptr, false, reached);
+        // Too sharp for a light fit: interpolated through as many points as it takes.
+        interpolated(at, k0, k1);
+    }
+
+    void interpolated(const std::function<xyz(double)>& at, double k0, double k1) {
         const auto off = [&](const Point& p) { return std::max(std::abs(a.distance(xyz(p))), std::abs(b.distance(xyz(p)))); };
         std::vector<double> keys;
         for (int i = 0; i <= 48; ++i)
@@ -486,6 +556,32 @@ struct Builder {
             }
             return 0.5 * (lo + hi);
         };
+        // Where the discriminant touches zero from above two branches cross: the section is cut there into simple arcs.
+        const double top = *std::max_element(d.begin(), d.end()), golden = 0.5 * (std::sqrt(5.0) - 1.0);
+        std::vector<double> crossings;
+        for (int i = 0; i < n; ++i) {
+            const double before = d[i > 0 ? i - 1 : n - 1], after = d[i + 1];
+            if (!(d[i] >= 0 && before >= d[i] && after > d[i] && before >= 0 && after >= 0 && d[i] <= 1e-4 * top))
+                continue;
+            double lo = two_pi * (i - 1) / n, hi = two_pi * (i + 1) / n;
+            for (int it = 0; it < 80; ++it) {
+                const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
+                const bool left = pencil.discriminant(m1) < pencil.discriminant(m2);
+                (left ? hi : lo) = left ? m2 : m1;
+            }
+            const double angle = 0.5 * (lo + hi);
+            if ((pencil.point(angle, 1) - pencil.point(angle, -1)).length() <= tol)
+                crossings.push_back(turn(angle));
+        }
+        std::sort(crossings.begin(), crossings.end());
+        // A closed chain over a turn of its key, cut at the given keys.
+        const auto arcs = [&](const std::function<xyz(double)>& at, std::vector<double> cuts) {
+            std::sort(cuts.begin(), cuts.end());
+            if (cuts.empty())
+                return chain(at, 0.0, two_pi);
+            for (size_t i = 0; i < cuts.size(); ++i)
+                chain(at, cuts[i], i + 1 < cuts.size() ? cuts[i + 1] : cuts[0] + two_pi);
+        };
         std::vector<double> rise, fall;
         for (int i = 0; i < n; ++i) {
             if (d[i] < 0 && d[i + 1] >= 0)
@@ -493,22 +589,36 @@ struct Builder {
             if (d[i] >= 0 && d[i + 1] < 0)
                 fall.push_back(zero(two_pi * i / n, two_pi * (i + 1) / n));
         }
+        // A dip of the discriminant below zero that closes within the tolerance is a crossing met with rounding, not a turn.
+        bool dips = !rise.empty() && rise.size() == fall.size();
+        std::vector<double> met;
+        for (size_t i = 0; i < rise.size() && dips; ++i) {
+            double from = -infinity;
+            for (double f : fall)
+                from = std::max(from, f < rise[i] ? f : f - two_pi);
+            dips = (pencil.point(from, 0) - pencil.point(rise[i], 0)).length() <= tol && rise[i] - from < 0.1;
+            met.push_back(turn(0.5 * (from + rise[i])));
+        }
+        if (dips) {
+            crossings.insert(crossings.end(), met.begin(), met.end());
+            std::sort(crossings.begin(), crossings.end());
+            rise.clear();
+        }
         if (rise.empty()) {
-            if (d[0] >= 0) {
+            if (d[0] >= 0 || dips) {
                 for (int branch : {-1, 1})
-                    chain([&, branch](double angle) { return pencil.point(angle, branch); }, 0.0, two_pi);
+                    arcs([&, branch](double angle) { return pencil.point(angle, branch); }, crossings);
                 return;
             }
             // Never two points: where the discriminant comes nearest to zero the surfaces may touch.
             const int top = static_cast<int>(std::max_element(d.begin(), d.end()) - d.begin());
             double lo = two_pi * (top - 1) / n, hi = two_pi * (top + 1) / n;
-            const double golden = 0.5 * (std::sqrt(5.0) - 1.0);
             for (int it = 0; it < 80; ++it) {
                 const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
                 const bool left = pencil.discriminant(m1) > pencil.discriminant(m2);
                 (left ? hi : lo) = left ? m2 : m1;
             }
-            const xyz p = pencil.point(0.5 * (lo + hi), 1);
+            const xyz p = pencil.point(0.5 * (lo + hi), 0);
             if (std::isfinite(p.x) && std::abs(a.distance(p)) <= tol && std::abs(b.distance(p)) <= tol && inside(p))
                 point(p, true);
             return;
@@ -520,13 +630,20 @@ struct Builder {
             // Out on one branch and back on the other, evenly in the angle of a half turn so that the ends, where the root
             // goes as a square root, are sampled finely; a loop no larger than the tolerance is a touching point.
             const std::function<xyz(double)> loop = [&, from, to](double key) {
-                return pencil.point(0.5 * (from + to) - 0.5 * (to - from) * std::cos(key), std::abs(std::sin(key)) < 1e-12 ? 0 : key < M_PI ? 1 : -1);
+                return pencil.point(0.5 * (from + to) - 0.5 * (to - from) * std::cos(key), std::abs(std::sin(key)) < 1e-12 ? 0 : std::sin(key) > 0 ? 1 : -1);
             };
+            // A crossing inside the stretch is met once on the way out and once on the way back.
+            std::vector<double> cuts;
+            for (double crossing : crossings) {
+                const double angle = crossing < from ? crossing + two_pi : crossing, cosine = (0.5 * (from + to) - angle) / (0.5 * (to - from));
+                if (std::abs(cosine) < 1.0)
+                    cuts.insert(cuts.end(), {std::acos(cosine), two_pi - std::acos(cosine)});
+            }
             if ((loop(0.0) - loop(M_PI)).length() <= tol && (loop(0.5 * M_PI) - loop(1.5 * M_PI)).length() <= tol) {
                 if (inside(loop(0.0)))
                     point(loop(0.0), true);
             } else {
-                chain(loop, 0.0, two_pi);
+                arcs(loop, cuts);
             }
         }
     }
@@ -758,7 +875,7 @@ Result surface_surface(const Surface& first, const Surface& second, double toler
     Result none;
     if (first.kind() == Surface::Kind::Nurbs || second.kind() == Surface::Kind::Nurbs)
         return none;
-    Builder out{first, second, form(first), form(second), tolerance, {}};
+    Builder out{first, second, form(first), form(second), tolerance, {}, {}};
     const Form &a = out.a, &b = out.b;
     Result& r = out.result;
     r.done = true;
