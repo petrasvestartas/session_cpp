@@ -106,7 +106,7 @@ void require(bool condition, const std::string& message) {
 
 const NurbsCurve& world(const Source& source) {
     const BRepEdge& edge = source.brep->m_edges[source.edge];
-    return source.brep->m_curves_3d[edge.curve_3d_index];
+    return source.brep->m_curves_3d[edge.curve_3d_index].nurbs();
 }
 
 bool degenerated(const Source& source) {
@@ -350,7 +350,7 @@ Piece add_piece(Assembly& assembly, size_t index, double a, double b) {
                 continue;
 
             const BRepEdge& edge = assembly.result.m_edges[candidate.edge];
-            const NurbsCurve& stored = assembly.result.m_curves_3d[edge.curve_3d_index];
+            const NurbsCurve& stored = assembly.result.m_curves_3d[edge.curve_3d_index].nurbs();
             bool reverse = false;
             const VertexCaps caps{&assembly.result.m_vertices[edge.start_vertex],
                 &assembly.result.m_vertices[edge.end_vertex]};
@@ -390,7 +390,7 @@ int surface_index(Assembly& assembly, const FaceUse& face) {
         if (surface.brep == face.brep && surface.source == index)
             return surface.target;
 
-    const int target = assembly.result.add_surface(face.brep->m_surfaces[index]);
+    const int target = assembly.result.add_surface(face.brep->m_surfaces[index].nurbs());
     assembly.surfaces.push_back({face.brep, index, target});
     return target;
 }
@@ -445,8 +445,8 @@ bool source_parameterized(
     for (const auto& relation : source.parameters)
         if (relation.pcurve == pcurve && relation.surface == surface)
             return relation.matched;
-    const bool matched = curve_surface_intersection::same_parameter(world(source), source.brep->m_curves_2d[pcurve],
-        source.brep->m_surfaces[surface], tolerance) == curve_surface_intersection::ParameterMatch::Matched;
+    const bool matched = curve_surface_intersection::same_parameter(world(source), source.brep->m_curves_2d[pcurve].nurbs(),
+        source.brep->m_surfaces[surface].nurbs(), tolerance) == curve_surface_intersection::ParameterMatch::Matched;
     source.parameters.push_back({pcurve, surface, matched});
     return matched;
 }
@@ -474,11 +474,11 @@ NurbsCurve piece_pcurve(
 ) {
     const int index = source.brep->pcurve_index(source.edge, face.face, use.orientation);
     require(index >= 0, "selected face has no edge pcurve");
-    NurbsCurve result = source.brep->m_curves_2d[index];
+    NurbsCurve result = source.brep->m_curves_2d[index].nurbs();
     if (!degenerated(source)) {
         const NurbsCurve& curve = world(source);
         const int surface_index = source.brep->m_faces[face.face].surface_index;
-        const NurbsSurface& surface = source.brep->m_surfaces[surface_index];
+        const NurbsSurface& surface = source.brep->m_surfaces[surface_index].nurbs();
         const double lo = result.domain_start();
         const double ga = corresponding_parameter(curve, result, piece.first);
         const double gb = corresponding_parameter(curve, result, piece.last);
@@ -575,8 +575,8 @@ void attach_pcurve(
     NurbsCurve pcurve = curve;
     if (!boundary.degenerated) {
         const double recorded = boundary.tolerance;
-        pcurve = parameterized_pcurve(assembly.result.m_curves_3d[boundary.curve_3d_index],
-            pcurve, assembly.result.m_surfaces[surface], boundary.tolerance);
+        pcurve = parameterized_pcurve(assembly.result.m_curves_3d[boundary.curve_3d_index].nurbs(),
+            pcurve, assembly.result.m_surfaces[surface].nurbs(), boundary.tolerance);
         // OCCT's CorrectVertexTolerance: the vertices of a grown edge are at least as loose as it.
         for (const int end : {boundary.start_vertex, boundary.end_vertex})
             if (boundary.tolerance > recorded)
@@ -591,7 +591,7 @@ void attach_pcurve(
                 if (record.curve_2d_index_2 >= 0 || first.orientation == orientation) {
                     const int previous = record.curve_2d_index_2 >= 0 && orientation == reversed ?
                         record.curve_2d_index_2 : record.curve_2d_index;
-                    require(same_uv_trace(assembly.result.m_curves_2d[previous], pcurve),
+                    require(same_uv_trace(assembly.result.m_curves_2d[previous].nurbs(), pcurve),
                         "distinct pcurve branches share one edge orientation");
                     return;
                 }
@@ -654,7 +654,7 @@ void drop_point_edges(Assembly& assembly, const std::vector<BRepOrientation>& or
         const BRepEdge& candidate = brep.m_edges[edge];
         if (candidate.degenerated || candidate.start_vertex != candidate.end_vertex)
             continue;
-        const NurbsCurve& curve = brep.m_curves_3d[candidate.curve_3d_index];
+        const NurbsCurve& curve = brep.m_curves_3d[candidate.curve_3d_index].nurbs();
         if (!within_vertex(curve, curve.domain_start(), curve.domain_end(), assembly.tolerance))
             continue;
         int uses = 0;
@@ -709,9 +709,9 @@ Vector face_binormal(const BRep& brep, int edge, const BRepRef& use,
     const BRepOrientation local = brep_compose(orientations[use.index], use.orientation);
     const int index = brep.pcurve_index(edge, use.index, local);
     require(index >= 0, "missing pcurve at a multi-face edge");
-    const NurbsCurve& curve = brep.m_curves_2d[index];
+    const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
     const Point uv = curve.point_at_middle();
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index].nurbs();
     const auto derivatives = surface.evaluate(uv[0], uv[1], 1);
     require(derivatives.size() == 3, "undefined normal at a multi-face edge");
     Vector normal = derivatives[2].cross(derivatives[1]);
@@ -731,7 +731,7 @@ bool rectangular_trim(const BRep& brep, int face) {
     const BRepFace& region = brep.m_faces[face];
     if (region.wires.size() != 1)
         return false;
-    const NurbsSurface& surface = brep.m_surfaces[region.surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[region.surface_index].nurbs();
     if (surface.dimension() != 3)
         return false;
     const std::vector<BRepRef> uses = brep.wire_edges(region.wires.front());
@@ -745,7 +745,7 @@ bool rectangular_trim(const BRep& brep, int face) {
         const int index = brep.pcurve_index(use.index, face, use.orientation);
         if (index < 0)
             return false;
-        const NurbsCurve& pc = brep.m_curves_2d[index];
+        const NurbsCurve& pc = brep.m_curves_2d[index].nurbs();
         if (pc.degree() != 1 || pc.cv_count() != 2 || pc.is_rational())
             return false;
         const Point a = pc.get_cv(use.orientation == forward ? 0 : 1);
@@ -832,12 +832,12 @@ bool seam_domain(const BRep& brep, int edge, const BRepRef& use,
                        const Point& start, const Point& end, double height, TransverseDomain& region) {
     if (!rectangular_trim(brep, use.index))
         return false;
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index].nurbs();
     const BRepOrientation local = brep_compose(orientations[use.index], use.orientation);
     const int index = brep.pcurve_index(edge, use.index, local);
     if (index < 0)
         return false;
-    const NurbsCurve& pc = brep.m_curves_2d[index];
+    const NurbsCurve& pc = brep.m_curves_2d[index].nurbs();
     const Point a = pc.get_cv(0), b = pc.get_cv(1);
     const int generator = a[0] == b[0] ? 1 : a[1] == b[1] ? 0 : -1;
     if (generator < 0)
@@ -869,7 +869,7 @@ bool transverse_prefix(const BRep& brep, int edge, const BRepRef& use,
     TransverseDomain region;
     if (!seam_domain(brep, edge, use, orientations, axis, start, end, height, region))
         return false;
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.index].surface_index].nurbs();
     const std::vector<nurbs_interval::Homogeneous> data = nurbs_interval::surface_controls(surface, region.rectangle, {0, 0, 0});
     const int first = (axis + 1) % 3, second = (axis + 2) % 3;
     for (int i = 0; i <= surface.degree(region.angular); ++i) {
@@ -958,7 +958,7 @@ bool certified_transverse_directions(const BRep& brep, int edge, const std::vect
                                     const std::vector<BRepOrientation>& orientations, std::vector<Vector>& directions) {
     if (uses.size() != 4)
         return false;
-    const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
+    const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs();
     if (world.dimension() != 3 || world.degree() != 1 || world.cv_count() != 2 || world.is_rational())
         return false;
     const Point start = world.get_cv(0), end = world.get_cv(1), origin = world.point_at_middle();
@@ -1030,7 +1030,7 @@ std::vector<int> edge_mates(const BRep& brep, int edge, const std::vector<BRepRe
                            const std::vector<BRepOrientation>& orientations) {
     if (uses.size() == 2)
         return {1, 0};
-    const NurbsCurve& curve = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
+    const NurbsCurve& curve = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs();
     Vector tangent = curve.evaluate(curve.domain_middle(), 1)[1];
     require(tangent.normalize_self(), "singular tangent at a multi-face edge");
     std::vector<Vector> directions;
@@ -1081,7 +1081,7 @@ void build_shells(BRep& brep, const std::vector<BRepOrientation>& orientations) 
 }
 
 bool interior_uv(const brep_classify::Solid& solid, int face, const Point& uv) {
-    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double scale = std::max({std::abs(u.first), std::abs(u.second), std::abs(v.first),
@@ -1093,7 +1093,7 @@ template <typename Probe>
 bool visit_face_parameters(const brep_classify::Solid& solid, int face, Probe&& probe) {
     const BRep& brep = solid.brep;
     const BRepFace& boundary = brep.m_faces[face];
-    const NurbsSurface& surface = brep.m_surfaces[boundary.surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[boundary.surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     for (int i = 1; i < 8; ++i)
@@ -1107,7 +1107,7 @@ bool visit_face_parameters(const brep_classify::Solid& solid, int face, Probe&& 
     for (const BRepRef& edge : brep.wire_edges(boundary.wires.front())) {
         const int index = brep.pcurve_index(edge.index, face, edge.orientation);
         require(index >= 0, "missing probe pcurve");
-        const NurbsCurve& curve = brep.m_curves_2d[index];
+        const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
         const Point midpoint = curve.point_at_middle();
         const Vector tangent = curve.evaluate(curve.domain_middle(), 1)[1];
         Vector normal(-tangent[1], tangent[0], 0.0);
@@ -1131,7 +1131,7 @@ std::array<nurbs_interval::Interval, 3> shell_bounds(const BRep& brep, int shell
     std::array<nurbs_interval::Interval, 3> bounds;
     bool first = true;
     for (const BRepRef& face : brep.m_shells[shell].faces) {
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index].nurbs();
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j) {
                 double x, y, z, w;
@@ -1191,7 +1191,7 @@ bool outward(const brep_classify::Solid& solid, int shell, const std::array<nurb
     for (int d = 0; d < 3; ++d)
         reach = std::max(reach, bounds[d].hi - bounds[d].lo);
     for (const BRepRef& face : brep.m_shells[shell].faces) {
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index].nurbs();
         bool orientation = false;
         const bool resolved = visit_face_parameters(solid, face.index, [&](const Point& uv) {
             const Point target = surface.point_at(uv[0], uv[1]);
@@ -1257,7 +1257,7 @@ void nest_shells(BRep& brep, double tolerance, std::vector<OrientationAttempt>* 
             // Shared-boundary probes do not establish a relation; only the existing
             // strict solid classifier can accept a later interior-face proposal.
             for (const BRepRef& face : brep.m_shells[i].faces) {
-                const NurbsSurface& support = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+                const NurbsSurface& support = brep.m_surfaces[brep.m_faces[face.index].surface_index].nurbs();
                 if (visit_face_parameters(solid, face.index, [&](const Point& uv) {
                     const Point point = support.point_at(uv[0], uv[1]);
                     state = clear(point) ? brep_classify::State::Outside : brep_classify::point(solid, point, tolerance);

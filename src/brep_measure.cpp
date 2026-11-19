@@ -204,7 +204,7 @@ Frame frame(const BRep& brep) {
     for (const BRepSolid& solid : brep.m_solids)
         for (const BRepRef& shell : solid.shells)
             for (const BRepRef& face : brep.m_shells[shell.index].faces) {
-                const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index];
+                const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face.index].surface_index].nurbs();
                 for (int i = 0; i < surface.cv_count(0); ++i)
                     for (int j = 0; j < surface.cv_count(1); ++j) {
                         if (!(surface.weight(i, j) > 0.0))
@@ -508,7 +508,7 @@ int rectangle_orientation(const BRep& brep, int face, const NurbsSurface& surfac
         const int index = brep.pcurve_index(edge.index, face, edge.orientation);
         if (index < 0)
             return 0;
-        const NurbsCurve& curve = brep.m_curves_2d[index];
+        const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
         if (curve.degree() != 1 || curve.cv_count() != 2 || !(curve.weight(0) > 0) || !(curve.weight(1) > 0))
             return 0;
         const bool reverse = edge.orientation == BRepOrientation::Reversed;
@@ -604,8 +604,8 @@ double gauge_error(const BRep& brep, int face, const NurbsSurface& surface, doub
             const int ni = brep.pcurve_index(next.index, face, next.orientation);
             if (pi < 0 || ni < 0)
                 return INFINITY;
-            const auto& pc = brep.m_curves_2d[pi];
-            const auto& nc = brep.m_curves_2d[ni];
+            const auto& pc = brep.m_curves_2d[pi].nurbs();
+            const auto& nc = brep.m_curves_2d[ni].nurbs();
             const double pt =
                 previous.orientation == BRepOrientation::Reversed ? pc.domain_start() : pc.domain_end();
             const double nt =
@@ -674,7 +674,7 @@ std::array<double, 4> trim_hull(const BRep& brep, int face, const NurbsSurface& 
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 return entire;
-            const auto& curve = brep.m_curves_2d[index];
+            const auto& curve = brep.m_curves_2d[index].nurbs();
             for (int i = 0; i < curve.cv_count(); ++i) {
                 const double w = curve.weight(i);
                 if (!std::isfinite(w) || w <= 0)
@@ -697,7 +697,7 @@ std::array<double, 4> trim_hull(const BRep& brep, int face, const NurbsSurface& 
 
 double face_volume(const BRep& brep, int face, const Frame& frame, double tolerance, Work& work, PrimitiveMemo& memo, Sums& sums, bool cached = true) {
     const BRepFace& boundary = brep.m_faces[face];
-    const NurbsSurface surface = local_surface(brep.m_surfaces[boundary.surface_index], frame);
+    const NurbsSurface surface = local_surface(brep.m_surfaces[boundary.surface_index].nurbs(), frame);
     SurfaceEvaluator evaluator(surface);
     const int rectangle = rectangle_orientation(brep, face, surface);
     if (!surface.is_rational() && rectangle && surface.degree(0) <= 21 && surface.degree(1) <= 21)
@@ -748,7 +748,7 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native BRep volume requires every face pcurve");
-            const NurbsCurve& curve = brep.m_curves_2d[index];
+            const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
             auto known = sums.pieces.find({index, boundary.surface_index});
             if (known == sums.pieces.end())
                 known = sums.pieces.emplace(std::pair<int, int>{index, boundary.surface_index}, boundary_parameters(curve, evaluator.knots)).first;

@@ -1794,8 +1794,8 @@ MINI_TEST("Intersection", "Surface Surface Torus Cone Crossing Both Seams") {
         * Xform::rotation(Vector(-0.1271026972681284, -0.51114680897444487, -0.38804439967498183), -2.2317521455697715));
     int pieces = 0;
 
-    for (const NurbsSurface& a : torus.m_surfaces)
-        for (const NurbsSurface& b : cone.m_surfaces)
+    for (const NurbsSurface& a : nurbs(torus.m_surfaces))
+        for (const NurbsSurface& b : nurbs(cone.m_surfaces))
             for (const std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>& section : Intersection::surface_surface(a, b, 1e-8, true)) {
                 ++pieces;
                 for (double t : {std::get<0>(section).domain_start(), std::get<0>(section).domain_end()}) {
@@ -3799,7 +3799,7 @@ namespace session_cpp {
 MINI_TEST("Intersection", "Original Collapsed Pole Endpoints Keep One Sided Meridian Chart") {
     const double tolerance = 1e-7;
     for (int variant = 0; variant < 3; ++variant) {
-        auto sphere = BRep::create_sphere(2).m_surfaces[0];
+        auto sphere = BRep::create_sphere(2).m_surfaces[0].nurbs();
         if (variant == 1) {
             MINI_CHECK(sphere.set_domain(0,32,35));
             MINI_CHECK(sphere.set_domain(1,-7,13));
@@ -3842,7 +3842,7 @@ MINI_TEST("Intersection", "Tilted Plane Through Sphere Keeps Small Pcurves") {
     // using session_cpp::NurbsSurface;
     // using session_cpp::Point;
     const double tolerance = 1e-7;
-    const NurbsSurface sphere = BRep::create_sphere(2).m_surfaces[0];
+    const NurbsSurface sphere = BRep::create_sphere(2).m_surfaces[0].nurbs();
     const NurbsSurface plane = bilinear(Point(-3, -3, -0.9), Point(-3, 3, 0.3), Point(3, -3, -0.2), Point(3, 3, 1.0));
     const auto sections = Intersection::surface_surface(sphere, plane, tolerance);
     MINI_CHECK(!sections.empty());
@@ -3866,7 +3866,7 @@ MINI_TEST("Intersection", "Tilted Plane Through Torus Keeps Small Pcurves") {
     // using session_cpp::NurbsSurface;
     // using session_cpp::Point;
     const double tolerance = 1e-7;
-    const NurbsSurface torus = BRep::create_torus(1.0, 0.3).m_surfaces[0];
+    const NurbsSurface torus = BRep::create_torus(1.0, 0.3).m_surfaces[0].nurbs();
     const NurbsSurface plane = bilinear(Point(-3, -3, -0.9), Point(-3, 3, 0.3), Point(3, -3, -0.2), Point(3, 3, 1.0));
     const auto sections = Intersection::surface_surface(torus, plane, tolerance);
     MINI_CHECK(!sections.empty());
@@ -3897,11 +3897,11 @@ MINI_TEST("Intersection", "Marched Section Keeps Small Curves") {
     cone.transform(Xform::translation(0.33642515733372419, -0.15612716018222272, -0.23085594603326173)
         * Xform::rotation(Vector(-0.1271026972681284, -0.51114680897444487, -0.38804439967498183), -2.2317521455697715));
     int control_points = 0;
-    for (const NurbsSurface& side : cone.m_surfaces) {
+    for (const NurbsSurface& side : nurbs(cone.m_surfaces)) {
         if (side.is_planar(nullptr, 1e-9))
             continue;
         // Three control points for each span of a quintic joined C2, where pieces that only meet take five.
-        for (const auto& [world, on_torus, on_cone] : Intersection::surface_surface(torus.m_surfaces[0], side, 1e-8, true)) {
+        for (const auto& [world, on_torus, on_cone] : Intersection::surface_surface(torus.m_surfaces[0].nurbs(), side, 1e-8, true)) {
             control_points += world.cv_count();
             for (const NurbsCurve* curve : {&world, &on_torus, &on_cone})
                 MINI_CHECK(curve->cv_count() <= 3 * static_cast<int>(curve->get_span_vector().size()));

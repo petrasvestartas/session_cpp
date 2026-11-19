@@ -22,7 +22,7 @@ void require(bool condition, const char* message) {
 }
 
 const NurbsCurve& world(const BRep& source, int edge) {
-    return source.m_curves_3d[source.m_edges[edge].curve_3d_index];
+    return source.m_curves_3d[source.m_edges[edge].curve_3d_index].nurbs();
 }
 
 NurbsCurve normalized(NurbsCurve curve) {

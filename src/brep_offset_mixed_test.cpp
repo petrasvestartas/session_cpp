@@ -213,10 +213,10 @@ void save_failure(const std::string& name, const brep_assemble::ParameterError& 
 void check_boundaries(const BRep& shape, double tolerance) {
     for (const BRepEdge& edge : shape.m_edges) {
         MINI_CHECK(!edge.degenerated && edge.pcurves.size() == 2);
-        const NurbsCurve& world = shape.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = shape.m_curves_3d[edge.curve_3d_index].nurbs();
         for (const BRepCurveOnSurface& relation : edge.pcurves) {
-            const NurbsCurve& pcurve = shape.m_curves_2d[relation.curve_2d_index];
-            const NurbsSurface& surface = shape.m_surfaces[relation.surface_index];
+            const NurbsCurve& pcurve = shape.m_curves_2d[relation.curve_2d_index].nurbs();
+            const NurbsSurface& surface = shape.m_surfaces[relation.surface_index].nurbs();
             MINI_CHECK(curve_surface_intersection::same_parameter(world, pcurve, surface, tolerance)
                 == curve_surface_intersection::ParameterMatch::Matched);
         }

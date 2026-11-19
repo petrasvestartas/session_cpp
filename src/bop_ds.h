@@ -117,8 +117,8 @@ struct DS {
     std::vector<std::string> log; // interferences that were found but not used, and refused geometry
 
     const BRep& brep(int operand) const { return *operands[operand]; }
-    const NurbsCurve& curve_of(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index]; }
-    const NurbsSurface& surface_of(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index]; }
+    const NurbsCurve& curve_of(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index].nurbs(); }
+    const NurbsSurface& surface_of(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index].nurbs(); }
     int real(int v) const {
         while (vertices[v].sd >= 0)
             v = vertices[v].sd;

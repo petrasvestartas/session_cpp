@@ -102,7 +102,7 @@ struct Builder {
                         if (!e.degenerated && ds.micro(block))
                             continue;
                         loop.push_back(static_cast<int>(list.size()));
-                        list.push_back(use_of(b, back, trimmed(brep.m_curves_2d[index], {e.t0, e.t1},
+                        list.push_back(use_of(b, back, trimmed(brep.m_curves_2d[index].nurbs(), {e.t0, e.t1},
                             back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false, f));
                     }
                 }
@@ -343,7 +343,7 @@ struct Builder {
         const int source = brep.m_faces[f.local].surface_index;
         auto found = surface_image.find({f.operand, source});
         if (found == surface_image.end())
-            found = surface_image.emplace(std::make_pair(f.operand, source), result.add_surface(brep.m_surfaces[source])).first;
+            found = surface_image.emplace(std::make_pair(f.operand, source), result.add_surface(brep.m_surfaces[source].nurbs())).first;
         std::vector<BRepRef> wires;
         for (const auto& loop : piece.loops) {
             std::vector<BRepRef> refs;
@@ -390,7 +390,7 @@ struct Builder {
             std::vector<NurbsCurve> forward = pair[0], back = pair[1];
             if (forward.empty())
                 std::swap(forward, back);
-            const NurbsSurface& s = result.m_surfaces[surface];
+            const NurbsSurface& s = result.m_surfaces[surface].nurbs();
             const double span = std::hypot(s.domain(0).second - s.domain(0).first, s.domain(1).second - s.domain(1).first);
             const bool seam = !back.empty() && forward[0].point_at_start().distance(back[0].point_at_start()) > 1e-6 * span;
             result.add_pcurve(edge, surface, result.add_curve_2d(forward[0]), seam ? result.add_curve_2d(back[0]) : -1);

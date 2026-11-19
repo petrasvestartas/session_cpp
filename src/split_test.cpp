@@ -94,7 +94,7 @@ MINI_TEST("Split", "Preserved Inward Offset Cycle Nesting") {
 
 MINI_TEST("Split", "Knot Vertices And Genuine Intersection Events") {
     const BRep box = BRep::create_box(2, 3, 4);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const auto u = surface.domain(0);
     const auto v = surface.domain(1);
     const auto cut = [&](bool vertical, double first, double last, int section) {
@@ -230,7 +230,7 @@ MINI_TEST("Split", "Two Nondegenerate Loops At One Vertex") {
         int loops = 0;
         for (const BRepEdge& edge : result.m_edges)
             if (edge.start_vertex == edge.end_vertex && !edge.degenerated) {
-                const NurbsCurve& curve = result.m_curves_3d[edge.curve_3d_index];
+                const NurbsCurve& curve = result.m_curves_3d[edge.curve_3d_index].nurbs();
                 const double middle = (curve.domain_start() + curve.domain_end()) * 0.5;
                 MINI_CHECK(curve.point_at(middle).distance(result.m_vertices[edge.start_vertex].point) > 1e-3);
                 ++loops;
@@ -334,7 +334,7 @@ MINI_TEST("Split", "Preserved Rhino Chair Dense Face Cuts") {
 
 MINI_TEST("Split", "Sphere Seams And Pole Edges") {
     const BRep sphere = BRep::create_sphere(2);
-    const NurbsSurface& surface = sphere.m_surfaces[sphere.m_faces[0].surface_index];
+    const NurbsSurface& surface = sphere.m_surfaces[sphere.m_faces[0].surface_index].nurbs();
     for (int direction : {0, 1}) {
         const auto variable = surface.domain(direction);
         const auto fixed = surface.domain(1 - direction);
@@ -357,7 +357,7 @@ MINI_TEST("Split", "Sphere Seams And Pole Edges") {
 
 MINI_TEST("Split", "Paired Face Cut Identity") {
     const BRep box = BRep::create_box(2, 3, 4);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double middle = (v.first + v.second) * 0.5;
@@ -409,7 +409,7 @@ MINI_TEST("Split", "Many Stretches Of One Source Curve") {
     for (bool rational : {false, true}) {
         BRep box = BRep::create_box(10, 10, 10);
         box.transform(Xform::translation(1048576, -524288, 262144));
-        const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+        const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
         NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
         if (rational) {
             MINI_CHECK(horizontal.to_rational());
@@ -445,7 +445,7 @@ MINI_TEST("Split", "Many Stretches Of One Source Curve") {
 
 MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
     const BRep box = BRep::create_box(10, 10, 10);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
     const NurbsCurve shared = NurbsCurve::create(false, 1, {{0.75, 0.5, 0}, {0.25, 0.5, 0}});
     const NurbsCurve vertical = NurbsCurve::create(false, 1, {{0.5, 0, 0}, {0.5, 1, 0}});
@@ -467,7 +467,7 @@ MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
 
 MINI_TEST("Split", "Rational Common Closed Trims") {
     const BRep box = BRep::create_box(10, 10, 10);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve circle = Primitives::circle(0.5, 0.5, 0, 0.25);
     NurbsCurve reversed = circle;
     MINI_CHECK(reversed.reverse());
@@ -492,7 +492,7 @@ MINI_TEST("Split", "Rational Common Closed Trims") {
 
 MINI_TEST("Split", "Distinct Curved Arcs With Shared Endpoints") {
     const BRep box = BRep::create_box(10, 10, 10);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve upper = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.9, 0}, {1, 0.5, 0}});
     const NurbsCurve lower = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.1, 0}, {1, 0.5, 0}});
     const std::vector<split::FaceCut> cuts = {
@@ -588,7 +588,7 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
     // using session_cpp::BRepFace;
 
     const BRep box = BRep::create_box(10.0, 10.0, 10.0);
-    const NurbsSurface surface = box.m_surfaces[0];
+    const NurbsSurface surface = box.m_surfaces[0].nurbs();
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {mapped(surface, 0.5, -1.0), mapped(surface, 0.5, 2.0)});
     const BRep split = split::split_brep_face_by_curves(box, 0, {cutter}, 1e-6);
 
@@ -707,7 +707,7 @@ MINI_TEST("Split", "Split BRep Face By Curves") {
     MINI_CHECK(disk.face_count() == 1);
 
     const BRep cylinder = BRep::create_cylinder(5.0, 10.0);
-    const NurbsSurface body = cylinder.m_surfaces[cylinder.m_faces[0].surface_index];
+    const NurbsSurface body = cylinder.m_surfaces[cylinder.m_faces[0].surface_index].nurbs();
     const std::pair<double, double> domain = body.domain(0);
     const NurbsCurve generator = body.iso_curve(1, (domain.first + domain.second) * 0.5);
     const BRep seamed = split::split_brep_face_by_curves(cylinder, 0, {generator}, 1e-6);
@@ -741,7 +741,7 @@ MINI_TEST("Split", "Split Surface By Curves") {
     // using session_cpp::split::split_surface_by_curves;
     // using session_cpp::NurbsSurface;
 
-    const NurbsSurface surface = BRep::create_box(10.0, 10.0, 10.0).m_surfaces[0];
+    const NurbsSurface surface = BRep::create_box(10.0, 10.0, 10.0).m_surfaces[0].nurbs();
     const NurbsCurve cutter = NurbsCurve::create(false, 1, {mapped(surface, 0.5, -1.0), mapped(surface, 0.5, 2.0)});
     const BRep split = split::split_surface_by_curves(surface, {cutter}, 1e-6);
 
@@ -888,9 +888,9 @@ MINI_TEST("Split", "Preserved Affine Rational Boundary Endpoint Events") {
             for (const auto& relation : edge.pcurves)
                 if (!edge.degenerated)
                     MINI_CHECK(curve_surface_intersection::same_parameter(
-                        result.brep.m_curves_3d[edge.curve_3d_index],
-                        result.brep.m_curves_2d[relation.curve_2d_index],
-                        result.brep.m_surfaces[relation.surface_index],tolerance)
+                        result.brep.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        result.brep.m_curves_2d[relation.curve_2d_index].nurbs(),
+                        result.brep.m_surfaces[relation.surface_index].nurbs(),tolerance)
                         == curve_surface_intersection::ParameterMatch::Matched);
     }
     MINI_CHECK(source.jsondump() == original);
@@ -902,10 +902,10 @@ MINI_TEST("Split", "Face Boundary Consumer Keeps Independent Raw Domains") {
     const int face = 0;
     for (const auto& use : box.wire_edges(box.m_faces[face].wires[0])) {
         const int pc = box.pcurve_index(use.index, face, use.orientation);
-        MINI_CHECK(box.m_curves_2d[pc].set_domain(-7, 13));
-        MINI_CHECK(box.m_curves_3d[box.m_edges[use.index].curve_3d_index].set_domain(32, 35));
+        MINI_CHECK(edit(box.m_curves_2d[pc])->set_domain(-7, 13));
+        MINI_CHECK(edit(box.m_curves_3d[box.m_edges[use.index].curve_3d_index])->set_domain(32, 35));
     }
-    const auto& support = box.m_surfaces[box.m_faces[face].surface_index];
+    const auto& support = box.m_surfaces[box.m_faces[face].surface_index].nurbs();
     const auto pc = NurbsCurve::create(false, 1, {Point(.5, 0, 0), Point(.5, 1, 0)});
     const auto world = NurbsCurve::create(false, 1, {support.point_at(.5, 0), support.point_at(.5, 1)});
     const auto frozen = box.jsondump();
@@ -953,7 +953,7 @@ MINI_TEST("Split", "Actual Circle Graph Admission Keeps Inside And Excludes Outs
 MINI_TEST("Split", "Actual Rational Boundary Arc Reuses Original Ownership") {
     using namespace session_cpp;
     const BRep disk = graph_domain_disk();
-    NurbsCurve arc = disk.m_curves_2d.front();
+    NurbsCurve arc = disk.m_curves_2d.front().nurbs();
     MINI_CHECK(arc.trim(0, 1));
     MINI_CHECK(arc.is_rational() && arc.degree() == 2 && arc.cv_count() == 3);
     const auto frozen = disk.jsondump();
@@ -1014,8 +1014,8 @@ void event_wire_receipt(const BRep& source, const split::FaceSplit& result, int 
 void event_piece_pcurves(const BRep& source, const split::FaceSplit& result, int edge,
                          const split::EdgePiece& piece) {
     const auto& generated = result.brep.m_edges.at(piece.edge);
-    const auto& world = result.brep.m_curves_3d.at(generated.curve_3d_index);
-    const auto domain = source.m_curves_3d.at(source.m_edges.at(edge).curve_3d_index).domain();
+    const auto& world = result.brep.m_curves_3d.at(generated.curve_3d_index).nurbs();
+    const auto domain = source.m_curves_3d.at(source.m_edges.at(edge).curve_3d_index).nurbs().domain();
     MINI_CHECK(generated.pcurves.size() == source.m_edges.at(edge).pcurves.size());
     for (const auto& image : generated.pcurves) {
         const auto& old_images = source.m_edges.at(edge).pcurves;
@@ -1029,8 +1029,8 @@ void event_piece_pcurves(const BRep& source, const split::FaceSplit& result, int
             MINI_CHECK((old_slots[at] >= 0) == (slots[at] >= 0));
             if (slots[at] < 0)
                 continue;
-            const auto& pc = result.brep.m_curves_2d.at(slots[at]);
-            const auto pd = source.m_curves_2d.at(old_slots[at]).domain();
+            const auto& pc = result.brep.m_curves_2d.at(slots[at]).nurbs();
+            const auto pd = source.m_curves_2d.at(old_slots[at]).nurbs().domain();
             const auto mapped = [&](double t) {
                 return t == domain.first    ? pd.first
                        : t == domain.second ? pd.second
@@ -1039,7 +1039,7 @@ void event_piece_pcurves(const BRep& source, const split::FaceSplit& result, int
             };
             MINI_CHECK(pc.domain() == std::make_pair(mapped(piece.first), mapped(piece.last)));
             MINI_CHECK(curve_surface_intersection::same_parameter(
-                           world, pc, result.brep.m_surfaces.at(image.surface_index), 1e-7) ==
+                           world, pc, result.brep.m_surfaces.at(image.surface_index).nurbs(), 1e-7) ==
                        curve_surface_intersection::ParameterMatch::Matched);
         }
     }
@@ -1056,7 +1056,7 @@ void event_partition_receipt(const BRep& source, const split::FaceSplit& result,
                before["solids"] == after["solids"]);
     const auto pieces = event_pieces(result, edge);
     MINI_CHECK(pieces.size() == count);
-    const auto domain = source.m_curves_3d.at(source.m_edges.at(edge).curve_3d_index).domain();
+    const auto domain = source.m_curves_3d.at(source.m_edges.at(edge).curve_3d_index).nurbs().domain();
     MINI_CHECK(pieces.front().first == domain.first && pieces.back().last == domain.second);
     for (size_t i = 0; i < pieces.size(); ++i) {
         const auto& piece = pieces[i];
@@ -1064,7 +1064,7 @@ void event_partition_receipt(const BRep& source, const split::FaceSplit& result,
         if (i)
             MINI_CHECK(pieces[i - 1].last == piece.first);
         const auto& generated = result.brep.m_edges.at(piece.edge);
-        const auto& world = result.brep.m_curves_3d.at(generated.curve_3d_index);
+        const auto& world = result.brep.m_curves_3d.at(generated.curve_3d_index).nurbs();
         MINI_CHECK(world.domain() == std::make_pair(piece.first, piece.last));
         event_piece_pcurves(source, result, edge, piece);
     }
@@ -1084,13 +1084,13 @@ void event_partition_receipt(const BRep& source, const split::FaceSplit& result,
 }
 
 void event_ranges(BRep& source, int edge) {
-    MINI_CHECK(source.m_curves_3d.at(source.m_edges[edge].curve_3d_index).set_domain(11, 17));
+    MINI_CHECK(edit(source.m_curves_3d.at(source.m_edges[edge].curve_3d_index))->set_domain(11, 17));
     int slot = 0;
     for (const auto& image : source.m_edges[edge].pcurves)
         for (int pc : {image.curve_2d_index, image.curve_2d_index_2})
             if (pc >= 0) {
                 const bool first = slot++ == 0;
-                MINI_CHECK(source.m_curves_2d.at(pc).set_domain(first ? -7 : 32, first ? 13 : 35));
+                MINI_CHECK(edit(source.m_curves_2d.at(pc))->set_domain(first ? -7 : 32, first ? 13 : 35));
             }
     MINI_CHECK(slot == 2);
 }
@@ -1124,7 +1124,7 @@ MINI_TEST("Split", "Required World Events Split Every Seam And Adjacent Face Use
                     use.orientation = brep_reverse(use.orientation);
                 reference.orientation = brep_reverse(reference.orientation);
             }
-            const auto& world = source.m_curves_3d.at(source.m_edges[edge].curve_3d_index);
+            const auto& world = source.m_curves_3d.at(source.m_edges[edge].curve_3d_index).nurbs();
             // A shared operation node may already exist as an orphan in this working owner.
             const int canonical = source.add_vertex(world.point_at(14), 0);
             std::vector<split::EdgeEvent> events{
@@ -1171,7 +1171,7 @@ MINI_TEST("Split", "Required Edge Events Reject Missing Or Ambiguous Face Pcurve
         MINI_CHECK(source.m_edges[edge].pcurves.size() == 2);
         if (duplicate) {
             auto image = source.m_edges[edge].pcurves.front();
-            image.curve_2d_index = source.add_curve_2d(source.m_curves_2d[image.curve_2d_index]);
+            image.curve_2d_index = source.add_curve_2d(source.m_curves_2d[image.curve_2d_index].nurbs());
             source.m_edges[edge].pcurves.push_back(image);
         } else
             source.m_edges[edge].pcurves.pop_back();
@@ -1190,7 +1190,7 @@ MINI_TEST("Split", "Required Edge Events Reject Missing Or Ambiguous Face Pcurve
 
 MINI_TEST("Split", "Required Edge Events Reject Conflicting Canonical Vertex Identities") {
     auto [source, edge] = event_source(false);
-    const auto& world = source.m_curves_3d.at(source.m_edges[edge].curve_3d_index);
+    const auto& world = source.m_curves_3d.at(source.m_edges[edge].curve_3d_index).nurbs();
     const int a = source.add_vertex(world.point_at(14), 0), b = source.add_vertex(world.point_at(14), 0);
     MINI_CHECK(a != b);
     const auto frozen = source.jsondump();
@@ -1208,7 +1208,7 @@ MINI_TEST("Split", "Required Edge Events Reject Conflicting Canonical Vertex Ide
 MINI_TEST("Split", "Required Edge Event Near A Pcurve Knot Is Preserved Or Explicitly Unresolved") {
     auto [source, edge] = event_source(false);
     const int pc = source.m_edges[edge].pcurves.front().curve_2d_index;
-    MINI_CHECK(source.m_curves_2d[pc].insert_nurbsknot(3 + std::ldexp(1., -36)));
+    MINI_CHECK(edit(source.m_curves_2d[pc])->insert_nurbsknot(3 + std::ldexp(1., -36)));
     const auto frozen = source.jsondump();
     try {
         const auto result = split::split_brep_edges_at_events(source, {{edge, 14, -1}}, 1e-7);
@@ -1389,8 +1389,8 @@ MINI_TEST("Split", "Circular Event Vertex Admission Keeps Physical Regions And P
     for (int variant=0;variant<4;++variant) {
         auto disk=graph_domain_disk();
         if (variant) {
-            MINI_CHECK(disk.m_curves_2d[0].set_domain(32,35));
-            MINI_CHECK(disk.m_curves_3d[0].set_domain(32,35));
+            MINI_CHECK(edit(disk.m_curves_2d[0])->set_domain(32,35));
+            MINI_CHECK(edit(disk.m_curves_3d[0])->set_domain(32,35));
         }
         if (variant%2) disk.m_wires[0].edges[0].orientation=BRepOrientation::Reversed;
         auto cut=NurbsCurve::create(false,1,{{-1.5,0,0},{1.5,0,0}});
@@ -1404,7 +1404,7 @@ MINI_TEST("Split", "Circular Event Vertex Admission Keeps Physical Regions And P
         split::ArrangementDiagnostic diagnostic;
         const auto result=split::split_brep_face_by_pcurves(disk,0,{{cut,cut,191}},tolerance,&diagnostic);
         MINI_CHECK(result.faces.size()==2 && result.brep.is_valid());
-        const auto& support=disk.m_surfaces[0];
+        const auto& support=disk.m_surfaces[0].nurbs();
         const double uv_tol=tolerance/nurbs_bounds::surface_metric(support);
         for (const auto& receipt:diagnostic.vertex_owned_intervals) {
             MINI_CHECK(receipt.first<receipt.last && receipt.source_edge<0 && receipt.section==191);
@@ -1416,7 +1416,7 @@ MINI_TEST("Split", "Circular Event Vertex Admission Keeps Physical Regions And P
                 const size_t boundary=incidence.source==receipt.boundary_source?incidence.source:incidence.other_source;
                 const double raw=incidence.source==receipt.boundary_source?incidence.parameter:incidence.other_parameter;
                 MINI_CHECK(boundary==receipt.boundary_source);
-                const auto& original=disk.m_curves_2d[0];
+                const auto& original=disk.m_curves_2d[0].nurbs();
                 const auto& edge=disk.m_edges[0];
                 MINI_CHECK(raw==receipt.boundary_parameter ||
                     (receipt.boundary_parameter==original.domain_start() && raw==original.domain_end() &&
@@ -1439,8 +1439,8 @@ MINI_TEST("Split", "Circular Event Vertex Admission Keeps Physical Regions And P
                 for (const auto& image:edge.pcurves)
                     for (int index:{image.curve_2d_index,image.curve_2d_index_2})
                         if (index>=0)
-                            MINI_CHECK(curve_surface_intersection::same_parameter(result.brep.m_curves_3d[edge.curve_3d_index],
-                                result.brep.m_curves_2d[index],result.brep.m_surfaces[image.surface_index],tolerance)==
+                            MINI_CHECK(curve_surface_intersection::same_parameter(result.brep.m_curves_3d[edge.curve_3d_index].nurbs(),
+                                result.brep.m_curves_2d[index].nurbs(),result.brep.m_surfaces[image.surface_index].nurbs(),tolerance)==
                                 curve_surface_intersection::ParameterMatch::Matched);
         MINI_CHECK(disk.jsondump()==frozen && cut.jsondump()==frozen_cut);
     }
@@ -1538,7 +1538,7 @@ PlacedFace placed_face() {
     PlacedFace result;
     std::vector<split::EdgeEvent> events;
     for (const BRepRef& use : box.wire_edges(box.m_faces[0].wires.front())) {
-        const NurbsCurve& curve = box.m_curves_3d[box.m_edges[use.index].curve_3d_index];
+        const NurbsCurve& curve = box.m_curves_3d[box.m_edges[use.index].curve_3d_index].nurbs();
         events.push_back({use.index, curve.domain_middle(), -1});
         result.quarter = curve.point_at(curve.domain_start() * 0.75 + curve.domain_end() * 0.25);
     }
@@ -1555,7 +1555,7 @@ PlacedFace placed_face() {
 
 // A straight cut on a planar face and its line in the parameter plane, both over [0, 1].
 split::FaceCut placed_line(const BRep& brep, int face, const Point& from, const Point& to, int section) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     const std::pair<double, double> a = surface.closest_parameters(from), b = surface.closest_parameters(to);
     NurbsCurve world = NurbsCurve::create(false, 1, {from, to});
     NurbsCurve pcurve = NurbsCurve::create(false, 1, {Point(a.first, a.second, 0), Point(b.first, b.second, 0)});
@@ -1566,7 +1566,7 @@ split::FaceCut placed_line(const BRep& brep, int face, const Point& from, const 
 
 // Two models with the same tables, index for index and number for number.
 bool same_model(const BRep& a, const BRep& b) {
-    const auto same_curves = [](const std::vector<NurbsCurve>& x, const std::vector<NurbsCurve>& y) {
+    const auto same_curves = [](const auto& x, const auto& y) {
         if (x.size() != y.size())
             return false;
         for (size_t i = 0; i < x.size(); ++i)
@@ -1574,7 +1574,7 @@ bool same_model(const BRep& a, const BRep& b) {
                 return false;
         return true;
     };
-    if (!same_curves(a.m_curves_3d, b.m_curves_3d) || !same_curves(a.m_curves_2d, b.m_curves_2d) ||
+    if (!same_curves(nurbs(a.m_curves_3d), nurbs(b.m_curves_3d)) || !same_curves(nurbs(a.m_curves_2d), nurbs(b.m_curves_2d)) ||
         a.m_vertices.size() != b.m_vertices.size() || a.m_edges.size() != b.m_edges.size() ||
         a.m_wires.size() != b.m_wires.size() || a.m_faces.size() != b.m_faces.size())
         return false;
@@ -1614,7 +1614,7 @@ MINI_TEST("Split", "Placed Cut Between Two Boundary Vertices") {
 
 MINI_TEST("Split", "Placed Cuts Meeting Inside A Face") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const Point inside = surface.point_at(surface.domain(0).first * 0.625 + surface.domain(0).second * 0.375,
         surface.domain(1).first * 0.375 + surface.domain(1).second * 0.625);
     // Two sections with two faces of the other solid, ending where its edge between them pierces this face.
@@ -1644,7 +1644,7 @@ MINI_TEST("Split", "Placed Cuts Of One Family Crossing Inside A Face") {
 
 MINI_TEST("Split", "Placed Closed Cut That Touches Nothing") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
     split::FaceCut cut;
     cut.pcurve = Primitives::circle((u.first + u.second) * 0.5, (v.first + v.second) * 0.5, 0,
@@ -1686,7 +1686,7 @@ MINI_TEST("Split", "Shared Cut End On The Boundary Is Intersected") {
 
 MINI_TEST("Split", "A Hole Inside A Hole Is Nested By One Of Its Points") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
     std::vector<split::FaceCut> cuts;
     for (const double share : {0.3, 0.15}) {
@@ -1715,7 +1715,7 @@ MINI_TEST("Split", "A Hole Inside A Hole Is Nested By One Of Its Points") {
 
 // A cut of the given parameter-plane controls and degree on the parallelogram face, its world curve the image of its controls.
 split::FaceCut lifted_cut(const BRep& brep, int face, const std::vector<Point>& controls, int degree, bool closed) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     split::FaceCut cut;
     cut.pcurve = NurbsCurve::create(closed, degree, controls);
     if (closed)
@@ -1732,7 +1732,7 @@ split::FaceCut lifted_cut(const BRep& brep, int face, const std::vector<Point>& 
 
 MINI_TEST("Split", "Placed Cut Monotone Along Its Chord Meets Itself Nowhere") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const std::pair<double, double> a = surface.closest_parameters(source.points[0]), b = surface.closest_parameters(source.points[2]);
     // A wave from one vertex to the other: not monotone along either parameter, monotone along its chord.
     std::vector<Point> controls;
@@ -1748,7 +1748,7 @@ MINI_TEST("Split", "Placed Cut Monotone Along Its Chord Meets Itself Nowhere") {
 
 MINI_TEST("Split", "Placed Closed Cut Of Many Spans Meets Itself Where It Closes") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
     std::vector<Point> controls;
     for (int i = 0; i < 24; ++i) {
@@ -1763,7 +1763,7 @@ MINI_TEST("Split", "Placed Closed Cut Of Many Spans Meets Itself Where It Closes
 
 MINI_TEST("Split", "Placed Cuts Of One Family Meeting End To End") {
     const PlacedFace source = placed_face();
-    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index];
+    const NurbsSurface& surface = source.brep.m_surfaces[source.brep.m_faces[source.face].surface_index].nurbs();
     const Point inside = surface.point_at(surface.domain(0).first * 0.6 + surface.domain(0).second * 0.4,
         surface.domain(1).first * 0.4 + surface.domain(1).second * 0.6);
     // Two pieces of one section joined away from every edge: they meet at their shared end and nowhere else.

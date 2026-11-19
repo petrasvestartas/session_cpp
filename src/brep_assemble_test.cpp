@@ -110,7 +110,7 @@ nlohmann::ordered_json pcurve_diagnostics(const BRep& brep) {
                 const int index = brep.pcurve_index(use.index, face, use.orientation);
                 if (index < 0)
                     continue;
-                const NurbsCurve& curve = brep.m_curves_2d[index];
+                const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
                 const BRepEdge& edge = brep.m_edges[use.index];
                 nlohmann::ordered_json row = {{"face", face}, {"wire", wire.index}, {"edge", use.index},
                     {"orientation", static_cast<int>(use.orientation)}, {"pcurve", index},
@@ -123,7 +123,7 @@ nlohmann::ordered_json pcurve_diagnostics(const BRep& brep) {
                     row["normalized_uv"].push_back({uv[0], uv[1]});
                 }
                 if (edge.curve_3d_index >= 0) {
-                    const NurbsCurve& world = brep.m_curves_3d[edge.curve_3d_index];
+                    const NurbsCurve& world = brep.m_curves_3d[edge.curve_3d_index].nurbs();
                     row["world_domain"] = {world.domain_start(), world.domain_end()};
                 }
                 rows.push_back(std::move(row));
@@ -166,8 +166,8 @@ nlohmann::ordered_json sampling_diagnostics(const BRep& source, const BRep& resu
             for (size_t use = 0; use < first.size(); ++use) {
                 const int ai = source.pcurve_index(first[use].index, face, first[use].orientation);
                 const int bi = result.pcurve_index(second[use].index, face, second[use].orientation);
-                nlohmann::ordered_json row = sample_comparison(source.m_curves_2d[ai], result.m_curves_2d[bi],
-                    source.m_surfaces[a.surface_index]);
+                nlohmann::ordered_json row = sample_comparison(source.m_curves_2d[ai].nurbs(), result.m_curves_2d[bi].nurbs(),
+                    source.m_surfaces[a.surface_index].nurbs());
                 row["face"] = face;
                 row["original_edge"] = first[use].index;
                 row["result_edge"] = second[use].index;
@@ -202,9 +202,9 @@ nlohmann::ordered_json save_chair_diagnostics(const std::string& name, const BRe
         data["faces"].push_back({{"face", face}, {"original", mesh_diagnostic(original_faces[face], origin)},
             {"result", mesh_diagnostic(result_faces[face], origin)},
             {"original_surface_error", surface_mesh_diagnostic(original_faces[face],
-                source.m_surfaces[source.m_faces[face].surface_index])},
+                source.m_surfaces[source.m_faces[face].surface_index].nurbs())},
             {"result_surface_error", surface_mesh_diagnostic(result_faces[face],
-                result.m_surfaces[result.m_faces[face].surface_index])},
+                result.m_surfaces[result.m_faces[face].surface_index].nurbs())},
             {"original_orientation", static_cast<int>(source.face_orientation(static_cast<int>(face)))},
             {"result_orientation", static_cast<int>(result.face_orientation(static_cast<int>(face)))}});
     std::ofstream output(folder / (name + ".diagnostic.json"));
@@ -302,7 +302,7 @@ MINI_TEST("BRepAssemble", "Cavity And Nested Island") {
 
 MINI_TEST("BRepAssemble", "Partial Shared Edge Partitions") {
     const BRep box = BRep::create_box(2, 2, 2);
-    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index];
+    const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double middle = (u.first + u.second) * 0.5;
@@ -361,14 +361,14 @@ MINI_TEST("BRepAssemble", "Open And Nonmanifold Inputs") {
 
 MINI_TEST("BRepAssemble", "Pcurve Parameter Repair And Invalid Interior") {
     BRep source = BRep::create_box(2, 2, 2);
-    for (NurbsCurve& curve : source.m_curves_3d)
-        MINI_CHECK(curve.set_domain(-5, 7));
-    for (NurbsCurve& curve : source.m_curves_2d)
-        MINI_CHECK(curve.set_domain(10, 20));
-    NurbsCurve& weighted = source.m_curves_2d.front();
-    const Point last = weighted.point_at_end();
-    MINI_CHECK(weighted.to_rational());
-    MINI_CHECK(weighted.set_cv_4d(1, last[0] * 4, last[1] * 4, 0, 4));
+    for (Curve& curve_ : source.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); MINI_CHECK(curve.set_domain(-5, 7)); curve_ = curve; }
+    for (Curve2d& curve_ : source.m_curves_2d) { NurbsCurve curve = curve_.nurbs(); MINI_CHECK(curve.set_domain(10, 20)); curve_ = curve; }
+    {
+        auto weighted = edit(source.m_curves_2d.front());
+        const Point last = weighted->point_at_end();
+        MINI_CHECK(weighted->to_rational());
+        MINI_CHECK(weighted->set_cv_4d(1, last[0] * 4, last[1] * 4, 0, 4));
+    }
     std::vector<brep_assemble::FaceUse> faces;
     append_faces(faces, source);
     const BRep result = brep_assemble::assemble(faces);
@@ -378,13 +378,13 @@ MINI_TEST("BRepAssemble", "Pcurve Parameter Repair And Invalid Interior") {
         for (const BRepCurveOnSurface& record : edge.pcurves)
             for (const int index : {record.curve_2d_index, record.curve_2d_index_2})
                 if (index >= 0) {
-                    MINI_CHECK(result.m_curves_2d[index].domain_start() == -5.0);
-                    MINI_CHECK(result.m_curves_2d[index].domain_end() == 7.0);
+                    MINI_CHECK(result.m_curves_2d[index].nurbs().domain_start() == -5.0);
+                    MINI_CHECK(result.m_curves_2d[index].nurbs().domain_end() == 7.0);
                 }
 
     BRep invalid = BRep::create_box(2, 2, 2);
-    const Point first = invalid.m_curves_2d.front().point_at_start();
-    const Point end = invalid.m_curves_2d.front().point_at_end();
+    const Point first = invalid.m_curves_2d.front().nurbs().point_at_start();
+    const Point end = invalid.m_curves_2d.front().nurbs().point_at_end();
     const Vector tangent = end - first;
     const Point middle = first + tangent * 0.5 + Vector(-tangent[1], tangent[0], 0) * 0.1;
     invalid.m_curves_2d.front() = NurbsCurve::create(false, 2, {first, middle, end});
@@ -424,8 +424,8 @@ MINI_TEST("BRepAssemble", "Freeform Chair Reconstruction") {
         MINI_CHECK(diagnostic["original"]["valid"].get<bool>() && diagnostic["original"]["closed"].get<bool>());
         MINI_CHECK(diagnostic["result"]["valid"].get<bool>() && diagnostic["result"]["closed"].get<bool>());
         for (int face = 0; face < chair.face_count(); ++face) {
-            MINI_CHECK(chair.m_surfaces[chair.m_faces[face].surface_index]
-                == result.m_surfaces[result.m_faces[face].surface_index]);
+            MINI_CHECK(chair.m_surfaces[chair.m_faces[face].surface_index].nurbs()
+                == result.m_surfaces[result.m_faces[face].surface_index].nurbs());
             MINI_CHECK(chair.face_orientation(face) == result.face_orientation(face));
         }
     }
@@ -444,7 +444,7 @@ bool closed_periodic_fixture_loops(const BRep& shape) {
                 const int pc = shape.pcurve_index(use.index, face, use.orientation);
                 if (pc < 0)
                     return false;
-                const NurbsCurve& curve = shape.m_curves_2d[pc];
+                const NurbsCurve& curve = shape.m_curves_2d[pc].nurbs();
                 const bool reverse = use.orientation == BRepOrientation::Reversed;
                 ends.push_back({reverse ? curve.point_at_end() : curve.point_at_start(),
                     reverse ? curve.point_at_start() : curve.point_at_end()});
@@ -458,15 +458,15 @@ bool closed_periodic_fixture_loops(const BRep& shape) {
 }
 
 BRep reverse_support_v(BRep shape) {
-    const std::vector<NurbsSurface> original = shape.m_surfaces;
-    for (NurbsSurface& surface : shape.m_surfaces)
-        MINI_CHECK(surface.reverse(1));
+    const auto view = nurbs(shape.m_surfaces);
+    const std::vector<NurbsSurface> original(view.begin(), view.end());
+    for (Surface& surface_ : shape.m_surfaces) { NurbsSurface surface = surface_.nurbs(); MINI_CHECK(surface.reverse(1)); surface_ = surface; }
     for (BRepEdge& edge : shape.m_edges)
         for (BRepCurveOnSurface& relation : edge.pcurves) {
             const std::pair<double, double> domain = original[relation.surface_index].domain(1);
             for (int* index : {&relation.curve_2d_index, &relation.curve_2d_index_2})
                 if (*index >= 0) {
-                    NurbsCurve mapped = shape.m_curves_2d[*index];
+                    NurbsCurve mapped = shape.m_curves_2d[*index].nurbs();
                     for (int i = 0; i < mapped.cv_count(); ++i) {
                         double x, y, z, w;
                         MINI_CHECK(mapped.get_cv_4d(i, x, y, z, w));
@@ -575,8 +575,8 @@ MINI_TEST("BRepAssemble", "Tangent Cylinders Preserve Distinct Seam Sectors") {
                 for (const BRepCurveOnSurface& relation : edge.pcurves)
                     for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                         if (index >= 0)
-                            MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index],
-                                result.m_curves_2d[index], result.m_surfaces[relation.surface_index], 1e-7)
+                            MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index].nurbs(),
+                                result.m_curves_2d[index].nurbs(), result.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                                 == curve_surface_intersection::ParameterMatch::Matched);
     }
 }
@@ -682,22 +682,26 @@ MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
             for (auto& piece : lineage[0])
                 if (piece.section == 15) {
                     BRepEdge& edge = shapes[0].m_edges[piece.edge];
-                    NurbsCurve& world = shapes[0].m_curves_3d[edge.curve_3d_index];
+                    auto world_ = edit(shapes[0].m_curves_3d[edge.curve_3d_index]); NurbsCurve& world = *world_;
                     const double first = 2e-7, last = world.domain_end();
                     MINI_CHECK(world.trim(first, last));
                     for (const auto& relation : edge.pcurves)
                         for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                             if (pc >= 0)
-                                MINI_CHECK(shapes[0].m_curves_2d[pc].trim(first, last));
+                                MINI_CHECK(edit(shapes[0].m_curves_2d[pc])->trim(first, last));
                     piece.first = first;
                 }
         if (variant & 1)
             for (size_t owner = 0; owner < shapes.size(); ++owner) {
-                for (auto* curves : {&shapes[owner].m_curves_3d, &shapes[owner].m_curves_2d})
-                    for (NurbsCurve& curve : *curves) {
-                        const auto domain = curve.domain();
-                        MINI_CHECK(curve.set_domain(20 * domain.first - 7, 20 * domain.second - 7));
+                const auto rescale = [&](auto& curves) {
+                    for (auto& item : curves) {
+                        auto curve = edit(item);
+                        const auto domain = curve->domain();
+                        MINI_CHECK(curve->set_domain(20 * domain.first - 7, 20 * domain.second - 7));
                     }
+                };
+                rescale(shapes[owner].m_curves_3d);
+                rescale(shapes[owner].m_curves_2d);
                 for (auto& piece : lineage[owner]) {
                     piece.first = 20 * piece.first - 7;
                     piece.last = 20 * piece.last - 7;
@@ -707,11 +711,11 @@ MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
             for (const auto& piece : lineage[1])
                 if (piece.section == 15) {
                     BRepEdge& edge = shapes[1].m_edges[piece.edge];
-                    MINI_CHECK(shapes[1].m_curves_3d[edge.curve_3d_index].reverse());
+                    MINI_CHECK(edit(shapes[1].m_curves_3d[edge.curve_3d_index])->reverse());
                     for (const auto& relation : edge.pcurves)
                         for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                             if (pc >= 0)
-                                MINI_CHECK(shapes[1].m_curves_2d[pc].reverse());
+                                MINI_CHECK(edit(shapes[1].m_curves_2d[pc])->reverse());
                     std::swap(edge.start_vertex, edge.end_vertex);
                     for (auto& wire : shapes[1].m_wires)
                         for (auto& use : wire.edges)
@@ -758,7 +762,7 @@ MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
                     for (const auto& piece : lineage[1])
                         if (piece.section == 15) {
                             const BRepEdge& source_edge = shapes[1].m_edges[piece.edge];
-                            const NurbsCurve& full = shapes[1].m_curves_3d[source_edge.curve_3d_index];
+                            const NurbsCurve& full = shapes[1].m_curves_3d[source_edge.curve_3d_index].nurbs();
                             const auto domain = full.domain();
                             const double fraction = fixture["prefix_fraction"];
                             const double width = (domain.second - domain.first) * fraction;
@@ -781,8 +785,8 @@ MINI_TEST("BRepAssemble", "Preserved Chair Shared Edge Vertex Cap") {
                         for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                             if (pc >= 0)
                                 MINI_CHECK(curve_surface_intersection::same_parameter(
-                                    error.partial.m_curves_3d[edge.curve_3d_index], error.partial.m_curves_2d[pc],
-                                    error.partial.m_surfaces[relation.surface_index], tolerance)
+                                    error.partial.m_curves_3d[edge.curve_3d_index].nurbs(), error.partial.m_curves_2d[pc].nurbs(),
+                                    error.partial.m_surfaces[relation.surface_index].nurbs(), tolerance)
                                     == curve_surface_intersection::ParameterMatch::Matched);
         }
         MINI_CHECK(open_exterior);
@@ -856,11 +860,11 @@ MINI_TEST("BRepAssemble", "Sphere Lens Orientation Retries Boundary Targets") {
                 for (const auto& relation : edge.pcurves)
                     for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                         if (pc >= 0) {
-                            const auto& world = result.m_curves_3d[edge.curve_3d_index];
-                            const auto& uv = result.m_curves_2d[pc];
+                            const auto& world = result.m_curves_3d[edge.curve_3d_index].nurbs();
+                            const auto& uv = result.m_curves_2d[pc].nurbs();
                             MINI_CHECK(world.domain() == uv.domain());
                             MINI_CHECK(curve_surface_intersection::same_parameter(world, uv,
-                                result.m_surfaces[relation.surface_index], 1e-7) ==
+                                result.m_surfaces[relation.surface_index].nurbs(), 1e-7) ==
                                 curve_surface_intersection::ParameterMatch::Matched);
                         }
     }
@@ -953,11 +957,11 @@ MINI_TEST("BRepAssemble", "Sphere Xor Containment Retries Shared Boundary Target
                 for (const auto& relation : edge.pcurves)
                     for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                         if (pc >= 0) {
-                            const auto& world = result.m_curves_3d[edge.curve_3d_index];
-                            const auto& uv = result.m_curves_2d[pc];
+                            const auto& world = result.m_curves_3d[edge.curve_3d_index].nurbs();
+                            const auto& uv = result.m_curves_2d[pc].nurbs();
                             MINI_CHECK(world.domain() == uv.domain());
                             MINI_CHECK(curve_surface_intersection::same_parameter(world, uv,
-                                result.m_surfaces[relation.surface_index], 1e-7) ==
+                                result.m_surfaces[relation.surface_index].nurbs(), 1e-7) ==
                                 curve_surface_intersection::ParameterMatch::Matched);
                         }
     }

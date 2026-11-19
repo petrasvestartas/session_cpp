@@ -205,7 +205,7 @@ double brep_diagonal(const BRep& b) {
     Point lo(1e30, 1e30, 1e30);
     Point hi(-1e30, -1e30, -1e30);
 
-    for (const NurbsSurface& srf : b.m_surfaces)
+    for (const NurbsSurface& srf : nurbs(b.m_surfaces))
         for (int i = 0; i < srf.cv_count(0); ++i)
             for (int j = 0; j < srf.cv_count(1); ++j) {
                 const Point p = srf.get_cv(i, j);
@@ -250,7 +250,7 @@ struct PolyFaceBuilder {
     /// Oriented edge references of the vertex cycle `vi`, each with its pcurve on surface `si`
     std::vector<BRepRef> wire_refs(int si, const std::vector<int>& vi) {
 
-        const NurbsSurface& srf = b.m_surfaces[si];
+        const NurbsSurface& srf = b.m_surfaces[si].nurbs();
         std::vector<BRepRef> refs;
         const int n = (int)vi.size();
 
@@ -258,7 +258,7 @@ struct PolyFaceBuilder {
             const int va = vi[i];
             const int vb = vi[(i + 1) % n];
             const int ei = edge(va, vb);
-            b.add_pcurve(ei, si, b.add_curve_2d(project_to_patch(b.m_curves_3d[b.m_edges[ei].curve_3d_index], srf)));
+            b.add_pcurve(ei, si, b.add_curve_2d(project_to_patch(b.m_curves_3d[b.m_edges[ei].curve_3d_index].nurbs(), srf)));
             refs.push_back({ei, b.m_edges[ei].start_vertex == va ? F : R});
         }
 
@@ -323,7 +323,7 @@ NurbsSurface cap_patch(double r, double z, bool up) {
 int cap_face(BRep& b, const NurbsSurface& cap, int edge) {
 
     const int si = b.add_surface(cap);
-    const NurbsCurve c2d = project_to_patch(b.m_curves_3d[b.m_edges[edge].curve_3d_index], cap);
+    const NurbsCurve c2d = project_to_patch(b.m_curves_3d[b.m_edges[edge].curve_3d_index].nurbs(), cap);
     const BRepOrientation o = uv_signed_area(c2d) > 0.0 ? F : R;
     b.add_pcurve(edge, si, b.add_curve_2d(c2d));
 
@@ -333,8 +333,8 @@ int cap_face(BRep& b, const NurbsSurface& cap, int edge) {
 /// Periodic body face (cylinder / cone / bore): seam from v0 to v1 at u0 == u1, bottom ring forward at v0, top ring (or degenerated apex) reversed at v1
 int body_face(BRep& b, int si, int e_bot, int e_seam, int e_top) {
 
-    const std::pair<double, double> du = b.m_surfaces[si].domain(0);
-    const std::pair<double, double> dv = b.m_surfaces[si].domain(1);
+    const std::pair<double, double> du = b.m_surfaces[si].nurbs().domain(0);
+    const std::pair<double, double> dv = b.m_surfaces[si].nurbs().domain(1);
     const double u0 = du.first;
     const double u1 = du.second;
     const double v0 = dv.first;
@@ -447,7 +447,7 @@ int curve_wire(BRep& b, const NurbsCurve& crv, int si, double tol) {
     const int vs = find_or_add_vertex(b, sp, tol);
     const int ve = crv.is_closed() ? vs : find_or_add_vertex(b, ep, tol);
     const int ei = b.add_edge(b.add_curve_3d(crv), vs, ve);
-    b.add_pcurve(ei, si, b.add_curve_2d(project_to_patch(crv, b.m_surfaces[si])));
+    b.add_pcurve(ei, si, b.add_curve_2d(project_to_patch(crv, b.m_surfaces[si].nurbs())));
 
     return b.add_wire({{ei, F}});
 }
@@ -592,10 +592,10 @@ std::vector<Point> face_outline(const BRep& b, int fi) {
             continue;
 
         const bool reversed = er.orientation == BRepOrientation::Reversed;
-        const bool curved = edge.curve_3d_index >= 0 && b.m_curves_3d[edge.curve_3d_index].degree() > 1;
+        const bool curved = edge.curve_3d_index >= 0 && b.m_curves_3d[edge.curve_3d_index].nurbs().degree() > 1;
 
         if (curved) {
-            const NurbsCurve& c = b.m_curves_3d[edge.curve_3d_index];
+            const NurbsCurve& c = b.m_curves_3d[edge.curve_3d_index].nurbs();
             const double d0 = c.domain().first;
             const double d1 = c.domain().second;
 
@@ -650,7 +650,7 @@ std::pair<std::vector<Polyline>, std::vector<Plane>> planar_faces(const BRep& b)
         if (face.surface_index < 0 || face.wires.empty())
             continue;
 
-        if (!b.m_surfaces[face.surface_index].is_planar())
+        if (!b.m_surfaces[face.surface_index].nurbs().is_planar())
             continue;
 
         std::vector<Point> points = face_outline(b, fi);
@@ -733,7 +733,7 @@ std::vector<Point> wire_uv_points(const BRep& b, int face_index, const BRepRef& 
         if (ci < 0)
             continue;
 
-        const NurbsCurve& crv = b.m_curves_2d[ci];
+        const NurbsCurve& crv = b.m_curves_2d[ci].nurbs();
         std::vector<Point> seg;
 
         if (crv.degree() <= 1 && !crv.is_rational())
@@ -988,7 +988,7 @@ void snap_sample_ends(std::vector<std::tuple<double, Point, Point>>& samples, co
 void snap_grid_corners(const BRep& b, int fi, Mesh& grid) {
 
     const BRepFace& face = b.m_faces[fi];
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
     const std::pair<double, double> du = srf.domain(0);
     const std::pair<double, double> dv = srf.domain(1);
     const double utol = (du.second - du.first) * 1e-4;
@@ -1001,7 +1001,7 @@ void snap_grid_corners(const BRep& b, int fi, Mesh& grid) {
         if (ci < 0)
             continue;
 
-        const NurbsCurve& crv = b.m_curves_2d[ci];
+        const NurbsCurve& crv = b.m_curves_2d[ci].nurbs();
         const std::pair<Point, Point> ends = edge_ends(b, er.index);
         corners.push_back({crv.get_cv(0), ends.first});
         corners.push_back({crv.get_cv(crv.cv_count() - 1), ends.second});
@@ -1037,7 +1037,7 @@ bool direct_face(const BRep& b, int fi) {
         if (ci < 0)
             continue;
 
-        if (b.m_curves_2d[ci].degree() > 1 || b.m_curves_2d[ci].is_rational())
+        if (b.m_curves_2d[ci].nurbs().degree() > 1 || b.m_curves_2d[ci].nurbs().is_rational())
             return false;
     }
 
@@ -1046,7 +1046,7 @@ bool direct_face(const BRep& b, int fi) {
     if (outer.size() < 3)
         return false;
 
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
     const std::pair<double, double> du = srf.domain(0);
     const std::pair<double, double> dv = srf.domain(1);
 
@@ -1056,7 +1056,7 @@ bool direct_face(const BRep& b, int fi) {
         if (ci < 0)
             continue;
 
-        const NurbsCurve& curve = b.m_curves_2d[ci];
+        const NurbsCurve& curve = b.m_curves_2d[ci].nurbs();
 
         for (int k : {0, std::max(0, curve.cv_count() - 1)}) {
             const Point p = curve.get_cv(k);
@@ -1127,12 +1127,12 @@ std::vector<std::pair<double, Point>> grid_edge_samples(const BRep& b, int fi, c
     if (ci < 0)
         return samples;
 
-    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
     const std::pair<double, double> du = srf.domain(0);
     const std::pair<double, double> dv = srf.domain(1);
     const double utol = (du.second - du.first) * 0.001;
     const double vtol = (dv.second - dv.first) * 0.001;
-    const NurbsCurve& c2d = b.m_curves_2d[ci];
+    const NurbsCurve& c2d = b.m_curves_2d[ci].nurbs();
     const Point sp = c2d.get_cv(0);
     const Point ep = c2d.get_cv(c2d.cv_count() - 1);
     const bool at_v0 = std::abs(sp[1] - dv.first) < vtol && std::abs(ep[1] - dv.first) < vtol;
@@ -1215,14 +1215,14 @@ void refine_shared_boundaries(
         for (const BRepRef& incident : b.edge_faces(edge)) {
             const int fi = incident.index;
             const bool cdt = !face_direct[fi] || rebuild_grid[fi];
-            curved_cdt = curved_cdt || (cdt && !is_planar_patch(b.m_surfaces[b.m_faces[fi].surface_index]));
+            curved_cdt = curved_cdt || (cdt && !is_planar_patch(b.m_surfaces[b.m_faces[fi].surface_index].nurbs()));
         }
 
         if (!curved_cdt)
             continue;
 
-        const NurbsSurface& surface = b.m_surfaces[b.m_faces[std::get<0>(entry.second)].surface_index];
-        const NurbsCurve& curve = b.m_curves_2d[std::get<1>(entry.second)];
+        const NurbsSurface& surface = b.m_surfaces[b.m_faces[std::get<0>(entry.second)].surface_index].nurbs();
+        const NurbsCurve& curve = b.m_curves_2d[std::get<1>(entry.second)].nurbs();
         const std::vector<Point>& points = boundary.points.at(edge);
         std::vector<std::tuple<double, Point, Point>> samples;
 
@@ -1396,8 +1396,8 @@ void lift_canonical(
 
     const BRepFace& face = b.m_faces[fi];
     const BRepEdge& edge = b.m_edges[ei];
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
-    const NurbsCurve& crv = b.m_curves_2d[ci];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
+    const NurbsCurve& crv = b.m_curves_2d[ci].nurbs();
     const bool cached = boundary.basis.count(ei) && std::get<0>(boundary.basis[ei]) == fi && std::get<1>(boundary.basis[ei]) == ci && boundary.samples.count(ei);
     const std::vector<Point>& points = boundary.points[ei];
     const bool planar = is_planar_patch(srf);
@@ -1552,14 +1552,14 @@ std::vector<std::tuple<double, Point, Point>> fresh_samples(const NurbsSurface& 
 void add_other_face_creases(const BRep& b, int fi, const BRepEdge& edge, const NurbsCurve& crv,
                             std::vector<std::tuple<double, Point, Point>>& samples) {
 
-    const NurbsSurface& own = b.m_surfaces[b.m_faces[fi].surface_index];
+    const NurbsSurface& own = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
 
     for (const BRepCurveOnSurface& use : edge.pcurves) {
         if (use.surface_index == b.m_faces[fi].surface_index)
             continue;
 
-        const NurbsCurve& other = b.m_curves_2d[use.curve_2d_index];
-        const std::array<std::vector<double>, 2> creases = parametric_crease_knots(b.m_surfaces[use.surface_index]);
+        const NurbsCurve& other = b.m_curves_2d[use.curve_2d_index].nurbs();
+        const std::array<std::vector<double>, 2> creases = parametric_crease_knots(b.m_surfaces[use.surface_index].nurbs());
         const auto mapped = [&](double t) {
             const double share = (t - crv.domain().first) / (crv.domain().second - crv.domain().first);
             return other.point_at(other.domain().first + share * (other.domain().second - other.domain().first));
@@ -1615,13 +1615,13 @@ bool edge_use_samples(
         return samples.size() >= 2;
     }
 
-    const NurbsCurve& crv = b.m_curves_2d[ci];
+    const NurbsCurve& crv = b.m_curves_2d[ci].nurbs();
 
     // a degenerated edge has no points to lift, only its vertex: every use samples its own pcurve
     if (boundary.points.count(ei) && !edge.degenerated) {
         lift_canonical(b, fi, ei, ci, boundary, samples);
     } else {
-        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index], crv, edge.degenerated ? crv : b.m_curves_3d[edge.curve_3d_index], edge_ends(b, ei), scale, angle, chord);
+        samples = fresh_samples(b.m_surfaces[b.m_faces[fi].surface_index].nurbs(), crv, edge.degenerated ? crv : b.m_curves_3d[edge.curve_3d_index].nurbs(), edge_ends(b, ei), scale, angle, chord);
         add_other_face_creases(b, fi, edge, crv, samples);
         std::vector<Point> positions;
 
@@ -1724,7 +1724,7 @@ bool split_parametric_edge(const BRep& brep, std::vector<ParametricBoundaryUse>&
             throw std::runtime_error("Native tessellation has incompatible shared edge sample ancestry");
     std::vector<std::array<std::vector<double>, 2>> creases;
     for (ParametricBoundaryUse& use : uses) {
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index];
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.face].surface_index].nurbs();
         creases.push_back(parametric_crease_knots(surface));
         for (ParametricBoundarySample& sample : use.samples)
             pin_to_creases(surface, creases.back(), std::get<1>(sample));
@@ -1782,10 +1782,10 @@ std::set<int> refine_parametric_boundaries(const BRep& brep, const std::vector<b
             std::vector<std::tuple<double, Point, Point>> samples;
             if (!edge_use_samples(brep, use.first, use.second, boundary, scale, angle, chord, samples))
                 continue;
-            const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.first].surface_index];
+            const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[use.first].surface_index].nurbs();
             const int pcurve = brep.pcurve_index(group.first, use.first, use.second.orientation);
             const std::vector<std::tuple<double, Point, Point>> refined = refine_surface_boundary(
-                surface, brep.m_curves_2d[pcurve], samples, scale, angle, chord);
+                surface, brep.m_curves_2d[pcurve].nurbs(), samples, scale, angle, chord);
             if (refined.size() <= samples.size())
                 continue;
             std::vector<Point> points;
@@ -1903,9 +1903,9 @@ bool split_bulging_chords(const BRep& b, int fi, const std::vector<bool>& cdt, E
     const auto cross = [](const Point& o, const Point& a, const Point& c) { return (a[0] - o[0]) * (c[1] - o[1]) - (a[1] - o[1]) * (c[0] - o[0]); };
 
     for (Chord& c : chords)
-        c.bulge = off(b.m_curves_2d[c.pcurve].point_at((std::get<0>(c.first) + std::get<0>(c.last)) / 2), std::get<1>(c.first), std::get<1>(c.last));
+        c.bulge = off(b.m_curves_2d[c.pcurve].nurbs().point_at((std::get<0>(c.first) + std::get<0>(c.last)) / 2), std::get<1>(c.first), std::get<1>(c.last));
 
-    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
 
     for (const Chord& c : chords) {
         const std::vector<BRepRef> faces = b.edge_faces(c.edge);
@@ -1934,7 +1934,7 @@ bool split_bulging_chords(const BRep& b, int fi, const std::vector<bool>& cdt, E
                 target = Point(a[0] + share * (z[0] - a[0]), a[1] + share * (z[1] - a[1]), 0);
             }
 
-            const NurbsCurve& crv = b.m_curves_2d[c.pcurve];
+            const NurbsCurve& crv = b.m_curves_2d[c.pcurve].nurbs();
             const double from = std::min(std::get<0>(c.first), std::get<0>(c.last)), to = std::max(std::get<0>(c.first), std::get<0>(c.last));
             double low = from, high = to;
 
@@ -2212,7 +2212,7 @@ bool strip_face(const BRep& b, int fi, const EdgeBoundary& boundary) {
     if (edges.size() != 4 || edges[1].index != edges[3].index || edges[1].orientation == edges[3].orientation || edges[0].index == edges[2].index)
         return false;
 
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
 
     if (srf.degree(1) != 1 || srf.cv_count(1) != 2 || srf.is_singular(0) || srf.is_singular(2))
         return false;
@@ -2226,7 +2226,7 @@ bool strip_face(const BRep& b, int fi, const EdgeBoundary& boundary) {
         if (edge.degenerated || edge.start_vertex != edge.end_vertex || ci < 0 || boundary.points.count(edges[k].index))
             return false;
 
-        loops.push_back(&b.m_curves_2d[ci]);
+        loops.push_back(&b.m_curves_2d[ci].nurbs());
     }
 
     const std::pair<double, double> du = srf.domain(0);
@@ -2357,10 +2357,10 @@ size_t strip_vertex(const NurbsSurface& srf, Mesh& mesh, const std::tuple<double
 Mesh strip_mesh(const BRep& b, int fi, EdgeBoundary& boundary, double scale, double angle, double chord) {
 
     const BRepFace& face = b.m_faces[fi];
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
     const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
-    const NurbsCurve& a = b.m_curves_2d[b.pcurve_index(edges[0].index, fi, edges[0].orientation)];
-    const NurbsCurve& c = b.m_curves_2d[b.pcurve_index(edges[2].index, fi, edges[2].orientation)];
+    const NurbsCurve& a = b.m_curves_2d[b.pcurve_index(edges[0].index, fi, edges[0].orientation)].nurbs();
+    const NurbsCurve& c = b.m_curves_2d[b.pcurve_index(edges[2].index, fi, edges[2].orientation)].nurbs();
     const int count = strip_count(srf, a, c, scale, angle, chord);
     std::vector<std::tuple<double, Point, Point>> first = strip_samples(srf, a, count);
     std::vector<std::tuple<double, Point, Point>> second = strip_samples(srf, c, count);
@@ -2460,7 +2460,7 @@ int ruled_face(const BRep& b, int fi) {
         return -1;
 
     const std::vector<BRepRef> edges = b.wire_edges(face.wires[0]);
-    const NurbsSurface& srf = b.m_surfaces[face.surface_index];
+    const NurbsSurface& srf = b.m_surfaces[face.surface_index].nurbs();
 
     if (edges.size() != 4 || srf.degree(1) != 1 || srf.cv_count(1) != 2 || is_planar_patch(srf))
         return -1;
@@ -2482,7 +2482,7 @@ int ruled_face(const BRep& b, int fi) {
         if (edge.degenerated || edge.start_vertex == edge.end_vertex || ci < 0)
             return -1;
 
-        sides[k] = ruled_side(srf, b.m_curves_2d[ci]);
+        sides[k] = ruled_side(srf, b.m_curves_2d[ci].nurbs());
     }
 
     for (int side = 0; side < 4; ++side)
@@ -2592,8 +2592,8 @@ std::vector<std::tuple<double, Point, Point>> ruled_lift(const BRep& b, int fi, 
     if (!boundary.points.count(er.index))
         return samples;
 
-    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
-    const NurbsCurve& crv = b.m_curves_2d[b.pcurve_index(er.index, fi, er.orientation)];
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
+    const NurbsCurve& crv = b.m_curves_2d[b.pcurve_index(er.index, fi, er.orientation)].nurbs();
     const Point c0 = crv.get_cv(0);
     const Point c1 = crv.get_cv(1);
     const NurbsCurve iso = srf.iso_curve(0, c0[1]);
@@ -2693,8 +2693,8 @@ void ruled_boundaries(const BRep& b, const std::vector<int>& face_ruled, EdgeBou
 
     for (size_t fi = 0; fi < face_ruled.size(); ++fi)
         if (face_ruled[fi] >= 0) {
-            spans[fi] = ruled_spans(b.m_surfaces[b.m_faces[fi].surface_index]);
-            counts[fi] = ruled_counts(b.m_surfaces[b.m_faces[fi].surface_index], spans[fi], scale, angle, chord);
+            spans[fi] = ruled_spans(b.m_surfaces[b.m_faces[fi].surface_index].nurbs());
+            counts[fi] = ruled_counts(b.m_surfaces[b.m_faces[fi].surface_index].nurbs(), spans[fi], scale, angle, chord);
         }
 
     for (int pass = 0; pass < 16; ++pass) {
@@ -2704,7 +2704,7 @@ void ruled_boundaries(const BRep& b, const std::vector<int>& face_ruled, EdgeBou
             if (face_ruled[fi] < 0)
                 continue;
 
-            const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+            const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
             const std::vector<BRepRef> edges = ruled_edges(b, (int)fi, face_ruled[fi]);
             const std::pair<double, double> du = srf.domain(0);
             const std::pair<double, double> dv = srf.domain(1);
@@ -2752,7 +2752,7 @@ std::vector<size_t> ruled_order(const std::vector<std::tuple<double, Point, Poin
 /// Phase 1: the mesh of a ruled face: both loops at the agreed stations, paired ruling by ruling into two triangles per step so no triangle spans two rulings, degenerate triangles at a collapsed ruling skipped, the loop numbered as the CDT polygon (loop at v0, ruling, loop at v1, ruling) so the edge uses tag as there; empty when the loops disagree on their stations
 Mesh ruled_mesh(const BRep& b, int fi, int shift, EdgeBoundary& boundary) {
 
-    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index];
+    const NurbsSurface& srf = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
     const std::vector<BRepRef> edges = ruled_edges(b, fi, shift);
     const std::vector<std::tuple<double, Point, Point>> first = ruled_lift(b, fi, edges[0], boundary);
     std::vector<std::tuple<double, Point, Point>> second = ruled_lift(b, fi, edges[2], boundary);
@@ -2851,7 +2851,7 @@ bool face_rings(const BRep& b, Mesh& rings) {
         rings.add_vertex(b.m_vertices[vi].point, vi);
 
     for (int fi = 0; fi < b.face_count(); ++fi) {
-        const NurbsSurface& surface = b.m_surfaces[b.m_faces[fi].surface_index];
+        const NurbsSurface& surface = b.m_surfaces[b.m_faces[fi].surface_index].nurbs();
         const std::pair<double, double> u = surface.domain(0);
         const std::pair<double, double> v = surface.domain(1);
         const Plane frame = Plane::from_point_normal(Point(), b.normal_at(fi, (u.first + u.second) * 0.5, (v.first + v.second) * 0.5));
@@ -2868,7 +2868,7 @@ bool face_rings(const BRep& b, Mesh& rings) {
                 if (edge.degenerated)
                     continue;
 
-                planar = planar && b.m_curves_3d[edge.curve_3d_index].degree() == 1;
+                planar = planar && b.m_curves_3d[edge.curve_3d_index].nurbs().degree() == 1;
                 loops.back().push_back(er.orientation == BRepOrientation::Reversed ? edge.end_vertex : edge.start_vertex);
             }
         }
@@ -3303,7 +3303,7 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
         const int si = b.add_surface(cap);
         const std::vector<BRepRef> outer = pb.wire_refs(si, fv);
         const int e_hole = fi == 0 ? e_bot : e_top;
-        const NurbsCurve c2d = project_to_patch(b.m_curves_3d[b.m_edges[e_hole].curve_3d_index], cap);
+        const NurbsCurve c2d = project_to_patch(b.m_curves_3d[b.m_edges[e_hole].curve_3d_index].nurbs(), cap);
         const BRepOrientation o = uv_signed_area(c2d) < 0.0 ? F : R;
         b.add_pcurve(e_hole, si, b.add_curve_2d(c2d));
         faces.push_back({b.add_face(si, {{b.add_wire(outer), F}, {b.add_wire({{e_hole, o}}), F}}), F});
@@ -3495,14 +3495,17 @@ bool BRep::is_valid() const {
     if (m_faces.empty())
         return false;
 
-    for (const NurbsSurface& surface : m_surfaces)
+    for (const NurbsSurface& surface : nurbs(m_surfaces))
         if (!surface.is_valid())
             return false;
 
-    for (const std::vector<NurbsCurve>* curves : {&m_curves_3d, &m_curves_2d})
-        for (const NurbsCurve& curve : *curves)
-            if (!curve.is_valid())
-                return false;
+    for (const Curve& curve : m_curves_3d)
+        if (!curve.nurbs().is_valid())
+            return false;
+
+    for (const Curve2d& curve : m_curves_2d)
+        if (!curve.nurbs().is_valid())
+            return false;
 
     for (const BRepVertex& vertex : m_vertices) {
         if (!std::isfinite(vertex.tolerance) || vertex.tolerance < 0.0)
@@ -3765,19 +3768,19 @@ double BRep::update_tolerances() {
         double tol = e.tolerance;
 
         if (e.curve_3d_index >= 0) {
-            const NurbsCurve& c = m_curves_3d[e.curve_3d_index];
+            const NurbsCurve& c = m_curves_3d[e.curve_3d_index].nurbs();
             tol = std::max(tol, c.point_at(c.domain().first).distance(vs.point));
             tol = std::max(tol, c.point_at(c.domain().second).distance(ve.point));
         }
 
         for (const BRepCurveOnSurface& pc : e.pcurves) {
-            const NurbsSurface& srf = m_surfaces[pc.surface_index];
+            const NurbsSurface& srf = m_surfaces[pc.surface_index].nurbs();
 
             for (const int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
                 if (ci < 0)
                     continue;
 
-                const NurbsCurve& c2 = m_curves_2d[ci];
+                const NurbsCurve& c2 = m_curves_2d[ci].nurbs();
                 const Point a = c2.point_at(c2.domain().first);
                 const Point z = c2.point_at(c2.domain().second);
                 tol = std::max(tol, srf.point_at(a[0], a[1]).distance(vs.point));
@@ -3807,21 +3810,21 @@ double BRep::volume_exact(double tolerance) const {
 // ═══════════════════════════════════════════════════════════════════════════
 // Building
 // ═══════════════════════════════════════════════════════════════════════════
-int BRep::add_surface(const NurbsSurface& srf) {
+int BRep::add_surface(const Surface& srf) {
 
     m_surfaces.push_back(srf);
 
     return (int)m_surfaces.size() - 1;
 }
 
-int BRep::add_curve_3d(const NurbsCurve& crv) {
+int BRep::add_curve_3d(const Curve& crv) {
 
     m_curves_3d.push_back(crv);
 
     return (int)m_curves_3d.size() - 1;
 }
 
-int BRep::add_curve_2d(const NurbsCurve& crv) {
+int BRep::add_curve_2d(const Curve2d& crv) {
 
     m_curves_2d.push_back(crv);
 
@@ -3963,15 +3966,15 @@ std::vector<double> mesh_key(const BRep& brep) {
     std::vector<double> key;
 
     key.push_back((double)brep.m_surfaces.size());
-    for (const NurbsSurface& surface : brep.m_surfaces)
+    for (const NurbsSurface& surface : nurbs(brep.m_surfaces))
         mesh_key_surface(key, surface);
 
     key.push_back((double)brep.m_curves_3d.size());
-    for (const NurbsCurve& curve : brep.m_curves_3d)
+    for (const NurbsCurve& curve : nurbs(brep.m_curves_3d))
         mesh_key_curve(key, curve);
 
     key.push_back((double)brep.m_curves_2d.size());
-    for (const NurbsCurve& curve : brep.m_curves_2d)
+    for (const NurbsCurve& curve : nurbs(brep.m_curves_2d))
         mesh_key_curve(key, curve);
 
     key.push_back((double)brep.m_vertices.size());
@@ -4074,7 +4077,7 @@ static void tag_parametric_boundaries(const BRep& brep, int face, Mesh& mesh, in
                 const int index = brep.pcurve_index(use.index, face, use.orientation);
                 if (index < 0)
                     continue;
-                const NurbsCurve& curve = brep.m_curves_2d[index];
+                const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
                 bool on_boundary = false;
                 if (curve.degree() == 1 && curve.cv_count() == 2) {
                     const Point first = curve.get_cv(0), last = curve.get_cv(1);
@@ -4126,7 +4129,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
             face_ruled[fi] = ruled_face(*this, fi);
 
             if (mesh_parametric_metadata::capture_depth && face_ruled[fi] >= 0
-                && ruled_twists(m_surfaces[m_faces[fi].surface_index], angle))
+                && ruled_twists(m_surfaces[m_faces[fi].surface_index].nurbs(), angle))
                 face_ruled[fi] = -1;
         }
 
@@ -4149,7 +4152,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         if (!face_direct[fi])
             continue;
 
-        const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
+        const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index].nurbs();
         fmesh[fi] = has_quality ? RemeshNurbsSurfaceGrid::from_u_v_q(srf, 0, 0, max_angle_deg, chord_factor) : srf.mesh();
         snap_grid_corners(*this, fi, fmesh[fi]);
         rebuild_grid[fi] = grid_boundaries(*this, fi, fmesh[fi], boundary);
@@ -4192,7 +4195,7 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
         if (face_strip[fi] || face_ruled[fi] >= 0 || face_direct[fi])
             continue;
 
-        const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index];
+        const NurbsSurface& srf = m_surfaces[m_faces[fi].surface_index].nurbs();
         TrimLoops loops;
 
         // a curved face starts from the interior rows of a grid at its angle and chord: refinement alone grows inward from the
@@ -4234,7 +4237,7 @@ Point BRep::point_at(int face_index, double u, double v) const {
     if (face_index < 0 || face_index >= (int)m_faces.size())
         return Point();
 
-    return m_surfaces[m_faces[face_index].surface_index].point_at(u, v);
+    return m_surfaces[m_faces[face_index].surface_index].nurbs().point_at(u, v);
 }
 
 Vector BRep::normal_at(int face_index, double u, double v) const {
@@ -4242,7 +4245,7 @@ Vector BRep::normal_at(int face_index, double u, double v) const {
     if (face_index < 0 || face_index >= (int)m_faces.size())
         return Vector();
 
-    const Vector n = m_surfaces[m_faces[face_index].surface_index].normal_at(u, v);
+    const Vector n = m_surfaces[m_faces[face_index].surface_index].nurbs().normal_at(u, v);
 
     if (face_orientation(face_index) == BRepOrientation::Reversed)
         return -n;
@@ -4255,10 +4258,10 @@ Vector BRep::normal_at(int face_index, double u, double v) const {
 // ═══════════════════════════════════════════════════════════════════════════
 void BRep::transform(const Xform& xform) {
 
-    for (NurbsSurface& srf : m_surfaces)
+    for (Surface& srf : m_surfaces)
         srf.transform(xform);
 
-    for (NurbsCurve& crv : m_curves_3d)
+    for (Curve& crv : m_curves_3d)
         crv.transform(xform);
 
     for (BRepVertex& v : m_vertices)
@@ -4369,7 +4372,7 @@ BRep BRep::offset_convex(double distance, double tolerance) const {
         throw std::invalid_argument("BRep::offset_convex requires planar faces");
 
     for (const BRepEdge& edge : m_edges)
-        if (edge.degenerated || !m_curves_3d[edge.curve_3d_index].is_linear(tolerance))
+        if (edge.degenerated || !m_curves_3d[edge.curve_3d_index].nurbs().is_linear(tolerance))
             throw std::invalid_argument("BRep::offset_convex requires straight edges");
 
     for (const Plane& plane : planes)
@@ -4478,7 +4481,7 @@ static BRep half_space(const BRep& shape, const Plane& plane) {
 
     double reach = 1.0;
 
-    for (const NurbsSurface& surface : shape.m_surfaces)
+    for (const NurbsSurface& surface : nurbs(shape.m_surfaces))
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
                 reach = std::max(reach, 2.0 * surface.get_cv(i, j).distance(plane.origin()));
@@ -4548,12 +4551,12 @@ nlohmann::ordered_json BRep::jsondump() const {
     nlohmann::ordered_json j;
     j["curves_2d"] = nlohmann::ordered_json::array();
 
-    for (const NurbsCurve& c : m_curves_2d)
+    for (const NurbsCurve& c : nurbs(m_curves_2d))
         j["curves_2d"].push_back(c.jsondump());
 
     j["curves_3d"] = nlohmann::ordered_json::array();
 
-    for (const NurbsCurve& c : m_curves_3d)
+    for (const NurbsCurve& c : nurbs(m_curves_3d))
         j["curves_3d"].push_back(c.jsondump());
 
     j["edges"] = nlohmann::ordered_json::array();
@@ -4583,7 +4586,7 @@ nlohmann::ordered_json BRep::jsondump() const {
     j["surfacecolor"] = surfacecolor.jsondump();
     j["surfaces"] = nlohmann::ordered_json::array();
 
-    for (const NurbsSurface& s : m_surfaces)
+    for (const NurbsSurface& s : nurbs(m_surfaces))
         j["surfaces"].push_back(s.jsondump());
 
     j["type"] = "BRep";
@@ -4707,13 +4710,13 @@ session_proto::BRep BRep::to_proto() const {
 
     proto.set_width(width);
 
-    for (const NurbsCurve& c : m_curves_2d)
+    for (const NurbsCurve& c : nurbs(m_curves_2d))
         *proto.add_curves_2d() = c.to_proto();
 
-    for (const NurbsCurve& c : m_curves_3d)
+    for (const NurbsCurve& c : nurbs(m_curves_3d))
         *proto.add_curves_3d() = c.to_proto();
 
-    for (const NurbsSurface& s : m_surfaces)
+    for (const NurbsSurface& s : nurbs(m_surfaces))
         *proto.add_surfaces() = s.to_proto();
 
     for (const BRepVertex& v : m_vertices) {

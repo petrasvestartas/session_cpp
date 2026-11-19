@@ -3436,7 +3436,7 @@ public:
                           const NurbsCurve& file = NurbsCurve(), double file_error = INFINITY) {
 
         const BRepEdge& be = brep.m_edges[edge];
-        const NurbsCurve& world = brep.m_curves_3d[be.curve_3d_index];
+        const NurbsCurve& world = brep.m_curves_3d[be.curve_3d_index].nurbs();
         const Point& vs = brep.m_vertices[be.start_vertex].point;
         const Point& ve = brep.m_vertices[be.end_vertex].point;
         double error = 0.0;
@@ -3472,7 +3472,7 @@ public:
     /// Canonical (s, t) samples of an edge use in curve order, unwrapped along the traversal after the uses already in lp.
     std::vector<Point> use_st(const AnFace& an, const Loop& lp, int edge, bool reversed) {
 
-        std::vector<Point> ordered = sample_nurbs(brep.m_curves_3d[brep.m_edges[edge].curve_3d_index], 48);
+        std::vector<Point> ordered = sample_nurbs(brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs(), 48);
 
         if (reversed)
             std::reverse(ordered.begin(), ordered.end());
@@ -3516,7 +3516,7 @@ public:
 
         for (size_t k = 0; k < lp.edges.size(); k++) {
             const LoopEdge le = lp.edges[k];
-            const NurbsCurve world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index];
+            const NurbsCurve world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index].nurbs();
             const auto off = [&](double t) { return std::remainder(std::get<0>(an_st_of(an, world.point_at(t))) - s, 2.0 * PI); };
             const int n = (int)le.uv.size() - 1;
 
@@ -3593,7 +3593,7 @@ public:
                     if (c < 0)
                         continue;
 
-                    const NurbsCurve whole = brep.m_curves_2d[c];
+                    const NurbsCurve whole = brep.m_curves_2d[c].nurbs();
                     const double t = whole.domain_start() + (whole.domain_end() - whole.domain_start()) * std::get<2>(pieces);
                     NurbsCurve head = whole;
                     NurbsCurve tail = whole;
@@ -3617,7 +3617,7 @@ public:
         const auto start = [&](const LoopEdge& le) { return le.reversed ? brep.m_edges[le.edge_idx].end_vertex : brep.m_edges[le.edge_idx].start_vertex; };
         const auto angle = [&](int v) { return std::remainder(std::get<0>(an_st_of(an, brep.m_vertices[v].point)), 2.0 * PI); };
         const auto foot = [&](const LoopEdge& le) {
-            const NurbsCurve& w = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index];
+            const NurbsCurve& w = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index].nurbs();
             return le.reversed ? w.point_at_end() : w.point_at_start();
         };
         std::vector<size_t> around;
@@ -4044,7 +4044,7 @@ public:
 
     /// The file's pcurve of an edge on a B-spline surface: one certified against the world curve at the tolerance (error 0), else the one of least deviation (error); the forward or reversed seam alias by the use.
     std::optional<NurbsCurve> source_pcurve(int edge, int geometry_id, int surface_id, const NurbsSurface& support, bool forward, double& error) {
-        const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
+        const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs();
         const StepEntity* source = r.get(surface_id);
         if (!support.is_valid() || !source || !surface_params(*source)) return std::nullopt;
         const auto deviation = [&](const NurbsCurve& pc) {
@@ -4112,7 +4112,7 @@ public:
                 LoopEdge le;
                 le.edge_idx = get_edge(use.first);
                 le.reversed = use.second;
-                const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index];
+                const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index].nurbs();
                 const std::optional<NurbsCurve> pc = source_pcurve(le.edge_idx, edge_geom_id(r, use.first), surface_ref, proj_srf, !le.reversed, le.error);
 
                 if (pc) {
@@ -4191,7 +4191,7 @@ public:
 
                 seen.push_back(ec);
 
-                for (const Point& p : sample_nurbs(brep.m_curves_3d[brep.m_edges[get_edge(ec)].curve_3d_index], 16))
+                for (const Point& p : sample_nurbs(brep.m_curves_3d[brep.m_edges[get_edge(ec)].curve_3d_index].nurbs(), 16))
                     angles.push_back(angle_of(a, p));
             }
         }
@@ -4766,7 +4766,7 @@ public:
             return it->second;
 
         const BRepEdge& e = brep.m_edges[ei];
-        const NurbsCurve& world = brep.m_curves_3d[e.curve_3d_index];
+        const NurbsCurve& world = brep.m_curves_3d[e.curve_3d_index].nurbs();
         const int c = w.write_nurbs_curve(world);
 
         if (c < 0)
@@ -4778,7 +4778,7 @@ public:
 
         for (const BRepCurveOnSurface& pc : e.pcurves)
             for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
-                NurbsCurve c2d = ci >= 0 ? brep.m_curves_2d[ci] : NurbsCurve();
+                NurbsCurve c2d = ci >= 0 ? brep.m_curves_2d[ci].nurbs() : NurbsCurve();
                 const int srf = ci >= 0 ? surface_id(pc.surface_index) : -1;
                 const int curve = srf >= 0 && c2d.set_domain(world.domain_start(), world.domain_end()) ? w.write_nurbs_curve(c2d, true) : -1;
 
@@ -4811,7 +4811,7 @@ public:
         if (it != sid.end())
             return it->second;
 
-        return sid[si] = w.write_nurbs_surface(brep.m_surfaces[si]);
+        return sid[si] = w.write_nurbs_surface(brep.m_surfaces[si].nurbs());
     }
 
     /// EDGE_LOOP of the non-degenerated edges, a VERTEX_LOOP when there are none, -1 for an empty wire.

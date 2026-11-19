@@ -453,14 +453,14 @@ void rhino_step_whole_pcurves(const BRep& shape) {
             world.set_cv(0, point);
             world.set_cv(1, point);
         } else
-            world = shape.m_curves_3d.at(edge.curve_3d_index);
+            world = shape.m_curves_3d.at(edge.curve_3d_index).nurbs();
         for (const auto& image : edge.pcurves) {
             MINI_CHECK(image.curve_2d_index>=0);
-            const auto& surface = shape.m_surfaces.at(image.surface_index);
+            const auto& surface = shape.m_surfaces.at(image.surface_index).nurbs();
             for (int pc_index : {image.curve_2d_index, image.curve_2d_index_2}) {
                 if (pc_index < 0)
                     continue;
-                const auto& pc = shape.m_curves_2d.at(pc_index);
+                const auto& pc = shape.m_curves_2d.at(pc_index).nurbs();
                 // The contract is normalized raw-parameter correspondence;
                 // imported world and UV domains need not be identical.
                 MINI_CHECK(curve_surface_intersection::same_parameter(world, pc, surface, 0.001) == curve_surface_intersection::ParameterMatch::Matched);
@@ -551,10 +551,9 @@ MINI_TEST("FileStep", "Oblique Affine Support Preserves Raw Chart") {
         BRep source = BRep::create_box(2.0, 2.0, 2.0);
         for (auto& vertex : source.m_vertices)
             vertex.point = shear(vertex.point);
-        for (auto& curve : source.m_curves_3d)
-            for (int i = 0; i < curve.cv_count(); ++i)
-                MINI_CHECK(curve.set_cv(i, shear(curve.get_cv(i))));
-        for (auto& surface : source.m_surfaces) {
+        for (Curve& curve_ : source.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+                MINI_CHECK(curve.set_cv(i, shear(curve.get_cv(i)))); curve_ = curve; }
+        for (Surface& surface_ : source.m_surfaces) { NurbsSurface surface = surface_.nurbs();
             MINI_CHECK(surface.domain(0) == std::make_pair(0.0, 1.0));
             MINI_CHECK(surface.domain(1) == std::make_pair(0.0, 1.0));
             for (int i = 0; i < surface.cv_count(0); ++i)
@@ -570,13 +569,12 @@ MINI_TEST("FileStep", "Oblique Affine Support Preserves Raw Chart") {
                         MINI_CHECK(surface.set_cv_4d(i, j, 2 * p[0], 2 * p[1], 2 * p[2], 2));
                     }
             }
-        }
-        for (auto& curve : source.m_curves_2d)
-            for (int i = 0; i < curve.cv_count(); ++i) {
+        surface_ = surface; }
+        for (Curve2d& curve_ : source.m_curves_2d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i) {
                 const Point uv = curve.get_cv(i);
                 MINI_CHECK(curve.set_cv(i, Point(-7.0 + 20.0 * uv[0], 32.0 + 3.0 * uv[1], 0.0)));
-            }
-        const auto& support = source.m_surfaces.front();
+            } curve_ = curve; }
+        const auto& support = source.m_surfaces.front().nurbs();
         const Vector eu = support.get_cv(1, 0) - support.get_cv(0, 0);
         const Vector ev = support.get_cv(0, 1) - support.get_cv(0, 0);
         MINI_CHECK(std::abs(eu.dot(ev)) > 0.0); // The Gram cross term is required.
@@ -594,13 +592,13 @@ MINI_TEST("FileStep", "Oblique Affine Support Preserves Raw Chart") {
         size_t checked = 0;
         for (const auto& edge : result.m_edges) {
             MINI_CHECK(!edge.degenerated);
-            const auto& world = result.m_curves_3d.at(edge.curve_3d_index);
+            const auto& world = result.m_curves_3d.at(edge.curve_3d_index).nurbs();
             for (const auto& image : edge.pcurves)
                 for (int index : {image.curve_2d_index, image.curve_2d_index_2}) {
                     if (index < 0)
                         continue;
                     MINI_CHECK(curve_surface_intersection::same_parameter(
-                        world, result.m_curves_2d.at(index), result.m_surfaces.at(image.surface_index), 1e-7) ==
+                        world, result.m_curves_2d.at(index).nurbs(), result.m_surfaces.at(image.surface_index).nurbs(), 1e-7) ==
                         curve_surface_intersection::ParameterMatch::Matched);
                     ++checked;
                 }
@@ -656,15 +654,15 @@ MINI_TEST("FileStep", "Original Like Seam PC Selection Ignores Association Order
         MINI_CHECK(a.edge_count() == b.edge_count() && a.face_count() == b.face_count());
         int aliases = 0;
         for (const auto& edge : b.m_edges) for (const auto& image : edge.pcurves) {
-            const auto& surface = b.m_surfaces.at(image.surface_index);
+            const auto& surface = b.m_surfaces.at(image.surface_index).nurbs();
             if (surface.degree(0) != 2) continue;
             for (int index : {image.curve_2d_index, image.curve_2d_index_2}) if (index >= 0) {
-                const auto& pc = b.m_curves_2d.at(index);
+                const auto& pc = b.m_curves_2d.at(index).nurbs();
                 MINI_CHECK(pc.degree() == 1 && pc.cv_count() == 2);
             }
             if (image.curve_2d_index_2 < 0) continue;
-            const auto& pc = b.m_curves_2d.at(image.curve_2d_index);
-            const auto& other = b.m_curves_2d.at(image.curve_2d_index_2);
+            const auto& pc = b.m_curves_2d.at(image.curve_2d_index).nurbs();
+            const auto& other = b.m_curves_2d.at(image.curve_2d_index_2).nurbs();
             const auto first = pc.point_at_start(), second = other.point_at_start();
             // Two distinct ORIGINAL chart aliases, not two copies of a projected trace.
             MINI_CHECK(first.distance(second) > 1);
@@ -676,8 +674,8 @@ MINI_TEST("FileStep", "Original Like Seam PC Selection Ignores Association Order
         // The exact 3D curve control data does not depend on associated-PC ordering.
         MINI_CHECK(a.m_curves_3d.size() == b.m_curves_3d.size());
         for (size_t i = 0; i < a.m_curves_3d.size() && i < b.m_curves_3d.size(); ++i) {
-            MINI_CHECK(a.m_curves_3d[i].m_cv == b.m_curves_3d[i].m_cv);
-            MINI_CHECK(a.m_curves_3d[i].m_nurbsknot == b.m_curves_3d[i].m_nurbsknot);
+            MINI_CHECK(a.m_curves_3d[i].nurbs().m_cv == b.m_curves_3d[i].nurbs().m_cv);
+            MINI_CHECK(a.m_curves_3d[i].nurbs().m_nurbsknot == b.m_curves_3d[i].nurbs().m_nurbsknot);
         }
     }
 }
@@ -712,7 +710,7 @@ MINI_TEST("FileStep", "Original Trimmed Sphere Circle Retains Exact Sense") {
         MINI_CHECK(shapes.size() == 1); if (shapes.size() != 1) continue;
         const auto& shape = shapes.front();
         MINI_CHECK(std::count_if(shape.m_edges.begin(), shape.m_edges.end(), [](const auto& edge) { return !edge.degenerated; }) == 1);
-        const auto& curve = shape.m_curves_3d.at(std::find_if(shape.m_edges.begin(), shape.m_edges.end(), [](const auto& edge) { return !edge.degenerated; })->curve_3d_index);
+        const auto& curve = shape.m_curves_3d.at(std::find_if(shape.m_edges.begin(), shape.m_edges.end(), [](const auto& edge) { return !edge.degenerated; })->curve_3d_index).nurbs();
         MINI_CHECK(curve.degree() == 2 && curve.m_is_rat != 0 && curve.cv_count() == 5);
         const Point center(-8.31850601603522, 164.175382362864, 0);
         const double radius = 16.1387051137751;
@@ -764,18 +762,18 @@ MINI_TEST("FileStep", "Original Circle Cap Retains Rational World Law") {
         const auto& shape = shapes.front();
         MINI_CHECK(shape.is_valid());
         const auto& edge = shape.m_edges.at(0);
-        const auto& world = shape.m_curves_3d.at(edge.curve_3d_index);
+        const auto& world = shape.m_curves_3d.at(edge.curve_3d_index).nurbs();
         MINI_CHECK(world.is_rational());
         MINI_CHECK(world.cv_count() == 9);
         size_t cap_images = 0;
         for (const auto& image : edge.pcurves) {
             if (image.surface_index != 1) continue;
             const auto match = curve_surface_intersection::same_parameter(world,
-                shape.m_curves_2d.at(image.curve_2d_index), shape.m_surfaces.at(image.surface_index), .001);
+                shape.m_curves_2d.at(image.curve_2d_index).nurbs(), shape.m_surfaces.at(image.surface_index).nurbs(), .001);
             if (variant == 0) {
                 original_world = world;
-                original_cap = shape.m_curves_2d.at(image.curve_2d_index);
-                original_support = shape.m_surfaces.at(image.surface_index);
+                original_cap = shape.m_curves_2d.at(image.curve_2d_index).nurbs();
+                original_support = shape.m_surfaces.at(image.surface_index).nurbs();
             }
             if (variant != 2)
                 MINI_CHECK(match == curve_surface_intersection::ParameterMatch::Matched);
@@ -814,7 +812,7 @@ MINI_TEST("FileStep", "Rounded Trimmed Sphere Quarter Proposal Preserves Origina
         std::count_if(shape.m_edges.begin(), shape.m_edges.end(), [](const auto& edge) { return !edge.degenerated; }) == 1);
     rhino_step_whole_pcurves(shape);
     const auto seam = std::find_if(shape.m_edges.begin(), shape.m_edges.end(), [](const auto& edge) { return !edge.degenerated; });
-    const auto& world = shape.m_curves_3d.at(seam->curve_3d_index);
+    const auto& world = shape.m_curves_3d.at(seam->curve_3d_index).nurbs();
     MINI_CHECK(world.degree() == 2 && world.m_is_rat != 0 && world.cv_count() == 5);
     const Point center(2.15514933833421, 167.204904258093, 3.49070132425338);
     const double radius = 16.1387051137751;
@@ -826,7 +824,7 @@ MINI_TEST("FileStep", "Rounded Trimmed Sphere Quarter Proposal Preserves Origina
     int aliases = 0;
     for (const auto& image : seam->pcurves)
         for (int index : {image.curve_2d_index, image.curve_2d_index_2}) if (index >= 0) {
-            const auto& pc = shape.m_curves_2d.at(index);
+            const auto& pc = shape.m_curves_2d.at(index).nurbs();
             MINI_CHECK(pc.degree() == 1 && pc.cv_count() == 2);
             MINI_CHECK(pc.domain_start() == -25.3506187119439);
             MINI_CHECK(pc.domain_end() == 25.3506187119439);
@@ -864,7 +862,7 @@ MINI_TEST("FileStep", "Trimmed Circle Quarter Proposal Keeps Distinct Small And 
         if (shapes.size() != 1) continue;
         const auto& shape = shapes.front();
         MINI_CHECK(shape.edge_count() == 1);
-        const auto& curve = shape.m_curves_3d.at(shape.m_edges.front().curve_3d_index);
+        const auto& curve = shape.m_curves_3d.at(shape.m_edges.front().curve_3d_index).nurbs();
         MINI_CHECK(curve.degree() == 2 && curve.m_is_rat != 0);
         MINI_CHECK(curve.cv_count() == (angle > 1 ? 7 : 3));
         MINI_CHECK(std::abs((curve.domain_end() - curve.domain_start()) - angle) < 1e-14);
@@ -896,9 +894,9 @@ MINI_TEST("FileStep", "Original Sphere And Cone Pole Bridges Are Certified") {
                         const auto& first = edges[i];
                         const auto& next = edges[(i + 1) % edges.size()];
                         const auto& a = shape.m_curves_2d.at(shape.pcurve_index(first.index,
-                            static_cast<int>(&face - shape.m_faces.data()), first.orientation));
+                            static_cast<int>(&face - shape.m_faces.data()), first.orientation)).nurbs();
                         const auto& b = shape.m_curves_2d.at(shape.pcurve_index(next.index,
-                            static_cast<int>(&face - shape.m_faces.data()), next.orientation));
+                            static_cast<int>(&face - shape.m_faces.data()), next.orientation)).nurbs();
                         const Point end = first.orientation == BRepOrientation::Forward ? a.point_at_end() : a.point_at_start();
                         const Point start = next.orientation == BRepOrientation::Forward ? b.point_at_start() : b.point_at_end();
                         MINI_CHECK(end.distance(start) < 1e-10);
@@ -910,7 +908,7 @@ MINI_TEST("FileStep", "Original Sphere And Cone Pole Bridges Are Certified") {
 }
 MINI_TEST("FileStep", "Noncollapsed Cylinder Boundary Is Not A Pole Bridge") {
     BRep source = BRep::create_cylinder(2, 3);
-    const auto& support = source.m_surfaces.front();
+    const auto& support = source.m_surfaces.front().nurbs();
     const auto u = support.domain(0), v = support.domain(1);
     const Point point = support.point_at(u.first, v.first);
     NurbsCurve constant(3, false, 2, 2);
@@ -967,8 +965,8 @@ int step_uncertified_pcurves(const BRep& shape) {
         for (const auto& image : edge.pcurves)
             for (int index : {image.curve_2d_index, image.curve_2d_index_2})
                 if (index >= 0 && !edge.degenerated)
-                    failed += curve_surface_intersection::same_parameter(shape.m_curves_3d.at(edge.curve_3d_index), shape.m_curves_2d.at(index),
-                        shape.m_surfaces.at(image.surface_index), 1e-7) != curve_surface_intersection::ParameterMatch::Matched;
+                    failed += curve_surface_intersection::same_parameter(shape.m_curves_3d.at(edge.curve_3d_index).nurbs(), shape.m_curves_2d.at(index).nurbs(),
+                        shape.m_surfaces.at(image.surface_index).nurbs(), 1e-7) != curve_surface_intersection::ParameterMatch::Matched;
     return failed;
 }
 }

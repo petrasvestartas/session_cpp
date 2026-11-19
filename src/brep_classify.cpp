@@ -165,7 +165,7 @@ std::vector<std::array<double, 2>> wire_ends(const BRep& brep, const brep_face_b
     std::vector<std::array<double, 2>> ends;
     for (const auto& use : wire.uses)
         if (use.pcurve >= 0 && use.pcurve < static_cast<int>(brep.m_curves_2d.size()))
-            ends.push_back(end_heights(brep.m_curves_2d[use.pcurve], checked));
+            ends.push_back(end_heights(brep.m_curves_2d[use.pcurve].nurbs(), checked));
     return ends;
 }
 
@@ -185,7 +185,7 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const s
         if (ci < 0 || ci >= static_cast<int>(brep.m_curves_2d.size()))
             return State::Unknown;
         int contribution = 0;
-        const State state = curve_winding(brep.m_curves_2d[ci], uv, height, tolerance, contribution, known != nullptr);
+        const State state = curve_winding(brep.m_curves_2d[ci].nurbs(), uv, height, tolerance, contribution, known != nullptr);
         if (state == State::Boundary || state == State::Unknown)
             return state;
         winding += edge.orientation == BRepOrientation::Reversed ? -contribution : contribution;
@@ -201,8 +201,8 @@ State wire_state(const BRep& brep, const brep_face_boundary::Wire& wire, const s
         const bool from = wire.uses[i].edge.orientation == BRepOrientation::Forward;
         const bool to = wire.uses[j].edge.orientation == BRepOrientation::Reversed;
         if ((ends[i][from] > height) != (ends[j][to] > height))
-            winding += crossing(end_point(brep.m_curves_2d[wire.uses[i].pcurve], from, known != nullptr),
-                end_point(brep.m_curves_2d[wire.uses[j].pcurve], to, known != nullptr), {uv[0], height, 0.0});
+            winding += crossing(end_point(brep.m_curves_2d[wire.uses[i].pcurve].nurbs(), from, known != nullptr),
+                end_point(brep.m_curves_2d[wire.uses[j].pcurve].nurbs(), to, known != nullptr), {uv[0], height, 0.0});
     }
     return winding == 0 ? State::Outside : State::Inside;
 }
@@ -240,7 +240,7 @@ bool append_hit(RayResult& result, const Solid& solid, int face,
     const surface_ray::Root& root, const RayFrame& frame) {
     const BRep& brep = solid.brep;
     std::array<xyz, 6> values;
-    if (!brep.m_surfaces[brep.m_faces[face].surface_index].jet(root.u, root.v, 1, values))
+    if (!brep.m_surfaces[brep.m_faces[face].surface_index].nurbs().jet(root.u, root.v, 1, values))
         return false;
     const double speed = std::max(values[1].length(), values[2].length());
     if (!std::isfinite(speed) || !(speed > 0.0))
@@ -270,7 +270,7 @@ using SurfaceRoots = std::map<std::pair<int, double>, surface_ray::Result>;
 void intersect_face(RayResult& result, const Solid& solid, int face, const RayFrame& frame, SurfaceRoots& met,
     const Vector* grazed = nullptr) {
     const BRep& brep = solid.brep;
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     surface_ray::Options options;
     options.include_origin = true;
     options.form = &solid.forms[brep.m_faces[face].surface_index];
@@ -389,7 +389,7 @@ bool near_edge(const BRep& brep, int face, const Point& query, double tolerance)
                 return true;
             if (edge.degenerated)
                 continue;
-            const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index];
+            const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index].nurbs();
             if (beyond(curve, query, 2.0 * tolerance))
                 continue;
             const double parameter = Closest::curve_point(curve, query).first;
@@ -409,7 +409,7 @@ State boundary_state(const Solid& solid, const Point& query, double tolerance, s
             q[1] < box[0][1] - tolerance || q[1] > box[1][1] + tolerance ||
             q[2] < box[0][2] - tolerance || q[2] > box[1][2] + tolerance)
             continue;
-        const NurbsSurface& surface = brep.m_surfaces[support];
+        const NurbsSurface& surface = brep.m_surfaces[support].nurbs();
         const std::tuple<double, double, double> nearest = Closest::surface_point(surface, query);
         const double u = std::get<0>(nearest);
         const double v = std::get<1>(nearest);
@@ -459,7 +459,7 @@ Solid::Solid(const BRep& model, bool boundaries) : brep(model), solid(model.is_s
     boxes.resize(brep.m_surfaces.size());
     forms.resize(boxes.size());
     for (size_t k = 0; k < boxes.size(); ++k) {
-        const NurbsSurface& surface = brep.m_surfaces[k];
+        const NurbsSurface& surface = brep.m_surfaces[k].nurbs();
         xyz lo = surface.control(0, 0), hi = lo;
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j) {

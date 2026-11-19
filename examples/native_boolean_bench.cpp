@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
             const double seconds = seconds_since(start);
             case_seconds += seconds;
             int cv3d = 0, cv2d = 0, max2d = 0;
-            for (const NurbsCurve& curve : result.m_curves_3d) cv3d += curve.cv_count();
-            for (const NurbsCurve& curve : result.m_curves_2d) {
+            for (const NurbsCurve& curve : nurbs(result.m_curves_3d)) cv3d += curve.cv_count();
+            for (const NurbsCurve& curve : nurbs(result.m_curves_2d)) {
                 cv2d += curve.cv_count();
                 max2d = std::max(max2d, curve.cv_count());
             }

@@ -73,7 +73,7 @@ struct Context {
 
     const NurbsSurface& surface(int face) const {
         const BRep& brep = faces[face].brep;
-        return brep.m_surfaces[brep.m_faces[0].surface_index];
+        return brep.m_surfaces[brep.m_faces[0].surface_index].nurbs();
     }
 
     int side(int edge_index, int face) const {
@@ -161,16 +161,16 @@ Vector source_normal(const Context& context, const Use& use, double parameter) {
     const BRep& source = context.source;
     const int index = source.pcurve_index(context.edge, face, use.orientation);
     require(index >= 0, "Inward source edge lacks an incident pcurve");
-    const NurbsCurve& pcurve = source.m_curves_2d[index];
+    const NurbsCurve& pcurve = source.m_curves_2d[index].nurbs();
     const double t = pcurve.domain_start() + parameter * (pcurve.domain_end() - pcurve.domain_start());
-    const Vector direction = normal(source.m_surfaces[source.m_faces[face].surface_index], pcurve.point_at(t));
+    const Vector direction = normal(source.m_surfaces[source.m_faces[face].surface_index].nurbs(), pcurve.point_at(t));
     return source.face_orientation(face) == Reversed ? -direction : direction;
 }
 
 int edge_type(const Context& context) {
     const std::vector<Use>& uses = context.uses[context.edge];
     const BRepEdge& edge = context.source.m_edges[context.edge];
-    const NurbsCurve& curve = context.source.m_curves_3d[edge.curve_3d_index];
+    const NurbsCurve& curve = context.source.m_curves_3d[edge.curve_3d_index].nurbs();
     const BRepOrientation orientation = brep_compose(context.source.face_orientation(context.faces[uses[0].face].source), uses[0].orientation);
     const double sign = orientation == Forward ? 1.0 : -1.0;
     const double angular = std::min(0.01, context.tolerance / std::abs(context.distance));
@@ -198,19 +198,19 @@ void certify(const NurbsCurve& world, const NurbsCurve& pcurve, const NurbsSurfa
 
 void certify_source_edge(const Context& context) {
     const BRep& source = context.source;
-    const NurbsCurve& world = source.m_curves_3d[source.m_edges[context.edge].curve_3d_index];
+    const NurbsCurve& world = source.m_curves_3d[source.m_edges[context.edge].curve_3d_index].nurbs();
     for (const Use& use : context.uses[context.edge]) {
         const int face = context.faces[use.face].source;
         const int index = source.pcurve_index(context.edge, face, use.orientation);
         require(index >= 0, "Inward source lacks an incident pcurve");
-        certify(world, source.m_curves_2d[index], source.m_surfaces[source.m_faces[face].surface_index], context.tolerance * 0.125);
+        certify(world, source.m_curves_2d[index].nurbs(), source.m_surfaces[source.m_faces[face].surface_index].nurbs(), context.tolerance * 0.125);
     }
 }
 
 // Isolated straight, orthogonal context edge: a retained tangent half-cylinder,
 // ending transversely on the ORIGINAL stationary support.
 OffsetFace context_tube(Context& context, int retained, int stationary) {
-    const NurbsCurve& spine = context.source.m_curves_3d[context.source.m_edges[context.edge].curve_3d_index];
+    const NurbsCurve& spine = context.source.m_curves_3d[context.source.m_edges[context.edge].curve_3d_index].nurbs();
     require(spine.degree() == 1 && spine.cv_count() == 2 && !spine.is_rational(),
             "Context tube requires one polynomial straight source span");
     require(context.surface(retained).is_planar() && context.surface(stationary).is_planar(),
@@ -225,7 +225,7 @@ OffsetFace context_tube(Context& context, int retained, int stationary) {
     const Use stationary_use = context.uses[context.edge][context.side(context.edge, stationary)];
     for (const Use& use : {retained_use, stationary_use}) {
         const int source_face = context.faces[use.face].source;
-        require(context.source.m_surfaces[context.source.m_faces[source_face].surface_index]
+        require(context.source.m_surfaces[context.source.m_faces[source_face].surface_index].nurbs()
                     .is_planar(nullptr, context.tolerance * .125),
                 "Context tube requires original planar normal supports");
     }
@@ -335,7 +335,7 @@ void expand_support_graph(Context& context, const std::vector<int>& stationary_f
                 section.valid = true;
                 section.tangent = side == 0;
                 const int tube_border = side == 0 ? 0 : 2;
-                section.world = tube_brep.m_curves_3d[tube_brep.m_edges[tube_border].curve_3d_index];
+                section.world = tube_brep.m_curves_3d[tube_brep.m_edges[tube_border].curve_3d_index].nurbs();
                 const auto& plane = context.surface(face);
                 require(!plane.is_rational() && plane.degree(0) == 1 && plane.degree(1) == 1 &&
                             plane.cv_count(0) == 2 && plane.cv_count(1) == 2,
@@ -386,10 +386,10 @@ void expand_support_graph(Context& context, const std::vector<int>& stationary_f
             const int local = context.faces[face].edges.at(edge);
             Section& section = context.sections[section_index];
             section.valid = section.tangent = true;
-            section.world = displaced.m_curves_3d[displaced.m_edges[local].curve_3d_index];
+            section.world = displaced.m_curves_3d[displaced.m_edges[local].curve_3d_index].nurbs();
             const int pc = displaced.pcurve_index(local, 0, adjacent[side].orientation);
             require(pc >= 0, "Concave tube boundary lacks its displaced pcurve");
-            section.pcurves[0] = displaced.m_curves_2d[pc];
+            section.pcurves[0] = displaced.m_curves_2d[pc].nurbs();
             section.pcurves[1] = NurbsCurve::create(false, 1, {{0, double(side), 0}, {1, double(side), 0}});
             require(section.world.set_domain(0, 1) && section.pcurves[0].set_domain(0, 1),
                 "Could not normalize concave tangent border");
@@ -733,11 +733,11 @@ void register_context_boundaries(Context& context, const std::vector<int>& stati
             const int pc = support.pcurve_index(local, 0, Forward);
             require(pc >= 0, "Context border lacks its original pcurve");
             const BRepEdge& border = support.m_edges[local];
-            require(border.curve_3d_index >= 0 && support.m_curves_2d[pc].domain()
-                == support.m_curves_3d[border.curve_3d_index].domain(),
+            require(border.curve_3d_index >= 0 && support.m_curves_2d[pc].nurbs().domain()
+                == support.m_curves_3d[border.curve_3d_index].nurbs().domain(),
                 "Context boundary requires identical raw world and pcurve parameter domains");
             std::array<double, 2> parameters{};
-            if (!context_affine_boundary_map(support.m_curves_2d[pc], context.pcurve(edge, face), parameters))
+            if (!context_affine_boundary_map(support.m_curves_2d[pc].nurbs(), context.pcurve(edge, face), parameters))
                 continue;
             require(context.boundary_sections[face].emplace(local, edge).second,
                 "Context border has competing section identities");
@@ -813,7 +813,7 @@ void reconcile_boundaries(Context& context, int face, split::FaceSplit& partitio
             continue;
         const int section_index = found->second;
         const Section& section = context.sections[section_index];
-        const NurbsCurve& boundary = original.m_curves_3d[original.m_edges[piece.source_edge].curve_3d_index];
+        const NurbsCurve& boundary = original.m_curves_3d[original.m_edges[piece.source_edge].curve_3d_index].nurbs();
         const double span = boundary.domain_end() - boundary.domain_start();
         const auto parameter = [&](double t) {
             const auto context_image = context.context_boundary_parameters.find({face, piece.source_edge});
@@ -829,7 +829,7 @@ void reconcile_boundaries(Context& context, int face, split::FaceSplit& partitio
         if ((first + last) * 0.5 < 0.0 || (first + last) * 0.5 > 1.0)
             continue;
         const BRepEdge& edge = partition.brep.m_edges[piece.edge];
-        const NurbsCurve& world = partition.brep.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = partition.brep.m_curves_3d[edge.curve_3d_index].nurbs();
         const auto snap = [&](double parameter, const Point& point) {
             if (point.distance(section.world.point_at_start()) <= context.tolerance * 0.125)
                 return 0.0;
@@ -853,7 +853,7 @@ void reconcile_boundaries(Context& context, int face, split::FaceSplit& partitio
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (index >= 0)
-                    certify(shared, partition.brep.m_curves_2d[index], partition.brep.m_surfaces[relation.surface_index],
+                    certify(shared, partition.brep.m_curves_2d[index].nurbs(), partition.brep.m_surfaces[relation.surface_index].nurbs(),
                         context.tolerance * 0.25);
         partition.brep.m_edges[piece.edge].curve_3d_index = partition.brep.add_curve_3d(shared);
         piece.section = section_index;

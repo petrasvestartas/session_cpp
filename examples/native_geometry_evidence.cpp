@@ -558,7 +558,7 @@ using namespace session_cpp;
 
 NurbsCurve edge_world(const BRep& shape, const BRepEdge& edge, const NurbsCurve& pc) {
     if (edge.curve_3d_index >= 0)
-        return shape.m_curves_3d.at(edge.curve_3d_index);
+        return shape.m_curves_3d.at(edge.curve_3d_index).nurbs();
     if (!edge.degenerated || edge.start_vertex != edge.end_vertex)
         throw std::runtime_error("Imported edge has no original world curve");
     // A degenerate edge's intrinsic world geometry is its ORIGINAL vertex.
@@ -594,9 +594,9 @@ bool check_pcurves(const BRep& shape, double tolerance, const std::filesystem::p
                                               {"tolerance", tolerance}};
                 NurbsCurve world, pc;
                 try {
-                    pc = shape.m_curves_2d.at(index);
+                    pc = shape.m_curves_2d.at(index).nurbs();
                     world = edge_world(shape, edge, pc);
-                    const auto& support = shape.m_surfaces.at(relation.surface_index);
+                    const auto& support = shape.m_surfaces.at(relation.surface_index).nurbs();
                     std::string diagnostic;
                     const auto match = curve_surface_intersection::same_parameter(world, pc, support,
                                                                                   tolerance, &diagnostic);
@@ -624,7 +624,7 @@ bool check_pcurves(const BRep& shape, double tolerance, const std::filesystem::p
                         failure["pcurve"] = pc.jsondump();
                         if (relation.surface_index >= 0 &&
                             relation.surface_index < static_cast<int>(shape.m_surfaces.size()))
-                            failure["surface"] = shape.m_surfaces[relation.surface_index].jsondump();
+                            failure["surface"] = shape.m_surfaces[relation.surface_index].nurbs().jsondump();
                         native_tessellation_evidence::write(folder / filename, failure.dump(2));
                         report["first_pcurve_failure"] = filename;
                         witness = true;

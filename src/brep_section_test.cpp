@@ -30,7 +30,7 @@ MINI_TEST("BRep Native Section", "Curve Through Trimmed Bore") {
         throw std::runtime_error(wall.failure);
     MINI_CHECK(wall.points.size() == 4 && wall.overlaps.empty());
     for (const brep_section::CurveHit& hit : wall.points) {
-        const NurbsSurface& surface = bore.m_surfaces[bore.m_faces[hit.face].surface_index];
+        const NurbsSurface& surface = bore.m_surfaces[bore.m_faces[hit.face].surface_index].nurbs();
         MINI_CHECK(hit.point.distance(crossing.point_at(hit.t)) < 1e-7);
         MINI_CHECK(hit.point.distance(surface.point_at(hit.u, hit.v)) < 1e-7);
     }
@@ -68,8 +68,8 @@ MINI_TEST("BRep Native Section", "Transverse Boxes Paired Pcurves") {
             const Point p = section.world.point_at(t);
             const Point ua = section.first_pcurve.point_at(t);
             const Point ub = section.second_pcurve.point_at(t);
-            const NurbsSurface& a = first.m_surfaces[first.m_faces[section.first_face].surface_index];
-            const NurbsSurface& b = second.m_surfaces[second.m_faces[section.second_face].surface_index];
+            const NurbsSurface& a = first.m_surfaces[first.m_faces[section.first_face].surface_index].nurbs();
+            const NurbsSurface& b = second.m_surfaces[second.m_faces[section.second_face].surface_index].nurbs();
             MINI_CHECK(p.distance(a.point_at(ua[0], ua[1])) < 1e-7);
             MINI_CHECK(p.distance(b.point_at(ub[0], ub[1])) < 1e-7);
             MINI_CHECK(brep_classify::face_uv(first, section.first_face, ua, 1e-7) != brep_classify::State::Outside);
@@ -85,14 +85,13 @@ MINI_TEST("BRep Native Section", "Coincident Support Is Explicit") {
     MINI_CHECK(result.overlaps[0].first_face == 0 && result.overlaps[0].second_face == 0);
 
     BRep remapped = sphere;
-    MINI_CHECK(remapped.m_surfaces[0].set_domain(0, 10.0, 14.0));
-    for (NurbsCurve& pcurve : remapped.m_curves_2d)
-        for (int i = 0; i < pcurve.cv_count(); ++i)
-            pcurve.cv(i)[0] += 10.0 * pcurve.weight(i);
+    MINI_CHECK(edit(remapped.m_surfaces[0])->set_domain(0, 10.0, 14.0));
+    for (Curve2d& pcurve_ : remapped.m_curves_2d) { NurbsCurve pcurve = pcurve_.nurbs(); for (int i = 0; i < pcurve.cv_count(); ++i)
+            pcurve.cv(i)[0] += 10.0 * pcurve.weight(i); pcurve_ = pcurve; }
     MINI_CHECK(remapped.is_solid());
     nurbs_coincidence::ParameterMap forward, inverse;
-    MINI_CHECK(nurbs_coincidence::parameter_mapping(sphere.m_surfaces[0], remapped.m_surfaces[0], 1e-7, forward));
-    MINI_CHECK(nurbs_coincidence::parameter_mapping(remapped.m_surfaces[0], sphere.m_surfaces[0], 1e-7, inverse));
+    MINI_CHECK(nurbs_coincidence::parameter_mapping(sphere.m_surfaces[0].nurbs(), remapped.m_surfaces[0].nurbs(), 1e-7, forward));
+    MINI_CHECK(nurbs_coincidence::parameter_mapping(remapped.m_surfaces[0].nurbs(), sphere.m_surfaces[0].nurbs(), 1e-7, inverse));
     MINI_CHECK(forward.axis[0] == 0 && forward.axis[1] == 1);
     MINI_CHECK(forward.scale[0] == 1 && forward.scale[1] == 1);
     MINI_CHECK(forward.offset[0] == 10 && forward.offset[1] == 0);
@@ -104,8 +103,8 @@ MINI_TEST("BRep Native Section", "Coincident Support Is Explicit") {
             for (const BRepCurveOnSurface& relation : edge.pcurves)
                 for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                     if (index >= 0)
-                        MINI_CHECK(curve_surface_intersection::same_parameter(remapped.m_curves_3d[edge.curve_3d_index],
-                            remapped.m_curves_2d[index], remapped.m_surfaces[relation.surface_index], 1e-7)
+                        MINI_CHECK(curve_surface_intersection::same_parameter(remapped.m_curves_3d[edge.curve_3d_index].nurbs(),
+                            remapped.m_curves_2d[index].nurbs(), remapped.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                             == curve_surface_intersection::ParameterMatch::Matched);
     const brep_section::FaceResult mapped = brep_section::faces(sphere, remapped, 1e-7);
     MINI_CHECK(mapped.complete && mapped.failure.empty());
@@ -140,10 +139,10 @@ MINI_TEST("BRep Native Section", "Consecutive Retained Endpoint Intervals") {
         MINI_CHECK(section.world.domain() == section.first_pcurve.domain());
         MINI_CHECK(section.world.domain() == section.second_pcurve.domain());
         MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
-            a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+            a.m_surfaces[a.m_faces[section.first_face].surface_index].nurbs(), tolerance)
             == curve_surface_intersection::ParameterMatch::Matched);
         MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
-            b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+            b.m_surfaces[b.m_faces[section.second_face].surface_index].nurbs(), tolerance)
             == curve_surface_intersection::ParameterMatch::Matched);
     }
 }
@@ -171,10 +170,10 @@ MINI_TEST("BRep Native Section", "Rejected Hole Separates Retained Runs") {
             length += start.distance(end);
             MINI_CHECK(std::max(start[0], end[0]) <= 1 + tolerance || std::min(start[0], end[0]) >= 3 - tolerance);
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
-                a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+                a.m_surfaces[a.m_faces[section.first_face].surface_index].nurbs(), tolerance)
                 == curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
-                b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+                b.m_surfaces[b.m_faces[section.second_face].surface_index].nurbs(), tolerance)
                 == curve_surface_intersection::ParameterMatch::Matched);
         }
         MINI_CHECK(std::abs(length - 2) < tolerance);
@@ -191,18 +190,17 @@ MINI_TEST("BRep Native Section", "Exact Local Trim Chart Preserves Physical Cros
     BRep second = BRep::from_nurbscurves({vertical});
     const double shift[2] = {0x1p20, -0x1p19};
     for (BRep* shape : {&first, &second}) {
-        for (NurbsSurface& surface : shape->m_surfaces)
-            for (int d = 0; d < 2; ++d) {
+        for (Surface& surface_ : shape->m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int d = 0; d < 2; ++d) {
                 const auto domain = surface.domain(d);
                 MINI_CHECK(surface.set_domain(d, domain.first+shift[d], domain.second+shift[d]));
-            }
-        for (NurbsCurve& pc : shape->m_curves_2d) {
+            } surface_ = surface; }
+        for (Curve2d& pc_ : shape->m_curves_2d) { NurbsCurve pc = pc_.nurbs();
             MINI_CHECK(pc.to_rational());
             for (int i = 0; i < pc.cv_count(); ++i) {
                 const Point point = pc.get_cv(i);
                 MINI_CHECK(pc.set_cv_4d(i, 2*(point[0]+shift[0]), 2*(point[1]+shift[1]), 0, 2));
             }
-        }
+        pc_ = pc; }
         MINI_CHECK(shape->is_valid());
     }
     const auto first_before = first.jsondump(), second_before = second.jsondump();
@@ -221,10 +219,10 @@ MINI_TEST("BRep Native Section", "Exact Local Trim Chart Preserves Physical Cros
             MINI_CHECK(section.world.domain() == section.first_pcurve.domain());
             MINI_CHECK(section.world.domain() == section.second_pcurve.domain());
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.first_pcurve,
-                a.m_surfaces[a.m_faces[section.first_face].surface_index], tolerance)
+                a.m_surfaces[a.m_faces[section.first_face].surface_index].nurbs(), tolerance)
                 == curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world, section.second_pcurve,
-                b.m_surfaces[b.m_faces[section.second_face].surface_index], tolerance)
+                b.m_surfaces[b.m_faces[section.second_face].surface_index].nurbs(), tolerance)
                 == curve_surface_intersection::ParameterMatch::Matched);
             for (int i = 0; i <= 8; ++i) {
                 const double t = section.world.domain_start() +
@@ -232,8 +230,8 @@ MINI_TEST("BRep Native Section", "Exact Local Trim Chart Preserves Physical Cros
                 const Point world = section.world.point_at(t);
                 const Point ua = section.first_pcurve.point_at(t), ub = section.second_pcurve.point_at(t);
                 MINI_CHECK(ua[0] > shift[0]-16 && ub[0] > shift[0]-16); // Raw chart survives output.
-                MINI_CHECK(world.distance(a.m_surfaces[a.m_faces[section.first_face].surface_index].point_at(ua[0],ua[1])) <= tolerance);
-                MINI_CHECK(world.distance(b.m_surfaces[b.m_faces[section.second_face].surface_index].point_at(ub[0],ub[1])) <= tolerance);
+                MINI_CHECK(world.distance(a.m_surfaces[a.m_faces[section.first_face].surface_index].nurbs().point_at(ua[0],ua[1])) <= tolerance);
+                MINI_CHECK(world.distance(b.m_surfaces[b.m_faces[section.second_face].surface_index].nurbs().point_at(ub[0],ub[1])) <= tolerance);
             }
         }
     }
@@ -378,7 +376,7 @@ MINI_TEST("BRep Native Section", "Shared Inventory Keeps Mixed Curve And Point O
         for (const auto& event:inventory.boundary_events) {
             const auto& owner=event.operand?b:a;
             const auto& edge=owner.m_edges[event.edge];
-            const auto& world=owner.m_curves_3d[edge.curve_3d_index];
+            const auto& world=owner.m_curves_3d[edge.curve_3d_index].nurbs();
             MINI_CHECK(event.hit.t>=world.domain_start() && event.hit.t<=world.domain_end());
             MINI_CHECK(!event.uses.empty());
             MINI_CHECK(world.point_at(event.hit.t).distance(event.hit.point)<=tolerance);
@@ -591,7 +589,7 @@ MINI_TEST("BRep Native Section", "Shared Inventory Declares Inactive Missing Pcu
     const auto original=BRep::create_box(2,2,2);
     for (auto orientation:{BRepOrientation::Internal,BRepOrientation::External}) {
         BRep source=original;
-        const auto& surface=source.m_surfaces[source.m_faces[0].surface_index];
+        const auto& surface=source.m_surfaces[source.m_faces[0].surface_index].nurbs();
         const auto u=surface.domain(0),v=surface.domain(1);
         const Point a=surface.point_at(std::lerp(u.first,u.second,.25),std::midpoint(v.first,v.second));
         const Point b=surface.point_at(std::lerp(u.first,u.second,.75),std::midpoint(v.first,v.second));
@@ -653,7 +651,7 @@ MINI_TEST("BRep Native Section", "Shared Pole Contact Keeps Mixed Degenerate UV 
                 MINI_CHECK(use.vertex==sphere.m_edges[degenerate].start_vertex);
                 MINI_CHECK(!use.uses.empty() && use.uses.size()==use.pcurves.size());
                 for (size_t i=0;i<use.uses.size();++i) {
-                    const auto& original=sphere.m_curves_2d[use.uses[i].pcurve];
+                    const auto& original=sphere.m_curves_2d[use.uses[i].pcurve].nurbs();
                     MINI_CHECK(use.pcurves[i].domain()==original.domain());
                     const auto& retained_pc=use.pcurves[i];
                     MINI_CHECK(retained_pc.dimension()==original.dimension() &&
@@ -780,7 +778,7 @@ MINI_TEST("BRep Native Section", "Trimmed Point Contact Does Not Manufacture Pos
     MINI_CHECK(first.face_count()==2 && second.face_count()==1);
     // Despite q<Tol, the existing conservative physical->UV metric makes y=0
     // strictly Outside A2's actual rectangle. This excludes B's lower border.
-    const auto& support=first.m_surfaces.at(first.m_faces.at(1).surface_index);
+    const auto& support=first.m_surfaces.at(first.m_faces.at(1).surface_index).nurbs();
     const auto [u,v,gap]=Closest::surface_point(support,Point(0,0,0));
     MINI_CHECK(std::isfinite(gap));
     MINI_CHECK(support.point_at(u,v).distance(Point(0,0,0))<1e-12);
@@ -824,7 +822,7 @@ MINI_TEST("BRep Native Section", "Curve Ownership Cannot Spend Source Cap Plus F
     MINI_CHECK(first.face_count()==2 && second.face_count()==2);
     // Despite q<Tol, the existing conservative physical->UV metric makes y=0
     // strictly Outside A2's actual rectangle. This excludes B's lower border.
-    const auto& support=first.m_surfaces.at(first.m_faces.at(1).surface_index);
+    const auto& support=first.m_surfaces.at(first.m_faces.at(1).surface_index).nurbs();
     const auto [u,v,gap]=Closest::surface_point(support,Point(0,0,0));
     MINI_CHECK(std::isfinite(gap));
     MINI_CHECK(support.point_at(u,v).distance(Point(0,0,0))<1e-12);
@@ -872,10 +870,10 @@ MINI_TEST("BRep Native Section", "Regular Meridian Retains Unrepresented Pole UV
         bool north=false,south=false;
         for (const auto& curve:events.curves) {
             MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.first_pcurve,
-                a.m_surfaces[a.m_faces[curve.first_face].surface_index],1e-7)==
+                a.m_surfaces[a.m_faces[curve.first_face].surface_index].nurbs(),1e-7)==
                 curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.second_pcurve,
-                b.m_surfaces[b.m_faces[curve.second_face].surface_index],1e-7)==
+                b.m_surfaces[b.m_faces[curve.second_face].surface_index].nurbs(),1e-7)==
                 curve_surface_intersection::ParameterMatch::Matched);
         }
         for (const auto& missing:events.unrepresented_uv_incidences) {
@@ -884,7 +882,7 @@ MINI_TEST("BRep Native Section", "Regular Meridian Retains Unrepresented Pole UV
             const auto& edge=sphere.m_edges[missing.edge];
             MINI_CHECK(edge.degenerated && missing.vertex==edge.start_vertex);
             MINI_CHECK(missing.use.face==0 && missing.use.pcurve>=0);
-            MINI_CHECK(missing.pcurve_domain==sphere.m_curves_2d[missing.use.pcurve].domain());
+            MINI_CHECK(missing.pcurve_domain==sphere.m_curves_2d[missing.use.pcurve].nurbs().domain());
             if (missing.node>=events.nodes.size()) continue;
             const auto& node=events.nodes[missing.node];
             MINI_CHECK(!node.isolated && node.support_points.empty());
@@ -971,10 +969,10 @@ void check_original_trim_receipts(const BRep& a,const BRep& b,double tolerance,b
             const auto& use=uses[event.occurrence];
             MINI_CHECK(use.index==event.edge && use.orientation==event.orientation);
             MINI_CHECK(owner.pcurve_index(use.index,face,use.orientation)==event.pcurve);
-            const auto& boundary=owner.m_curves_2d[event.pcurve];
+            const auto& boundary=owner.m_curves_2d[event.pcurve].nurbs();
             MINI_CHECK(event.section_parameter>=pc.domain_start() && event.section_parameter<=pc.domain_end());
             MINI_CHECK(event.boundary_parameter>=boundary.domain_start() && event.boundary_parameter<=boundary.domain_end());
-            const auto& support=owner.m_surfaces[owner.m_faces[face].surface_index];
+            const auto& support=owner.m_surfaces[owner.m_faces[face].surface_index].nurbs();
             const double uv_tol=tolerance/nurbs_bounds::surface_metric(support);
             MINI_CHECK(pc.point_at(event.section_parameter).distance(boundary.point_at(event.boundary_parameter))<=uv_tol);
             MINI_CHECK(curve_surface_intersection::same_parameter(original.world,pc,support,tolerance)==
@@ -992,8 +990,8 @@ MINI_TEST("BRep Native Section", "Original Trim Receipts Preserve Both Raw Param
     for (bool boundary:{false,true}) {
         const double x=boundary?1:0;
         auto second=inventory_exact_face({Point(x,-1,-1),Point(x,1,-1),Point(x,1,1),Point(x,-1,1)});
-        for (auto& pc:second.m_curves_2d) MINI_CHECK(pc.set_domain(-7,13));
-        for (auto& world:second.m_curves_3d) MINI_CHECK(world.set_domain(32,35));
+        for (Curve2d& pc_ : second.m_curves_2d) { NurbsCurve pc = pc_.nurbs(); MINI_CHECK(pc.set_domain(-7,13)); pc_ = pc; }
+        for (Curve& world_ : second.m_curves_3d) { NurbsCurve world = world_.nurbs(); MINI_CHECK(world.set_domain(32,35)); world_ = world; }
         check_original_trim_receipts(first,second,1e-7,boundary);
         check_original_trim_receipts(second,first,1e-7,boundary);
     }
@@ -1004,14 +1002,14 @@ namespace session_cpp {
 MINI_TEST("BRep Native Section", "Adjacent Original Supports Preserve Refined Boundary Aliases") {
     const auto original = BRep::create_cylinder(1,2);
     auto refined = original;
-    for (auto& world : refined.m_curves_3d) {
+    for (Curve& world_ : refined.m_curves_3d) { NurbsCurve world = world_.nurbs();
         MINI_CHECK(world.increase_degree(world.degree()+1));
         MINI_CHECK(world.insert_nurbsknot(world.domain_start()+.375*(world.domain_end()-world.domain_start())));
-    }
-    for (auto& pc : refined.m_curves_2d) {
+    world_ = world; }
+    for (Curve2d& pc_ : refined.m_curves_2d) { NurbsCurve pc = pc_.nurbs();
         MINI_CHECK(pc.increase_degree(pc.degree()+2));
         MINI_CHECK(pc.insert_nurbsknot(pc.domain_start()+.625*(pc.domain_end()-pc.domain_start())));
-    }
+    pc_ = pc; }
     const auto frozen_original = original.jsondump(), frozen_refined = refined.jsondump();
     for (bool swap : {false,true}) {
         const auto& a = swap ? refined : original;
@@ -1025,10 +1023,10 @@ MINI_TEST("BRep Native Section", "Adjacent Original Supports Preserve Refined Bo
             MINI_CHECK(curve.world.domain() == curve.first_pcurve.domain());
             MINI_CHECK(curve.world.domain() == curve.second_pcurve.domain());
             MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.first_pcurve,
-                a.m_surfaces[a.m_faces[curve.first_face].surface_index],1e-7) ==
+                a.m_surfaces[a.m_faces[curve.first_face].surface_index].nurbs(),1e-7) ==
                 curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(curve.world,curve.second_pcurve,
-                b.m_surfaces[b.m_faces[curve.second_face].surface_index],1e-7) ==
+                b.m_surfaces[b.m_faces[curve.second_face].surface_index].nurbs(),1e-7) ==
                 curve_surface_intersection::ParameterMatch::Matched);
         }
         MINI_CHECK(adjacent); // Cap/cylinder incidences need the edge's other original support law.
@@ -1050,10 +1048,10 @@ MINI_TEST("BRep Native Section", "Positive Short Section Is Not An Isolated Cont
             MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
             MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
-                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index].nurbs(),tol)==
                 curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
-                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index].nurbs(),tol)==
                 curve_surface_intersection::ParameterMatch::Matched);
             const auto p=section.world.point_at_start(),q=section.world.point_at_end();
             positive=positive || (std::abs(p[1]-q[1])>=h && std::abs(p[1]-q[1])<=4*h);
@@ -1082,10 +1080,10 @@ MINI_TEST("BRep Native Section", "Tangential Line Remains In Shared Inventory") 
             MINI_CHECK(section.world.domain()==section.first_pcurve.domain());
             MINI_CHECK(section.world.domain()==section.second_pcurve.domain());
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.first_pcurve,
-                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index],tol)==
+                (swap?b:a).m_surfaces[(swap?b:a).m_faces[section.first_face].surface_index].nurbs(),tol)==
                 curve_surface_intersection::ParameterMatch::Matched);
             MINI_CHECK(curve_surface_intersection::same_parameter(section.world,section.second_pcurve,
-                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index],tol)==
+                (swap?a:b).m_surfaces[(swap?a:b).m_faces[section.second_face].surface_index].nurbs(),tol)==
                 curve_surface_intersection::ParameterMatch::Matched);
             const auto p=section.world.point_at_start(),q=section.world.point_at_end();
             line=line || (std::abs(p[1]-q[1])>1 && std::abs(p[0])<1e-7 && std::abs(q[0])<1e-7 && std::abs(p[2])<1e-7 && std::abs(q[2])<1e-7);

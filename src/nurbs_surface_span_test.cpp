@@ -72,7 +72,7 @@ MINI_TEST("NurbsSurfaceSpan", "Preserved Dense Offset Support") {
     MINI_CHECK(input.good());
     const BRep saved = BRep::jsonload(nlohmann::json::parse(input));
     const NurbsSurface* source = nullptr;
-    for (const NurbsSurface& surface : saved.m_surfaces)
+    for (const NurbsSurface& surface : nurbs(saved.m_surfaces))
         if (surface.cv_count(0) == 131 && surface.cv_count(1) == 131)
             source = &surface;
     MINI_CHECK(source != nullptr && !source->is_rational());

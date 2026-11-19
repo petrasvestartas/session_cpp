@@ -105,7 +105,7 @@ void trim_parameters(
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native section encountered a missing face pcurve");
-            const NurbsCurve& boundary = brep.m_curves_2d[index];
+            const NurbsCurve& boundary = brep.m_curves_2d[index].nurbs();
             NurbsCurve local_section = pcurve, local_boundary = boundary;
             const Point origin = boundary.get_cv(0);
             const bool exact = translate_parameters_exact(local_section, origin)
@@ -126,7 +126,7 @@ void trim_parameters(
                         saved["boundary_edge"] = edge.index;
                         saved["uv_tolerance"] = tolerance;
                         saved["section_pcurve"] = pcurve.jsondump();
-                        saved["boundary_pcurve"] = brep.m_curves_2d[index].jsondump();
+                        saved["boundary_pcurve"] = brep.m_curves_2d[index].nurbs().jsondump();
                         output << saved.dump() << '\n';
                         if (!output)
                             throw std::runtime_error("cannot write capture record");
@@ -253,7 +253,7 @@ CurveResult curve(const NurbsCurve& input, const BRep& brep, double tolerance) {
     CurveResult result;
     try {
         for (int face : active_faces(brep)) {
-            const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+            const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
             const double uv_tol = uv_tolerance(surface, tolerance);
             const curve_surface_intersection::Result events = curve_surface_intersection::intersect(input, surface, tolerance);
             if (!events.complete)
@@ -285,12 +285,12 @@ FaceResult faces(const BRep& first, const BRep& second, double tolerance) {
     try {
         for (int a : active_faces(first)) {
             first_face = a;
-            const NurbsSurface& sa = first.m_surfaces[first.m_faces[a].surface_index];
+            const NurbsSurface& sa = first.m_surfaces[first.m_faces[a].surface_index].nurbs();
             const Bounds box(sa);
             const double ta = uv_tolerance(sa, tolerance);
             for (int b : active_faces(second)) {
                 second_face = b;
-                const NurbsSurface& sb = second.m_surfaces[second.m_faces[b].surface_index];
+                const NurbsSurface& sb = second.m_surfaces[second.m_faces[b].surface_index].nurbs();
                 if (!box.overlaps(Bounds(sb), tolerance))
                     continue;
                 nurbs_coincidence::ParameterMap mapping;
@@ -597,7 +597,7 @@ void paired(const FaceCurve& curve,const BRep& a,const BRep& b,double tolerance)
         const auto& pc=side?curve.second_pcurve:curve.first_pcurve;
         if (curve.world.domain()!=pc.domain() ||
             curve_surface_intersection::same_parameter(curve.world,pc,
-                owner.m_surfaces[owner.m_faces[face].surface_index],tolerance)
+                owner.m_surfaces[owner.m_faces[face].surface_index].nurbs(),tolerance)
                 !=curve_surface_intersection::ParameterMatch::Matched)
             throw std::runtime_error("Interference lacks whole original paired agreement");
     }
@@ -605,8 +605,8 @@ void paired(const FaceCurve& curve,const BRep& a,const BRep& b,double tolerance)
 
 void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep& second,
                     const surface_section::Result& events,double tolerance) {
-    const double ta=uv_tolerance(first.m_surfaces[first.m_faces[a].surface_index],tolerance);
-    const double tb=uv_tolerance(second.m_surfaces[second.m_faces[b].surface_index],tolerance);
+    const double ta=uv_tolerance(first.m_surfaces[first.m_faces[a].surface_index].nurbs(),tolerance);
+    const double tb=uv_tolerance(second.m_surfaces[second.m_faces[b].surface_index].nurbs(),tolerance);
     for (const auto& [world,ua,ub]:events.curves) {
         if (world.domain()!=ua.domain() || world.domain()!=ub.domain())
             throw std::runtime_error("Interference support law has different raw domains");
@@ -633,13 +633,13 @@ void support_curves(FaceResult& result,int a,int b,const BRep& first,const BRep&
             FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
                 exact_trim(ua,cuts[i-1],cuts[i]),exact_trim(ub,cuts[i-1],cuts[i])};
             curve.interior=in_first==brep_classify::State::Inside && in_second==brep_classify::State::Inside;
-            end_on_surface(curve.first_pcurve,first.m_surfaces[first.m_faces[a].surface_index]);
-            end_on_surface(curve.second_pcurve,second.m_surfaces[second.m_faces[b].surface_index]);
-            curve_surface_intersection::inherit(curve.world,curve.first_pcurve,world,ua,first.m_surfaces[first.m_faces[a].surface_index],tolerance);
-            curve_surface_intersection::inherit(curve.world,curve.second_pcurve,world,ub,second.m_surfaces[second.m_faces[b].surface_index],tolerance);
+            end_on_surface(curve.first_pcurve,first.m_surfaces[first.m_faces[a].surface_index].nurbs());
+            end_on_surface(curve.second_pcurve,second.m_surfaces[second.m_faces[b].surface_index].nurbs());
+            curve_surface_intersection::inherit(curve.world,curve.first_pcurve,world,ua,first.m_surfaces[first.m_faces[a].surface_index].nurbs(),tolerance);
+            curve_surface_intersection::inherit(curve.world,curve.second_pcurve,world,ub,second.m_surfaces[second.m_faces[b].surface_index].nurbs(),tolerance);
             paired(curve,first,second,tolerance);
-            curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index],
-                                         second.m_surfaces[second.m_faces[b].surface_index],tolerance);
+            curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index].nurbs(),
+                                         second.m_surfaces[second.m_faces[b].surface_index].nurbs(),tolerance);
             result.curves.push_back(std::move(curve));
         }
     }
@@ -655,13 +655,13 @@ void observe_boundary_failure(const BRep& source, const NurbsSurface& target, in
     try {
         const auto& edge = source.m_edges[edge_index];
         const int own_face = operand ? second_face : first_face;
-        const auto& world = source.m_curves_3d[edge.curve_3d_index];
+        const auto& world = source.m_curves_3d[edge.curve_3d_index].nurbs();
         nlohmann::ordered_json selected = nlohmann::ordered_json::array();
         for (const auto& use : uses)
             selected.push_back({{"face",use.face},{"wire",use.wire},{"occurrence",use.occurrence},
                 {"pcurve_index",use.pcurve},{"orientation",static_cast<int>(use.orientation)},
                 {"wire_orientation",static_cast<int>(use.wire_orientation)},
-                {"pcurve",source.m_curves_2d.at(use.pcurve).jsondump()}});
+                {"pcurve",source.m_curves_2d.at(use.pcurve).nurbs().jsondump()}});
         nlohmann::ordered_json aliases = nlohmann::ordered_json::array();
         for (const auto& association : edge.pcurves) {
             nlohmann::ordered_json row{{"surface_index",association.surface_index},
@@ -669,7 +669,7 @@ void observe_boundary_failure(const BRep& source, const NurbsSurface& target, in
             for (const auto& entry : {std::pair{"primary",association.curve_2d_index},
                                     std::pair{"secondary",association.curve_2d_index_2}})
                 if (entry.second >= 0)
-                    row[entry.first] = source.m_curves_2d.at(entry.second).jsondump();
+                    row[entry.first] = source.m_curves_2d.at(entry.second).nurbs().jsondump();
             aliases.push_back(std::move(row));
         }
         const nlohmann::ordered_json row{{"first_face",first_face},{"second_face",second_face},
@@ -677,7 +677,7 @@ void observe_boundary_failure(const BRep& source, const NurbsSurface& target, in
             {"start_vertex",edge.start_vertex},{"end_vertex",edge.end_vertex},
             {"world",world.jsondump()},{"world_domain",world.domain()},
             {"selected_uses",selected},{"aliases",aliases},
-            {"source_surface",source.m_surfaces[source.m_faces[own_face].surface_index].jsondump()},
+            {"source_surface",source.m_surfaces[source.m_faces[own_face].surface_index].nurbs().jsondump()},
             {"target_surface",target.jsondump()},{"tolerance",tolerance},{"failure",failure}};
         std::ofstream output;
         output.exceptions(std::ios::failbit | std::ios::badbit);
@@ -724,7 +724,7 @@ bool append_original_boundary_aliases(curve_surface_intersection::Result& result
             continue; // An absent secondary seam alias is optional.
         if (index >= static_cast<int>(owner.m_curves_2d.size()))
             return false;
-        auto original = owner.m_curves_2d[index];
+        auto original = owner.m_curves_2d[index].nurbs();
         if (!original.set_domain(world.domain_start(),world.domain_end()) ||
             curve_surface_intersection::same_parameter(world,original,source,tolerance) !=
                 curve_surface_intersection::ParameterMatch::Matched)
@@ -760,7 +760,7 @@ bool original_boundary_overlap(curve_surface_intersection::Result& result, const
     for (const auto& association : edge.pcurves) {
         if (association.surface_index < 0 || association.surface_index >= static_cast<int>(owner.m_surfaces.size()))
             return false;
-        const auto& source = owner.m_surfaces[association.surface_index];
+        const auto& source = owner.m_surfaces[association.surface_index].nurbs();
         nurbs_coincidence::ParameterMap mapping;
         const bool mapped = nurbs_coincidence::parameter_mapping(source,target,tolerance,mapping);
         if (!mapped && !nurbs_coincidence::common_basis_agreement(source,target,tolerance))
@@ -781,11 +781,11 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
     const BRep& other=operand?first:second;
     const int own_face=operand?b:a, other_face=operand?a:b;
     const int support=other.m_faces[other_face].surface_index;
-    const auto& surface=other.m_surfaces[support];
+    const auto& surface=other.m_surfaces[support].nurbs();
     const double uv_tol=uv_tolerance(surface,tolerance);
     for (const auto& [edge_index,uses]:edge_uses(source,own_face)) {
         const auto& edge=source.m_edges[edge_index];
-        const auto& world=source.m_curves_3d[edge.curve_3d_index];
+        const auto& world=source.m_curves_3d[edge.curve_3d_index].nurbs();
         auto found=met.find({operand,edge_index,support});
         if (found==met.end()) {
             curve_surface_intersection::Result hits;
@@ -845,7 +845,7 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
                     if (use.pcurve<0 || use.pcurve>=static_cast<int>(source.m_curves_2d.size()))
                         throw InventoryError("Boundary overlap has no admitted source pcurve",
                             {FailureKind::InactiveBoundaryUse,operand,edge_index,use});
-                    auto own=source.m_curves_2d[use.pcurve];
+                    auto own=source.m_curves_2d[use.pcurve].nurbs();
                     if (!own.set_domain(world.domain_start(),world.domain_end()))
                         throw std::runtime_error("Boundary use cannot propose original normalized correspondence");
                     auto own_piece=exact_trim(own,cuts[i-1],cuts[i]);
@@ -853,8 +853,8 @@ void boundary_pair(FaceResult& result,const BRep& first,const BRep& second,int a
                     FaceCurve curve{a,b,exact_trim(world,cuts[i-1],cuts[i]),
                         operand?other_piece:own_piece,operand?own_piece:other_piece};
                     paired(curve,first,second,tolerance);
-                    curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index],
-                                                 second.m_surfaces[second.m_faces[b].surface_index],tolerance);
+                    curve.touching=touching_only(curve,first.m_surfaces[first.m_faces[a].surface_index].nurbs(),
+                                                 second.m_surfaces[second.m_faces[b].surface_index].nurbs(),tolerance);
                     result.curves.push_back(std::move(curve));
                 }
             }
@@ -875,7 +875,7 @@ bool curve_excludes(const NurbsCurve& curve,const Point& point,double tolerance)
 
 const NurbsCurve& event_source(const BoundaryEvent& event,const BRep& a,const BRep& b) {
     const auto& owner=event.operand?b:a;
-    return owner.m_curves_3d[owner.m_edges[event.edge].curve_3d_index];
+    return owner.m_curves_3d[owner.m_edges[event.edge].curve_3d_index].nurbs();
 }
 
 bool exact_vertex(const Point& vertex,const surface_point_preimages::ProjectivePoint& witness) {
@@ -923,7 +923,7 @@ void degenerate_point_uses(FaceResult& result,const BRep& owner,int face,int ope
             };
             if (use.pcurve<0 || use.pcurve>=static_cast<int>(owner.m_curves_2d.size()))
                 unresolved();
-            const auto& pc=owner.m_curves_2d[use.pcurve];
+            const auto& pc=owner.m_curves_2d[use.pcurve].nurbs();
             if (!(tolerance*.25>0) || !std::isfinite(tolerance*.25))
                 unresolved();
             const bool same=exact_vertex(vertex,contact.exact_witness);
@@ -936,7 +936,7 @@ void degenerate_point_uses(FaceResult& result,const BRep& owner,int face,int ope
                     unresolved();
             }
             if (curve_surface_intersection::same_parameter(constant,pc,
-                owner.m_surfaces[owner.m_faces[face].surface_index],tolerance*.25)
+                owner.m_surfaces[owner.m_faces[face].surface_index].nurbs(),tolerance*.25)
                 !=curve_surface_intersection::ParameterMatch::Matched)
                 unresolved();
             if (!same) {
@@ -969,7 +969,7 @@ void point_boundary_events(FaceResult& result,const BRep& a,const BRep& b,double
             bool found=false;
             for (const auto& [index,uses]:edge_uses(owner,face)) {
                 const auto& edge=owner.m_edges[index];
-                const auto& curve=owner.m_curves_3d[edge.curve_3d_index];
+                const auto& curve=owner.m_curves_3d[edge.curve_3d_index].nurbs();
                 if (!curve.is_clamped())
                     continue;
                 for (int end=0;end<2;++end)
@@ -993,7 +993,7 @@ void point_boundary_events(FaceResult& result,const BRep& a,const BRep& b,double
                 }
             }
             const auto state=brep_classify::face_uv(owner,face,own_uv,
-                uv_tolerance(owner.m_surfaces[owner.m_faces[face].surface_index],tolerance));
+                uv_tolerance(owner.m_surfaces[owner.m_faces[face].surface_index].nurbs(),tolerance));
             const bool uv_owned=std::any_of(result.uv_only_incidences.begin(),result.uv_only_incidences.end(),
                 [&](const UVOnlyIncidence& use) { return use.support_point==point_index && use.operand==side; });
             if (state==brep_classify::State::Boundary && !found && !uv_owned)
@@ -1257,7 +1257,7 @@ void retain_unrepresented_uv_uses(FaceResult& result,const BRep& first,const BRe
                                 {FailureKind::InactiveBoundaryUse,event.operand,use.edge.index,identity});
                         node.unrepresented_uv_incidences.push_back(result.unrepresented_uv_incidences.size());
                         result.unrepresented_uv_incidences.push_back({event.operand,use.edge.index,event.vertex,
-                            node_index,identity,owner.m_curves_2d[use.pcurve].domain()});
+                            node_index,identity,owner.m_curves_2d[use.pcurve].nurbs().domain()});
                     }
             }
         }
@@ -1338,8 +1338,8 @@ FaceResult interferences(const BRep& first,const BRep& second,double tolerance) 
             validate_boundary_policy(second,face,1);
         for (int a:af)
             for (int b:bf) {
-                const auto& sa=first.m_surfaces[first.m_faces[a].surface_index];
-                const auto& sb=second.m_surfaces[second.m_faces[b].surface_index];
+                const auto& sa=first.m_surfaces[first.m_faces[a].surface_index].nurbs();
+                const auto& sb=second.m_surfaces[second.m_faces[b].surface_index].nurbs();
                 result.coverage.push_back({a,b});
                 auto& receipt=result.coverage.back();
                 if (excluded(sa,sb,tolerance)) {

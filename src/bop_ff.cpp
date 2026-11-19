@@ -102,7 +102,7 @@ std::pair<double, double> extent(const NurbsCurve& c, int d) {
 // CorrectSurfaceBoundaries grows it: a section then ends on the edge it meets, not a tolerance past it.
 std::array<double, 4> uv_box(const BRep& brep, int face) {
     const BRepFace& f = brep.m_faces[face];
-    const NurbsSurface& s = brep.m_surfaces[f.surface_index];
+    const NurbsSurface& s = brep.m_surfaces[f.surface_index].nurbs();
     std::array<double, 4> box = {s.domain(0).first, s.domain(0).second, s.domain(1).first, s.domain(1).second};
     std::array<double, 4> found = {infinity, -infinity, infinity, -infinity};
     for (const BRepRef& w : f.wires)
@@ -112,7 +112,7 @@ std::array<double, 4> uv_box(const BRep& brep, int face) {
                     for (int index : {on.curve_2d_index, on.curve_2d_index_2})
                         if (index >= 0)
                             for (int d = 0; d < 2; ++d) {
-                                const std::pair<double, double> range = extent(brep.m_curves_2d[index], d);
+                                const std::pair<double, double> range = extent(brep.m_curves_2d[index].nurbs(), d);
                                 found[2 * d] = std::min(found[2 * d], range.first);
                                 found[2 * d + 1] = std::max(found[2 * d + 1], range.second);
                             }
@@ -128,7 +128,7 @@ std::array<double, 4> uv_box(const BRep& brep, int face) {
 
 Side make_side(const BRep& brep, int face, double tol) {
     Side side;
-    side.full = &brep.m_surfaces[brep.m_faces[face].surface_index];
+    side.full = &brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     side.surface = *side.full;
     const std::array<double, 4> box = uv_box(brep, face);
     for (int d = 0; d < 2; ++d) {

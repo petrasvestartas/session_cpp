@@ -87,13 +87,13 @@ void check_pcurves(const BRep& shape) {
     for (const BRepEdge& edge : shape.m_edges) {
         if (edge.degenerated)
             continue;
-        const NurbsCurve& world = shape.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = shape.m_curves_3d[edge.curve_3d_index].nurbs();
         for (const BRepCurveOnSurface& record : edge.pcurves)
             for (const int index : {record.curve_2d_index, record.curve_2d_index_2}) {
                 if (index < 0)
                     continue;
                 const auto status = curve_surface_intersection::same_parameter(world,
-                    shape.m_curves_2d[index], shape.m_surfaces[record.surface_index], Precision);
+                    shape.m_curves_2d[index].nurbs(), shape.m_surfaces[record.surface_index].nurbs(), Precision);
                 require(status == curve_surface_intersection::ParameterMatch::Matched,
                     "Chair result has an uncertified edge/pcurve correspondence");
             }
@@ -210,7 +210,7 @@ bool referenced_output(const BRep& brep) {
 }
 
 void check_restored_geometry(const BRep& original, const BRep& restored) {
-    const auto curves = [](const std::vector<NurbsCurve>& before, const std::vector<NurbsCurve>& after) {
+    const auto curves = [](const auto& before, const auto& after) {
         require(before.size() == after.size(), "Chair protobuf changed a curve pool size");
         for (size_t i = 0; i < before.size(); ++i)
             require(before[i].m_dim == after[i].m_dim && before[i].m_is_rat == after[i].m_is_rat
@@ -218,12 +218,12 @@ void check_restored_geometry(const BRep& original, const BRep& restored) {
                 && before[i].m_cv == after[i].m_cv && before[i].m_nurbsknot == after[i].m_nurbsknot
                 && before[i].domain() == after[i].domain(), "Chair protobuf changed curve geometry or its raw domain");
     };
-    curves(original.m_curves_3d, restored.m_curves_3d);
-    curves(original.m_curves_2d, restored.m_curves_2d);
+    curves(nurbs(original.m_curves_3d), nurbs(restored.m_curves_3d));
+    curves(nurbs(original.m_curves_2d), nurbs(restored.m_curves_2d));
     require(original.m_surfaces.size() == restored.m_surfaces.size(), "Chair protobuf changed the surface pool size");
     for (size_t i = 0; i < original.m_surfaces.size(); ++i) {
-        const auto& before = original.m_surfaces[i];
-        const auto& after = restored.m_surfaces[i];
+        const auto& before = original.m_surfaces[i].nurbs();
+        const auto& after = restored.m_surfaces[i].nurbs();
         require(before.m_dim == after.m_dim && before.m_is_rat == after.m_is_rat && before.m_cv == after.m_cv,
             "Chair protobuf changed homogeneous surface geometry");
         for (int d = 0; d < 2; ++d)

@@ -11,14 +11,14 @@ struct FaceResult {
     std::array<double, 4> rectangle{0, 0, 0, 0};
 };
 inline bool original_trim_bounds(const BRep& source, int face, std::array<double, 4>& rectangle) {
-    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
     bool first = true;
     for (const BRepRef& wire : source.m_faces[face].wires)
         for (const BRepRef& use : source.wire_edges(wire)) {
             const int index = source.pcurve_index(use.index, face, use.orientation);
             if (index < 0)
                 return false;
-            const NurbsCurve& curve = source.m_curves_2d[index];
+            const NurbsCurve& curve = source.m_curves_2d[index].nurbs();
             for (int i = 0; i < curve.cv_count(); ++i) {
                 double x, y, z, w;
                 if (!curve.get_cv_4d(i, x, y, z, w) || !(w > 0) || !std::isfinite(w))
@@ -48,7 +48,7 @@ inline FaceResult original_face(const BRep& source, int face, double signed_dist
         || !std::isfinite(tolerance) || !(tolerance > 0)
         || !original_trim_bounds(source, face, result.rectangle))
         return result;
-    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
     const double metric = nurbs_bounds::surface_metric(surface);
     if (!(metric > 0) || !std::isfinite(metric))
         return result;

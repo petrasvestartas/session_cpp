@@ -69,9 +69,9 @@ struct Filler {
         const int index = brep.pcurve_index(use.index, face, use.orientation);
         if (e.degenerated || index < 0)
             return 0.0;
-        const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index];
-        const NurbsCurve& p = brep.m_curves_2d[index];
-        const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index];
+        const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index].nurbs();
+        const NurbsCurve& p = brep.m_curves_2d[index].nurbs();
+        const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
         double worst = 0.0;
         for (int i = 1; i < 8; ++i) {
             const Point q = c.point_at(c.domain_start() + i / 8.0 * (c.domain_end() - c.domain_start()));
@@ -101,11 +101,11 @@ struct Filler {
                 edge.tolerance = std::max(e.tolerance, confusion);
                 edge.degenerated = e.degenerated;
                 if (e.degenerated) {
-                    const NurbsCurve& p = brep.m_curves_2d[e.pcurves.at(0).curve_2d_index];
+                    const NurbsCurve& p = brep.m_curves_2d[e.pcurves.at(0).curve_2d_index].nurbs();
                     edge.t0 = p.domain_start();
                     edge.t1 = p.domain_end();
                 } else {
-                    const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index];
+                    const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index].nurbs();
                     edge.t0 = c.domain_start();
                     edge.t1 = c.domain_end();
                 }

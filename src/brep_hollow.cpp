@@ -54,7 +54,7 @@ std::set<int> validate(const BRep& source, const std::vector<int>& openings, dou
 std::vector<split::EdgePiece> identities(const BRep& brep, int base) {
     std::vector<split::EdgePiece> result;
     for (int edge = 0; edge < brep.edge_count(); ++edge) {
-        const NurbsCurve& curve = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index];
+        const NurbsCurve& curve = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs();
         result.push_back({edge, base + edge, edge, curve.domain_start(), curve.domain_end()});
     }
     return result;
@@ -99,9 +99,9 @@ double chart_tolerance(const NurbsSurface& support, double tolerance) {
 }
 
 void nested_rim(const BRep& source, int opening, const BRep& inner, int image, double tolerance) {
-    const NurbsSurface& support = source.m_surfaces[source.m_faces[opening].surface_index];
+    const NurbsSurface& support = source.m_surfaces[source.m_faces[opening].surface_index].nurbs();
     require(inner.m_faces[image].wires.size() == 1, "Native hollow opening image requires one outer wire");
-    require(nurbs_coincidence::same_parameters(support, inner.m_surfaces[inner.m_faces[image].surface_index], tolerance),
+    require(nurbs_coincidence::same_parameters(support, inner.m_surfaces[inner.m_faces[image].surface_index].nurbs(), tolerance),
         "Native hollow opening image changed its parameter chart");
     require(source.face_orientation(opening) == inner.face_orientation(image),
         "Native hollow opening image changed its oriented support");
@@ -110,19 +110,19 @@ void nested_rim(const BRep& source, int opening, const BRep& inner, int image, d
     require(!outer.empty() && !inside.empty(), "Native hollow rim has an empty wire");
     const double uv_tolerance = chart_tolerance(support, tolerance);
     BRep normalized = source;
-    for (NurbsCurve& curve : normalized.m_curves_2d)
-        curve = normalized_uv(curve, support);
+    for (Curve2d& curve : normalized.m_curves_2d)
+        curve = normalized_uv(curve.nurbs(), support);
     for (const BRepRef& use : inside) {
         const int pc = inner.pcurve_index(use.index, image, use.orientation);
         require(pc >= 0, "Native hollow opening image lacks its pcurve");
-        const NurbsCurve& curve = inner.m_curves_2d[pc];
+        const NurbsCurve& curve = inner.m_curves_2d[pc].nurbs();
         require(brep_classify::face_uv(normalized, opening, normalized_uv(curve, support).point_at_start(), uv_tolerance)
             == brep_classify::State::Inside, "Native hollow opening image is not strictly inside the source mouth");
         for (const BRepRef& boundary : outer) {
             const int first = source.pcurve_index(boundary.index, opening, boundary.orientation);
             require(first >= 0, "Native hollow source opening lacks its pcurve");
             const curve_intersection::Result crossings = curve_intersection::intersect(
-                normalized_uv(source.m_curves_2d[first], support), normalized_uv(curve, support), uv_tolerance);
+                normalized_uv(source.m_curves_2d[first].nurbs(), support), normalized_uv(curve, support), uv_tolerance);
             require(crossings.complete && crossings.points.empty() && crossings.overlaps.empty(),
                 "Native hollow rim boundaries intersect or their separation is unresolved");
         }
@@ -137,7 +137,7 @@ struct Rim {
 int append_loop(Rim& rim, const BRep& source, int face, int identity_base, double tolerance) {
     std::map<int, int> vertices;
     std::vector<BRepRef> wire;
-    const NurbsSurface& support = rim.brep.m_surfaces[0];
+    const NurbsSurface& support = rim.brep.m_surfaces[0].nurbs();
     for (const BRepRef& use : source.wire_edges(source.m_faces[face].wires[0])) {
         const BRepEdge& original = source.m_edges[use.index];
         for (int vertex : {original.start_vertex, original.end_vertex})
@@ -145,8 +145,8 @@ int append_loop(Rim& rim, const BRep& source, int face, int identity_base, doubl
                 vertices[vertex] = rim.brep.add_vertex(source.m_vertices[vertex].point);
         const int index = source.pcurve_index(use.index, face, use.orientation);
         require(index >= 0, "Native hollow rim edge lacks a pcurve");
-        const NurbsCurve& pc = source.m_curves_2d[index];
-        NurbsCurve world = source.m_curves_3d[original.curve_3d_index];
+        const NurbsCurve& pc = source.m_curves_2d[index].nurbs();
+        NurbsCurve world = source.m_curves_3d[original.curve_3d_index].nurbs();
         require(world.set_domain(pc.domain_start(), pc.domain_end()), "Native hollow rim could not synchronize parameters");
         certify(world, pc, support, tolerance);
         const int edge = rim.brep.add_edge(rim.brep.add_curve_3d(world), vertices[original.start_vertex], vertices[original.end_vertex]);
@@ -160,7 +160,7 @@ int append_loop(Rim& rim, const BRep& source, int face, int identity_base, doubl
 Rim opening_rim(const BRep& source, int opening, const BRep& inner, int image, double tolerance) {
     nested_rim(source, opening, inner, image, tolerance);
     Rim result;
-    result.brep.add_surface(source.m_surfaces[source.m_faces[opening].surface_index]);
+    result.brep.add_surface(source.m_surfaces[source.m_faces[opening].surface_index].nurbs());
     const int outer = append_loop(result, source, opening, 0, tolerance);
     const int inside = append_loop(result, inner, image, source.edge_count(), tolerance);
     result.brep.add_face(0, {{outer, BRepOrientation::Forward}, {inside, BRepOrientation::Reversed}}, tolerance);

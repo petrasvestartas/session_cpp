@@ -118,7 +118,7 @@ MINI_TEST("BRep Native Measure", "Translation Scale And Inactive Geometry") {
         MINI_CHECK(std::abs(measured / (scale * scale * scale) - expected) < expected * 1e-6);
     }
     BRep extra = original;
-    extra.add_surface(BRep::create_box(100, 100, 100).m_surfaces[0]);
+    extra.add_surface(BRep::create_box(100, 100, 100).m_surfaces[0].nurbs());
     MINI_CHECK(std::abs(brep_measure::volume(extra, 1e-8) - expected) < expected * 1e-8);
 }
 
@@ -138,13 +138,13 @@ MINI_TEST("BRep Native Measure", "Original Rhino Chair Volumes") {
 
 MINI_TEST("BRep Native Measure", "Nonuniform Dense Polynomial Support") {
     BRep source = BRep::create_box(2, 3, 4);
-    const NurbsSurface original = source.m_surfaces[0];
+    const NurbsSurface original = source.m_surfaces[0].nurbs();
     source.m_surfaces[0] = dense_plane(original);
     for (int i = 0; i <= 9; ++i)
         for (int j = 0; j <= 11; ++j) {
             const double u = original.domain(0).first + (original.domain(0).second - original.domain(0).first) * i / 9.0;
             const double v = original.domain(1).first + (original.domain(1).second - original.domain(1).first) * j / 11.0;
-            MINI_CHECK(source.m_surfaces[0].point_at(u, v).distance(original.point_at(u, v)) < 1e-12);
+            MINI_CHECK(source.m_surfaces[0].nurbs().point_at(u, v).distance(original.point_at(u, v)) < 1e-12);
         }
     MINI_CHECK(std::abs(measured_fixture(source, "native_measure_dense_polynomial") - 24) < 1e-7);
 }
@@ -152,23 +152,26 @@ MINI_TEST("BRep Native Measure", "Nonuniform Dense Polynomial Support") {
 MINI_TEST("BRep Native Measure", "Curved Pcurves Split Where They Cross Support Knots") {
     // quintic pcurves over 128 nonuniform spans each way: every knot line they cross bends the integrand, and each is a piece of its own
     BRep source = BRep::create_box(2, 3, 4);
-    source.m_surfaces[0] = dense_plane(source.m_surfaces[0]);
+    source.m_surfaces[0] = dense_plane(source.m_surfaces[0].nurbs());
     for (const BRepRef& wire : source.m_faces[0].wires)
         for (const BRepRef& edge : source.wire_edges(wire))
-            MINI_CHECK(source.m_curves_2d[source.pcurve_index(edge.index, 0, edge.orientation)].increase_degree(5));
+            MINI_CHECK(edit(source.m_curves_2d[source.pcurve_index(edge.index, 0, edge.orientation)])->increase_degree(5));
     MINI_CHECK(std::abs(brep_measure::volume(source, 1e-8) - 24) < 24e-14);
 }
 
 MINI_TEST("BRep Native Measure", "Exact Rational Walls And Weighted Boundary Parameters") {
     BRep source = BRep::create_box(2, 3, 4);
-    for (NurbsSurface& surface : source.m_surfaces)
-        surface = rational_plane(surface);
-    for (std::vector<NurbsCurve>* curves : {&source.m_curves_3d, &source.m_curves_2d})
-        for (NurbsCurve& curve : *curves) {
-            MINI_CHECK(curve.cv_count() == 2 && curve.to_rational());
-            for (int d = 0; d < curve.cv_size(); ++d)
-                curve.cv(1)[d] *= 4;
+    for (Surface& surface_ : source.m_surfaces) { NurbsSurface surface = surface_.nurbs(); surface = rational_plane(surface); surface_ = surface; }
+    const auto weigh = [&](auto& curves) {
+        for (auto& item : curves) {
+            auto curve = edit(item);
+            MINI_CHECK(curve->cv_count() == 2 && curve->to_rational());
+            for (int d = 0; d < curve->cv_size(); ++d)
+                curve->cv(1)[d] *= 4;
         }
+    };
+    weigh(source.m_curves_3d);
+    weigh(source.m_curves_2d);
     MINI_CHECK(std::abs(measured_fixture(source, "native_measure_rational_walls") - 24) < 1e-7);
 }
 
@@ -177,9 +180,9 @@ MINI_TEST("BRep Native Measure", "Preserved Rational Thickening Span Growth") {
     std::ifstream input(root / "tests/fixtures/native_thicken_rational_saddle_result.brep.json");
     MINI_CHECK(input.good());
     const BRep source = BRep::jsonload(nlohmann::json::parse(input));
-    MINI_CHECK(source.m_surfaces[1].cv_count(0) == 131 && source.m_surfaces[1].cv_count(1) == 131);
+    MINI_CHECK(source.m_surfaces[1].nurbs().cv_count(0) == 131 && source.m_surfaces[1].nurbs().cv_count(1) == 131);
     for (size_t i = 2; i < source.m_surfaces.size(); ++i)
-        MINI_CHECK(source.m_surfaces[i].degree(0) == 6 && source.m_surfaces[i].is_rational());
+        MINI_CHECK(source.m_surfaces[i].nurbs().degree(0) == 6 && source.m_surfaces[i].nurbs().is_rational());
     MINI_CHECK(std::abs(measured_fixture(source, "native_measure_rational_thickening") - 0.4052333254726519) < 3e-5);
 }
 
@@ -188,17 +191,17 @@ MINI_TEST("BRep Native Measure", "Polynomial Rectangle Orientation And Partial T
     source.m_solids[0].shells[0].orientation = BRepOrientation::Reversed;
     MINI_CHECK(std::abs(measured_fixture(source, "native_measure_reversed_rectangle") + 24) < 1e-7);
     source.m_solids[0].shells[0].orientation = BRepOrientation::Forward;
-    const NurbsSurface original = source.m_surfaces[0];
+    const NurbsSurface original = source.m_surfaces[0].nurbs();
     const std::pair<double, double> u = original.domain(0);
     const std::pair<double, double> v = original.domain(1);
     for (int i = 0; i < 2; ++i)
         for (int j = 0; j < 2; ++j)
-            MINI_CHECK(source.m_surfaces[0].set_cv(i, j, original.point_at(
+            MINI_CHECK(edit(source.m_surfaces[0])->set_cv(i, j, original.point_at(
                 u.first + (2 * i - 0.5) * (u.second - u.first), v.first + (2 * j - 0.5) * (v.second - v.first))));
     for (const BRepEdge& edge : source.m_edges)
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             if (relation.surface_index == 0) {
-                NurbsCurve& pc = source.m_curves_2d[relation.curve_2d_index];
+                auto pc_ = edit(source.m_curves_2d[relation.curve_2d_index]); NurbsCurve& pc = *pc_;
                 for (int i = 0; i < pc.cv_count(); ++i) {
                     const Point point = pc.get_cv(i);
                     MINI_CHECK(pc.set_cv(i, {u.first + 0.25 * (u.second - u.first) + 0.5 * (point[0] - u.first),
@@ -256,14 +259,13 @@ MINI_TEST("BRep Native Measure", "Cached Primitive Bias Remains In Error Check")
 
 MINI_TEST("BRep Native Measure", "Curved Trim Representation And Reversed Volume") {
     BRep shape = BRep::create_box(2, 3, 4);
-    for (NurbsCurve& curve : shape.m_curves_2d)
-        MINI_CHECK(curve.increase_degree(2));
+    for (Curve2d& curve_ : shape.m_curves_2d) { NurbsCurve curve = curve_.nurbs(); MINI_CHECK(curve.increase_degree(2)); curve_ = curve; }
     MINI_CHECK(std::abs(brep_measure::volume(shape, 1e-8) - 24) < 24e-8);
-    for (NurbsCurve& curve : shape.m_curves_2d) {
+    for (Curve2d& curve_ : shape.m_curves_2d) { NurbsCurve curve = curve_.nurbs();
         const std::pair<double, double> domain = curve.domain();
         MINI_CHECK(curve.insert_nurbsknot(domain.first + (domain.second - domain.first) * .25));
         MINI_CHECK(curve.insert_nurbsknot(domain.first + (domain.second - domain.first) * .75));
-    }
+    curve_ = curve; }
     MINI_CHECK(std::abs(brep_measure::volume(shape, 1e-8) - 24) < 24e-8);
     shape.m_solids.front().shells.front().orientation = BRepOrientation::Reversed;
     MINI_CHECK(std::abs(brep_measure::volume(shape, 1e-8) + 24) < 24e-8);
@@ -338,7 +340,7 @@ MINI_TEST("BRep Native Measure", "Repeated Bicubic Primitive Fits Shared Work Bu
 
 MINI_TEST("BRep Native Measure", "Unaffordable Dense Cache Keeps Trimmed Adaptive Volume") {
     BRep shape = BRep::create_box(2, 3, 4);
-    const NurbsSurface original = shape.m_surfaces[0];
+    const NurbsSurface original = shape.m_surfaces[0].nurbs();
     const auto u = original.domain(0), v = original.domain(1);
     // Same plane extended to twice its old chart footprint; the box trims
     // occupy only the central half, so rectangle direct integration cannot apply.
@@ -373,7 +375,7 @@ MINI_TEST("BRep Native Measure", "Unaffordable Dense Cache Keeps Trimmed Adaptiv
     for (const BRepEdge& edge : shape.m_edges)
         for (const auto& relation : edge.pcurves)
             if (relation.surface_index == 0) {
-                auto& pc = shape.m_curves_2d[relation.curve_2d_index];
+                auto pc_ = edit(shape.m_curves_2d[relation.curve_2d_index]); NurbsCurve& pc = *pc_;
                 for (int i = 0; i < pc.cv_count(); ++i) {
                     const Point point = pc.get_cv(i);
                     MINI_CHECK(pc.set_cv(i, {u.first + .25 * (u.second - u.first) + .5 * (point[0] - u.first),
@@ -450,7 +452,7 @@ MINI_TEST("BRep Native Measure", "Plane Primitive Reuses Certified C1 Derivative
 
 MINI_TEST("BRep Native Measure", "Trim Gauge Preserves Tolerance Closed Rotated Boundary") {
     BRep shape = BRep::create_box(2, 3, 4);
-    const auto original = shape.m_surfaces[0];
+    const auto original = shape.m_surfaces[0].nurbs();
     const auto u = original.domain(0), v = original.domain(1);
     NurbsSurface extended(3, false, 2, 2, 5, 5);
     extended.m_nurbsknot[0] = {u.first, u.first + .25 * (u.second - u.first),
@@ -469,7 +471,7 @@ MINI_TEST("BRep Native Measure", "Trim Gauge Preserves Tolerance Closed Rotated 
     for (const auto& edge : shape.m_edges)
         for (const auto& relation : edge.pcurves)
             if (relation.surface_index == 0) {
-                auto& pc = shape.m_curves_2d[relation.curve_2d_index];
+                auto pc_ = edit(shape.m_curves_2d[relation.curve_2d_index]); NurbsCurve& pc = *pc_;
                 for (int i = 0; i < pc.cv_count(); ++i) {
                     const auto point = pc.get_cv(i);
                     MINI_CHECK(
@@ -479,10 +481,12 @@ MINI_TEST("BRep Native Measure", "Trim Gauge Preserves Tolerance Closed Rotated 
                 altered = relation.curve_2d_index;
             }
     MINI_CHECK(altered >= 0);
-    auto& pc = shape.m_curves_2d[altered];
-    const double before = pc.cv(0)[1];
-    pc.cv(0)[1] = std::nextafter(before, std::numeric_limits<double>::infinity());
-    MINI_CHECK(pc.cv(0)[1] != before); // Preserve a genuine nonzero UV closure gap.
+    {
+        auto pc = edit(shape.m_curves_2d[altered]);
+        const double before = pc->cv(0)[1];
+        pc->cv(0)[1] = std::nextafter(before, std::numeric_limits<double>::infinity());
+        MINI_CHECK(pc->cv(0)[1] != before); // Preserve a genuine nonzero UV closure gap.
+    }
     MINI_CHECK(shape.is_valid() && shape.is_solid());
     MINI_CHECK(std::abs(shape.volume_exact(1e-8) - 24) <= 24e-8);
     BRep rotated = shape.transformed(Xform::rotation({1, 2, 3}, .73));
@@ -539,8 +543,7 @@ MINI_TEST("BRep Native Measure", "Volume Keeps Its Value On Spans That Are Not B
         const double before = shape.volume_exact(1e-9);
         BRep raised = shape;
         for (BRep* changed : {&shape, &raised})
-            for (NurbsSurface& surface : changed->m_surfaces)
-                for (int dir = 0; dir < 2; ++dir) {
+            for (Surface& surface_ : changed->m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int dir = 0; dir < 2; ++dir) {
                     const std::pair<double, double> domain = surface.domain(dir);
                     if (surface.degree(dir) < 2)
                         continue;
@@ -548,7 +551,7 @@ MINI_TEST("BRep Native Measure", "Volume Keeps Its Value On Spans That Are Not B
                         MINI_CHECK(surface.increase_degree(dir, 3));
                     for (double share : {0.3, 0.71})
                         MINI_CHECK(surface.insert_nurbsknot(dir, std::lerp(domain.first, domain.second, share), 1));
-                }
+                } surface_ = surface; }
         for (const BRep* changed : {&shape, &raised}) {
             MINI_CHECK(changed->is_valid() && changed->is_solid());
             MINI_CHECK(std::abs(changed->volume_exact(1e-9) - before) <= std::abs(before) * 1e-9);
@@ -560,8 +563,8 @@ MINI_TEST("BRep Native Measure", "Enclosure Of A Point Is One Control") {
     const std::array<double, 3> origin = {0.1, 0.2, 0.3};
     const auto same = [](const nurbs_interval::Interval& a, const nurbs_interval::Interval& b) { return a.lo == b.lo && a.hi == b.hi; };
     const BRep torus = BRep::create_torus(1.0, 0.25);
-    const NurbsSurface& surface = torus.m_surfaces[0];
-    const NurbsCurve& curve = torus.m_curves_3d[0];
+    const NurbsSurface& surface = torus.m_surfaces[0].nurbs();
+    const NurbsCurve& curve = torus.m_curves_3d[0].nurbs();
     for (double share : {0.0, 0.137, 0.25, 0.61, 1.0}) {
         const double t = std::lerp(curve.domain_start(), curve.domain_end(), share);
         const auto controls = nurbs_interval::curve_controls(curve, {t, t}, origin);

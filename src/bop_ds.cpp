@@ -146,7 +146,7 @@ std::array<double, 2> surface_period(const NurbsSurface& s) {
 
 Region face_region(const BRep& brep, int face, double tolerance) {
     Region region;
-    const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     region.period = surface_period(s);
     for (const BRepRef& wire : brep.m_faces[face].wires) {
         std::vector<Point> loop;
@@ -155,7 +155,7 @@ Region face_region(const BRep& brep, int face, double tolerance) {
             const int index = brep.pcurve_index(use.index, face, use.orientation);
             if (index < 0)
                 continue;
-            const NurbsCurve& p = brep.m_curves_2d[index];
+            const NurbsCurve& p = brep.m_curves_2d[index].nurbs();
             const int n = samples(p);
             const double t0 = p.domain_start(), span = p.domain_end() - t0;
             for (int i = 0; i < n; ++i) {

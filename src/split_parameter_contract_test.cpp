@@ -73,13 +73,13 @@ void check_regions(const split::FaceSplit& result) {
                 edges.insert(edge.index);
     for (int index : edges) {
         const BRepEdge& edge = result.brep.m_edges[index];
-        const NurbsCurve& world = result.brep.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = result.brep.m_curves_3d[edge.curve_3d_index].nurbs();
         for (const BRepCurveOnSurface& pc : edge.pcurves)
             for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
                 if (ci < 0)
                     continue;
                 const auto match = curve_surface_intersection::same_parameter(world,
-                    result.brep.m_curves_2d[ci], result.brep.m_surfaces[pc.surface_index], Tolerance);
+                    result.brep.m_curves_2d[ci].nurbs(), result.brep.m_surfaces[pc.surface_index].nurbs(), Tolerance);
                 MINI_CHECK(match == curve_surface_intersection::ParameterMatch::Matched);
             }
     }
@@ -123,11 +123,11 @@ MINI_TEST("Split Parameter Contract", "Same Image Is Not Same Parameter") {
     for (bool affine : {false, true}) {
         const auto cut = split_parameter_tests::cut(true, affine);
         const auto match = curve_surface_intersection::same_parameter(cut.world, cut.pcurve,
-            source.m_surfaces[0], split_parameter_tests::Tolerance);
+            source.m_surfaces[0].nurbs(), split_parameter_tests::Tolerance);
         MINI_CHECK(match == curve_surface_intersection::ParameterMatch::Mismatched);
         const Point world = cut.world.point_at((cut.world.domain_start() + cut.world.domain_end()) * 0.5);
         const Point uv = cut.pcurve.point_at((cut.pcurve.domain_start() + cut.pcurve.domain_end()) * 0.5);
-        MINI_CHECK(std::abs(world.distance(source.m_surfaces[0].point_at(uv[0], uv[1])) - 0.125) <= 1e-14);
+        MINI_CHECK(std::abs(world.distance(source.m_surfaces[0].nurbs().point_at(uv[0], uv[1])) - 0.125) <= 1e-14);
     }
 }
 
@@ -135,7 +135,7 @@ MINI_TEST("Split Parameter Contract", "Affine Range Correspondence Is Accepted")
     const BRep source = split_parameter_tests::plane();
     const auto cut = split_parameter_tests::cut(false, true);
     const auto match = curve_surface_intersection::same_parameter(cut.world, cut.pcurve,
-        source.m_surfaces[0], split_parameter_tests::Tolerance);
+        source.m_surfaces[0].nurbs(), split_parameter_tests::Tolerance);
     MINI_CHECK(match == curve_surface_intersection::ParameterMatch::Matched);
     split_parameter_tests::check_regions(split::split_brep_face_by_pcurves(source, 0, {cut}, split_parameter_tests::Tolerance));
 }

@@ -70,7 +70,7 @@ bool proposed_triangles(const BRep& brep, const std::vector<Mesh>& faces,
             return fail("empty_face");
         if (diagnostic)
             diagnostic->face = static_cast<int>(face);
-        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+        const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
         const auto& triangulation = faces[face].get_triangulation();
         for (const std::pair<const size_t, std::vector<size_t>>& polygon : faces[face].face) {
             const std::vector<size_t>& keys = polygon.second;
@@ -202,7 +202,7 @@ Mesh BRep::tessellate(double deflection, double angle) const {
         return {};
     Point low, high;
     bool first = true;
-    for (const NurbsSurface& surface : m_surfaces)
+    for (const NurbsSurface& surface : nurbs(m_surfaces))
         for (int i = 0; i < surface.m_cv_count[0]; ++i)
             for (int j = 0; j < surface.m_cv_count[1]; ++j) {
                 const Point point = surface.get_cv(i, j);
@@ -241,7 +241,7 @@ Mesh BRep::tessellate(double deflection, double angle) const {
         progress.phase("certification");
         bool acceptable = true;
         for (const TessellationTriangle& triangle : triangles) {
-            const NurbsSurface& surface = m_surfaces[m_faces[triangle.face].surface_index];
+            const NurbsSurface& surface = m_surfaces[m_faces[triangle.face].surface_index].nurbs();
             if (native_tessellate_diagnostics::observer) {
                 ++progress.state.visited;
                 progress.state.face = triangle.face;

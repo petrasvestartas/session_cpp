@@ -103,10 +103,10 @@ double boundary_residual(const BRep& result) {
     double residual = 0.0;
     for (const BRepEdge& edge : result.m_edges) {
         MINI_CHECK(!edge.degenerated && edge.pcurves.size() == 2);
-        const NurbsCurve& world = result.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = result.m_curves_3d[edge.curve_3d_index].nurbs();
         for (const BRepCurveOnSurface& relation : edge.pcurves) {
-            const NurbsCurve& pcurve = result.m_curves_2d[relation.curve_2d_index];
-            const NurbsSurface& surface = result.m_surfaces[relation.surface_index];
+            const NurbsCurve& pcurve = result.m_curves_2d[relation.curve_2d_index].nurbs();
+            const NurbsSurface& surface = result.m_surfaces[relation.surface_index].nurbs();
             for (int i = 0; i <= 151; ++i) {
                 const double fraction = i / 151.0;
                 const double t = pcurve.domain_start() + fraction * (pcurve.domain_end() - pcurve.domain_start());
@@ -122,8 +122,8 @@ double boundary_residual(const BRep& result) {
 double normal_residual(const BRep& source, const BRep& result, double distance, double tolerance) {
     double residual = 0.0;
     for (int face = 0; face < source.face_count(); ++face) {
-        const NurbsSurface& original = source.m_surfaces[source.m_faces[face].surface_index];
-        const NurbsSurface& shifted = result.m_surfaces[result.m_faces[face].surface_index];
+        const NurbsSurface& original = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
+        const NurbsSurface& shifted = result.m_surfaces[result.m_faces[face].surface_index].nurbs();
         MINI_CHECK(original.domain(0) == shifted.domain(0) && original.domain(1) == shifted.domain(1));
         const auto u = original.domain(0);
         const auto v = original.domain(1);
@@ -149,7 +149,7 @@ double normal_residual(const BRep& source, const BRep& result, double distance, 
 double support_area_bound(const BRep& source, double distance) {
     const auto length = [](const Vector& vector) { return std::hypot(vector[0], vector[1], vector[2]); };
     double area = 0.0;
-    for (const NurbsSurface& surface : source.m_surfaces) {
+    for (const NurbsSurface& surface : nurbs(source.m_surfaces)) {
         MINI_CHECK(!surface.is_rational() && surface.cv_count(0) == 2 && surface.cv_count(1) == 2);
         const Point origin = surface.get_cv(0, 0);
         const Vector u = surface.get_cv(1, 0) - origin;

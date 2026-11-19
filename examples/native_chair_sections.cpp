@@ -39,8 +39,8 @@ nlohmann::ordered_json samples(const brep_section::FaceCurve& section, const Nur
 }
 
 nlohmann::ordered_json fit_failure(const BRep& a, const BRep& b, double tolerance) {
-    const NurbsSurface& first = a.m_surfaces[a.m_faces[0].surface_index];
-    const NurbsSurface& second = b.m_surfaces[b.m_faces[0].surface_index];
+    const NurbsSurface& first = a.m_surfaces[a.m_faces[0].surface_index].nurbs();
+    const NurbsSurface& second = b.m_surfaces[b.m_faces[0].surface_index].nurbs();
     try {
         const auto result = Intersection::surface_surface(first, second, tolerance);
         nlohmann::ordered_json lines = nlohmann::ordered_json::array();
@@ -103,7 +103,7 @@ int run(int argc, char** argv) {
             scene.add_brep(view_b);
             bool passed = result.complete;
             for (const auto& section : result.curves) {
-                const auto record = samples(section, fa.m_surfaces[fa.m_faces[0].surface_index], fb.m_surfaces[fb.m_faces[0].surface_index]);
+                const auto record = samples(section, fa.m_surfaces[fa.m_faces[0].surface_index].nurbs(), fb.m_surfaces[fb.m_faces[0].surface_index].nurbs());
                 passed = passed && record["max_sampled_gap"].get<double>() <= tolerance;
                 data["sections"].push_back(record);
                 NurbsCurve curve = section.world;

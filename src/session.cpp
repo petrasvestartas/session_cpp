@@ -559,7 +559,7 @@ std::vector<Point> brep_points(const BRep& brep) {
     for (const BRepVertex& vertex : brep.m_vertices)
         points.push_back(vertex.point);
 
-    for (const NurbsSurface& surface : brep.m_surfaces) {
+    for (const NurbsSurface& surface : nurbs(brep.m_surfaces)) {
 
         const std::pair<double, double> u = surface.domain(0);
         const std::pair<double, double> v = surface.domain(1);

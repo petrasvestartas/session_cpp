@@ -28,7 +28,7 @@ constexpr BRepOrientation Forward = BRepOrientation::Forward;
 constexpr BRepOrientation Reversed = BRepOrientation::Reversed;
 
 int trim_wire(BRep& brep, const std::array<double, 4>& bounds) {
-    const NurbsSurface& surface = brep.m_surfaces[0];
+    const NurbsSurface& surface = brep.m_surfaces[0].nurbs();
     const std::array<Point, 4> uv = {Point(bounds[0], bounds[2], 0), Point(bounds[1], bounds[2], 0),
         Point(bounds[1], bounds[3], 0), Point(bounds[0], bounds[3], 0)};
     const std::array<double, 4> fixed = {bounds[2], bounds[1], bounds[3], bounds[0]};
@@ -126,14 +126,14 @@ double boundary_residual(const BRep& brep) {
             for (int index : {relation.curve_2d_index, relation.curve_2d_index_2}) {
                 if (index < 0)
                     continue;
-                const NurbsCurve& pc = brep.m_curves_2d[index];
-                const NurbsSurface& support = brep.m_surfaces[relation.surface_index];
+                const NurbsCurve& pc = brep.m_curves_2d[index].nurbs();
+                const NurbsSurface& support = brep.m_surfaces[relation.surface_index].nurbs();
                 for (int i = 0; i <= 97; ++i) {
                     const double fraction = i / 97.0;
                     const Point uv = pc.point_at(pc.domain_start() + fraction * (pc.domain_end() - pc.domain_start()));
                     Point world = brep.m_vertices[edge.start_vertex].point;
                     if (!edge.degenerated) {
-                        const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index];
+                        const NurbsCurve& curve = brep.m_curves_3d[edge.curve_3d_index].nurbs();
                         world = curve.point_at(curve.domain_start() + fraction * (curve.domain_end() - curve.domain_start()));
                     }
                     maximum = std::max(maximum, world.distance(support.point_at(uv[0], uv[1])));
@@ -251,7 +251,7 @@ void check_interior(
     double tolerance,
     const std::string& name
 ) {
-    const NurbsSurface& surface = source.m_surfaces[source.m_faces[0].surface_index];
+    const NurbsSurface& surface = source.m_surfaces[source.m_faces[0].surface_index].nurbs();
     const double orientation = source.face_orientation(0) == Forward ? 1 : -1;
     for (const Point uv : {Point(3.8, -0.7, 0), Point(6.1, 2.6, 0), Point(5.9, -0.8, 0)}) {
         const Point point = surface.point_at(uv[0], uv[1]);
@@ -272,7 +272,7 @@ BRep cylinder_face() {
     BRep source = BRep::create_cylinder(1, 2);
     int lateral = -1;
     for (int i = 0; i < source.face_count(); ++i)
-        if (!source.m_surfaces[source.m_faces[i].surface_index].is_planar())
+        if (!source.m_surfaces[source.m_faces[i].surface_index].nurbs().is_planar())
             lateral = i;
     MINI_CHECK(lateral >= 0);
     const BRepOrientation orientation = source.face_orientation(lateral);
@@ -332,7 +332,7 @@ MINI_TEST("BRepThicken", "Rational Freeform Boundaries With Different Weights") 
     const BRep source = saddle_face(true);
     const std::string name = "native_thicken_rational_saddle";
     const BRep result = saved_thickening(source, 0.1, 3e-5, name);
-    MINI_CHECK(source.m_curves_3d[0].is_rational());
+    MINI_CHECK(source.m_curves_3d[0].nurbs().is_rational());
     MINI_CHECK(result.face_count() == 6);
     check_result(result, saddle_volume(0.1), 3e-5, name);
     check_interior(
@@ -467,12 +467,12 @@ MINI_TEST("BRepThicken", "Subfocal Parabolic Normal Sweep") {
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (index >= 0)
-                    MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index],
-                        result.m_curves_2d[index], result.m_surfaces[relation.surface_index], 1e-5)
+                    MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        result.m_curves_2d[index].nurbs(), result.m_surfaces[relation.surface_index].nurbs(), 1e-5)
                         == curve_surface_intersection::ParameterMatch::Matched);
     for (double u : {.1, .5, .9}) {
-        const Point point = source.m_surfaces[0].point_at(u, .5);
-        const Vector normal = source.m_surfaces[0].normal_at(u, .5);
+        const Point point = source.m_surfaces[0].nurbs().point_at(u, .5);
+        const Vector normal = source.m_surfaces[0].nurbs().normal_at(u, .5);
         for (double fraction : {-.5, .5, 1.5})
             check_interior_probe(result, point + normal * (thickness * fraction), {u, .5, 0},
                 1e-5, fraction == .5 ? brep_classify::State::Inside : brep_classify::State::Outside, name);
@@ -482,7 +482,7 @@ MINI_TEST("BRepThicken", "Subfocal Parabolic Normal Sweep") {
 
 
 MINI_TEST("BRepThicken", "Interval Signed Normal Sweep Regularity") {
-    const NurbsSurface surface = parabolic_focal_face().m_surfaces[0];
+    const NurbsSurface surface = parabolic_focal_face().m_surfaces[0].nurbs();
     const auto inside = [](double u, double v) { return u > 0 && u < 1 && v > 0 && v < 1; };
     const normal_sweep::Result subfocal = normal_sweep::check(surface, {0, 1, 0, 1}, 1.0 / 64, 4096, inside);
     MINI_CHECK(subfocal.state == normal_sweep::State::Regular);
@@ -497,7 +497,7 @@ MINI_TEST("BRepThicken", "Interval Signed Normal Sweep Regularity") {
 }
 
 MINI_TEST("BRepThicken", "Interval Sweep Original Trim And Mixed Curvature") {
-    const NurbsSurface surface = parabolic_focal_face().m_surfaces[0];
+    const NurbsSurface surface = parabolic_focal_face().m_surfaces[0].nurbs();
     const auto inside = [](double u, double v) { return u > .25 && u < 1 && v > 0 && v < 1; };
     MINI_CHECK(normal_sweep::check(surface, {.25, 1, 0, 1}, 1.0 / 16, 4096, inside).state
         == normal_sweep::State::Regular);
@@ -554,7 +554,7 @@ MINI_TEST("BRepThicken", "Analytic Sweep Crossing Versus Raw Offset") {
 }
 
 MINI_TEST("BRepThicken", "Piecewise Sweep Fold Does Not Assert Global Continuity") {
-    NurbsSurface surface = parabolic_focal_face().m_surfaces[0];
+    NurbsSurface surface = parabolic_focal_face().m_surfaces[0].nurbs();
     MINI_CHECK(surface.insert_nurbsknot(0, .5, 2));
     const auto inside = [](double u, double v) { return u > 0 && u < 1 && v > 0 && v < 1; };
     MINI_CHECK(normal_sweep::check(surface, {0, 1, 0, 1}, 1.0 / 64, 4096, inside).state
@@ -575,8 +575,8 @@ MINI_TEST("BRepThicken", "Original Trim Excludes Full Support Focal Zone") {
         - .5 * thickness * thickness * (std::atan(32.0) - std::atan(8.0));
     check_result(result, expected, 1e-5, name);
     for (double u : {.3, .6, .9}) {
-        const Point point = source.m_surfaces[0].point_at(u, .5);
-        const Vector normal = source.m_surfaces[0].normal_at(u, .5);
+        const Point point = source.m_surfaces[0].nurbs().point_at(u, .5);
+        const Vector normal = source.m_surfaces[0].nurbs().normal_at(u, .5);
         for (double fraction : {-.5, .5, 1.5})
             check_interior_probe(result, point + normal * (thickness * fraction), {u, .5, 0},
                 1e-5, fraction == .5 ? brep_classify::State::Inside : brep_classify::State::Outside, name);

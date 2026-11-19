@@ -106,7 +106,7 @@ double region_area(const split::FaceSplit& partition, int face) {
         for (const BRepRef& edge : partition.brep.wire_edges(wire)) {
             const int index = partition.brep.pcurve_index(edge.index, face, edge.orientation);
             MINI_CHECK(index >= 0);
-            const NurbsCurve& curve = partition.brep.m_curves_2d[index];
+            const NurbsCurve& curve = partition.brep.m_curves_2d[index].nurbs();
             MINI_CHECK(!curve.is_rational() && curve.degree() <= 4);
             const double sign = edge.orientation == BRepOrientation::Reversed ? -1 : 1;
             const std::vector<double> spans = curve.get_span_vector();

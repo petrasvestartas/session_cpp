@@ -66,7 +66,7 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             continue;
         }
         // GetFaceOff: around the edge, a face whose use runs against the edge closes the material with the next face counterclockwise.
-        const NurbsCurve& c = result.m_curves_3d[result.m_edges[edge].curve_3d_index];
+        const NurbsCurve& c = result.m_curves_3d[result.m_edges[edge].curve_3d_index].nurbs();
         const double t = c.domain_middle();
         const Point p = c.point_at(t);
         Vector axis = c.tangent_at(t);
@@ -77,10 +77,10 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             const auto& [k, orientation, own] = uses[i];
             const BRepFace& face = result.m_faces[faces[k].index];
             const int index = result.pcurve_index(edge, faces[k].index, own);
-            const NurbsSurface& s = result.m_surfaces[face.surface_index];
+            const NurbsSurface& s = result.m_surfaces[face.surface_index].nurbs();
             Point uv;
             if (index >= 0) {
-                const NurbsCurve& pc = result.m_curves_2d[index];
+                const NurbsCurve& pc = result.m_curves_2d[index].nurbs();
                 uv = pc.point_at(pc.domain_start() + (t - c.domain_start()) / (c.domain_end() - c.domain_start()) * (pc.domain_end() - pc.domain_start()));
             } else {
                 const auto [u, v] = s.closest_parameters(p);
@@ -134,7 +134,7 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             Point uv;
             const Region region = face_region(result, list[h][i].index, 1e-7);
             if (region.interior(uv)) {
-                p = result.m_surfaces[result.m_faces[list[h][i].index].surface_index].point_at(uv[0], uv[1]);
+                p = result.m_surfaces[result.m_faces[list[h][i].index].surface_index].nurbs().point_at(uv[0], uv[1]);
                 sampled = true;
             }
         }

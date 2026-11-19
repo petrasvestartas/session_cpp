@@ -342,9 +342,9 @@ struct FaceBuilder {
         const int second = source.pcurve_index(source_edge, face, Reversed);
         if (first < 0 || second < 0)
             throw std::runtime_error("BRep offset edge is missing its face pcurve");
-        const NurbsCurve& pcurve = source.m_curves_2d[first];
+        const NurbsCurve& pcurve = source.m_curves_2d[first].nurbs();
         validate_pcurve(pcurve);
-        const NurbsSurface& surface = result.m_surfaces[0];
+        const NurbsSurface& surface = result.m_surfaces[0].nurbs();
         const Point a = lifted_point(surface, pcurve, pcurve.domain_start());
         const Point b = lifted_point(surface, pcurve, pcurve.domain_end());
         const int va = vertex(edge.start_vertex, a);
@@ -355,7 +355,7 @@ struct FaceBuilder {
         const int forward = result.add_curve_2d(pcurve);
         int reversed = -1;
         if (second != first) {
-            const NurbsCurve& seam = source.m_curves_2d[second];
+            const NurbsCurve& seam = source.m_curves_2d[second].nurbs();
             validate_pcurve(seam);
             if (seam.domain() != pcurve.domain())
                 throw std::runtime_error("BRep offset seam pcurves need the same edge parameter range");
@@ -371,9 +371,9 @@ struct FaceBuilder {
         const BRepEdge& edge = result.m_edges[index];
         for (int i = 0; i <= 97; ++i) {
             const double t = pcurve.domain_start() + (pcurve.domain_end() - pcurve.domain_start()) * i / 97.0;
-            const Point lifted = lifted_point(result.m_surfaces[0], pcurve, t);
+            const Point lifted = lifted_point(result.m_surfaces[0].nurbs(), pcurve, t);
             const Point world = edge.degenerated ? result.m_vertices[edge.start_vertex].point
-                : result.m_curves_3d[edge.curve_3d_index].point_at(t);
+                : result.m_curves_3d[edge.curve_3d_index].nurbs().point_at(t);
             const double residual = lifted.distance(world);
             if (!std::isfinite(residual) || residual > tolerance)
                 throw std::runtime_error("BRep offset seam or edge cannot meet paired-curve tolerance");
@@ -400,7 +400,7 @@ struct FaceBuilder {
 
 OffsetFace offset_face(const BRep& source, int face, double distance, double tolerance) {
     const NurbsSurface surface = nurbs_offset::surface(
-        source.m_surfaces[source.m_faces[face].surface_index], 0.0, tolerance * 0.5
+        source.m_surfaces[source.m_faces[face].surface_index].nurbs(), 0.0, tolerance * 0.5
     );
     const double signed_distance = source.face_orientation(face) == Reversed ? -distance : distance;
     const normal_sweep::FaceResult sweep = normal_sweep::original_face(source, face,
@@ -425,7 +425,7 @@ bool convex_planes(const BRep& source, double tolerance) {
         return false;
     for (size_t face = 0; face < planes.size(); ++face) {
         const Plane& plane = planes[face];
-        const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+        const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
                 if (std::abs(plane.z_axis().dot(surface.get_cv(i, j) - plane.origin())) > tolerance * 0.125)
@@ -435,7 +435,7 @@ bool convex_planes(const BRep& source, double tolerance) {
                 return false;
     }
     for (const BRepEdge& edge : source.m_edges)
-        if (edge.degenerated || !source.m_curves_3d[edge.curve_3d_index].is_linear(tolerance * 0.125))
+        if (edge.degenerated || !source.m_curves_3d[edge.curve_3d_index].nurbs().is_linear(tolerance * 0.125))
             return false;
     return true;
 }
@@ -462,12 +462,12 @@ OffsetFace displaced_working_face(const BRep& original, int face, const OffsetFa
         signed_distance, tolerance, 4096);
     if (sweep.proof.state == normal_sweep::State::Fold)
         throw std::runtime_error("BRep offset proves a focal collapse in the original trimmed face");
-    const NurbsSurface& source = original.m_surfaces[original.m_faces[face].surface_index];
+    const NurbsSurface& source = original.m_surfaces[original.m_faces[face].surface_index].nurbs();
     if (!original.m_solids.empty())
         check_focal_crossings(original, face, source, signed_distance, tolerance);
     if (working.brep.face_orientation(0) != original.face_orientation(face))
         throw std::runtime_error("Displaced working face changed original support orientation");
-    const NurbsSurface& support = working.brep.m_surfaces[working.brep.m_faces[0].surface_index];
+    const NurbsSurface& support = working.brep.m_surfaces[working.brep.m_faces[0].surface_index].nurbs();
     const NurbsSurface shifted = nurbs_offset::surface_sweep(support, signed_distance, tolerance * .5);
     FaceBuilder builder{working.brep, 0, {}, tolerance, {}, {}};
     builder.result.add_surface(shifted);

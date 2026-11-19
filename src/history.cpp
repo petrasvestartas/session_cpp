@@ -85,13 +85,13 @@ static size_t brep_weight(const BRep& brep) {
 
     size_t bytes = 512 + 24 * brep.m_vertices.size() + 64 * (brep.m_edges.size() + brep.m_faces.size());
 
-    for (const NurbsSurface& surface : brep.m_surfaces)
+    for (const NurbsSurface& surface : nurbs(brep.m_surfaces))
         bytes += surface_weight(surface);
 
-    for (const NurbsCurve& curve : brep.m_curves_3d)
+    for (const NurbsCurve& curve : nurbs(brep.m_curves_3d))
         bytes += curve_weight(curve);
 
-    for (const NurbsCurve& curve : brep.m_curves_2d)
+    for (const NurbsCurve& curve : nurbs(brep.m_curves_2d))
         bytes += curve_weight(curve);
 
     return bytes;

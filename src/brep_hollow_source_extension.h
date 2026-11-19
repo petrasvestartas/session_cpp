@@ -76,7 +76,7 @@ inline bool covers_extent(const BRep& original, const NurbsSurface& extended,
     for (int axis : axes) {
         nurbs_interval::Interval required;
         bool first = true;
-        for (const NurbsSurface& surface : original.m_surfaces)
+        for (const NurbsSurface& surface : nurbs(original.m_surfaces))
             for (int i = 0; i < surface.cv_count(0); ++i)
                 for (int j = 0; j < surface.cv_count(1); ++j) {
                     const double weight = surface.weight(i, j);
@@ -102,7 +102,7 @@ inline bool prepare(const BRep& original, brep_offset::OffsetFace& working,
     double signed_distance, double tolerance) {
     affine_working::require(working.brep.is_valid() && working.brep.face_count() == 1,
         "Hollow polynomial source working face is invalid or ambiguous");
-    const NurbsSurface old = working.brep.m_surfaces[working.brep.m_faces[0].surface_index];
+    const NurbsSurface old = working.brep.m_surfaces[working.brep.m_faces[0].surface_index].nurbs();
     std::array<double, 3> first{}, second{}, mixed{};
     std::array<int, 2> axes{};
     if (!graph_axes(old, first, second, mixed, axes)

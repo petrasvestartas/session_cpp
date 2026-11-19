@@ -2274,7 +2274,7 @@ void add_shared_pcurves(BRep& result, const BRep& brep, const Source& source, co
                         const NurbsCurve& world, double tolerance, bool required = false) {
 
     for (const BRepCurveOnSurface& pc : brep.m_edges[source.edge].pcurves) {
-        const NurbsSurface& surface = brep.m_surfaces[pc.surface_index];
+        const NurbsSurface& surface = brep.m_surfaces[pc.surface_index].nurbs();
         const std::array<int, 2> sides = {pc.curve_2d_index, pc.curve_2d_index_2};
         std::array<int, 2> ids = {-1, -1};
 
@@ -2282,7 +2282,7 @@ void add_shared_pcurves(BRep& result, const BRep& brep, const Source& source, co
             if (sides[at] < 0)
                 continue;
 
-            const NurbsCurve& c = brep.m_curves_2d[sides[at]];
+            const NurbsCurve& c = brep.m_curves_2d[sides[at]].nurbs();
             const auto [ca, cb] = shared_pcurve_range(source, piece, world, c, surface, tolerance, required);
             require(cb > ca, "A split crosses an unsupported periodic trim seam");
             NurbsCurve trim = required ? required_interval(c, ca, cb, source.edge, piece.lo, piece.hi)
@@ -2316,7 +2316,7 @@ BRepRef add_run_edge(
     tolerance = own_tolerance(brep, source.edge, tolerance);
     double wa = 0.0;
     double wb = 0.0;
-    std::tie(wa, wb) = world_run(brep.m_surfaces[surface_index], source, run, tolerance);
+    std::tie(wa, wb) = world_run(brep.m_surfaces[surface_index].nurbs(), source, run, tolerance);
     const double lo = std::min(wa, wb);
     const double hi = std::max(wa, wb);
     require(hi > lo, "Split would create a collapsed edge");
@@ -2375,7 +2375,7 @@ std::vector<std::vector<NurbsCurve>> boundary_loops(
             const BRepEdge& edge = brep.m_edges[er.index];
             const int ci = use.pcurve;
             require(ci >= 0, "Face has no source UV boundary");
-            NurbsCurve uv = brep.m_curves_2d[ci];
+            NurbsCurve uv = brep.m_curves_2d[ci].nurbs();
             check_curve(uv);
             NurbsCurve world;
             if (edge.degenerated) {
@@ -2385,7 +2385,7 @@ std::vector<std::vector<NurbsCurve>> boundary_loops(
                 world.set_cv(0, brep.m_vertices[edge.start_vertex].point);
                 world.set_cv(1, brep.m_vertices[edge.end_vertex].point);
             } else {
-                world = brep.m_curves_3d[edge.curve_3d_index];
+                world = brep.m_curves_3d[edge.curve_3d_index].nurbs();
             }
             check_curve(world);
             sources.push_back({er.index, world, uv, -1, edge.start_vertex, edge.end_vertex});
@@ -2569,7 +2569,7 @@ void validate(const BRep& result, const std::vector<bool>& closed, double tolera
         if (edge.degenerated)
             continue;
 
-        const NurbsCurve& world = result.m_curves_3d[edge.curve_3d_index];
+        const NurbsCurve& world = result.m_curves_3d[edge.curve_3d_index].nurbs();
         const double start = world.point_at_start().distance(result.m_vertices[edge.start_vertex].point);
         const double end = world.point_at_end().distance(result.m_vertices[edge.end_vertex].point);
         const double reach = std::max({tolerance, edge.tolerance, result.m_vertices[edge.start_vertex].tolerance,
@@ -2581,12 +2581,12 @@ void validate(const BRep& result, const std::vector<bool>& closed, double tolera
                 if (ci < 0)
                     continue;
 
-                const NurbsCurve& uv = result.m_curves_2d[ci];
+                const NurbsCurve& uv = result.m_curves_2d[ci].nurbs();
                 const double limit = std::max(tolerance, edge.tolerance) * 8.0;
                 // A match at the tolerance is a match at the wider limit: a section curve holds one already, and the assembly asks for no other.
-                if (curve_surface_intersection::same_parameter(world, uv, result.m_surfaces[pc.surface_index], tolerance) !=
+                if (curve_surface_intersection::same_parameter(world, uv, result.m_surfaces[pc.surface_index].nurbs(), tolerance) !=
                     curve_surface_intersection::ParameterMatch::Matched)
-                    validate_trim(world, uv, result.m_surfaces[pc.surface_index], limit);
+                    validate_trim(world, uv, result.m_surfaces[pc.surface_index].nurbs(), limit);
             }
     }
 }
@@ -2773,8 +2773,8 @@ void required_edge_pieces(BRep& result, const BRep& original, const Source& sour
         require(image.curve_2d_index >= 0, "Required edge has no primary original pcurve");
         for (int pc : {image.curve_2d_index, image.curve_2d_index_2})
             if (pc >= 0)
-                shared_pcurve_range(source, full, source.world, original.m_curves_2d[pc],
-                                    original.m_surfaces[image.surface_index], tolerance, true);
+                shared_pcurve_range(source, full, source.world, original.m_curves_2d[pc].nurbs(),
+                                    original.m_surfaces[image.surface_index].nurbs(), tolerance, true);
     }
     std::vector<int> vertices;
     for (const auto& event : events) {
@@ -2865,7 +2865,7 @@ BRep split_brep_face_by_curves(
     check_tolerance(tolerance);
     require(brep.is_valid(), "Split requires a valid BRep");
     require(face_index >= 0 && face_index < brep.face_count(), "Select one BRep face to split");
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face_index].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face_index].surface_index].nurbs();
     std::vector<FaceCut> paired;
     for (const NurbsCurve& cutter : cutters) {
         check_curve(cutter);
@@ -2897,7 +2897,7 @@ FaceSplit split_brep_edges_at_events(const BRep& brep, const std::vector<EdgeEve
         if (original.degenerated)
             throw EdgeEventError(edge, 0, 0,
                                  "Degenerate edge events require explicit UV incidence ownership");
-        Source source{edge, brep.m_curves_3d[original.curve_3d_index], {}};
+        Source source{edge, brep.m_curves_3d[original.curve_3d_index].nurbs(), {}};
         check_curve(source.world);
         const auto domain = source.world.domain();
         if (!std::isfinite(domain.second - domain.first) || !(domain.second > domain.first) ||
@@ -2947,7 +2947,7 @@ FaceSplit split_face(
     require(face_index >= 0 && face_index < brep.face_count(), "Select one BRep face to split");
     require(!cutters.empty(), "Select at least one cutter");
     const BRepFace face = brep.m_faces[face_index];
-    const NurbsSurface& surface = brep.m_surfaces[face.surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[face.surface_index].nurbs();
     check_surface(surface);
 
     const double uv_tolerance = surface_uv_tolerance(surface, tolerance);

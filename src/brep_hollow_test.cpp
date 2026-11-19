@@ -142,8 +142,8 @@ void hollow_boundary(const BRep& shape) {
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (pc >= 0)
-                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index],
-                        shape.m_curves_2d[pc], shape.m_surfaces[relation.surface_index], 1e-7)
+                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        shape.m_curves_2d[pc].nurbs(), shape.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                         == curve_surface_intersection::ParameterMatch::Matched);
 }
 BRep hollow_warped_box() {
@@ -153,13 +153,11 @@ BRep hollow_warped_box() {
     };
     for (BRepVertex& vertex : result.m_vertices)
         vertex.point = warp(vertex.point);
-    for (NurbsCurve& curve : result.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i))));
-    for (NurbsSurface& surface : result.m_surfaces)
-        for (int i = 0; i < surface.cv_count(0); ++i)
+    for (Curve& curve_ : result.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i)))); curve_ = curve; }
+    for (Surface& surface_ : result.m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
-                MINI_CHECK(surface.set_cv(i, j, warp(surface.get_cv(i, j))));
+                MINI_CHECK(surface.set_cv(i, j, warp(surface.get_cv(i, j)))); surface_ = surface; }
     hollow_boundary(result);
     return result;
 }
@@ -234,7 +232,7 @@ MINI_TEST("BRep Native Hollow", "Two Curved Opening Rims") {
     const BRep source = hollow_warped_box();
     std::vector<int> openings;
     for (int face = 0; face < source.face_count(); ++face)
-        if (!source.m_surfaces[source.m_faces[face].surface_index].is_planar())
+        if (!source.m_surfaces[source.m_faces[face].surface_index].nurbs().is_planar())
             openings.push_back(face);
     MINI_CHECK(openings.size() == 2);
     const BRep hollow = captured_hollow(source, openings, -.2, "curved-two-mouths");
@@ -243,14 +241,14 @@ MINI_TEST("BRep Native Hollow", "Two Curved Opening Rims") {
     MINI_CHECK(std::abs(hollow.volume_exact() - (8 - 1.6 * 1.6 * 2)) < 1e-5);
     int curved_rims = 0;
     for (const BRepFace& face : hollow.m_faces)
-        curved_rims += face.wires.size() == 2 && !hollow.m_surfaces[face.surface_index].is_planar();
+        curved_rims += face.wires.size() == 2 && !hollow.m_surfaces[face.surface_index].nurbs().is_planar();
     MINI_CHECK(curved_rims == 2);
 }
 MINI_TEST("BRep Native Hollow", "Curved Retained Walls") {
     const BRep source = hollow_warped_box();
     int opening = -1;
     for (int face = 0; face < source.face_count(); ++face)
-        if (source.m_surfaces[source.m_faces[face].surface_index].is_planar()) {
+        if (source.m_surfaces[source.m_faces[face].surface_index].nurbs().is_planar()) {
             opening = face;
             break;
         }
@@ -261,7 +259,7 @@ MINI_TEST("BRep Native Hollow", "Curved Retained Walls") {
     const double volume = hollow.volume_exact();
     MINI_CHECK(volume > 0 && volume < 8);
     int curved = 0;
-    for (const NurbsSurface& surface : hollow.m_surfaces)
+    for (const NurbsSurface& surface : nurbs(hollow.m_surfaces))
         curved += !surface.is_planar();
     MINI_CHECK(curved >= 4);
 }
@@ -284,16 +282,15 @@ MINI_TEST("BRep Native Hollow", "No Closing Faces And Original Argument Validati
 }
 MINI_TEST("BRep Native Hollow", "Affine Opening Chart Keeps Physical Mouth") {
     BRep source = BRep::create_box(2, 2, 2);
-    for (NurbsSurface& surface : source.m_surfaces) {
+    for (Surface& surface_ : source.m_surfaces) { NurbsSurface surface = surface_.nurbs();
         const std::pair<double, double> u = surface.domain(0), v = surface.domain(1);
         MINI_CHECK(surface.set_domain(0, 1024 + 8 * u.first, 1024 + 8 * u.second));
         MINI_CHECK(surface.set_domain(1, -32 + .125 * v.first, -32 + .125 * v.second));
-    }
-    for (NurbsCurve& pc : source.m_curves_2d)
-        for (int i = 0; i < pc.cv_count(); ++i) {
+    surface_ = surface; }
+    for (Curve2d& pc_ : source.m_curves_2d) { NurbsCurve pc = pc_.nurbs(); for (int i = 0; i < pc.cv_count(); ++i) {
             pc.cv(i)[0] = 1024 * pc.weight(i) + 8 * pc.cv(i)[0];
             pc.cv(i)[1] = -32 * pc.weight(i) + .125 * pc.cv(i)[1];
-        }
+        } pc_ = pc; }
     hollow_boundary(source);
     const BRep hollow = captured_hollow(source, {0}, -.2, "affine-opening-chart");
     hollow_boundary(hollow);
@@ -302,7 +299,7 @@ MINI_TEST("BRep Native Hollow", "Affine Opening Chart Keeps Physical Mouth") {
 MINI_TEST("BRep Native Hollow", "Two Dimensional Rational And Polynomial Mouth Charts") {
     for (bool rational : {false, true}) {
         BRep source = BRep::create_box(2, 2, 2);
-        for (NurbsCurve& original : source.m_curves_2d) {
+        for (Curve2d& original_ : source.m_curves_2d) { NurbsCurve original = original_.nurbs();
             NurbsCurve pc(2, rational, original.degree() + 1, original.cv_count());
             pc.m_nurbsknot = original.m_nurbsknot;
             for (int i = 0; i < pc.cv_count(); ++i) {
@@ -315,7 +312,7 @@ MINI_TEST("BRep Native Hollow", "Two Dimensional Rational And Polynomial Mouth C
             }
             MINI_CHECK(pc.dimension() == 2 && pc.is_rational() == rational);
             original = std::move(pc);
-        }
+        original_ = original; }
         hollow_boundary(source);
         const BRep result = captured_hollow(source, {0}, -.2, rational ? "dimension2-rational" : "dimension2-polynomial");
         hollow_boundary(result);
@@ -349,7 +346,7 @@ MINI_TEST("BRep Native Hollow", "Curved Walls Affine Two Dimensional Rational Mo
     BRep source = hollow_warped_box();
     int opening = -1;
     for (int face = 0; face < source.face_count(); ++face) {
-        const auto& surface = source.m_surfaces[source.m_faces[face].surface_index];
+        const auto& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
         bool plane = true;
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
@@ -360,12 +357,12 @@ MINI_TEST("BRep Native Hollow", "Curved Walls Affine Two Dimensional Rational Mo
     MINI_CHECK(opening >= 0);
     if (opening < 0)
         return;
-    for (auto& surface : source.m_surfaces) {
+    for (Surface& surface_ : source.m_surfaces) { NurbsSurface surface = surface_.nurbs();
         const auto u = surface.domain(0), v = surface.domain(1);
         MINI_CHECK(surface.set_domain(0, 1024 + 8 * u.first, 1024 + 8 * u.second));
         MINI_CHECK(surface.set_domain(1, -32 + 0.125 * v.first, -32 + 0.125 * v.second));
-    }
-    for (auto& original : source.m_curves_2d) {
+    surface_ = surface; }
+    for (Curve2d& original_ : source.m_curves_2d) { NurbsCurve original = original_.nurbs();
         NurbsCurve curve(2, true, original.degree() + 1, original.cv_count());
         curve.m_nurbsknot = original.m_nurbsknot;
         for (int i = 0; i < curve.cv_count(); ++i) {
@@ -374,7 +371,7 @@ MINI_TEST("BRep Native Hollow", "Curved Walls Affine Two Dimensional Rational Mo
                 2 * (-32 + 0.125 * point[1]), 0, 2));
         }
         original = std::move(curve);
-    }
+    original_ = original; }
     hollow_boundary(source);
     const auto original = source.jsondump();
     const BRep result = captured_hollow(source, {opening}, -thickness, "curved-affine-rational-mouth");
@@ -387,7 +384,7 @@ MINI_TEST("BRep Native Hollow", "Curved Walls Affine Two Dimensional Rational Mo
     for (int face = 0; face < result.face_count(); ++face) {
         if (result.m_faces[face].wires.size() != 2)
             continue;
-        const auto& surface = result.m_surfaces[result.m_faces[face].surface_index];
+        const auto& surface = result.m_surfaces[result.m_faces[face].surface_index].nurbs();
         bool plane = true;
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
@@ -406,21 +403,21 @@ MINI_TEST("BRep Native Hollow", "Curved Walls Affine Two Dimensional Rational Mo
             const auto& edge = result.m_edges[use.index];
             MINI_CHECK(!edge.degenerated && edge.curve_3d_index >= 0);
             if (!edge.degenerated && edge.curve_3d_index >= 0)
-                distance = std::min(distance, Closest::curve_point(result.m_curves_3d[edge.curve_3d_index], point).second);
+                distance = std::min(distance, Closest::curve_point(result.m_curves_3d[edge.curve_3d_index].nurbs(), point).second);
         }
         return distance;
     };
     const auto& outer = result.m_faces[rim].wires[0];
     const auto& inner = result.m_faces[rim].wires[1];
     for (const auto& use : source.wire_edges(source.m_faces[opening].wires[0])) {
-        const auto& curve = source.m_curves_3d[source.m_edges[use.index].curve_3d_index];
+        const auto& curve = source.m_curves_3d[source.m_edges[use.index].curve_3d_index].nurbs();
         for (double fraction : {0.0, 0.5, 1.0})
             MINI_CHECK(wire_distance(outer, curve.point_at(curve.domain_start()
                 + fraction * (curve.domain_end() - curve.domain_start()))) <= tolerance);
     }
     double minimum_y = std::numeric_limits<double>::infinity(), maximum_y = -minimum_y;
     for (const auto& use : result.wire_edges(inner)) {
-        const auto& curve = result.m_curves_3d[result.m_edges[use.index].curve_3d_index];
+        const auto& curve = result.m_curves_3d[result.m_edges[use.index].curve_3d_index].nurbs();
         for (int i = 0; i < curve.cv_count(); ++i)
             MINI_CHECK(std::abs(curve.get_cv(i)[0] + 1) <= tolerance);
         for (const Point& point : {curve.point_at_start(), curve.point_at_end()}) {
@@ -449,7 +446,7 @@ MINI_TEST("BRep Native Hollow", "Unsupported Source Extension Preserves Working 
     const auto original = source.jsondump();
     int curved = -1;
     for (int face = 0; face < source.face_count(); ++face)
-        if (!source.m_surfaces[source.m_faces[face].surface_index].is_planar()) {
+        if (!source.m_surfaces[source.m_faces[face].surface_index].nurbs().is_planar()) {
             curved = face;
             break;
         }
@@ -460,8 +457,7 @@ MINI_TEST("BRep Native Hollow", "Unsupported Source Extension Preserves Working 
     for (bool rational : {false, true}) {
         auto working = support;
         if (rational) {
-            auto& surface = working.brep.m_surfaces[working.brep.m_faces[0].surface_index];
-            MINI_CHECK(surface.to_rational());
+            MINI_CHECK(edit(working.brep.m_surfaces[working.brep.m_faces[0].surface_index])->to_rational());
         }
         MINI_CHECK(working.brep.is_valid());
         const auto before = working.brep.jsondump();
@@ -501,7 +497,7 @@ MINI_TEST("BRep Native Hollow", "Concave Prism Physical Semicylinder Mouth") {
             const auto& f = result.m_faces[face];
             if (f.wires.size() != 2)
                 continue;
-            const auto& surface = result.m_surfaces[f.surface_index];
+            const auto& surface = result.m_surfaces[f.surface_index].nurbs();
             bool plane = true;
             for (int i = 0; i < surface.cv_count(0); ++i)
                 for (int j = 0; j < surface.cv_count(1); ++j)
@@ -513,7 +509,7 @@ MINI_TEST("BRep Native Hollow", "Concave Prism Physical Semicylinder Mouth") {
                 double xmin = 1e100, xmax = -1e100, zmin = 1e100, zmax = -1e100;
                 for (const auto& use : result.wire_edges(f.wires[loop])) {
                     const auto& edge = result.m_edges[use.index];
-                    const auto& world = result.m_curves_3d[edge.curve_3d_index];
+                    const auto& world = result.m_curves_3d[edge.curve_3d_index].nurbs();
                     MINI_CHECK(world.is_linear(tolerance));
                     for (int i = 0; i < world.cv_count(); ++i) {
                         const Point p = world.get_cv(i);

@@ -73,13 +73,11 @@ BRep saddle_box(double curvature, const Vector& translation) {
     BRep result = BRep::create_box(2, 2, 2).transformed(Xform::translation(translation[0], translation[1], translation[2]));
     for (BRepVertex& vertex : result.m_vertices)
         vertex.point = warped(vertex.point, curvature);
-    for (NurbsCurve& curve : result.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            curve.set_cv(i, warped(curve.get_cv(i), curvature));
-    for (NurbsSurface& surface : result.m_surfaces)
-        for (int i = 0; i < surface.cv_count(0); ++i)
+    for (Curve& curve_ : result.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            curve.set_cv(i, warped(curve.get_cv(i), curvature)); curve_ = curve; }
+    for (Surface& surface_ : result.m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
-                surface.set_cv(i, j, warped(surface.get_cv(i, j), curvature));
+                surface.set_cv(i, j, warped(surface.get_cv(i, j), curvature)); surface_ = surface; }
     return result;
 }
 
@@ -94,7 +92,7 @@ bool truth(bool a, bool b, brep_boolean::Operation operation) {
 }
 
 BRep split_identity_face(const BRep& source, int face, double fraction) {
-    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double fixed = u.first + (u.second - u.first) * fraction;
@@ -561,7 +559,7 @@ MINI_TEST("BRep Native Boolean", "Doubly Curved Saddle Solids") {
     const BRep a = saddle_box(0.2, {0, 0, 0});
     const BRep b = saddle_box(-0.15, {0.3, 0.2, 0.2});
     MINI_CHECK(a.is_solid() && b.is_solid());
-    MINI_CHECK(!a.m_surfaces[0].is_planar(nullptr, 1e-7) || !a.m_surfaces[1].is_planar(nullptr, 1e-7));
+    MINI_CHECK(!a.m_surfaces[0].nurbs().is_planar(nullptr, 1e-7) || !a.m_surfaces[1].nurbs().is_planar(nullptr, 1e-7));
     save("native_saddle_operand_a", a);
     save("native_saddle_operand_b", b);
     for (size_t i = 0; i < operations.size(); ++i) {
@@ -615,7 +613,7 @@ MINI_TEST("BRep Native Boolean", "Face Turned Over With Its Wires Is Rejected") 
     const BRep block = BRep::create_block_with_hole(2.0, 2.0, 1.0, 0.6);
     BRep turned = block;
     for (BRepRef& face : turned.m_shells[0].faces)
-        if (turned.m_faces[face.index].wires.size() == 2 && turned.m_surfaces[turned.m_faces[face.index].surface_index].point_at(0.5, 0.5)[2] < 0.0) {
+        if (turned.m_faces[face.index].wires.size() == 2 && turned.m_surfaces[turned.m_faces[face.index].surface_index].nurbs().point_at(0.5, 0.5)[2] < 0.0) {
             face.orientation = brep_reverse(face.orientation);
             for (const BRepRef& wire : turned.m_faces[face.index].wires) {
                 std::vector<BRepRef>& edges = turned.m_wires[wire.index].edges;
@@ -853,7 +851,7 @@ bool closed_coincident_fixture_loops(const BRep& shape) {
                 const int pc = shape.pcurve_index(use.index, face, use.orientation);
                 if (pc < 0)
                     return false;
-                const NurbsCurve& curve = shape.m_curves_2d[pc];
+                const NurbsCurve& curve = shape.m_curves_2d[pc].nurbs();
                 const bool reverse = use.orientation == BRepOrientation::Reversed;
                 ends.push_back({reverse ? curve.point_at_end() : curve.point_at_start(),
                     reverse ? curve.point_at_start() : curve.point_at_end()});
@@ -867,14 +865,15 @@ bool closed_coincident_fixture_loops(const BRep& shape) {
 }
 
 BRep affine_solid(BRep shape, int variant) {
-    const std::vector<NurbsSurface> original = shape.m_surfaces;
+    const auto view = nurbs(shape.m_surfaces);
+    const std::vector<NurbsSurface> original(view.begin(), view.end());
     for (size_t i = 0; i < original.size(); ++i)
         shape.m_surfaces[i] = affine_support(original[i], variant);
     for (BRepEdge& edge : shape.m_edges)
         for (BRepCurveOnSurface& relation : edge.pcurves) {
             for (int* index : {&relation.curve_2d_index, &relation.curve_2d_index_2})
                 if (*index >= 0) {
-                    const NurbsCurve mapped = affine_trim(shape.m_curves_2d[*index], original[relation.surface_index], variant);
+                    const NurbsCurve mapped = affine_trim(shape.m_curves_2d[*index].nurbs(), original[relation.surface_index], variant);
                     *index = shape.add_curve_2d(mapped);
                 }
         }
@@ -918,8 +917,8 @@ void check_affine_saddle(const BRep& result, int operation) {
             for (const BRepCurveOnSurface& relation : edge.pcurves)
                 for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                     if (index >= 0)
-                        MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index],
-                            result.m_curves_2d[index], result.m_surfaces[relation.surface_index], 1e-7)
+                        MINI_CHECK(curve_surface_intersection::same_parameter(result.m_curves_3d[edge.curve_3d_index].nurbs(),
+                            result.m_curves_2d[index].nurbs(), result.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                             == curve_surface_intersection::ParameterMatch::Matched);
     for (const Point& point : {Point(0, 0, 0), Point(.5, -.5, .5), Point(-.5, .5, -.5),
                                Point(1.5, 0, 0), Point(0, -1.5, 0), Point(0, 0, 1.5)}) {
@@ -949,7 +948,7 @@ MINI_TEST("BRep Native Boolean", "Affine Freeform Coincident Identity And Partit
 
 
 MINI_TEST("BRep Native Boolean", "Affine Coincident Basis And Rational Pcurve Proof") {
-    NurbsSurface source = saddle_box(.25, {0, 0, 0}).m_surfaces.front();
+    NurbsSurface source = saddle_box(.25, {0, 0, 0}).m_surfaces.front().nurbs();
     MINI_CHECK(source.to_rational());
     for (int i = 0; i < source.cv_count(0); ++i)
         for (int j = 0; j < source.cv_count(1); ++j)
@@ -1008,7 +1007,7 @@ MINI_TEST("BRep Native Boolean", "Affine Coincident Origin Underflow Is Unsuppor
     MINI_CHECK(!nurbs_coincidence::exact_products_equal(tiny, tiny, 0, 1));
     MINI_CHECK(nurbs_coincidence::exact_products_equal(0, tiny, 0, 1));
     MINI_CHECK(nurbs_coincidence::exact_products_equal(2, 3, 6, 1));
-    const NurbsSurface original = saddle_box(.25, {0, 0, 0}).m_surfaces.front();
+    const NurbsSurface original = saddle_box(.25, {0, 0, 0}).m_surfaces.front().nurbs();
     NurbsSurface source = original, target = original;
     MINI_CHECK(source.set_domain(0, tiny, tiny + std::ldexp(1.0, -548)));
     MINI_CHECK(target.set_domain(0, 0, std::ldexp(1.0, -1023)));
@@ -1037,13 +1036,13 @@ NurbsSurface rational_bilinear_identity(const NurbsSurface& source) {
 }
 
 BRep refined_coincident_basis(BRep shape) {
-    for (NurbsSurface& surface : shape.m_surfaces) {
+    for (Surface& surface_ : shape.m_surfaces) { NurbsSurface surface = surface_.nurbs();
         for (int dir = 0; dir < 2; ++dir) {
             const std::pair<double, double> domain = surface.domain(dir);
             MINI_CHECK(surface.increase_degree(dir, surface.degree(dir) + 1));
             MINI_CHECK(surface.insert_nurbsknot(dir, std::midpoint(domain.first, domain.second)));
         }
-    }
+    surface_ = surface; }
     return shape;
 }
 
@@ -1053,16 +1052,15 @@ MINI_TEST("BRep Native Boolean", "Refined Freeform Coincident Support Basis") {
     for (bool rational : {false, true}) {
         BRep original = saddle_box(.25, {0, 0, 0});
         if (rational)
-            for (NurbsSurface& surface : original.m_surfaces)
-                surface = rational_bilinear_identity(surface);
+            for (Surface& surface_ : original.m_surfaces) { NurbsSurface surface = surface_.nurbs(); surface = rational_bilinear_identity(surface); surface_ = surface; }
         const BRep refined = refined_coincident_basis(original);
         MINI_CHECK(original.is_valid() && original.is_solid());
         MINI_CHECK(refined.is_valid() && refined.is_solid());
         check_affine_saddle(original, 0);
         check_affine_saddle(refined, 0);
         for (size_t i = 0; i < original.m_surfaces.size(); ++i) {
-            const NurbsSurface& a = original.m_surfaces[i];
-            const NurbsSurface& b = refined.m_surfaces[i];
+            const NurbsSurface& a = original.m_surfaces[i].nurbs();
+            const NurbsSurface& b = refined.m_surfaces[i].nurbs();
             MINI_CHECK(a.degree(0) != b.degree(0) && a.cv_count(0) != b.cv_count(0));
             nurbs_coincidence::ParameterMap forward, inverse;
             MINI_CHECK(!nurbs_coincidence::parameter_mapping(a, b, 1e-7, forward));
@@ -1081,7 +1079,7 @@ MINI_TEST("BRep Native Boolean", "Refined Freeform Coincident Support Basis") {
 }
 
 MINI_TEST("BRep Native Boolean", "Common Basis Bounded Agreement And Weight Contracts") {
-    const NurbsSurface source = saddle_box(.25, {0, 0, 0}).m_surfaces.front();
+    const NurbsSurface source = saddle_box(.25, {0, 0, 0}).m_surfaces.front().nurbs();
     NurbsSurface refined = source;
     MINI_CHECK(refined.increase_degree(0, 2));
     MINI_CHECK(refined.insert_nurbsknot(0, .5));
@@ -1121,13 +1119,11 @@ BRep void_operand_box(double size, double curvature) {
     BRep result = BRep::create_box(size, size, size);
     for (BRepVertex& vertex : result.m_vertices)
         vertex.point = warped(vertex.point, curvature);
-    for (NurbsCurve& curve : result.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            MINI_CHECK(curve.set_cv(i, warped(curve.get_cv(i), curvature)));
-    for (NurbsSurface& surface : result.m_surfaces)
-        for (int i = 0; i < surface.cv_count(0); ++i)
+    for (Curve& curve_ : result.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warped(curve.get_cv(i), curvature))); curve_ = curve; }
+    for (Surface& surface_ : result.m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
-                MINI_CHECK(surface.set_cv(i, j, warped(surface.get_cv(i, j), curvature)));
+                MINI_CHECK(surface.set_cv(i, j, warped(surface.get_cv(i, j), curvature))); surface_ = surface; }
     return result;
 }
 
@@ -1149,8 +1145,8 @@ void check_void_boundary(const BRep& result) {
             for (int index : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (index >= 0)
                     MINI_CHECK(curve_surface_intersection::same_parameter(
-                        result.m_curves_3d[edge.curve_3d_index], result.m_curves_2d[index],
-                        result.m_surfaces[relation.surface_index], 1e-7)
+                        result.m_curves_3d[edge.curve_3d_index].nurbs(), result.m_curves_2d[index].nurbs(),
+                        result.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                         == curve_surface_intersection::ParameterMatch::Matched);
     }
     if (result.face_count() == 0)
@@ -1328,7 +1324,7 @@ MINI_TEST("BRep Native Boolean", "Refined Rational Boundary Curve Basis") {
     const BRep original = BRep::create_cylinder(1, 2);
     BRep refined = original;
     bool nonuniform_rational = false;
-    for (NurbsCurve& curve : refined.m_curves_3d) {
+    for (Curve& curve_ : refined.m_curves_3d) { NurbsCurve curve = curve_.nurbs();
         for (int i = 1; i < curve.cv_count(); ++i)
             nonuniform_rational |= curve.weight(i) != curve.weight(0);
         const int degree = curve.degree();
@@ -1336,14 +1332,14 @@ MINI_TEST("BRep Native Boolean", "Refined Rational Boundary Curve Basis") {
         MINI_CHECK(curve.insert_nurbsknot(curve.domain_start()
             + .375 * (curve.domain_end() - curve.domain_start())));
         MINI_CHECK(curve.degree() == degree + 1);
-    }
-    for (NurbsCurve& curve : refined.m_curves_2d) {
+    curve_ = curve; }
+    for (Curve2d& curve_ : refined.m_curves_2d) { NurbsCurve curve = curve_.nurbs();
         const int degree = curve.degree();
         MINI_CHECK(curve.increase_degree(degree + 2));
         MINI_CHECK(curve.insert_nurbsknot(curve.domain_start()
             + .625 * (curve.domain_end() - curve.domain_start())));
         MINI_CHECK(curve.degree() == degree + 2);
-    }
+    curve_ = curve; }
     MINI_CHECK(nonuniform_rational);
     check_void_boundary(original);
     check_void_boundary(refined);
@@ -1382,8 +1378,8 @@ void event_boundary(const BRep& shape) {
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (pc >= 0)
-                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index],
-                        shape.m_curves_2d[pc], shape.m_surfaces[relation.surface_index], 1e-6)
+                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        shape.m_curves_2d[pc].nurbs(), shape.m_surfaces[relation.surface_index].nurbs(), 1e-6)
                         == curve_surface_intersection::ParameterMatch::Matched);
 }
 BRep event_warped_box(bool affine) {
@@ -1394,10 +1390,9 @@ BRep event_warped_box(bool affine) {
     };
     for (BRepVertex& vertex : shape.m_vertices)
         vertex.point = warp(vertex.point);
-    for (NurbsCurve& curve : shape.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i))));
-    for (NurbsSurface& surface : shape.m_surfaces) {
+    for (Curve& curve_ : shape.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i)))); curve_ = curve; }
+    for (Surface& surface_ : shape.m_surfaces) { NurbsSurface surface = surface_.nurbs();
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
                 MINI_CHECK(surface.set_cv(i, j, warp(surface.get_cv(i, j))));
@@ -1407,13 +1402,12 @@ BRep event_warped_box(bool affine) {
             MINI_CHECK(surface.set_domain(0, 8 * u.first + 32, 8 * u.second + 32));
             MINI_CHECK(surface.set_domain(1, .25 * v.first - 4, .25 * v.second - 4));
         }
-    }
+    surface_ = surface; }
     if (affine)
-        for (NurbsCurve& pc : shape.m_curves_2d)
-            for (int i = 0; i < pc.cv_count(); ++i) {
+        for (Curve2d& pc_ : shape.m_curves_2d) { NurbsCurve pc = pc_.nurbs(); for (int i = 0; i < pc.cv_count(); ++i) {
                 pc.cv(i)[0] = 8 * pc.cv(i)[0] + 32 * pc.weight(i);
                 pc.cv(i)[1] = .25 * pc.cv(i)[1] - 4 * pc.weight(i);
-            }
+            } pc_ = pc; }
     event_boundary(shape);
     return shape;
 }
@@ -1536,7 +1530,7 @@ void public_boolean_analytic_matrix(double curvature) {
     MINI_CHECK(a.is_valid() && b.is_valid() && a.is_solid() && b.is_solid());
     if (curvature != 0) {
         int curved = 0;
-        for (const auto& surface : a.m_surfaces)
+        for (const NurbsSurface& surface : nurbs(a.m_surfaces))
             curved += !surface.is_planar(nullptr, 1e-7);
         MINI_CHECK(curved >= 2); // Both retained top/bottom are doubly curved saddles.
     }
@@ -1562,8 +1556,8 @@ void public_boolean_analytic_matrix(double curvature) {
                     for (int pc : {relation.curve_2d_index,relation.curve_2d_index_2})
                         if (pc >= 0)
                             MINI_CHECK(curve_surface_intersection::same_parameter(
-                                result.m_curves_3d[edge.curve_3d_index],result.m_curves_2d[pc],
-                                result.m_surfaces[relation.surface_index],1e-7)
+                                result.m_curves_3d[edge.curve_3d_index].nurbs(),result.m_curves_2d[pc].nurbs(),
+                                result.m_surfaces[relation.surface_index].nurbs(),1e-7)
                                 == curve_surface_intersection::ParameterMatch::Matched);
         for (const Point& p : probes) {
             const bool in_a = p[0]>-1 && p[0]<1 && p[1]>-1 && p[1]<1 && p[2]>-1 && p[2]<1;
@@ -1594,7 +1588,7 @@ MINI_TEST("BRep Public Boolean", "Opposite Saddles Preserve Critical Contact Mat
     check_void_boundary(a); check_void_boundary(b);
     for(const BRep* shape : {&a,&b}) {
         int curved=0;
-        for(const auto& surface : shape->m_surfaces) curved+=!surface.is_planar(nullptr,1e-7);
+        for (const NurbsSurface& surface : nurbs(shape->m_surfaces)) curved+=!surface.is_planar(nullptr,1e-7);
         MINI_CHECK(curved==2);
         MINI_CHECK(std::abs(shape->volume_exact(1e-8)-8)<1e-6);
     }
@@ -1650,14 +1644,14 @@ void rhino_flat_result_pcurves(const BRep& shape, double tolerance) {
             world.m_nurbsknot = {0, 1};
             MINI_CHECK(world.set_cv(0, point));
             MINI_CHECK(world.set_cv(1, point));
-        } else world = shape.m_curves_3d.at(edge.curve_3d_index);
+        } else world = shape.m_curves_3d.at(edge.curve_3d_index).nurbs();
         for (const auto& relation : edge.pcurves) {
             MINI_CHECK(relation.curve_2d_index >= 0);
             for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2}) {
                 if (pc < 0) continue;
                 MINI_CHECK(curve_surface_intersection::same_parameter(
-                    world, shape.m_curves_2d.at(pc),
-                    shape.m_surfaces.at(relation.surface_index), tolerance) ==
+                    world, shape.m_curves_2d.at(pc).nurbs(),
+                    shape.m_surfaces.at(relation.surface_index).nurbs(), tolerance) ==
                     curve_surface_intersection::ParameterMatch::Matched);
                 ++images;
             }
@@ -1863,7 +1857,7 @@ CutPlan column_slot(double width, double reach) {
 void check_cut_result(const BRep& result, double exact, int round_expected, double mesh_share = 0.02) {
     int round_faces = 0;
     for (const BRepFace& face : result.m_faces)
-        round_faces += result.m_surfaces[face.surface_index].degree(0) > 1 ? 1 : 0;
+        round_faces += result.m_surfaces[face.surface_index].nurbs().degree(0) > 1 ? 1 : 0;
     const double volume = result.volume_exact();
     const Mesh mesh = result.mesh();
     const std::string measured = "volume " + std::to_string(volume) + " of " + std::to_string(exact) + " mm3, off "
@@ -2396,7 +2390,7 @@ MINI_TEST("BRep Curved Cuts", "Bent Beam Cut Through Its Axis") {
                 const BRep result = solid.boolean_difference(plan_prism(past, -500, height + 500));
                 int round_faces = 0;
                 for (const BRepFace& face : result.m_faces)
-                    round_faces += result.m_surfaces[face.surface_index].degree(0) > 1 ? 1 : 0;
+                    round_faces += result.m_surfaces[face.surface_index].nurbs().degree(0) > 1 ? 1 : 0;
                 if (!result.is_solid() || !result.mesh().is_closed() || result.face_count() != 6 || round_faces != 4
                     || std::abs(result.volume_exact() - area * (angle - a0)) > 1e-6)
                     throw std::runtime_error("faces " + std::to_string(result.face_count()) + ", round " + std::to_string(round_faces)
@@ -2553,7 +2547,7 @@ static void check_feature(const BRep& solid, const BRep& tool, double removed, i
         const double rounding = std::max(1e-6, 64.0 * (std::nextafter(whole, std::numeric_limits<double>::infinity()) - whole));
         int round_faces = 0;
         for (const BRepFace& face : kept.m_faces)
-            round_faces += kept.m_surfaces[face.surface_index].degree(0) > 1 || kept.m_surfaces[face.surface_index].degree(1) > 1 ? 1 : 0;
+            round_faces += kept.m_surfaces[face.surface_index].nurbs().degree(0) > 1 || kept.m_surfaces[face.surface_index].nurbs().degree(1) > 1 ? 1 : 0;
         if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > rounding
             || kept.face_count() != faces || round_faces < 4 || (removed > 0.0 && std::abs(b - removed) > allowed))
             throw std::runtime_error("faces " + std::to_string(kept.face_count()) + ", round " + std::to_string(round_faces) + ", kept "

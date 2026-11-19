@@ -29,7 +29,7 @@ NurbsCurve normalized(NurbsCurve curve) {
 }
 
 const NurbsCurve& world(const BRep& source, int edge) {
-    return source.m_curves_3d[source.m_edges[edge].curve_3d_index];
+    return source.m_curves_3d[source.m_edges[edge].curve_3d_index].nurbs();
 }
 
 struct Use {
@@ -82,15 +82,15 @@ void certify_edge(const BRep& brep, int edge, const NurbsCurve& curve, double to
     for (const BRepCurveOnSurface& pc : brep.m_edges[edge].pcurves)
         for (int index : {pc.curve_2d_index, pc.curve_2d_index_2})
             if (index >= 0)
-                certify(curve, brep.m_curves_2d[index], brep.m_surfaces[pc.surface_index], tolerance);
+                certify(curve, brep.m_curves_2d[index].nurbs(), brep.m_surfaces[pc.surface_index].nurbs(), tolerance);
 }
 
 Vector normal(const BRep& source, int face, int edge, BRepOrientation orientation, double t) {
     const int index = source.pcurve_index(edge, face, orientation);
     require(index >= 0, "BRep offset lacks an incident face pcurve");
-    const NurbsCurve& pcurve = source.m_curves_2d[index];
+    const NurbsCurve& pcurve = source.m_curves_2d[index].nurbs();
     const Point uv = pcurve.point_at(pcurve.domain_start() + t * (pcurve.domain_end() - pcurve.domain_start()));
-    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+    const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
     const std::vector<Vector> derivatives = surface.evaluate(uv[0], uv[1], 1);
     Vector result = derivatives[2].cross(derivatives[1]);
     require(result.normalize_self(), "BRep offset has an unresolved incident face normal");
@@ -129,7 +129,7 @@ bool smooth(const std::vector<OffsetFace>& faces, const Use& first, const Use& s
     for (const BRepCurveOnSurface& pc : b.m_edges[second.edge].pcurves)
         for (int index : {pc.curve_2d_index, pc.curve_2d_index_2})
             if (index >= 0 && curve_surface_intersection::same_parameter(
-                curve, b.m_curves_2d[index], b.m_surfaces[pc.surface_index], tolerance
+                curve, b.m_curves_2d[index].nurbs(), b.m_surfaces[pc.surface_index].nurbs(), tolerance
             ) != curve_surface_intersection::ParameterMatch::Matched)
                 return false;
     return true;

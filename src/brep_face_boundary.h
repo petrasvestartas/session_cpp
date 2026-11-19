@@ -67,7 +67,7 @@ inline bool extract_use(const BRep& brep, int face, const BRepRef& ref, Use& use
         if (edge.curve_3d_index < 0 || edge.curve_3d_index >= static_cast<int>(brep.m_curves_3d.size()))
             return fail("Boundary world curve index is invalid");
         use.has_world_domain = true;
-        use.world_domain = brep.m_curves_3d[edge.curve_3d_index].domain();
+        use.world_domain = brep.m_curves_3d[edge.curve_3d_index].nurbs().domain();
     }
     if (!unique_association(edge, brep.m_faces[face].surface_index, ref.orientation))
         return fail("Boundary has ambiguous pcurve associations on one support");
@@ -75,7 +75,7 @@ inline bool extract_use(const BRep& brep, int face, const BRepRef& ref, Use& use
     if (use.pcurve >= static_cast<int>(brep.m_curves_2d.size()))
         return fail("Boundary pcurve index is invalid");
     if (use.pcurve >= 0)
-        use.pcurve_domain = brep.m_curves_2d[use.pcurve].domain();
+        use.pcurve_domain = brep.m_curves_2d[use.pcurve].nurbs().domain();
     if (active(ref.orientation) && use.pcurve < 0)
         return fail("Boundary use has no pcurve on its support");
     return true;

@@ -13,7 +13,7 @@ int face_near(const BRep& brep, const Point& p) {
     int best = -1;
     double nearest = 1e300;
     for (int f = 0; f < brep.face_count(); ++f) {
-        const double d = std::get<2>(Closest::surface_point(brep.m_surfaces[brep.m_faces[f].surface_index], p));
+        const double d = std::get<2>(Closest::surface_point(brep.m_surfaces[brep.m_faces[f].surface_index].nurbs(), p));
         if (d < nearest)
             nearest = d, best = f;
     }
@@ -22,8 +22,8 @@ int face_near(const BRep& brep, const Point& p) {
 
 // The largest distance from each curve to both faces' surfaces along its pcurves, over its own tolerance.
 double worst_fit(const BRep& a, int fa, const BRep& b, int fb, const bop_ff::Result& r) {
-    const NurbsSurface& sa = a.m_surfaces[a.m_faces[fa].surface_index];
-    const NurbsSurface& sb = b.m_surfaces[b.m_faces[fb].surface_index];
+    const NurbsSurface& sa = a.m_surfaces[a.m_faces[fa].surface_index].nurbs();
+    const NurbsSurface& sb = b.m_surfaces[b.m_faces[fb].surface_index].nurbs();
     double worst = 0.0;
     for (const bop_ff::Curve& c : r.curves)
         for (int i = 0; i <= 50; ++i) {

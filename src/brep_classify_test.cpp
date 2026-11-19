@@ -238,7 +238,7 @@ MINI_TEST("BRep Native Classification", "Rhino Freeform Face Sides") {
         const BRep& chair = chairs[ci];
         int checked = 0;
         for (int fi = 0; fi < chair.face_count(); ++fi) {
-            const NurbsSurface& surface = chair.m_surfaces[chair.m_faces[fi].surface_index];
+            const NurbsSurface& surface = chair.m_surfaces[chair.m_faces[fi].surface_index].nurbs();
             const std::pair<double, double> du = surface.domain(0);
             const std::pair<double, double> dv = surface.domain(1);
             bool found = false;
@@ -274,8 +274,8 @@ MINI_TEST("BRep Native Classification", "Face Boundary Keeps Independent Raw Dom
     BRep box = BRep::create_box(2, 2, 2);
     const auto edge = box.wire_edges(box.m_faces[0].wires[0]).front();
     const int pc = box.pcurve_index(edge.index, 0, edge.orientation);
-    MINI_CHECK(box.m_curves_2d[pc].set_domain(-7, 13));
-    MINI_CHECK(box.m_curves_3d[box.m_edges[edge.index].curve_3d_index].set_domain(32, 35));
+    MINI_CHECK(edit(box.m_curves_2d[pc])->set_domain(-7, 13));
+    MINI_CHECK(edit(box.m_curves_3d[box.m_edges[edge.index].curve_3d_index])->set_domain(32, 35));
     const auto frozen = box.jsondump();
     const auto boundary = brep_face_boundary::extract(box, 0);
     MINI_CHECK(boundary.complete);
@@ -307,8 +307,8 @@ MINI_TEST("BRep Native Classification", "Face Boundary Preserves Pole And Seam U
                 }
                 else {
                     MINI_CHECK(use.edge.index == seam && use.pcurve != first_pc);
-                    const Point a = sphere.m_curves_2d[first_pc].point_at_start();
-                    const Point b = sphere.m_curves_2d[use.pcurve].point_at_start();
+                    const Point a = sphere.m_curves_2d[first_pc].nurbs().point_at_start();
+                    const Point b = sphere.m_curves_2d[use.pcurve].nurbs().point_at_start();
                     MINI_CHECK(a.distance(b) > 1);
                 }
                 ++ordinary;
@@ -384,7 +384,7 @@ BRep prepared_domain_annulus(double inner) {
 MINI_TEST("BRep Native Classification", "Prepared Actual Circle Distinguishes Chord Sagitta") {
     const BRep disk = prepared_domain_annulus(0);
     const auto boundary = brep_face_boundary::extract(disk, 0);
-    const auto& circle = disk.m_curves_2d.front();
+    const auto& circle = disk.m_curves_2d.front().nurbs();
     const Point a = circle.point_at(0), b = circle.point_at(1.0 / 32);
     const Point arc = circle.point_at(1.0 / 64);
     const Point chord((a[0]+b[0])*.5, (a[1]+b[1])*.5, 0);
@@ -398,8 +398,7 @@ MINI_TEST("BRep Native Classification", "Prepared Actual Circle Distinguishes Ch
 }
 MINI_TEST("BRep Native Classification", "Prepared Annulus Keeps Holes Raw Domains And Reversal") {
     BRep annulus = prepared_domain_annulus(.5);
-    for (auto& pc : annulus.m_curves_2d)
-        MINI_CHECK(pc.set_domain(-7, 13));
+    for (Curve2d& pc_ : annulus.m_curves_2d) { NurbsCurve pc = pc_.nurbs(); MINI_CHECK(pc.set_domain(-7, 13)); pc_ = pc; }
     for (bool reversed : {false, true}) {
         for (auto& wire : annulus.m_faces[0].wires)
             wire.orientation = reversed ? BRepOrientation::Reversed : BRepOrientation::Forward;
@@ -469,7 +468,7 @@ MINI_TEST("BRep Native Classification", "Prepared Solid Answers As The Model") {
                     && prepared.hits[i].crossing == direct.hits[i].crossing && prepared.hits[i].trim == direct.hits[i].trim);
         }
         for (int face = 0; face < shape.face_count(); ++face) {
-            const NurbsSurface& surface = shape.m_surfaces[shape.m_faces[face].surface_index];
+            const NurbsSurface& surface = shape.m_surfaces[shape.m_faces[face].surface_index].nurbs();
             for (double s : {-0.1, 0.0, 0.3, 0.5, 1.0})
                 for (double t : {0.25, 0.5, 1.2}) {
                     const Point uv(std::lerp(surface.domain(0).first, surface.domain(0).second, s),
@@ -485,7 +484,7 @@ MINI_TEST("BRep Native Classification", "Prepared Solid Answers As The Model") {
     MINI_CHECK(sheet.valid && !sheet.solid);
     MINI_CHECK(brep_classify::ray(sheet, {0, 0, 0}, Vector(1, 0, 0), 1e-7).hits.size() == 1);
     BRep broken = shapes[0];
-    broken.m_curves_2d[0].m_cv[0] = std::numeric_limits<double>::quiet_NaN();
+    edit(broken.m_curves_2d[0])->m_cv[0] = std::numeric_limits<double>::quiet_NaN();
     const brep_classify::Solid invalid(broken);
     int rejected = 0;
     for (int query = 0; query < 4; ++query)

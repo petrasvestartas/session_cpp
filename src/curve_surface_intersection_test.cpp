@@ -444,8 +444,8 @@ MINI_TEST("Curve Surface Native", "Same Parameter Across Knots And Seams") {
         for (const BRepCurveOnSurface& record : edge.pcurves)
             for (const int index : {record.curve_2d_index, record.curve_2d_index_2})
                 if (index >= 0)
-                    MINI_CHECK(curve_surface_intersection::same_parameter(torus.m_curves_3d[edge.curve_3d_index],
-                        torus.m_curves_2d[index], torus.m_surfaces[record.surface_index]) ==
+                    MINI_CHECK(curve_surface_intersection::same_parameter(torus.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        torus.m_curves_2d[index].nurbs(), torus.m_surfaces[record.surface_index].nurbs()) ==
                         curve_surface_intersection::ParameterMatch::Matched);
 }
 

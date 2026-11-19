@@ -1,6 +1,7 @@
 #pragma once
 
 #include "color.h"
+#include "curve.h"
 #include "guid.h"
 #include "json.h"
 #include "mesh.h"
@@ -9,7 +10,9 @@
 #include "plane.h"
 #include "point.h"
 #include "polyline.h"
+#include "surface.h"
 #include "xform.h"
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -18,6 +21,27 @@ class BRep;
 }
 
 namespace session_cpp {
+
+/// A pool read as NURBS, for consumers not yet on Surface, Curve and Curve2d
+template <typename T>
+auto nurbs(const std::vector<T>& pool) {
+    return pool | std::views::transform([](const T& item) -> decltype(auto) { return item.nurbs(); });
+}
+
+/// A pooled surface or curve edited as NURBS by a consumer not yet on the types: the copy is stored back when the handle goes
+template <typename T>
+struct NurbsEdit {
+    T& item;
+    std::remove_cvref_t<decltype(item.nurbs())> value = item.nurbs();
+    ~NurbsEdit() { item = T(value); }
+    auto* operator->() { return &value; }
+    auto& operator*() { return value; }
+};
+
+template <typename T>
+NurbsEdit<T> edit(T& item) {
+    return {item};
+}
 
 /// TopAbs_Orientation: carried by the parent -> child reference, never by the shape
 enum class BRepOrientation {
@@ -104,9 +128,9 @@ public:
     bool is_locked = false; // Whether a viewer keeps it from moving.
     double width = 1.0; // Display width.
     Color surfacecolor = Color::lightgrey(); // Display color of the faces.
-    std::vector<NurbsSurface> m_surfaces; // Surface pool.
-    std::vector<NurbsCurve> m_curves_3d; // 3D edge curve pool.
-    std::vector<NurbsCurve> m_curves_2d; // Pcurve pool.
+    std::vector<Surface> m_surfaces; // Surface pool.
+    std::vector<Curve> m_curves_3d; // 3D edge curve pool.
+    std::vector<Curve2d> m_curves_2d; // Pcurve pool.
     std::vector<BRepVertex> m_vertices; // Vertex table.
     std::vector<BRepEdge> m_edges; // Edge table.
     std::vector<BRepWire> m_wires; // Wire table.
@@ -271,13 +295,13 @@ public:
     // Building
     // ═══════════════════════════════════════════════════════════════════════════
     /// Append a surface to the pool; returns its index.
-    int add_surface(const NurbsSurface& srf);
+    int add_surface(const Surface& srf);
 
     /// Append a 3D curve to the pool; returns its index.
-    int add_curve_3d(const NurbsCurve& crv);
+    int add_curve_3d(const Curve& crv);
 
     /// Append a pcurve to the pool; returns its index.
-    int add_curve_2d(const NurbsCurve& crv);
+    int add_curve_2d(const Curve2d& crv);
 
     /// MakeVertex
     int add_vertex(const Point& pt, double tolerance = 0.0);

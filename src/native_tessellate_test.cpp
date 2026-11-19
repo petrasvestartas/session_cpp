@@ -176,7 +176,7 @@ MINI_TEST("BRep Native Tessellate", "Parametric Metadata Is Opt In And Face Loca
         for (size_t face = 0; face < recorded.size(); ++face) {
             MINI_CHECK(ordinary[face].face == recorded[face].face);
             MINI_CHECK(ordinary[face].vertex.size() == recorded[face].vertex.size());
-            const NurbsSurface& surface = shape.m_surfaces[shape.m_faces[face].surface_index];
+            const NurbsSurface& surface = shape.m_surfaces[shape.m_faces[face].surface_index].nurbs();
             for (const auto& vertex : recorded[face].vertex) {
                 const Point first = vertex.second.position();
                 const Point second = ordinary[face].vertex.at(vertex.first).position();
@@ -250,37 +250,37 @@ MINI_TEST("BRep Native Tessellate", "Shared C0 Boundary Nodes Precede Face Trian
     };
     for (BRepVertex& vertex : shape.m_vertices)
         vertex.point = warped(vertex.point);
-    for (NurbsCurve& curve : shape.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            MINI_CHECK(curve.set_cv(i, warped(curve.get_cv(i))));
-    for (NurbsSurface& surface : shape.m_surfaces)
-        for (int i = 0; i < surface.cv_count(0); ++i)
+    for (Curve& curve_ : shape.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warped(curve.get_cv(i)))); curve_ = curve; }
+    for (Surface& surface_ : shape.m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
-                MINI_CHECK(surface.set_cv(i, j, warped(surface.get_cv(i, j))));
+                MINI_CHECK(surface.set_cv(i, j, warped(surface.get_cv(i, j)))); surface_ = surface; }
     int cap = -1;
     for (int face = 0; face < shape.face_count(); ++face)
-        if (!shape.m_surfaces[shape.m_faces[face].surface_index].is_planar()) {
+        if (!shape.m_surfaces[shape.m_faces[face].surface_index].nurbs().is_planar()) {
             cap = face;
             break;
         }
     MINI_CHECK(cap >= 0);
-    NurbsSurface& support = shape.m_surfaces[shape.m_faces[cap].surface_index];
-    const std::pair<double, double> u = support.domain(0), v = support.domain(1);
+    const std::pair<double, double> u = shape.m_surfaces[shape.m_faces[cap].surface_index].nurbs().domain(0), v = shape.m_surfaces[shape.m_faces[cap].surface_index].nurbs().domain(1);
     const double knot = u.first + (u.second - u.first) * .37109375;
+    {
+    auto support_ = edit(shape.m_surfaces[shape.m_faces[cap].surface_index]); NurbsSurface& support = *support_;
     MINI_CHECK(support.insert_nurbsknot(0, knot));
     // a knot only turns the mesh when it turns the surface: a ridge along it, inside the face, leaves the edges as they are
     MINI_CHECK(support.increase_degree(1, 2) && support.set_cv(1, 1, support.get_cv(1, 1) + Vector(0, 0, .2)));
+    }
     for (const BRepRef& wire : shape.m_faces[cap].wires)
         for (const BRepRef& use : shape.wire_edges(wire)) {
             const int pc = shape.pcurve_index(use.index, cap, use.orientation);
-            MINI_CHECK(pc >= 0 && shape.m_curves_2d[pc].increase_degree(2));
+            MINI_CHECK(pc >= 0 && edit(shape.m_curves_2d[pc])->increase_degree(2));
         }
     for (const BRepEdge& edge : shape.m_edges)
         for (const BRepCurveOnSurface& relation : edge.pcurves)
             for (int pc : {relation.curve_2d_index, relation.curve_2d_index_2})
                 if (pc >= 0)
-                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index],
-                        shape.m_curves_2d[pc], shape.m_surfaces[relation.surface_index], 1e-7)
+                    MINI_CHECK(curve_surface_intersection::same_parameter(shape.m_curves_3d[edge.curve_3d_index].nurbs(),
+                        shape.m_curves_2d[pc].nurbs(), shape.m_surfaces[relation.surface_index].nurbs(), 1e-7)
                         == curve_surface_intersection::ParameterMatch::Matched);
     std::vector<Mesh> meshes;
     {

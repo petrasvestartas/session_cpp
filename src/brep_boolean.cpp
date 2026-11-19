@@ -70,12 +70,12 @@ double uv_tolerance(const NurbsSurface& surface, double tolerance) {
 /// Whether a face's outer wire keeps the face on its right in the surface's parameters. Volume follows the sense of a trim and classification the use of its face: on such a face the two disagree, though its shell can be closed with every edge used once each way.
 bool trim_against_use(const BRep& brep, int face, double tolerance) {
     const brep_face_boundary::Result boundary = brep_face_boundary::extract(brep, face);
-    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index], tolerance);
+    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index].nurbs(), tolerance);
     for (const BRepRef& use : brep.wire_edges(brep.m_faces[face].wires.front())) {
         const int index = brep.pcurve_index(use.index, face, use.orientation);
         if (!boundary.complete || index < 0 || brep.m_edges[use.index].degenerated)
             continue;
-        const NurbsCurve& curve = brep.m_curves_2d[index];
+        const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
         const Point uv = curve.point_at(curve.domain_middle());
         const Vector tangent = curve.evaluate(curve.domain_middle(), 1)[1];
         const double reach = tangent.magnitude() * (curve.domain_end() - curve.domain_start());
@@ -112,13 +112,13 @@ bool covers(const NurbsCurve& candidate, const NurbsCurve& boundary, double tole
 }
 
 void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, split::FaceCut cut, double tolerance) {
-    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index], tolerance);
+    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index].nurbs(), tolerance);
     for (const BRepRef& wire : brep.m_faces[face].wires)
         for (const BRepRef& edge : brep.wire_edges(wire)) {
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native Boolean encountered a missing trim curve");
-            if (covers(cut.pcurve, brep.m_curves_2d[index], uv_tol))
+            if (covers(cut.pcurve, brep.m_curves_2d[index].nurbs(), uv_tol))
                 return;
         }
     for (const split::FaceCut& previous : cuts)
@@ -129,7 +129,7 @@ void append_cut(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, s
 
 /// Ends of two cuts within the model tolerance are one node: sections meeting on a third face's edge end a march step apart, and the conservative uv tolerance would leave the chain open and drop the whole cut as dangling. Ends a seam apart are one point in space but stay two.
 void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face, double tolerance) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     // Ends a rounding apart are already one point; a hair further and the arrangement would find one cut ending on the other beside its end, a piece inside the vertex.
     const std::pair<double, double> span_u = surface.domain(0), span_v = surface.domain(1);
     const double merged = 256.0 * std::numeric_limits<double>::epsilon() * std::max({1.0, std::abs(span_u.first),
@@ -168,7 +168,7 @@ void join_cut_ends(std::vector<split::FaceCut>& cuts, const BRep& brep, int face
                     const int index = brep.pcurve_index(edge.index, face, edge.orientation);
                     if (index < 0)
                         continue;
-                    const NurbsCurve& trim = brep.m_curves_2d[index];
+                    const NurbsCurve& trim = brep.m_curves_2d[index].nurbs();
                     for (const Point& corner : {trim.point_at_start(), trim.point_at_end()}) {
                         const double gap = cut.pcurve.get_cv(cv(cut, end)).distance(corner);
                         if (gap > merged && gap <= reach &&
@@ -195,14 +195,14 @@ void mapped_parameter_cuts(
             const int index = other.pcurve_index(use.index, other_face, use.orientation);
             if (index < 0)
                 throw std::runtime_error("Native Boolean encountered a missing coincident pcurve");
-            NurbsCurve pcurve = other.m_curves_2d[index];
+            NurbsCurve pcurve = other.m_curves_2d[index].nurbs();
             if (!nurbs_coincidence::map_pcurve(mapping, pcurve))
                 throw std::runtime_error("Native Boolean could not map a coincident boundary pcurve");
-            NurbsCurve world = other.m_curves_3d[edge.curve_3d_index];
+            NurbsCurve world = other.m_curves_3d[edge.curve_3d_index].nurbs();
             if (!world.set_domain(pcurve.domain_start(), pcurve.domain_end()))
                 throw std::runtime_error("Native Boolean could not synchronize a coincident boundary");
             if (curve_surface_intersection::same_parameter(world, pcurve,
-                    target.m_surfaces[target.m_faces[face].surface_index], tolerance)
+                    target.m_surfaces[target.m_faces[face].surface_index].nurbs(), tolerance)
                 != curve_surface_intersection::ParameterMatch::Matched)
                 throw std::runtime_error("Native Boolean mapped boundary lacks a same-parameter certificate");
             append_cut(cuts, target, face, {world, pcurve, -1}, tolerance);
@@ -218,13 +218,13 @@ void coincident_cuts(
     bool second,
     double tolerance
 ) {
-    const NurbsSurface& surface = target.m_surfaces[target.m_faces[face].surface_index];
+    const NurbsSurface& surface = target.m_surfaces[target.m_faces[face].surface_index].nurbs();
     std::vector<int> edges;
     for (const brep_section::FaceOverlap& overlap : sections.overlaps) {
         if ((second ? overlap.second_face : overlap.first_face) != face)
             continue;
         const int other_face = second ? overlap.first_face : overlap.second_face;
-        const NurbsSurface& support = other.m_surfaces[other.m_faces[other_face].surface_index];
+        const NurbsSurface& support = other.m_surfaces[other.m_faces[other_face].surface_index].nurbs();
         nurbs_coincidence::ParameterMap mapping;
         if (nurbs_coincidence::same_parameters(surface, support, tolerance)
             || nurbs_coincidence::parameter_mapping(support, surface, tolerance, mapping)
@@ -242,7 +242,7 @@ void coincident_cuts(
     for (int edge : edges) {
         if (other.m_edges[edge].degenerated)
             continue;
-        const NurbsCurve& world = other.m_curves_3d[other.m_edges[edge].curve_3d_index];
+        const NurbsCurve& world = other.m_curves_3d[other.m_edges[edge].curve_3d_index].nurbs();
         const curve_surface_intersection::Result events = curve_surface_intersection::intersect(world, surface, tolerance);
         if (!events.complete)
             throw std::runtime_error(events.failure);
@@ -332,7 +332,7 @@ bool split_original_events(Partition& partition,const brep_section::FaceResult& 
     std::vector<std::pair<int,int>> merged;
     for (const auto& event:events) {
         if (!joined.empty() && joined.back().edge==event.edge && !partition.brep.m_edges[event.edge].degenerated) {
-            const NurbsCurve& curve=partition.brep.m_curves_3d[partition.brep.m_edges[event.edge].curve_3d_index];
+            const NurbsCurve& curve=partition.brep.m_curves_3d[partition.brep.m_edges[event.edge].curve_3d_index].nurbs();
             if (curve.point_at(joined.back().parameter).distance(curve.point_at(event.parameter))<=tolerance) {
                 split::EdgeEvent& kept=joined.back();
                 const int other=kept.vertex;
@@ -450,7 +450,7 @@ Partition partition(
     for (int i = 0; i < source.edge_count(); ++i) {
         const BRepEdge& edge = source.m_edges[i];
         const std::pair<double, double> domain = edge.degenerated ? std::pair<double, double>{0, 1}
-            : source.m_curves_3d[edge.curve_3d_index].domain();
+            : source.m_curves_3d[edge.curve_3d_index].nurbs().domain();
         result.pieces.push_back({i, -1, i, domain.first, domain.second});
     }
     // The edge split certifies the whole model; without one the first face split does, and the later ones only what they make.
@@ -522,7 +522,7 @@ bool interior_candidate(
         return false;
     if (!avoid)
         return true;
-    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = solid.brep.m_surfaces[solid.brep.m_faces[face].surface_index].nurbs();
     const State state = brep_classify::point(*avoid, surface.point_at(uv[0], uv[1]), tolerance);
     if (state == State::Unknown)
         throw std::runtime_error("Native Boolean interior witness classification is unresolved");
@@ -539,7 +539,7 @@ Point interior(const brep_classify::Solid& solid, int face, double tolerance, co
             const int index = brep.pcurve_index(edge.index, face, edge.orientation);
             if (index < 0)
                 throw std::runtime_error("Native Boolean encountered an untrimmed face");
-            const NurbsCurve& curve = brep.m_curves_2d[index];
+            const NurbsCurve& curve = brep.m_curves_2d[index].nurbs();
             boundaries.push_back(&curve);
             for (int i = 0; i < curve.cv_count(); ++i) {
                 const xyz cv = curve.get_cv(i);
@@ -549,7 +549,7 @@ Point interior(const brep_classify::Solid& solid, int face, double tolerance, co
                 }
             }
         }
-    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index], tolerance);
+    const double uv_tol = uv_tolerance(brep.m_surfaces[brep.m_faces[face].surface_index].nurbs(), tolerance);
     for (int n : {2, 4, 8, 16})
         for (int i = 1; i < n; ++i)
             for (int j = 1; j < n; ++j) {
@@ -579,7 +579,7 @@ std::vector<const NurbsCurve*> boundary_curves(const BRep& brep, int face) {
         for (const BRepRef& use : brep.wire_edges(wire)) {
             const BRepEdge& edge = brep.m_edges[use.index];
             if (!edge.degenerated)
-                result.push_back(&brep.m_curves_3d[edge.curve_3d_index]);
+                result.push_back(&brep.m_curves_3d[edge.curve_3d_index].nurbs());
         }
     return result;
 }
@@ -622,10 +622,10 @@ int coincident_region(
     double tolerance
 ) {
     const BRep& other = solid.brep;
-    const NurbsSurface& a = source.m_surfaces[source.m_faces[face].surface_index];
+    const NurbsSurface& a = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
     const Point point = a.point_at(uv[0], uv[1]);
     for (int candidate : active_faces(other)) {
-        const NurbsSurface& b = other.m_surfaces[other.m_faces[candidate].surface_index];
+        const NurbsSurface& b = other.m_surfaces[other.m_faces[candidate].surface_index].nurbs();
         nurbs_coincidence::ParameterMap mapping;
         const bool mapped = nurbs_coincidence::same_parameters(a, b, tolerance)
             || nurbs_coincidence::parameter_mapping(a, b, tolerance, mapping)
@@ -650,7 +650,7 @@ int coincident_region(
 }
 
 Vector oriented_normal(const BRep& brep, int face, const Point& uv) {
-    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index];
+    const NurbsSurface& surface = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
     const std::vector<Vector> derivatives = surface.evaluate(uv[0], uv[1], 1);
     Vector normal = derivatives[2].cross(derivatives[1]);
     if (!normal.normalize_self())
@@ -692,7 +692,7 @@ void select(
         int coincident = -1;
         if (state == State::Unknown) {
             uv = interior(own, face, tolerance);
-            const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+            const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
             Point p = surface.point_at(uv[0], uv[1]);
             state = brep_classify::point(solid, p, tolerance);
             if (state == State::Unknown)
@@ -805,10 +805,10 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
         if (!consecutive || uses.empty())
             continue;
 
-        const std::pair<double, double> d1 = b.m_curves_3d[x.curve_3d_index].domain();
-        const std::pair<double, double> d2 = b.m_curves_3d[y.curve_3d_index].domain();
+        const std::pair<double, double> d1 = b.m_curves_3d[x.curve_3d_index].nurbs().domain();
+        const std::pair<double, double> d2 = b.m_curves_3d[y.curve_3d_index].nurbs().domain();
         NurbsCurve curve;
-        if (!joined_curve(b.m_curves_3d[x.curve_3d_index], b.m_curves_3d[y.curve_3d_index], flip1, flip2, d1, d2, tolerance, curve))
+        if (!joined_curve(b.m_curves_3d[x.curve_3d_index].nurbs(), b.m_curves_3d[y.curve_3d_index].nurbs(), flip1, flip2, d1, d2, tolerance, curve))
             continue;
         std::vector<BRepCurveOnSurface> pcurves;
         std::vector<NurbsCurve> curves_2d;
@@ -823,7 +823,7 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
                 const int a = second != flip1 && p.curve_2d_index_2 >= 0 ? p.curve_2d_index_2 : p.curve_2d_index;
                 const int c = second != flip2 && q->curve_2d_index_2 >= 0 ? q->curve_2d_index_2 : q->curve_2d_index;
                 NurbsCurve pcurve;
-                if (!joined_curve(b.m_curves_2d[a], b.m_curves_2d[c], flip1, flip2, d1, d2, tolerance, pcurve))
+                if (!joined_curve(b.m_curves_2d[a].nurbs(), b.m_curves_2d[c].nurbs(), flip1, flip2, d1, d2, tolerance, pcurve))
                     break;
                 (second ? joined.curve_2d_index_2 : joined.curve_2d_index) = (int)(b.m_curves_2d.size() + curves_2d.size());
                 curves_2d.push_back(pcurve);

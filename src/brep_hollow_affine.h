@@ -47,7 +47,7 @@ inline std::array<double, 4> extent(const BRep& source, const NurbsSurface& surf
     const Frame& frame, double distance) {
     std::array<nurbs_interval::Interval, 3> world;
     bool first = true;
-    for (const NurbsSurface& support : source.m_surfaces) {
+    for (const NurbsSurface& support : nurbs(source.m_surfaces)) {
         require(support.dimension() >= 2 && support.dimension() <= 3,
             "Hollow working extent requires two or three dimensional source supports");
         for (int i = 0; i < support.cv_count(0); ++i)
@@ -132,9 +132,9 @@ inline void enlarge_border(BRep& working, int edge_index, const NurbsSurface& ol
     require(!edge.degenerated && edge.pcurves.size() == 1
         && edge.pcurves[0].curve_2d_index_2 < 0
         && edge.pcurves[0].surface_index == working.m_faces[0].surface_index, "Hollow affine working border does not support seams or poles");
-    NurbsCurve& pc = working.m_curves_2d[edge.pcurves[0].curve_2d_index];
+    auto pc_ = edit(working.m_curves_2d[edge.pcurves[0].curve_2d_index]); NurbsCurve& pc = *pc_;
     require(straight_pcurve(pc), "Hollow affine working border requires an exactly affine pcurve");
-    require(edge.curve_3d_index >= 0 && pc.domain() == working.m_curves_3d[edge.curve_3d_index].domain(),
+    require(edge.curve_3d_index >= 0 && pc.domain() == working.m_curves_3d[edge.curve_3d_index].nurbs().domain(),
         "Hollow affine working border requires identical raw domains");
     std::array<Point, 2> uv;
     for (int end = 0; end < 2; ++end) {
@@ -148,7 +148,7 @@ inline void enlarge_border(BRep& working, int edge_index, const NurbsSurface& ol
     }
     const int direction = uv[0][0] == uv[1][0] ? 1 : (uv[0][1] == uv[1][1] ? 0 : -1);
     require(direction >= 0 && uv[0][direction] != uv[1][direction], "Hollow affine working border is not a side");
-    const NurbsSurface& surface = working.m_surfaces[working.m_faces[0].surface_index];
+    const NurbsSurface& surface = working.m_surfaces[working.m_faces[0].surface_index].nurbs();
     NurbsCurve world = surface.iso_curve(direction, uv[0][1-direction]);
     if (uv[0][direction] > uv[1][direction])
         require(world.reverse(), "Hollow affine working border reversal failed");
@@ -177,7 +177,7 @@ inline bool rectangular_wire(const BRep& working, const NurbsSurface& surface,
         const BRepEdge& edge = working.m_edges[use.index];
         if (edge.pcurves.size() != 1 || edge.pcurves[0].curve_2d_index_2 >= 0)
             return false;
-        const NurbsCurve& pc = working.m_curves_2d[edge.pcurves[0].curve_2d_index];
+        const NurbsCurve& pc = working.m_curves_2d[edge.pcurves[0].curve_2d_index].nurbs();
         if (!straight_pcurve(pc))
             return false;
         const Point a = pc.get_cv(0), b = pc.get_cv(1);
@@ -213,7 +213,7 @@ inline void enlarge(const BRep& source, brep_offset::OffsetFace& displaced, doub
     BRep working = displaced.brep;
     require(working.face_count() == 1, "Hollow affine working face is ambiguous");
     const int surface_index = working.m_faces[0].surface_index;
-    const NurbsSurface old = working.m_surfaces[surface_index];
+    const NurbsSurface old = working.m_surfaces[surface_index].nurbs();
     Frame frame;
     if (!exact_frame(old, frame))
         return;

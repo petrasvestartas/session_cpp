@@ -70,17 +70,17 @@ void check_offset_boundaries(const BRep& result, double tolerance) {
     MINI_CHECK(result.is_valid());
     for (const BRepEdge& edge : result.m_edges) {
         for (const BRepCurveOnSurface& relation : edge.pcurves) {
-            const NurbsSurface& surface = result.m_surfaces[relation.surface_index];
+            const NurbsSurface& surface = result.m_surfaces[relation.surface_index].nurbs();
             for (int index : {relation.curve_2d_index, relation.curve_2d_index_2}) {
                 if (index < 0)
                     continue;
-                const NurbsCurve& pcurve = result.m_curves_2d[index];
+                const NurbsCurve& pcurve = result.m_curves_2d[index].nurbs();
                 for (int i = 0; i <= 401; ++i) {
                     const double t = pcurve.domain_start() + (pcurve.domain_end() - pcurve.domain_start()) * i / 401.0;
                     const Point uv = pcurve.point_at(t);
                     const Point expected = surface.point_at(uv[0], uv[1]);
                     const Point actual = edge.degenerated ? result.m_vertices[edge.start_vertex].point
-                        : result.m_curves_3d[edge.curve_3d_index].point_at(t);
+                        : result.m_curves_3d[edge.curve_3d_index].nurbs().point_at(t);
                     MINI_CHECK(actual.distance(expected) < tolerance);
                 }
             }
@@ -94,8 +94,8 @@ void check_offset_surface(
     double distance,
     double tolerance
 ) {
-    const NurbsSurface& a = source.m_surfaces[source.m_faces[0].surface_index];
-    const NurbsSurface& b = result.m_surfaces[0];
+    const NurbsSurface& a = source.m_surfaces[source.m_faces[0].surface_index].nurbs();
+    const NurbsSurface& b = result.m_surfaces[0].nurbs();
     const std::pair<double, double> u = a.domain(0);
     const std::pair<double, double> v = a.domain(1);
     MINI_CHECK(u == b.domain(0) && v == b.domain(1));
@@ -149,13 +149,11 @@ BRep offset_saddle_solid() {
     const auto warp = [](const Point& p) { return Point(p[0], p[1], p[2] + 0.16 * p[0] * p[1]); };
     for (BRepVertex& vertex : result.m_vertices)
         vertex.point = warp(vertex.point);
-    for (NurbsCurve& curve : result.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            curve.set_cv(i, warp(curve.get_cv(i)));
-    for (NurbsSurface& surface : result.m_surfaces)
-        for (int i = 0; i < surface.cv_count(0); ++i)
+    for (Curve& curve_ : result.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            curve.set_cv(i, warp(curve.get_cv(i))); curve_ = curve; }
+    for (Surface& surface_ : result.m_surfaces) { NurbsSurface surface = surface_.nurbs(); for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
-                surface.set_cv(i, j, warp(surface.get_cv(i, j)));
+                surface.set_cv(i, j, warp(surface.get_cv(i, j))); surface_ = surface; }
     return result;
 }
 
@@ -166,11 +164,10 @@ BRep inward_freeform_fixture(bool nonzero_domains) {
     };
     for (BRepVertex& vertex : result.m_vertices)
         vertex.point = warp(vertex.point);
-    for (NurbsCurve& curve : result.m_curves_3d)
-        for (int i = 0; i < curve.cv_count(); ++i)
-            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i))));
+    for (Curve& curve_ : result.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)
+            MINI_CHECK(curve.set_cv(i, warp(curve.get_cv(i)))); curve_ = curve; }
     for (size_t index = 0; index < result.m_surfaces.size(); ++index) {
-        NurbsSurface& surface = result.m_surfaces[index];
+        auto surface_ = edit(result.m_surfaces[index]); NurbsSurface& surface = *surface_;
         for (int i = 0; i < surface.cv_count(0); ++i)
             for (int j = 0; j < surface.cv_count(1); ++j)
                 MINI_CHECK(surface.set_cv(i, j, warp(surface.get_cv(i, j))));
@@ -188,7 +185,7 @@ BRep inward_freeform_fixture(bool nonzero_domains) {
                     for (int pc_index : {relation.curve_2d_index, relation.curve_2d_index_2}) {
                         if (pc_index < 0)
                             continue;
-                        NurbsCurve& pc = result.m_curves_2d[pc_index];
+                        auto pc_ = edit(result.m_curves_2d[pc_index]); NurbsCurve& pc = *pc_;
                         MINI_CHECK(!pc.is_rational());
                         for (int i = 0; i < pc.cv_count(); ++i) {
                             Point uv = pc.get_cv(i);
@@ -245,7 +242,7 @@ MINI_TEST("BRepOffset", "Trimmed Planar Face With Curved Hole") {
         check_offset_surface(source, result, distance, 1e-11);
         check_offset_boundaries(result, 1e-7);
         for (size_t i = 0; i < source.m_curves_2d.size(); ++i)
-            MINI_CHECK(source.m_curves_2d[i].m_cv == result.m_curves_2d[i].m_cv);
+            MINI_CHECK(source.m_curves_2d[i].nurbs().m_cv == result.m_curves_2d[i].nurbs().m_cv);
     }
 }
 
@@ -263,7 +260,7 @@ MINI_TEST("BRepOffset", "Doubly Curved Oriented Open Shell") {
             MINI_CHECK(result.face_orientation(0) == orientation);
             check_offset_surface(source, result, distance, 2e-6);
             check_offset_boundaries(result, 2e-6);
-            for (const NurbsCurve& curve : result.m_curves_3d)
+            for (const NurbsCurve& curve : nurbs(result.m_curves_3d))
                 MINI_CHECK(curve.domain_start() == -7.0 && curve.domain_end() == -3.0);
         }
     }
@@ -328,7 +325,7 @@ MINI_TEST("BRepOffset", "Collapsed Solids And Unresolved Inward Joins") {
 
 MINI_TEST("BRepOffset", "Smooth Partitioned Sphere Both Signs") {
     const BRep sphere = BRep::create_sphere(2.0);
-    const NurbsSurface& surface = sphere.m_surfaces[0];
+    const NurbsSurface& surface = sphere.m_surfaces[0].nurbs();
     const std::pair<double, double> u = surface.domain(0);
     const std::pair<double, double> v = surface.domain(1);
     const double middle = (v.first + v.second) * 0.5;
@@ -389,7 +386,7 @@ MINI_TEST("BRepOffset", "Doubly Curved Sharp Join Solid") {
     check_offset_boundaries(result, tolerance);
     MINI_CHECK(brep_measure::volume(result, 1e-6) > 8.0);
     for (int face = 0; face < source.face_count(); ++face) {
-        const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index];
+        const NurbsSurface& surface = source.m_surfaces[source.m_faces[face].surface_index].nurbs();
         const std::pair<double, double> u = surface.domain(0);
         const std::pair<double, double> v = surface.domain(1);
         const double x = u.first + 0.43 * (u.second - u.first);
@@ -420,7 +417,7 @@ MINI_TEST("BRepOffset", "Inward Adjacent Freeform Fixture Prerequisites") {
         record["planned_distances"] = {-0.04, -0.16};
         record["planned_tolerance"] = 3e-5;
         record["face_curvatures"] = nlohmann::ordered_json::array();
-        for (const NurbsSurface& surface : source.m_surfaces) {
+        for (const NurbsSurface& surface : nurbs(source.m_surfaces)) {
             MINI_CHECK(!surface.is_planar());
             const std::pair<double, double> u = surface.domain(0);
             const std::pair<double, double> v = surface.domain(1);
@@ -530,7 +527,7 @@ MINI_TEST("BRepOffset", "Active Topology Orientation And Input Validation") {
     check_offset_surface(source, result, 0.2, 1e-10);
     const BRep unchanged = brep_offset::shape(source, 0.0, 1e-7);
     MINI_CHECK(unchanged.m_surfaces.size() == source.m_surfaces.size());
-    MINI_CHECK(unchanged.m_surfaces[0].m_cv == source.m_surfaces[0].m_cv);
+    MINI_CHECK(unchanged.m_surfaces[0].nurbs().m_cv == source.m_surfaces[0].nurbs().m_cv);
     MINI_CHECK(offset_rejected(source, 0.1, 0.0));
     MINI_CHECK(offset_rejected(source, std::numeric_limits<double>::infinity()));
     BRep open = natural_face(brep_offset_saddle());
@@ -538,8 +535,11 @@ MINI_TEST("BRepOffset", "Active Topology Orientation And Input Validation") {
     MINI_CHECK(offset_rejected(open, 0.1));
 
     BRep invalid = BRep::create_torus(2.0, 0.5);
-    for (double& value : invalid.m_surfaces[0].m_cv)
-        value *= -1.0;
+    {
+        auto surface = edit(invalid.m_surfaces[0]);
+        for (double& value : surface->m_cv)
+            value *= -1.0;
+    }
     MINI_CHECK(offset_rejected(invalid, 0.1));
     invalid = BRep::create_torus(2.0, 0.5);
     invalid.transform(Xform::translation(1e12, 0, 0));
@@ -547,9 +547,12 @@ MINI_TEST("BRepOffset", "Active Topology Orientation And Input Validation") {
 
     const NurbsCurve circle = Primitives::circle(0, 0, 0, 2);
     invalid = BRep::from_nurbscurves({circle});
-    for (double& value : invalid.m_curves_2d[0].m_cv)
-        value *= -1.0;
-    MINI_CHECK(invalid.m_curves_2d[0].is_rational());
+    {
+        auto curve = edit(invalid.m_curves_2d[0]);
+        for (double& value : curve->m_cv)
+            value *= -1.0;
+    }
+    MINI_CHECK(invalid.m_curves_2d[0].nurbs().is_rational());
     MINI_CHECK(offset_rejected(invalid, 0.1));
 }
 

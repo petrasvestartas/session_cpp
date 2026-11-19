@@ -114,7 +114,7 @@ MINI_TEST("Surface Ray", "Affine Nonuniform Domains") {
 }
 
 MINI_TEST("Surface Ray", "Rational Sphere Generic Rays") {
-    const NurbsSurface surface = BRep::create_sphere(1.0).m_surfaces[0];
+    const NurbsSurface surface = BRep::create_sphere(1.0).m_surfaces[0].nurbs();
     const Point origin(-2, 0.13, 0.21);
     const Vector direction(3, 0, 0);
     const auto result = run("rational_sphere", surface, origin, direction);
@@ -280,7 +280,7 @@ MINI_TEST("Surface Ray", "Origin Candidates Before Trim Classification") {
 
 MINI_TEST("Surface Ray", "Bore Supporting Plane Origin Candidates") {
     const BRep solid = BRep::create_block_with_hole(4, 4, 2, 1);
-    const auto& surface = solid.m_surfaces[solid.m_faces.back().surface_index];
+    const auto& surface = solid.m_surfaces[solid.m_faces.back().surface_index].nurbs();
     const std::array<Vector, 7> directions = {
         Vector(1.0, 0.371, 0.529), Vector(-0.217, 1.0, 0.413), Vector(0.319, -0.271, 1.0),
         Vector(-1.0, 0.723, -0.219), Vector(0.613, -1.0, -0.417), Vector(-0.531, -0.337, -1.0), Vector(1.0, 1.0, 1.0)
@@ -349,7 +349,7 @@ MINI_TEST("Surface Ray", "Recognised Forms Beside The Search") {
     const std::array<BRep, 4> solids = {BRep::create_sphere(0.9), BRep::create_cylinder(0.6, 1.2), BRep::create_cone(0.7, 1.1),
         BRep::create_torus(0.8, 0.25)};
     for (int kind = 0; kind < 4; ++kind) {
-        const NurbsSurface surface = solids[kind].m_surfaces[0].transformed(placed);
+        const NurbsSurface surface = solids[kind].m_surfaces[0].nurbs().transformed(placed);
         std::optional<surface_ray::Form> form;
         surface_ray::Options options{200000, 96, true};
         options.form = &form;
@@ -375,7 +375,7 @@ MINI_TEST("Surface Ray", "Recognised Forms Beside The Search") {
 }
 
 MINI_TEST("Surface Ray", "Controls Clear The Ray") {
-    const NurbsSurface sphere = BRep::create_sphere(1.0).m_surfaces[0];
+    const NurbsSurface sphere = BRep::create_sphere(1.0).m_surfaces[0].nurbs();
     const auto beside = run("controls_beside", sphere, {3, 0, 0}, {0, 1, 0});
     MINI_CHECK(beside.complete && beside.roots.empty() && beside.cells == 0);
     const auto behind = run("controls_behind", sphere, {3, 0.1, 0.2}, {1, 0, 0});

@@ -1538,7 +1538,7 @@ std::vector<NurbsSurfaceTrimmed> NurbsSurface::split_by_brep(const BRep& brep, d
     const std::pair<std::array<double, 3>, std::array<double, 3>> target_bb = surface_aabb(*this);
     std::vector<NurbsCurve> pcurves;
 
-    for (const NurbsSurface& cutter : brep.m_surfaces) {
+    for (const NurbsSurface& cutter : nurbs(brep.m_surfaces)) {
         if (!aabb_overlap_pad(target_bb, surface_aabb(cutter)))
             continue;
 

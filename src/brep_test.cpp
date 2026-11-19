@@ -158,8 +158,8 @@ namespace session_cpp {
             Primitives::create_ruled(arcs[2], arcs[3]),
             Primitives::create_ruled(arcs[0], arcs[2]),
             Primitives::create_ruled(arcs[1], arcs[3]),
-            Primitives::create_ruled(b.m_curves_3d[edges.at({0, 2})], b.m_curves_3d[edges.at({4, 6})]),
-            Primitives::create_ruled(b.m_curves_3d[edges.at({1, 3})], b.m_curves_3d[edges.at({5, 7})]),
+            Primitives::create_ruled(b.m_curves_3d[edges.at({0, 2})].nurbs(), b.m_curves_3d[edges.at({4, 6})].nurbs()),
+            Primitives::create_ruled(b.m_curves_3d[edges.at({1, 3})].nurbs(), b.m_curves_3d[edges.at({5, 7})].nurbs()),
         };
         const std::array<std::array<int, 4>, 6> corners = {{
             {0, 1, 3, 2},
@@ -565,13 +565,15 @@ namespace session_cpp {
         BRep sphere = BRep::create_sphere(1.0);
         BRep fresh = BRep::create_sphere(1.0);
         const Point before = sphere.face_meshes()[0].centroid();
-        NurbsSurface& surface = sphere.m_surfaces[0];
-        NurbsSurface& reference = fresh.m_surfaces[0];
-        const size_t stride = surface.cv_size();
+        {
+            auto surface = edit(sphere.m_surfaces[0]);
+            auto reference = edit(fresh.m_surfaces[0]);
+            const size_t stride = surface->cv_size();
 
-        for (size_t k = 0; k < surface.m_cv.size(); k += stride) {
-            surface.m_cv[k] *= 2.0;
-            reference.m_cv[k] *= 2.0;
+            for (size_t k = 0; k < surface->m_cv.size(); k += stride) {
+                surface->m_cv[k] *= 2.0;
+                reference->m_cv[k] *= 2.0;
+            }
         }
 
         const Point after = sphere.face_meshes()[0].centroid();
@@ -687,18 +689,21 @@ namespace session_cpp {
         MINI_CHECK(!broken.is_valid());
 
         broken = box;
-        broken.m_curves_3d[0].m_nurbsknot[0] = std::numeric_limits<double>::quiet_NaN();
+        edit(broken.m_curves_3d[0])->m_nurbsknot[0] = std::numeric_limits<double>::quiet_NaN();
 
         MINI_CHECK(!broken.is_valid());
 
         broken = box;
-        broken.m_surfaces[0].m_cv[0] = std::numeric_limits<double>::infinity();
+        edit(broken.m_surfaces[0])->m_cv[0] = std::numeric_limits<double>::infinity();
 
         MINI_CHECK(!broken.is_valid());
 
         broken = box;
-        for (double& knot : broken.m_surfaces[0].m_nurbsknot[0])
-            knot = 0.0;
+        {
+            auto surface = edit(broken.m_surfaces[0]);
+            for (double& knot : surface->m_nurbsknot[0])
+                knot = 0.0;
+        }
 
         MINI_CHECK(!broken.is_valid());
     }
@@ -861,7 +866,7 @@ namespace session_cpp {
             MINI_CHECK(chair.is_solid());
             MINI_CHECK(edges_manifold(chair));
             int curved = 0;
-            for (const NurbsSurface& surface : chair.m_surfaces)
+            for (const NurbsSurface& surface : nurbs(chair.m_surfaces))
                 if (surface.degree(0) > 1 && surface.degree(1) > 1 && !surface.is_planar())
                     ++curved;
             MINI_CHECK(curved > 0);
@@ -1074,7 +1079,7 @@ namespace session_cpp {
             MINI_CHECK(result.is_valid());
             MINI_CHECK(result.is_solid());
             int curved = 0;
-            for (const NurbsSurface& surface : result.m_surfaces)
+            for (const NurbsSurface& surface : nurbs(result.m_surfaces))
                 if (surface.degree(0) > 1 && surface.degree(1) > 1 && !surface.is_planar())
                     ++curved;
             MINI_CHECK(curved > 0);
@@ -1084,13 +1089,13 @@ namespace session_cpp {
                 maximum_tolerance = std::max(maximum_tolerance, edge.tolerance);
                 if (edge.degenerated)
                     continue;
-                const NurbsCurve& curve = result.m_curves_3d[edge.curve_3d_index];
+                const NurbsCurve& curve = result.m_curves_3d[edge.curve_3d_index].nurbs();
                 for (const BRepCurveOnSurface& representation : edge.pcurves) {
-                    const NurbsSurface& surface = result.m_surfaces[representation.surface_index];
+                    const NurbsSurface& surface = result.m_surfaces[representation.surface_index].nurbs();
                     for (int index : {representation.curve_2d_index, representation.curve_2d_index_2}) {
                         if (index < 0)
                             continue;
-                        const NurbsCurve& pcurve = result.m_curves_2d[index];
+                        const NurbsCurve& pcurve = result.m_curves_2d[index].nurbs();
                         for (int j = 0; j <= 32; ++j) {
                             const double fraction = j / 32.0;
                             const Point point = curve.point_at(curve.domain_start() + (curve.domain_end() - curve.domain_start()) * fraction);
@@ -2247,7 +2252,7 @@ namespace session_cpp {
             const BRep brep = BRep::from_polylines({Polyline(points)});
             double area = 0.0;
             for (const BRepRef& use : brep.wire_edges(brep.m_faces[0].wires[0])) {
-                NurbsCurve pcurve = brep.m_curves_2d[brep.pcurve_index(use.index, 0, use.orientation)];
+                NurbsCurve pcurve = brep.m_curves_2d[brep.pcurve_index(use.index, 0, use.orientation)].nurbs();
                 if (use.orientation == BRepOrientation::Reversed)
                     MINI_CHECK(pcurve.reverse());
                 const Point a = pcurve.point_at_start(), b = pcurve.point_at_end();
