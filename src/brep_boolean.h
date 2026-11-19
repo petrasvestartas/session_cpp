@@ -20,8 +20,8 @@ struct ClassificationError : std::runtime_error {
           shape(other), query(point), source_face(face), second_operand(second), tolerance(tol) {}
 };
 
-/// Keep each edge whole, as OCCT does: two edges at a vertex no other edge meets, used one after the other by the same wires and lying on the same surfaces, become one
-BRep joined_edges(BRep b, double tolerance);
+/// Keep each edge whole, as OCCT does: two edges at a vertex no other edge meets, used one after the other by the same wires and lying on the same surfaces, become one; vertices flagged in keep stay
+BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep = {});
 
 /// Build a solid from native face intersections, trimmed regions and oriented shells.
 BRep apply(const BRep& first, const BRep& second, Operation operation, double tolerance);

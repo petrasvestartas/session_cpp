@@ -48,7 +48,7 @@ std::vector<Point> loop_polygon(const std::vector<EdgeUse>& uses, const std::vec
     return polygon;
 }
 
-std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& uses, const Region& region) {
+std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& uses, const Region& region, std::vector<std::string>& log) {
     const size_t n = uses.size();
     for (EdgeUse& use : uses) {
         if (!use.internal)
@@ -80,7 +80,7 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
         int count = 0;
         for (size_t k = 0; k < n; ++k)
             if (alive[k])
-                count += (uses[k].start == v && p0[k].distance(q) <= node) + (uses[k].end == v && p1[k].distance(q) <= node);
+                count += (uses[k].start == v && p0[k].distance(q) <= node + uses[k].gap) + (uses[k].end == v && p1[k].distance(q) <= node + uses[k].gap);
         return count;
     };
     for (bool pruned = true; pruned;) {
@@ -109,7 +109,7 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
             int best = -1;
             double best_angle = 1e300;
             for (size_t k = 0; k < n; ++k) {
-                if (!alive[k] || (used[k] && k != s) || uses[k].start != uses[cur].end || p0[k].distance(p1[cur]) > nearest + near)
+                if (!alive[k] || (used[k] && k != s) || uses[k].start != uses[cur].end || p0[k].distance(p1[cur]) > nearest + near + uses[k].gap + uses[cur].gap)
                     continue;
                 double angle = std::fmod(in[cur] + std::numbers::pi - out[k], 2.0 * std::numbers::pi);
                 if (angle < 0.0)
@@ -135,6 +135,8 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
         }
         if (closed)
             loops.push_back(std::move(loop));
+        else
+            log.push_back("face split: open loop");
     }
     std::vector<std::vector<Point>> polygons;
     std::vector<double> areas;
@@ -143,6 +145,13 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
         areas.push_back(area(polygons.back()));
     }
     const double small = 1e-12 * diag * diag;
+    const auto images = [&](const std::vector<int>& loop) {
+        std::vector<int> result;
+        for (int k : loop)
+            result.push_back(uses[k].image);
+        std::sort(result.begin(), result.end());
+        return result;
+    };
     std::vector<std::vector<std::vector<int>>> faces;
     std::vector<int> outer_of;
     for (size_t i = 0; i < loops.size(); ++i)
@@ -154,7 +163,11 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
         if (areas[i] >= -small)
             continue;
         int best = -1;
+        const std::vector<int> own = images(loops[i]);
         for (size_t f = 0; f < outer_of.size(); ++f) {
+            // The same edges walked the other way bound the face on the other side, not a hole of it.
+            if (images(loops[outer_of[f]]) == own)
+                continue;
             Region r;
             r.eps = near;
             r.add_loop(polygons[outer_of[f]]);
@@ -166,6 +179,8 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
         }
         if (best >= 0)
             faces[best].push_back(loops[i]);
+        else
+            log.push_back("face split: hole outside every outer loop");
     }
     return faces;
 }

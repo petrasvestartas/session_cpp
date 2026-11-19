@@ -757,7 +757,7 @@ static bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, s
 }
 
 /// A section piece ends where it crosses a knot line of a NURBS surface or where a closed section closes; an analytic surface has neither.
-BRep joined_edges(BRep b, double tolerance) {
+BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
 
     const BRepOrientation F = BRepOrientation::Forward;
     const BRepOrientation R = BRepOrientation::Reversed;
@@ -770,7 +770,7 @@ BRep joined_edges(BRep b, double tolerance) {
             for (bool last : {false, true})
                 if (!dropped_edge[e] && (last ? b.m_edges[e].end_vertex : b.m_edges[e].start_vertex) == v)
                     ends.push_back({e, last});
-        if (ends.size() != 2 || ends[0].first == ends[1].first)
+        if (ends.size() != 2 || ends[0].first == ends[1].first || (v < (int)keep.size() && keep[v]))
             continue;
         const int e1 = ends[0].first, e2 = ends[1].first;
         const bool flip1 = !ends[0].second, flip2 = ends[1].second;

@@ -62,3 +62,15 @@ MINI_TEST("BRep BOP", "Loose Contact") {
     MINI_CHECK(sum.solid_count() == 1);
     MINI_CHECK(std::abs(sum.volume_exact() - 16) < 1e-4);
 }
+
+MINI_TEST("BRep BOP", "Rotated Copies") {
+    for (const BRep& a : {BRep::create_cylinder(1, 2), BRep::create_block_with_hole(2, 2, 1, 0.4)}) {
+        const BRep b = a.transformed(Xform::rotation(Vector(0, 0, 1), 5, true));
+        bop::Report first, second;
+        const BRep ab = bop::apply(a, b, bop::Operation::Difference, 0.0, &first), ba = bop::apply(a, b, bop::Operation::ReverseDifference, 0.0, &second);
+        const BRep sum = bop::apply(a, b, bop::Operation::Union);
+        MINI_CHECK(sum.is_solid());
+        MINI_CHECK(ab.face_count() == 0 || (first.solid && second.solid));
+        MINI_CHECK(ab.face_count() == 0 || std::abs(ab.volume_exact() - ba.volume_exact()) < 1e-6);
+    }
+}

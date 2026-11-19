@@ -100,12 +100,36 @@ static int samples(const NurbsCurve& c) {
     return std::clamp(4 * c.cv_count(), 8, 256);
 }
 
+std::array<double, 2> surface_period(const NurbsSurface& s) {
+    std::array<double, 2> period{0.0, 0.0};
+    for (int d = 0; d < 2; ++d) {
+        const auto [lo, hi] = s.domain(d);
+        const auto [a, b] = s.domain(1 - d);
+        if (s.is_closed(d)) {
+            period[d] = hi - lo;
+            continue;
+        }
+        const auto at = [&](double x, double w) { return d == 0 ? s.point_at(x, w) : s.point_at(w, x); };
+        const double size = at(lo, a).distance(at(hi, b)) + at(lo, b).distance(at(hi, a));
+        for (int k = 0; k < s.nurbsknot_count(d) && period[d] == 0.0; ++k) {
+            const double step = s.nurbsknot(d, k) - lo;
+            if (step <= 1e-9 * (hi - lo) || step >= (1 - 1e-9) * (hi - lo))
+                continue;
+            bool same = true;
+            for (double x : {lo, lo + 0.37 * (hi - lo - step), hi - step})
+                for (double f : {0.13, 0.5, 0.91})
+                    same = same && at(x, a + f * (b - a)).distance(at(x + step, a + f * (b - a))) <= 1e-9 * size;
+            if (same)
+                period[d] = step;
+        }
+    }
+    return period;
+}
+
 Region face_region(const BRep& brep, int face, double tolerance) {
     Region region;
     const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index];
-    for (int d = 0; d < 2; ++d)
-        if (s.is_closed(d))
-            region.period[d] = s.domain(d).second - s.domain(d).first;
+    region.period = surface_period(s);
     for (const BRepRef& wire : brep.m_faces[face].wires) {
         std::vector<Point> loop;
         for (const BRepRef& use : brep.wire_edges(wire)) {
@@ -130,7 +154,7 @@ Region face_region(const BRep& brep, int face, double tolerance) {
 }
 
 int DS::add_vertex(const Point& p, double tolerance) {
-    vertices.push_back({p, tolerance, -1, -1, -1});
+    vertices.push_back({p, tolerance, -1, -1, -1, 0.0, false});
     return static_cast<int>(vertices.size()) - 1;
 }
 
@@ -149,8 +173,13 @@ int DS::merge(const std::vector<int>& group) {
     for (int v : real_ids)
         tolerance = std::max(tolerance, c.distance(vertices[v].point) + vertices[v].tolerance);
     const int merged = add_vertex(c, tolerance);
-    for (int v : real_ids)
+    vertices[merged].joint = true;
+    for (int v : real_ids) {
+        vertices[merged].operand = std::max(vertices[merged].operand, vertices[v].operand);
+        vertices[merged].joint = vertices[merged].joint && vertices[v].joint;
+        vertices[merged].reach = std::max(vertices[merged].reach, vertices[v].reach);
         vertices[v].sd = merged;
+    }
     return merged;
 }
 
@@ -160,35 +189,42 @@ Point DS::block_point(const PaveBlock& b, double s) const {
     return block_curve(b).point_at(b.first.t + s * (b.last.t - b.first.t));
 }
 
+bool affine_patch(const NurbsSurface& surface, Point& origin, Vector& a, Vector& b) {
+    if (surface.degree(0) != 1 || surface.degree(1) != 1 || surface.cv_count(0) != 2 || surface.cv_count(1) != 2 || surface.is_rational())
+        return false;
+    origin = surface.get_cv(0, 0);
+    const Point pu = surface.get_cv(1, 0), pv = surface.get_cv(0, 1), q = surface.get_cv(1, 1);
+    a = Vector(pu[0] - origin[0], pu[1] - origin[1], pu[2] - origin[2]);
+    b = Vector(pv[0] - origin[0], pv[1] - origin[1], pv[2] - origin[2]);
+    const double gap = Point(origin[0] + a[0] + b[0], origin[1] + a[1] + b[1], origin[2] + a[2] + b[2]).distance(q);
+    return gap <= 1e-12 * std::sqrt(a.dot(a) + b.dot(b)) && a.cross(b).magnitude() > 0;
+}
+
 NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSurface& surface) {
-    if (surface.degree(0) == 1 && surface.degree(1) == 1 && surface.cv_count(0) == 2 && surface.cv_count(1) == 2 && !surface.is_rational()) {
-        const Point o = surface.get_cv(0, 0), pu = surface.get_cv(1, 0), pv = surface.get_cv(0, 1), q = surface.get_cv(1, 1);
-        const Vector a(pu[0] - o[0], pu[1] - o[1], pu[2] - o[2]), b(pv[0] - o[0], pv[1] - o[1], pv[2] - o[2]);
-        const double gap = Point(o[0] + a[0] + b[0], o[1] + a[1] + b[1], o[2] + a[2] + b[2]).distance(q);
+    Point o;
+    Vector a, b;
+    if (affine_patch(surface, o, a, b)) {
         const double aa = a.dot(a), ab = a.dot(b), bb = b.dot(b), det = aa * bb - ab * ab;
-        if (gap <= 1e-12 * std::sqrt(aa + bb) && det > 0) {
-            const auto [u0, u1] = surface.domain(0);
-            const auto [v0, v1] = surface.domain(1);
-            NurbsCurve uv = trimmed(curve, curve.domain(), t0, t1);
-            for (int i = 0; i < uv.cv_count(); ++i) {
-                const Point p = uv.get_cv(i);
-                const Vector r(p[0] - o[0], p[1] - o[1], p[2] - o[2]);
-                const double x = (bb * r.dot(a) - ab * r.dot(b)) / det, y = (aa * r.dot(b) - ab * r.dot(a)) / det;
-                uv.set_cv(i, Point(u0 + x * (u1 - u0), v0 + y * (v1 - v0), 0));
-            }
-            return uv;
+        const auto [u0, u1] = surface.domain(0);
+        const auto [v0, v1] = surface.domain(1);
+        NurbsCurve uv = trimmed(curve, curve.domain(), t0, t1);
+        for (int i = 0; i < uv.cv_count(); ++i) {
+            const Point p = uv.get_cv(i);
+            const Vector r(p[0] - o[0], p[1] - o[1], p[2] - o[2]);
+            const double x = (bb * r.dot(a) - ab * r.dot(b)) / det, y = (aa * r.dot(b) - ab * r.dot(a)) / det, w = uv.weight(i);
+            uv.set_cv_4d(i, (u0 + x * (u1 - u0)) * w, (v0 + y * (v1 - v0)) * w, 0, w);
         }
+        return uv;
     }
     std::vector<Point> points;
+    const std::array<double, 2> period = surface_period(surface);
     const int n = 32;
     for (int i = 0; i <= n; ++i) {
         const auto [u, v] = surface.closest_parameters(curve.point_at(t0 + (t1 - t0) * i / n));
         Point uv(u, v, 0);
         for (int d = 0; d < 2 && !points.empty(); ++d)
-            if (surface.is_closed(d)) {
-                const double period = surface.domain(d).second - surface.domain(d).first;
-                uv[d] -= std::round((uv[d] - points.back()[d]) / period) * period;
-            }
+            if (period[d] > 0.0)
+                uv[d] -= std::round((uv[d] - points.back()[d]) / period[d]) * period[d];
         points.push_back(uv);
     }
     NurbsCurve uv = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform);

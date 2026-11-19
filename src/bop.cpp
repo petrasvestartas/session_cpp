@@ -66,11 +66,12 @@ struct Builder {
         return p.distance(ds.block_point(y, 0.25)) <= p.distance(ds.block_point(y, 0.75));
     }
 
-    EdgeUse use_of(int b, bool backwards, NurbsCurve pcurve, bool internal) const {
+    EdgeUse use_of(int b, bool backwards, NurbsCurve pcurve, bool internal, const Face& f) const {
         const PaveBlock& block = ds.blocks[b];
         const int r = image(b);
+        const double gap = 2.0 * std::max(ds.vertices[block.first.vertex].tolerance, ds.vertices[block.last.vertex].tolerance) * f.region.eps / f.tolerance;
         return {r, backwards ? block.last.vertex : block.first.vertex, backwards ? block.first.vertex : block.last.vertex,
-            std::move(pcurve), backwards == along(b, r), internal};
+            std::move(pcurve), backwards == along(b, r), internal, gap};
     }
 
     /// FillImagesFaces: each face of both operands cut by its In and Sc edges
@@ -98,9 +99,11 @@ struct Builder {
                         std::reverse(blocks.begin(), blocks.end());
                     for (int b : blocks) {
                         const PaveBlock& block = ds.blocks[b];
+                        if (!e.degenerated && ds.micro(block))
+                            continue;
                         loop.push_back(static_cast<int>(list.size()));
                         list.push_back(use_of(b, back, trimmed(brep.m_curves_2d[index], {e.t0, e.t1},
-                            back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false));
+                            back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false, f));
                     }
                 }
                 wires.push_back(std::move(loop));
@@ -108,15 +111,17 @@ struct Builder {
             const size_t boundary = list.size();
             for (const std::vector<int>* blocks : {&f.in_blocks, &f.sc_blocks})
                 for (int b : *blocks) {
+                    if (ds.micro(ds.blocks[b]))
+                        continue;
                     const NurbsCurve& pcurve = ds.pcurves.at({b, static_cast<int>(id)});
-                    list.push_back(use_of(b, false, pcurve, true));
-                    list.push_back(use_of(b, true, reversed(pcurve), true));
+                    list.push_back(use_of(b, false, pcurve, true, f));
+                    list.push_back(use_of(b, true, reversed(pcurve), true, f));
                 }
             std::vector<std::vector<std::vector<int>>> faces;
             if (list.size() == boundary)
                 faces.push_back(wires);
             else
-                faces = build_faces(list, f.region);
+                faces = build_faces(list, f.region, report.log);
             for (auto& loops : faces) {
                 Piece piece;
                 piece.face = static_cast<int>(id);
@@ -172,10 +177,16 @@ struct Builder {
 
     /// BOPTools_AlgoTools::ComputeState for blocks of pieces joined across edges the other operand does not touch
     void classify() {
+        // An edge lying on a face of the other operand bounds a block of pieces, whether or not that face was split along it.
         std::map<int, int> operands;
-        for (const Piece& p : pieces)
-            for (int i : p.images)
-                operands[i] |= 1 << ds.faces[p.face].operand;
+        for (const Face& f : ds.faces) {
+            for (int e : f.edges)
+                for (int b : ds.edges[e].blocks)
+                    operands[image(b)] |= 1 << f.operand;
+            for (const std::vector<int>* blocks : {&f.in_blocks, &f.sc_blocks})
+                for (int b : *blocks)
+                    operands[image(b)] |= 1 << f.operand;
+        }
         std::vector<int> parent(pieces.size());
         std::iota(parent.begin(), parent.end(), 0);
         const auto root = [&](int k) {
@@ -224,10 +235,14 @@ struct Builder {
                 }
             }
             if (state == 2 && first >= 0) {
-                if (!meshes[other])
-                    meshes[other] = std::make_unique<Mesh>(ds.brep(other).mesh());
-                state = std::abs(winding(*meshes[other], pieces[first].point)) > 0.5 ? 1 : -1;
-                report.log.push_back("classified by winding number");
+                try {
+                    if (!meshes[other])
+                        meshes[other] = std::make_unique<Mesh>(ds.brep(other).mesh());
+                    state = std::abs(winding(*meshes[other], pieces[first].point)) > 0.5 ? 1 : -1;
+                    report.log.push_back("classified by winding number");
+                } catch (const std::exception& error) {
+                    report.log.push_back(std::string("winding number: ") + error.what());
+                }
             }
             if (state == 2)
                 report.log.push_back("piece without an interior point");
@@ -285,10 +300,9 @@ struct Builder {
     /// BOPAlgo_BOP::BuildRC and BuildShape: the pieces each operation keeps, oriented, then shells and solids
     void build(Operation operation) {
         std::vector<BRepRef> faces;
-        std::vector<int> labels;
         for (const Piece& piece : pieces) {
             const Face& f = ds.faces[piece.face];
-            bool minus, plus, in_a;
+            bool minus, plus;
             if (piece.state == 0) {
                 if (f.operand == 1)
                     continue;
@@ -298,18 +312,15 @@ struct Builder {
                 const double sense = normal(piece, copy.point).dot(normal(pieces[piece.twin], copy.point));
                 minus = occupied(true, sense > 0.0, operation);
                 plus = occupied(false, sense < 0.0, operation);
-                in_a = minus;
             } else {
                 const bool inside = piece.state == 1;
                 minus = f.operand == 0 ? occupied(true, inside, operation) : occupied(inside, true, operation);
                 plus = f.operand == 0 ? occupied(false, inside, operation) : occupied(inside, false, operation);
-                in_a = f.operand == 0 ? minus : inside;
             }
             if (minus == plus)
                 continue;
             const BRepOrientation o = ds.brep(f.operand).face_orientation(f.local);
             faces.push_back({emit_face(piece), plus ? brep_reverse(o) : o});
-            labels.push_back(operation == Operation::Xor && in_a);
         }
         for (auto& [key, pair] : slots) {
             const auto& [edge, surface] = key;
@@ -321,7 +332,7 @@ struct Builder {
             const bool seam = !back.empty() && forward[0].point_at_start().distance(back[0].point_at_start()) > 1e-6 * span;
             result.add_pcurve(edge, surface, result.add_curve_2d(forward[0]), seam ? result.add_curve_2d(back[0]) : -1);
         }
-        build_solids(result, faces, labels);
+        build_solids(result, faces);
     }
 };
 
@@ -348,12 +359,27 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
     builder.build(operation);
     BRep result = builder.result;
     try {
-        result = brep_boolean::joined_edges(result, std::max(1e-7, fuzzy));
+        std::vector<bool> keep(result.vertex_count(), false);
+        for (const auto& [v, image] : builder.vertex_image)
+            keep[image] = !ds.vertices[v].joint;
+        result = brep_boolean::joined_edges(result, std::max(1e-7, fuzzy), keep);
     } catch (const std::exception& error) {
         out.log.push_back(std::string("joined edges: ") + error.what());
     }
     result.update_tolerances();
     out.solid = result.is_solid();
+    if (!out.solid && result.face_count() > 0) {
+        std::map<int, int> uses;
+        for (const BRepFace& face : result.m_faces)
+            for (const BRepRef& wire : face.wires)
+                for (const BRepRef& use : result.m_wires[wire.index].edges)
+                    if (!result.m_edges[use.index].degenerated)
+                        ++uses[use.index];
+        int open = 0;
+        for (const auto& [edge, count] : uses)
+            open += count % 2;
+        out.log.push_back("not solid: " + std::to_string(open) + " edges used an odd number of times");
+    }
     return result;
 }
 
