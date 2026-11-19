@@ -1,138 +1,981 @@
 #include "bop_ff.h"
-#include "bop_ds.h"
-#include "intersection.h"
+#include "closest.h"
 #include "nurbs_coincidence.h"
 #include "nurbs_implicit.h"
-#include "surface_section.h"
 #include <algorithm>
-#include <tuple>
+#include <array>
+#include <cmath>
+#include <limits>
 
 namespace session_cpp::bop_ff {
 namespace {
 
-/// Whether every control point of b lies within the tolerance of a's plane, a being flat within it
-bool on_plane(const NurbsSurface& a, const NurbsSurface& b, double tolerance) {
-    const session_cpp::Point o = a.get_cv(0, 0), u = a.get_cv(a.cv_count(0) - 1, 0), v = a.get_cv(0, a.cv_count(1) - 1);
-    Vector n = Vector(u[0] - o[0], u[1] - o[1], u[2] - o[2]).cross(Vector(v[0] - o[0], v[1] - o[1], v[2] - o[2]));
-    if (!n.normalize_self())
-        return false;
-    for (const NurbsSurface* s : {&a, &b})
-        for (int i = 0; i < s->cv_count(0); ++i)
-            for (int j = 0; j < s->cv_count(1); ++j) {
-                const session_cpp::Point p = s->get_cv(i, j);
-                if (std::abs(n.dot(Vector(p[0] - o[0], p[1] - o[1], p[2] - o[2]))) > tolerance)
-                    return false;
+using X = std::array<double, 4>;
+using P3 = session_cpp::Point;
+constexpr double infinity = std::numeric_limits<double>::infinity();
+
+struct Side {
+    const NurbsSurface* full = nullptr;
+    NurbsSurface surface;
+    std::array<double, 4> box{};
+    std::array<bool, 2> closed{};
+    nurbs_implicit::Implicit implicit;
+    double size = 0.0;
+};
+
+struct Jet {
+    xyz p, du, dv;
+};
+
+struct Node {
+    X x;
+    xyz p;
+};
+
+struct Context {
+    const Side& a;
+    const Side& b;
+    double tol, size, eps, h0, hmin, hmax;
+    double flat = 1e-6;
+};
+
+struct Constraint {
+    int k = -2; // -2 none, -1 plane (p - origin).dir = h, else parameter k held at value
+    double value = 0.0;
+    xyz origin{}, dir{};
+    double h = 0.0;
+};
+
+Jet jet(const NurbsSurface& s, double u, double v) {
+    std::array<xyz, 6> d{};
+    s.jet(u, v, 1, d);
+    return {d[0], d[2], d[1]}; // jet writes S, Sv, Su
+}
+
+xyz unit(const xyz& v) {
+    const double l = v.length();
+    return l > 0 ? v / l : v;
+}
+
+// The diagonal of the control net's box.
+double diagonal(const NurbsSurface& s) {
+    std::array<double, 6> hull = {infinity, -infinity, infinity, -infinity, infinity, -infinity};
+    for (int i = 0; i < s.cv_count(0); ++i)
+        for (int j = 0; j < s.cv_count(1); ++j) {
+            const P3 q = s.get_cv(i, j);
+            for (int k = 0; k < 3; ++k) {
+                hull[2 * k] = std::min(hull[2 * k], q[k]);
+                hull[2 * k + 1] = std::max(hull[2 * k + 1], q[k]);
             }
-    return true;
+        }
+    return std::hypot(hull[1] - hull[0], hull[3] - hull[2], hull[5] - hull[4]);
 }
 
-/// Whether two surfaces are recognized as one sphere, cylinder, cone or torus within the tolerance
-bool same_form(const NurbsSurface& sa, const NurbsSurface& sb, double tolerance) {
-    if (sa.degree(0) + sa.degree(1) < 3 || sb.degree(0) + sb.degree(1) < 3)
-        return false;
-    nurbs_implicit::Implicit a, b;
-    try {
-        a = nurbs_implicit::recognize(sa, tolerance);
-        b = nurbs_implicit::recognize(sb, tolerance);
-    } catch (const std::exception&) {
-        return false;
+// The range of one coordinate of a pcurve: its control points for a polyline, else samples refined at both extremes.
+std::pair<double, double> extent(const NurbsCurve& c, int d) {
+    std::pair<double, double> range = {infinity, -infinity};
+    if (c.degree() == 1) {
+        for (int i = 0; i < c.cv_count(); ++i)
+            range = {std::min(range.first, c.get_cv(i)[d]), std::max(range.second, c.get_cv(i)[d])};
+        return range;
     }
-    if (a.kind < 2 || a.kind != b.kind)
-        return false;
-    const Vector u(a.axis[0], a.axis[1], a.axis[2]), v(b.axis[0], b.axis[1], b.axis[2]);
-    const Vector d(b.point[0] - a.point[0], b.point[1] - a.point[1], b.point[2] - a.point[2]);
-    const double size = std::max({1.0, a.radius, b.radius});
-    const bool parallel = a.kind == 2 || u.cross(v).magnitude() * size <= tolerance;
-    const bool on_axis = a.kind == 3 ? u.cross(d).magnitude() <= tolerance : d.magnitude() <= tolerance;
-    const bool cone_sense = a.kind != 4 || u.dot(v) > 0;
-    return parallel && on_axis && cone_sense && std::abs(a.radius - b.radius) * (a.kind == 4 ? size : 1.0) <= tolerance
-        && std::abs(a.minor - b.minor) <= tolerance;
+    const int n = 8 * c.span_count();
+    const double t0 = c.domain_start(), dt = (c.domain_end() - t0) / n, golden = 0.5 * (std::sqrt(5.0) - 1.0);
+    for (double sign : {-1.0, 1.0}) {
+        int at = 0;
+        for (int i = 1; i <= n; ++i)
+            if (sign * c.point_at(t0 + i * dt)[d] > sign * c.point_at(t0 + at * dt)[d])
+                at = i;
+        double lo = t0 + std::max(at - 1, 0) * dt, hi = t0 + std::min(at + 1, n) * dt;
+        for (int it = 0; it < 40; ++it) {
+            const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
+            const bool left = sign * c.point_at(m1)[d] > sign * c.point_at(m2)[d];
+            (left ? hi : lo) = left ? m2 : m1;
+        }
+        const double value = c.point_at(0.5 * (lo + hi))[d];
+        range = {std::min(range.first, value), std::max(range.second, value)};
+    }
+    return range;
 }
 
-/// The section of two flat bilinear patches: their planes' line clipped to both parallelograms
-bool plane_plane(const NurbsSurface& sa, const NurbsSurface& sb, double tolerance, Result& result) {
-    session_cpp::Point oa, ob;
-    Vector a1, a2, b1, b2;
-    if (!bop::affine_patch(sa, oa, a1, a2) || !bop::affine_patch(sb, ob, b1, b2))
-        return false;
-    Vector na = a1.cross(a2), nb = b1.cross(b2);
-    na.normalize_self();
-    nb.normalize_self();
-    Vector d = na.cross(nb);
-    if (d.magnitude() < 1e-12)
-        return true;
-    d.normalize_self();
-    // The point of the line nearest oa: on both planes, solved in the span of the normals.
-    const double ca = na.dot(Vector(oa[0], oa[1], oa[2])), cb = nb.dot(Vector(ob[0], ob[1], ob[2])), k = na.dot(nb);
-    const double x = (ca - k * cb) / (1 - k * k), y = (cb - k * ca) / (1 - k * k);
-    const Vector base = na * x + nb * y;
-    double lo = -1e300, hi = 1e300;
-    for (const auto& [o, e1, e2] : {std::tuple{oa, a1, a2}, std::tuple{ob, b1, b2}}) {
-        const double ee = e1.dot(e1), ef = e1.dot(e2), ff = e2.dot(e2), det = ee * ff - ef * ef;
-        const Vector r0(base[0] - o[0], base[1] - o[1], base[2] - o[2]);
-        const double s0 = (ff * r0.dot(e1) - ef * r0.dot(e2)) / det, s1 = (ff * d.dot(e1) - ef * d.dot(e2)) / det;
-        const double q0 = (ee * r0.dot(e2) - ef * r0.dot(e1)) / det, q1 = (ee * d.dot(e2) - ef * d.dot(e1)) / det;
-        for (const auto& [c0, c1] : {std::pair{s0, s1}, std::pair{q0, q1}}) {
-            if (std::abs(c1) < 1e-15) {
-                if (c0 < 0 || c0 > 1)
-                    return true;
+// BRepTools::UVBounds: the box of the face's pcurves, the whole domain where they leave it (a face across a seam). Not grown as
+// CorrectSurfaceBoundaries grows it: a section then ends on the edge it meets, not a tolerance past it.
+std::array<double, 4> uv_box(const BRep& brep, int face) {
+    const BRepFace& f = brep.m_faces[face];
+    const NurbsSurface& s = brep.m_surfaces[f.surface_index];
+    std::array<double, 4> box = {s.domain(0).first, s.domain(0).second, s.domain(1).first, s.domain(1).second};
+    std::array<double, 4> found = {infinity, -infinity, infinity, -infinity};
+    for (const BRepRef& w : f.wires)
+        for (const BRepRef& e : brep.m_wires[w.index].edges)
+            for (const BRepCurveOnSurface& on : brep.m_edges[e.index].pcurves)
+                if (on.surface_index == f.surface_index)
+                    for (int index : {on.curve_2d_index, on.curve_2d_index_2})
+                        if (index >= 0)
+                            for (int d = 0; d < 2; ++d) {
+                                const std::pair<double, double> range = extent(brep.m_curves_2d[index], d);
+                                found[2 * d] = std::min(found[2 * d], range.first);
+                                found[2 * d + 1] = std::max(found[2 * d + 1], range.second);
+                            }
+    for (int d = 0; d < 2; ++d) {
+        const double span = box[2 * d + 1] - box[2 * d], lo = found[2 * d], hi = found[2 * d + 1];
+        if (!(hi - lo > 1e-9 * span) || lo < box[2 * d] - 0.01 * span || hi > box[2 * d + 1] + 0.01 * span)
+            continue;
+        box[2 * d] = std::max(box[2 * d], lo);
+        box[2 * d + 1] = std::min(box[2 * d + 1], hi);
+    }
+    return box;
+}
+
+Side make_side(const BRep& brep, int face, double tol) {
+    Side side;
+    side.full = &brep.m_surfaces[brep.m_faces[face].surface_index];
+    side.surface = *side.full;
+    const std::array<double, 4> box = uv_box(brep, face);
+    for (int d = 0; d < 2; ++d) {
+        const std::pair<double, double> domain = side.full->domain(d);
+        const bool whole = box[2 * d] <= domain.first && box[2 * d + 1] >= domain.second;
+        NurbsSurface trimmed = side.surface;
+        if (!whole && trimmed.trim(d, {box[2 * d], box[2 * d + 1]}))
+            side.surface = trimmed;
+        side.box[2 * d] = side.surface.domain(d).first;
+        side.box[2 * d + 1] = side.surface.domain(d).second;
+        side.closed[d] = whole && side.full->is_closed(d);
+    }
+    side.implicit = nurbs_implicit::recognize(side.surface, tol);
+    side.size = diagonal(side.surface);
+    return side;
+}
+
+// The distance from p to the plane, sphere, cylinder, cone or torus.
+double implicit_gap(const nurbs_implicit::Implicit& f, const xyz& p) {
+    const xyz axis{f.axis[0], f.axis[1], f.axis[2]};
+    const xyz d = p - xyz{f.point[0], f.point[1], f.point[2]};
+    const double z = d.dot(axis), rho = (d - axis * z).length();
+    switch (f.kind) {
+    case 1: return std::abs(z);
+    case 2: return std::abs(d.length() - f.radius);
+    case 3: return std::abs(rho - f.radius);
+    case 4: return d.length() * std::abs(std::sin(std::min(std::atan2(rho, std::abs(z)) - f.radius, M_PI / 2)));
+    default: return std::abs(std::hypot(rho - f.radius, z) - f.minor);
+    }
+}
+
+// Samples of a box of a against b: how many lie within tol of b inside its box, -1 once one lies farther.
+int covered(const Side& a, const std::array<double, 4>& box, const Side& b, double tol) {
+    const int n = 9;
+    int inside = 0;
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j) {
+            const int si = (i + n / 2) % n, sj = (j + n / 2) % n;
+            const xyz p = a.surface.point(box[0] + (si + 0.5) / n * (box[1] - box[0]), box[2] + (sj + 0.5) / n * (box[3] - box[2]));
+            if (b.implicit.kind) {
+                if (implicit_gap(b.implicit, p) > tol)
+                    return -1;
+                ++inside;
                 continue;
             }
-            const double t0 = -c0 / c1, t1 = (1 - c0) / c1;
-            lo = std::max(lo, std::min(t0, t1));
-            hi = std::min(hi, std::max(t0, t1));
+            const auto [u, v, gap] = Closest::surface_point(b.surface, P3(p));
+            const double eu = 1e-9 * (b.box[1] - b.box[0]), ev = 1e-9 * (b.box[3] - b.box[2]);
+            if (u <= b.box[0] + eu || u >= b.box[1] - eu || v <= b.box[2] + ev || v >= b.box[3] - ev)
+                continue;
+            if (gap > tol)
+                return -1;
+            ++inside;
+        }
+    return inside;
+}
+
+// IntPatch TangentFaces: one surface within tol of the other wherever the faces' boxes lie over each other.
+bool same_domain(const Side& a, const Side& b, double tol) {
+    nurbs_coincidence::ParameterMap mapping;
+    if (nurbs_coincidence::same_parameters(*a.full, *b.full, tol) || nurbs_coincidence::parameter_mapping(*a.full, *b.full, tol, mapping)
+        || nurbs_coincidence::common_basis_agreement(*a.full, *b.full, tol) || nurbs_coincidence::coplanar(*a.full, *b.full, tol))
+        return true;
+    if (a.implicit.kind && b.implicit.kind)
+        return a.implicit.kind == b.implicit.kind && covered(a, a.box, b, tol) > 0;
+    const int ab = covered(a, a.box, b, tol), ba = ab < 0 ? -1 : covered(b, b.box, a, tol);
+    return ab >= 0 && ba >= 0 && std::max(ab, ba) >= 9;
+}
+
+// Into the boxes; around the seam of a closed face when wrap is set.
+void clamp(const Context& c, X& x, bool wrap = false) {
+    for (int k = 0; k < 4; ++k) {
+        const Side& s = k < 2 ? c.a : c.b;
+        const double lo = s.box[2 * (k % 2)], hi = s.box[2 * (k % 2) + 1];
+        x[k] = wrap && s.closed[k % 2] ? lo + std::fmod(std::fmod(x[k] - lo, hi - lo) + (hi - lo), hi - lo) : std::clamp(x[k], lo, hi);
+    }
+}
+
+// Midway between the two surfaces, and how far that is from each.
+xyz point(const Context& c, const X& x) {
+    return (c.a.surface.point(x[0], x[1]) + c.b.surface.point(x[2], x[3])) * 0.5;
+}
+
+double half_gap(const Context& c, const X& x) {
+    return 0.5 * (c.a.surface.point(x[0], x[1]) - c.b.surface.point(x[2], x[3])).length();
+}
+
+// The length on its surface of a step dk of parameter k.
+double travel(const Context& c, const X& x, int k, double dk) {
+    const Jet j = k < 2 ? jet(c.a.surface, x[0], x[1]) : jet(c.b.surface, x[2], x[3]);
+    return (k % 2 ? j.dv : j.du).length() * std::abs(dk);
+}
+
+// The unit section direction na x nb and the sine of the angle between the surfaces.
+xyz tangent(const Context& c, const X& x, double& sine) {
+    const Jet ja = jet(c.a.surface, x[0], x[1]), jb = jet(c.b.surface, x[2], x[3]);
+    const xyz t = unit(ja.du.cross(ja.dv)).cross(unit(jb.du.cross(jb.dv)));
+    sine = t.length();
+    return unit(t);
+}
+
+double residual(const Context& c, const X& x, const Constraint& con, std::array<double, 4>& r, std::array<X, 4>& J) {
+    const Jet ja = jet(c.a.surface, x[0], x[1]), jb = jet(c.b.surface, x[2], x[3]);
+    const xyz f = ja.p - jb.p;
+    const std::array<xyz, 4> columns = {ja.du, ja.dv, -jb.du, -jb.dv};
+    for (int i = 0; i < 3; ++i) {
+        r[i] = f[i];
+        for (int j = 0; j < 4; ++j)
+            J[i][j] = columns[j][i];
+    }
+    r[3] = 0.0;
+    J[3] = {0, 0, 0, 0};
+    if (con.k == -1) {
+        r[3] = (ja.p - con.origin).dot(con.dir) - con.h;
+        J[3] = {ja.du.dot(con.dir), ja.dv.dot(con.dir), 0, 0};
+    } else if (con.k >= 0) {
+        const double speed = std::max(columns[con.k].length(), 1e-12 * c.size);
+        r[3] = (x[con.k] - con.value) * speed;
+        J[3][con.k] = speed;
+    }
+    return f.length();
+}
+
+double bound(const Context& c, int k, int end) {
+    return (k < 2 ? c.a : c.b).box[2 * (k % 2) + end];
+}
+
+bool solve(std::array<std::array<double, 5>, 4>& m, X& out) {
+    for (int i = 0; i < 4; ++i) {
+        int pivot = i;
+        for (int k = i + 1; k < 4; ++k)
+            if (std::abs(m[k][i]) > std::abs(m[pivot][i]))
+                pivot = k;
+        if (!(std::abs(m[pivot][i]) > 1e-300))
+            return false;
+        std::swap(m[i], m[pivot]);
+        for (int k = i + 1; k < 4; ++k) {
+            const double f = m[k][i] / m[i][i];
+            for (int j = i; j < 5; ++j)
+                m[k][j] -= f * m[i][j];
         }
     }
-    if (hi - lo <= tolerance)
-        return true;
-    const session_cpp::Point p0(base[0] + d[0] * lo, base[1] + d[1] * lo, base[2] + d[2] * lo), p1(base[0] + d[0] * hi, base[1] + d[1] * hi, base[2] + d[2] * hi);
-    const NurbsCurve line = NurbsCurve::create(false, 1, {p0, p1});
-    result.curves.push_back({line, bop::project(line, line.domain_start(), line.domain_end(), sa),
-        bop::project(line, line.domain_start(), line.domain_end(), sb), tolerance, false});
+    for (int i = 3; i >= 0; --i) {
+        double s = m[i][4];
+        for (int j = i + 1; j < 4; ++j)
+            s -= m[i][j] * out[j];
+        out[i] = s / m[i][i];
+    }
+    return std::isfinite(out[0] + out[1] + out[2] + out[3]);
+}
+
+// Levenberg-Marquardt on Sa(u, v) = Sb(s, t) and the constraint; gap is the distance left between the surfaces.
+bool correct(const Context& c, X& x, const Constraint& con, double& gap, bool wrap = false) {
+    std::array<double, 4> r{};
+    std::array<X, 4> J{};
+    gap = residual(c, x, con, r, J);
+    double norm = r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3], lambda = 1e-9;
+    for (int it = 0; it < 60 && norm > c.eps * c.eps; ++it) {
+        // A parameter on its box bound that the step would push out stays there (active set).
+        std::array<bool, 4> held{};
+        X dx{};
+        bool solved = false;
+        for (int pass = 0; pass < 4; ++pass) {
+            std::array<std::array<double, 5>, 4> m{};
+            double scale = 0.0;
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 0; j < 4; ++j)
+                    for (int k = 0; k < 4; ++k)
+                        m[i][j] += held[i] || held[j] ? 0.0 : J[k][i] * J[k][j];
+                for (int k = 0; k < 4; ++k)
+                    m[i][4] -= held[i] ? 0.0 : J[k][i] * r[k];
+                scale = std::max(scale, m[i][i]);
+            }
+            for (int i = 0; i < 4; ++i)
+                m[i][i] = held[i] ? 1.0 : m[i][i] + lambda * (m[i][i] + 1e-12 * scale);
+            if (!(solved = solve(m, dx)))
+                break;
+            bool more = false;
+            for (int k = 0; k < 4; ++k)
+                if (!held[k] && !(wrap && (k < 2 ? c.a : c.b).closed[k % 2])
+                    && ((x[k] <= bound(c, k, 0) && dx[k] < 0) || (x[k] >= bound(c, k, 1) && dx[k] > 0)))
+                    held[k] = more = true;
+            if (!more)
+                break;
+        }
+        if (!solved) {
+            lambda *= 10;
+            continue;
+        }
+        X y = {x[0] + dx[0], x[1] + dx[1], x[2] + dx[2], x[3] + dx[3]};
+        clamp(c, y, wrap);
+        std::array<double, 4> r2{};
+        std::array<X, 4> J2{};
+        const double gap2 = residual(c, y, con, r2, J2);
+        const double norm2 = r2[0] * r2[0] + r2[1] * r2[1] + r2[2] * r2[2] + r2[3] * r2[3];
+        if (norm2 < norm) {
+            bool still = true;
+            for (int k = 0; k < 4; ++k) {
+                const Side& s = k < 2 ? c.a : c.b;
+                still = still && std::abs(y[k] - x[k]) <= 1e-15 * (s.box[2 * (k % 2) + 1] - s.box[2 * (k % 2)]);
+            }
+            x = y, r = r2, J = J2, norm = norm2, gap = gap2;
+            lambda = std::max(lambda * 0.1, 1e-15);
+            if (still)
+                break;
+        } else if ((lambda *= 10) > 1e10) {
+            break;
+        }
+    }
+    return gap <= c.tol && std::abs(r[3]) <= c.tol;
+}
+
+// The parameter steps that move both surfaces by the 3D step, first order.
+X predict(const Context& c, const X& x, const xyz& step) {
+    X y = x;
+    for (int s = 0; s < 2; ++s) {
+        const Jet j = s ? jet(c.b.surface, x[2], x[3]) : jet(c.a.surface, x[0], x[1]);
+        const double e = j.du.dot(j.du), f = j.du.dot(j.dv), g = j.dv.dot(j.dv), det = e * g - f * f;
+        if (!(det > 1e-30 * e * g))
+            continue;
+        const double p = j.du.dot(step), q = j.dv.dot(step);
+        y[2 * s] += (g * p - f * q) / det;
+        y[2 * s + 1] += (e * q - f * p) / det;
+    }
+    return y;
+}
+
+
+// The first box bound the straight move from x to y crosses: its fraction of the move, or 2 with k = -1.
+double crossing(const Context& c, const X& x, const X& y, int& k, double& value) {
+    double first = 2.0;
+    k = -1;
+    for (int i = 0; i < 4; ++i)
+        for (int end = 0; end < 2; ++end) {
+            const double b = bound(c, i, end);
+            if (end ? y[i] > b : y[i] < b) {
+                const double f = (b - x[i]) / (y[i] - x[i]);
+                if (f < first)
+                    first = std::max(f, 0.0), k = i, value = b;
+            }
+        }
+    return first;
+}
+
+// The bound y reached from x, -1 when it reached none.
+int touched(const Context& c, const X& x, const X& y) {
+    for (int k = 0; k < 4; ++k)
+        for (int end = 0; end < 2; ++end) {
+            const double b = bound(c, k, end), e = 1e-12 * std::abs(bound(c, k, 1) - bound(c, k, 0));
+            if (std::abs(y[k] - b) <= e && std::abs(x[k] - b) > e)
+                return k;
+        }
+    return -1;
+}
+
+enum class Stop { Stuck, Closed, Exit };
+
+// IntWalk_PWalking: march from nodes.back() along dir until a box bound, back to loop's start, or no step converges.
+Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop, int& exit, xyz& last) {
+    double h = c.h0;
+    const xyz start_dir = dir;
+    while (nodes.size() < 20000) {
+        const Node cur = nodes.back();
+        double sine = 0.0;
+        xyz t = tangent(c, cur.x, sine);
+        if (sine < c.flat)
+            t = dir;
+        else if (t.dot(dir) < 0)
+            t = -t;
+        bool moved = false;
+        while (!moved && h >= c.hmin) {
+            X guess = predict(c, cur.x, t * h);
+            // A step along a bound stays on it: only one that heads out of the box, or at any angle over a seam, ends the line there.
+            const auto heading = [&](int i) { return (i < 2 ? c.a : c.b).closed[i % 2] ? 1e-6 : 1e-2; };
+            for (int i = 0; i < 4; ++i)
+                if ((guess[i] < bound(c, i, 0) || guess[i] > bound(c, i, 1)) && travel(c, cur.x, i, guess[i] - cur.x[i]) <= heading(i) * h)
+                    guess[i] = std::clamp(guess[i], bound(c, i, 0), bound(c, i, 1));
+            int k = -1;
+            double value = 0.0, gap = 0.0;
+            const double f = crossing(c, cur.x, guess, k, value);
+            if (k >= 0) {
+                X y = {cur.x[0] + f * (guess[0] - cur.x[0]), cur.x[1] + f * (guess[1] - cur.x[1]),
+                       cur.x[2] + f * (guess[2] - cur.x[2]), cur.x[3] + f * (guess[3] - cur.x[3])};
+                clamp(c, y);
+                if (correct(c, y, {k, value}, gap)) {
+                    const xyz p = point(c, y), d = p - cur.p;
+                    if (d.dot(t) > 0.5 * d.length() && d.length() <= 2 * h && d.length() > 0) {
+                        nodes.push_back({y, p});
+                        exit = k, last = unit(d);
+                        return Stop::Exit;
+                    }
+                }
+                h *= 0.5;
+                continue;
+            }
+            X y = guess;
+            if (!correct(c, y, {-1, 0.0, cur.p, t, h}, gap)) {
+                h *= 0.5;
+                continue;
+            }
+            const xyz p = point(c, y), d = p - cur.p;
+            const double len = d.length();
+            if (!(len > 0) || d.dot(t) < 0.98 * len) {
+                h *= 0.5;
+                continue;
+            }
+            double s2 = 0.0;
+            xyz t2 = tangent(c, y, s2);
+            if (s2 >= c.flat) {
+                if (t2.dot(t) < 0)
+                    t2 = -t2;
+                if (t2.dot(t) < 0.98) {
+                    h *= 0.5;
+                    continue;
+                }
+            } else {
+                t2 = d / len;
+            }
+            if (loop && nodes.size() > 2 && start_dir.dot(d) > 0) {
+                const double along = (loop->p - cur.p).dot(d) / (len * len);
+                if (along >= 0 && along <= 1 && (cur.p + d * along - loop->p).length() <= 0.05 * len + 2 * c.tol) {
+                    nodes.push_back(*loop);
+                    return Stop::Closed;
+                }
+            }
+            nodes.push_back({y, p});
+            dir = t2, last = d / len, moved = true;
+            const int kb = touched(c, cur.x, y);
+            if (kb >= 0 && travel(c, cur.x, kb, y[kb] - cur.x[kb]) > heading(kb) * len) {
+                exit = kb;
+                return Stop::Exit;
+            }
+            if (t2.dot(t) > 0.995)
+                h = std::min(1.5 * h, c.hmax);
+        }
+        if (!moved)
+            return Stop::Stuck;
+    }
+    return Stop::Stuck;
+}
+
+double segment_gap(const xyz& p, const xyz& a, const xyz& b) {
+    const xyz ab = b - a;
+    const double l2 = ab.dot(ab);
+    const double f = l2 > 0 ? std::clamp((p - a).dot(ab) / l2, 0.0, 1.0) : 0.0;
+    return (a + ab * f - p).length();
+}
+
+bool on_lines(const Context& c, const std::vector<std::vector<Node>>& lines, const xyz& p) {
+    for (const std::vector<Node>& line : lines)
+        for (size_t i = 1; i < line.size(); ++i)
+            if (segment_gap(p, line[i - 1].p, line[i].p) <= 0.05 * (line[i].p - line[i - 1].p).length() + 2 * c.tol)
+                return true;
+    return false;
+}
+
+// Seeds, IntPolyh in short: on a grid of each face, every grid line against the other surface near the cell holding its point,
+// and every cell centre to its nearest point of the other surface.
+std::vector<std::pair<Node, double>> seeds(const Context& c) {
+    struct Grid {
+        std::array<int, 2> n;
+        std::vector<std::array<double, 6>> boxes;
+        std::vector<X> centres;
+    };
+    std::array<Grid, 2> grids;
+    const auto line = [](const Side& side, int d, int i, int n) { return side.box[2 * d] + i * (side.box[2 * d + 1] - side.box[2 * d]) / n; };
+    for (int s = 0; s < 2; ++s) {
+        const Side& side = s ? c.b : c.a;
+        Grid& g = grids[s];
+        for (int d = 0; d < 2; ++d)
+            g.n[d] = std::clamp(2 * side.surface.span_count(d) + 4, 6, 16);
+        for (int i = 0; i < g.n[0]; ++i)
+            for (int j = 0; j < g.n[1]; ++j) {
+                const double u0 = line(side, 0, i, g.n[0]), u1 = line(side, 0, i + 1, g.n[0]);
+                const double v0 = line(side, 1, j, g.n[1]), v1 = line(side, 1, j + 1, g.n[1]);
+                std::array<double, 6> box = {infinity, -infinity, infinity, -infinity, infinity, -infinity};
+                for (int a = 0; a < 3; ++a)
+                    for (int b = 0; b < 3; ++b) {
+                        const xyz p = side.surface.point(u0 + 0.5 * a * (u1 - u0), v0 + 0.5 * b * (v1 - v0));
+                        for (int k = 0; k < 3; ++k)
+                            box[2 * k] = std::min(box[2 * k], p[k]), box[2 * k + 1] = std::max(box[2 * k + 1], p[k]);
+                    }
+                const double grow = 0.25 * std::hypot(box[1] - box[0], box[3] - box[2], box[5] - box[4]) + c.tol;
+                for (int k = 0; k < 3; ++k)
+                    box[2 * k] -= grow, box[2 * k + 1] += grow;
+                g.boxes.push_back(box);
+                g.centres.push_back({0.5 * (u0 + u1), 0.5 * (v0 + v1), 0, 0});
+            }
+    }
+    // The centre of the cell of the other grid whose box holds p, nearest to p.
+    const auto near = [&](int s, const xyz& p, X& uv) {
+        double best = infinity;
+        for (size_t i = 0; i < grids[s].boxes.size(); ++i) {
+            const std::array<double, 6>& b = grids[s].boxes[i];
+            double d2 = 0.0;
+            bool inside = true;
+            for (int k = 0; k < 3; ++k) {
+                inside = inside && b[2 * k] <= p[k] && p[k] <= b[2 * k + 1];
+                const double m = p[k] - 0.5 * (b[2 * k] + b[2 * k + 1]);
+                d2 += m * m;
+            }
+            if (inside && d2 < best)
+                best = d2, uv = grids[s].centres[i];
+        }
+        return best < infinity;
+    };
+    std::vector<std::pair<Node, double>> found;
+    const auto attempt = [&](int s, const X& own, const Constraint& con) {
+        const Side& side = s ? c.b : c.a;
+        X other{};
+        if (!near(1 - s, side.surface.point(own[0], own[1]), other))
+            return;
+        X x = s ? X{other[0], other[1], own[0], own[1]} : X{own[0], own[1], other[0], other[1]};
+        double gap = 0.0, sine = 0.0;
+        if (!correct(c, x, con, gap, true))
+            return;
+        const xyz p = point(c, x);
+        for (const auto& [n, _] : found)
+            if ((n.p - p).length() <= 1e-9 * c.size)
+                return;
+        tangent(c, x, sine);
+        found.push_back({{x, p}, sine});
+    };
+    for (int s = 0; s < 2; ++s) {
+        const Side& side = s ? c.b : c.a;
+        const Grid& g = grids[s];
+        for (const X& centre : g.centres)
+            attempt(s, centre, {});
+        for (int d = 0; d < 2; ++d)
+            for (int i = 0; i <= g.n[d]; ++i)
+                for (int j = 0; j < g.n[1 - d]; ++j) {
+                    X own{};
+                    own[d] = line(side, d, i, g.n[d]);
+                    own[1 - d] = line(side, 1 - d, j, g.n[1 - d]) + 0.5 * (side.box[3 - 2 * d] - side.box[2 - 2 * d]) / g.n[1 - d];
+                    attempt(s, own, {2 * s + d, own[d]});
+                }
+    }
+    std::stable_sort(found.begin(), found.end(), [](const auto& l, const auto& r) { return l.second > r.second; });
+    return found;
+}
+
+// SMLib's classes of a tangent point by the second fundamental forms: over the common tangent plane the gap between the surfaces
+// is half of D11 x x + 2 D12 x y + D22 y y; its principal values and directions, false where a surface is singular.
+struct Contact {
+    double l1 = 0.0, l2 = 0.0;
+    xyz v1{}, v2{};
+};
+
+bool contact(const Context& c, const X& x, Contact& k) {
+    std::array<xyz, 6> ja{}, jb{};
+    if (!c.a.surface.jet(x[0], x[1], 2, ja) || !c.b.surface.jet(x[2], x[3], 2, jb))
+        return false;
+    const xyz n = unit(ja[3].cross(ja[1])), e1 = unit(ja[3]), e2 = n.cross(e1);
+    std::array<double, 3> D{};
+    for (int s = 0; s < 2; ++s) {
+        const std::array<xyz, 6>& j = s ? jb : ja; // S, Sv, Svv, Su, Suv, Suu
+        const double e = j[3].dot(j[3]), f = j[3].dot(j[1]), g = j[1].dot(j[1]), det = e * g - f * f;
+        if (!(det > 1e-30 * e * g))
+            return false;
+        std::array<std::array<double, 2>, 2> w{};
+        for (int i = 0; i < 2; ++i) {
+            const double p = j[3].dot(i ? e2 : e1), q = j[1].dot(i ? e2 : e1);
+            w[i] = {(g * p - f * q) / det, (e * q - f * p) / det};
+        }
+        const auto form = [&](int i, int m) {
+            return n.dot(j[5]) * w[i][0] * w[m][0] + n.dot(j[4]) * (w[i][0] * w[m][1] + w[i][1] * w[m][0]) + n.dot(j[2]) * w[i][1] * w[m][1];
+        };
+        D[0] += (s ? -1 : 1) * form(0, 0), D[1] += (s ? -1 : 1) * form(0, 1), D[2] += (s ? -1 : 1) * form(1, 1);
+    }
+    const double angle = 0.5 * std::atan2(2 * D[1], D[0] - D[2]), cs = std::cos(angle), sn = std::sin(angle);
+    k.v1 = e1 * cs + e2 * sn, k.v2 = e2 * cs - e1 * sn;
+    k.l1 = D[0] * cs * cs + 2 * D[1] * cs * sn + D[2] * sn * sn, k.l2 = D[0] * sn * sn - 2 * D[1] * cs * sn + D[2] * cs * cs;
     return true;
 }
 
+// Where the form is indefinite the section crosses itself along its two null directions; otherwise only its weak axis can carry
+// a tangent curve, and no step shorter than `reach` tells one from the tolerance band of a point.
+std::vector<xyz> branches(const Context& c, const X& x, double& reach) {
+    Contact k;
+    reach = 0.0;
+    if (!contact(c, x, k))
+        return {};
+    const double weak = std::min(std::abs(k.l1), std::abs(k.l2)), strong = std::max(std::abs(k.l1), std::abs(k.l2));
+    if (k.l1 * k.l2 < 0 && weak > 1e-6 * strong)
+        return {unit(k.v1 * std::sqrt(std::abs(k.l2)) + k.v2 * std::sqrt(std::abs(k.l1))), unit(k.v1 * std::sqrt(std::abs(k.l2)) - k.v2 * std::sqrt(std::abs(k.l1)))};
+    reach = weak > 0 ? std::sqrt(8 * c.tol / weak) : 0.0;
+    return {std::abs(k.l1) < std::abs(k.l2) ? k.v1 : k.v2};
 }
 
+// A step from a tangent seed along dir that stays on both surfaces, tried at shrinking lengths not below reach.
+bool leaves(const Context& c, const Node& seed, const xyz& dir, double reach, Node& out) {
+    for (double h = 0.25 * c.h0; h >= 1e-3 * c.h0; h *= 0.25) {
+        X y = predict(c, seed.x, dir * h);
+        clamp(c, y);
+        double gap = 0.0;
+        if (correct(c, y, {-1, 0.0, seed.p, dir, h}, gap)) {
+            out = {y, point(c, y)};
+            return true;
+        }
+        if (0.25 * h < reach)
+            break;
+    }
+    return false;
+}
+
+// GeomLib_CheckCurveOnSurface: the largest distance between the curve and the surface along its pcurve, sampled and refined.
+double deviation(const NurbsCurve& c3d, const NurbsCurve& on, const NurbsSurface& surface) {
+    const auto gap = [&](double t) {
+        const P3 q = on.point_at(t);
+        return c3d.point_at(t).distance(surface.point_at(q[0], q[1]));
+    };
+    const double t0 = c3d.domain_start(), t1 = c3d.domain_end();
+    const int n = std::clamp(16 * c3d.cv_count(), 64, 2048);
+    double worst = -1.0, at = t0;
+    for (int i = 0; i <= n; ++i) {
+        const double t = t0 + (t1 - t0) * i / n, d = gap(t);
+        if (d > worst)
+            worst = d, at = t;
+    }
+    double lo = std::max(t0, at - (t1 - t0) / n), hi = std::min(t1, at + (t1 - t0) / n);
+    const double golden = 0.5 * (std::sqrt(5.0) - 1.0);
+    for (int it = 0; it < 40; ++it) {
+        const double m1 = hi - golden * (hi - lo), m2 = lo + golden * (hi - lo);
+        if (gap(m1) > gap(m2))
+            hi = m2;
+        else
+            lo = m1;
+    }
+    return std::max(worst, gap(0.5 * (lo + hi)));
+}
+
+// IntTools_FaceFace::ComputeTolReached3d with IntTools_Tools::ComputeTolerance: the curve's tolerance grows to the largest
+// deviation from either surface along its pcurve, with OCCT's margin of 1e-5 for later trimming.
+Curve make_curve(const Context& c, NurbsCurve c3d, NurbsCurve on_a, NurbsCurve on_b) {
+    Curve curve{std::move(c3d), std::move(on_a), std::move(on_b), 0.0, false};
+    for (const auto& [on, surface] : {std::pair{&curve.pcurve_a, c.a.full}, std::pair{&curve.pcurve_b, c.b.full}})
+        curve.tolerance = std::max(curve.tolerance, (1.0 + 1e-5) * deviation(curve.curve, *on, *surface));
+    curve.closed = curve.curve.point_at_start().distance(curve.curve.point_at_end()) <= std::max(curve.tolerance, 1e-7);
+    return curve;
+}
+
+// gp_Pln of an affine planar patch: S(u, v) = o + u U + v V.
+struct Plane3 {
+    xyz o, u, v, n;
+};
+
+bool affine_plane(const Side& side, Plane3& plane) {
+    const NurbsSurface& s = side.surface;
+    if (side.implicit.kind != 1 || s.degree(0) != 1 || s.degree(1) != 1 || s.cv_count(0) != 2 || s.cv_count(1) != 2)
+        return false;
+    if (s.is_rational() && (s.weight(0, 0) != s.weight(1, 0) || s.weight(0, 0) != s.weight(0, 1) || s.weight(0, 0) != s.weight(1, 1)))
+        return false;
+    const auto [u0, u1] = s.domain(0);
+    const auto [v0, v1] = s.domain(1);
+    const xyz p00 = s.point(u0, v0), p10 = s.point(u1, v0), p01 = s.point(u0, v1), p11 = s.point(u1, v1);
+    plane.u = (p10 - p00) / (u1 - u0), plane.v = (p01 - p00) / (v1 - v0);
+    plane.o = p00 - plane.u * u0 - plane.v * v0;
+    plane.n = unit(plane.u.cross(plane.v));
+    return plane.n.length() > 0 && (p11 - p10 - p01 + p00).length() <= 1e-12 * ((p10 - p00).length() + (p01 - p00).length());
+}
+
+// ProjLib_Plane: the (u, v) of a point and of a direction in the plane.
+std::array<double, 2> plane_uv(const Plane3& plane, const xyz& d) {
+    const double e = plane.u.dot(plane.u), f = plane.u.dot(plane.v), g = plane.v.dot(plane.v), det = e * g - f * f;
+    const double p = plane.u.dot(d), q = plane.v.dot(d);
+    return {(g * p - f * q) / det, (e * q - f * p) / det};
+}
+
+// ClassifyLin2d: the parameters [p1, p2] of the line uv(s) = origin + s dir inside the face's uv box, false when it misses it
+// or touches it over no more than tol; tol is a length, read along each parameter through the plane's scale.
+bool classify_lin2d(const Side& side, const Plane3& plane, const std::array<double, 2>& origin, const std::array<double, 2>& dir,
+                    double tol, double& p1, double& p2) {
+    p1 = -infinity, p2 = infinity;
+    for (int k = 0; k < 2; ++k) {
+        const double lo = side.box[2 * k], hi = side.box[2 * k + 1], scale = (k ? plane.v : plane.u).length();
+        if (std::abs(dir[k]) * scale <= 1e-12) {
+            if (origin[k] < lo - tol / scale || origin[k] > hi + tol / scale)
+                return false;
+            continue;
+        }
+        const double a = (lo - origin[k]) / dir[k], b = (hi - origin[k]) / dir[k];
+        p1 = std::max(p1, std::min(a, b)), p2 = std::min(p2, std::max(a, b));
+    }
+    return p2 - p1 > tol;
+}
+
+// PerformPlanes: IntAna_QuadQuadGeo on two planes (same within TolAng and TolTang, else parallel and apart, else a line), the
+// line kept where it crosses both faces' uv boxes, its tolerance the larger face tolerance.
+void perform_planes(const Side& a, const Plane3& pa, const Side& b, const Plane3& pb, double tol_f1, double tol_f2, Result& result) {
+    const double tol_ang = 1e-8, tol_tang = tol_f1 + tol_f2;
+    const xyz cross = pa.n.cross(pb.n);
+    if (cross.length() <= tol_ang) {
+        result.same_domain = std::abs((pb.o - pa.o).dot(pa.n)) <= tol_tang;
+        return;
+    }
+    const double cosine = pa.n.dot(pb.n), h1 = pa.n.dot(pa.o), h2 = pb.n.dot(pb.o), det = 1.0 - cosine * cosine;
+    const xyz dir = unit(cross), origin = pa.n * ((h1 - h2 * cosine) / det) + pb.n * ((h2 - h1 * cosine) / det);
+    const std::array<double, 2> ua = plane_uv(pa, origin - pa.o), da = plane_uv(pa, dir), ub = plane_uv(pb, origin - pb.o), db = plane_uv(pb, dir);
+    double p11 = 0, p12 = 0, p21 = 0, p22 = 0;
+    if (!classify_lin2d(a, pa, ua, da, tol_tang, p11, p12) || !classify_lin2d(b, pb, ub, db, tol_tang, p21, p22) || p21 >= p12 || p22 <= p11)
+        return;
+    const double pmin = std::max(p11, p21), pmax = std::min(p12, p22);
+    if (pmax - pmin <= tol_tang)
+        return;
+    const auto line = [&](const P3& p, const P3& q) {
+        NurbsCurve curve = NurbsCurve::create(false, 1, {p, q});
+        curve.set_domain(pmin, pmax);
+        return curve;
+    };
+    Curve curve{line(P3(origin + dir * pmin), P3(origin + dir * pmax)),
+                line(P3(ua[0] + pmin * da[0], ua[1] + pmin * da[1], 0), P3(ua[0] + pmax * da[0], ua[1] + pmax * da[1], 0)),
+                line(P3(ub[0] + pmin * db[0], ub[1] + pmin * db[1], 0), P3(ub[0] + pmax * db[0], ub[1] + pmax * db[1], 0)),
+                std::max(tol_f1, tol_f2), false};
+    result.curves.push_back(std::move(curve));
+    result.certified = true;
+}
+
+// The node halfway between two nodes of a line, corrected onto both surfaces.
+Node midpoint(const Context& c, const Node& a, const Node& b) {
+    X x;
+    for (int k = 0; k < 4; ++k)
+        x[k] = 0.5 * (a.x[k] + b.x[k]);
+    const xyz chord = b.p - a.p;
+    double gap = 0.0;
+    correct(c, x, {-1, 0.0, a.p, unit(chord), 0.5 * chord.length()}, gap);
+    return {x, point(c, x)};
+}
+
+bool interpolate(const std::vector<Node>& nodes, std::vector<double>& t, NurbsCurve& c3d, NurbsCurve& on_a, NurbsCurve& on_b) {
+    std::vector<P3> p3, pa, pb;
+    t = {0.0};
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (i)
+            t.push_back(t.back() + (nodes[i].p - nodes[i - 1].p).length());
+        p3.push_back(P3(nodes[i].p));
+        pa.push_back(P3(nodes[i].x[0], nodes[i].x[1], 0));
+        pb.push_back(P3(nodes[i].x[2], nodes[i].x[3], 0));
+    }
+    c3d = NurbsCurve::create_interpolated(p3, t), on_a = NurbsCurve::create_interpolated(pa, t), on_b = NurbsCurve::create_interpolated(pb, t);
+    return c3d.is_valid() && on_a.is_valid() && on_b.is_valid();
+}
+
+// GeomInt_WLApprox in short: cubic interpolation of the walked points, one chord-length parameter for the curve and both pcurves,
+// with points added where the curve leaves the surfaces by more than the target.
+bool line_curve(const Context& c, const std::vector<Node>& nodes, Curve& out) {
+    std::vector<Node> kept = {nodes.front()};
+    for (size_t i = 1; i < nodes.size(); ++i)
+        if ((nodes[i].p - kept.back().p).length() > 1e-9 * c.size || i + 1 == nodes.size())
+            kept.push_back(nodes[i]);
+    if (kept.size() < 2 || ((kept.back().p - kept.front().p).length() <= 1e-9 * c.size && kept.size() < 4))
+        return false;
+    if ((kept[kept.size() - 1].p - kept[kept.size() - 2].p).length() <= 1e-9 * c.size)
+        kept.erase(kept.end() - 2);
+    while (kept.size() < 5) {
+        std::vector<Node> more = {kept.front()};
+        for (size_t i = 1; i < kept.size(); ++i)
+            more.push_back(midpoint(c, kept[i - 1], kept[i])), more.push_back(kept[i]);
+        kept = std::move(more);
+    }
+    const double target = std::min(0.1 * c.tol, 1e-7 * std::max(1.0, c.size));
+    NurbsCurve c3d, on_a, on_b;
+    std::vector<double> t;
+    for (int round = 0; round < 8; ++round) {
+        if (!interpolate(kept, t, c3d, on_a, on_b))
+            return false;
+        std::vector<Node> more = {kept.front()};
+        for (size_t i = 1; i < kept.size(); ++i) {
+            const double m = 0.5 * (t[i - 1] + t[i]);
+            const P3 p = c3d.point_at(m), ua = on_a.point_at(m), ub = on_b.point_at(m);
+            const double apart = std::max(half_gap(c, kept[i - 1].x), half_gap(c, kept[i].x));
+            if (kept.size() + more.size() < 8000 && std::max(p.distance(c.a.full->point_at(ua[0], ua[1])), p.distance(c.b.full->point_at(ub[0], ub[1]))) > target + apart)
+                more.push_back(midpoint(c, kept[i - 1], kept[i]));
+            more.push_back(kept[i]);
+        }
+        if (more.size() == kept.size())
+            break;
+        kept = std::move(more);
+        if (!interpolate(kept, t, c3d, on_a, on_b))
+            return false;
+    }
+    out = make_curve(c, std::move(c3d), std::move(on_a), std::move(on_b));
+    return true;
+}
+
+// IntPatch_Restriction: a line beside one bound of a face's box, where the surfaces are tangent and that bound itself lies on
+// the other surface, is an edge of the face lying on the other, the edge/face interference's to find.
+bool restriction(const Context& c, const std::vector<Node>& nodes) {
+    for (int k = 0; k < 4; ++k) {
+        const Side& side = k < 2 ? c.a : c.b;
+        for (int end = 0; end < 2 && !side.closed[k % 2]; ++end) {
+            const double b = bound(c, k, end);
+            bool beside = true;
+            for (size_t i = 0; i < nodes.size() && beside; i += std::max<size_t>(1, nodes.size() / 16)) {
+                X y = nodes[i].x;
+                y[k] = b;
+                double sine = 0.0, gap = 0.0;
+                tangent(c, nodes[i].x, sine);
+                beside = sine < 1e-3 && correct(c, y, {k, b}, gap) && (point(c, y) - nodes[i].p).length() <= c.h0;
+            }
+            if (beside)
+                return true;
+        }
+    }
+    return false;
+}
+
+// Faces on one surface that share only a part of their boxes: a's samples over the box of the seeds lie on b, and the surfaces
+// curve alike there, so that the box is no band of a tangent curve or point.
+bool overlap(const Context& c, const std::vector<std::pair<Node, double>>& found) {
+    if (found.size() < 3)
+        return false;
+    std::array<double, 4> box = {infinity, -infinity, infinity, -infinity};
+    for (const auto& [n, sine] : found)
+        for (int d = 0; d < 2; ++d)
+            box[2 * d] = std::min(box[2 * d], n.x[d]), box[2 * d + 1] = std::max(box[2 * d + 1], n.x[d]);
+    const double um = 0.5 * (box[0] + box[1]), vm = 0.5 * (box[2] + box[3]);
+    const xyz middle = c.a.surface.point(um, vm);
+    const double along = (c.a.surface.point(box[0], vm) - middle).length() + (c.a.surface.point(box[1], vm) - middle).length();
+    const double across = (c.a.surface.point(um, box[2]) - middle).length() + (c.a.surface.point(um, box[3]) - middle).length();
+    double strong = 0.0;
+    for (size_t i : {size_t(0), found.size() / 2, found.size() - 1}) {
+        Contact k;
+        if (contact(c, found[i].first.x, k))
+            strong = std::max({strong, std::abs(k.l1), std::abs(k.l2)});
+    }
+    return std::min(along, across) > 1000 * c.tol && strong * (along * along + across * across) < 2 * c.tol && covered(c.a, box, c.b, c.tol) >= 9;
+}
+
+// IntPatch_PrmPrmIntersection: walk every seed not yet on a line, both ways, across seams of closed faces; seeds where the surfaces only touch are points.
+void march(const Context& c, const std::vector<std::pair<Node, double>>& found, Result& result) {
+    std::vector<std::vector<Node>> lines;
+    std::vector<Node> touching;
+    struct Start {
+        Node node;
+        xyz dir;
+        bool both;
+    };
+    std::vector<Start> queue;
+    const auto wrap = [&](const Node& end, int k, const xyz& dir) {
+        const Side& s = k < 2 ? c.a : c.b;
+        if (k < 0 || !s.closed[k % 2])
+            return;
+        Node next = end;
+        const double lo = bound(c, k, 0), hi = bound(c, k, 1);
+        next.x[k] = std::abs(end.x[k] - lo) < std::abs(end.x[k] - hi) ? hi : lo;
+        queue.push_back({next, dir, false});
+    };
+    for (const auto& [seed, sine] : found) {
+        double s = 0.0, reach = 0.0;
+        if (sine >= c.flat) {
+            if (on_lines(c, lines, seed.p))
+                continue;
+            queue.push_back({seed, tangent(c, seed.x, s), true});
+        } else {
+            for (const xyz& dir : branches(c, seed.x, reach)) {
+                Node ahead, behind;
+                const bool forward = leaves(c, seed, dir, reach, ahead) && !on_lines(c, lines, ahead.p);
+                const bool backward = leaves(c, seed, -dir, reach, behind) && !on_lines(c, lines, behind.p);
+                if (forward || backward)
+                    queue.push_back({seed, forward ? dir : -dir, forward && backward});
+            }
+            if (queue.empty() && !on_lines(c, lines, seed.p))
+                touching.push_back(seed);
+        }
+        while (!queue.empty() && lines.size() < 512) {
+            const Start start = queue.back();
+            queue.pop_back();
+            std::vector<Node> forward = {start.node}, backward = {start.node};
+            int kf = -1, kb = -1;
+            xyz lf = start.dir, lb = -start.dir;
+            const Stop sf = walk(c, forward, start.dir, start.both ? &start.node : nullptr, kf, lf);
+            Stop sb = Stop::Stuck;
+            if (sf != Stop::Closed && start.both)
+                sb = walk(c, backward, -start.dir, nullptr, kb, lb);
+            std::vector<Node> nodes(backward.rbegin(), backward.rend());
+            nodes.insert(nodes.end(), forward.begin() + 1, forward.end());
+            if (nodes.size() < 2 || (on_lines(c, lines, nodes[nodes.size() / 2].p) && on_lines(c, lines, nodes[nodes.size() / 4].p)))
+                continue;
+            lines.push_back(nodes);
+            if (sf == Stop::Exit)
+                wrap(forward.back(), kf, lf);
+            if (sb == Stop::Exit)
+                wrap(backward.back(), kb, lb);
+        }
+    }
+    std::vector<std::vector<Node>> kept;
+    for (const std::vector<Node>& line : lines) {
+        double length = 0.0;
+        for (size_t i = 1; i < line.size(); ++i)
+            length += (line[i].p - line[i - 1].p).length();
+        const bool edge = restriction(c, line);
+        Curve curve;
+        if (length < std::max(10 * c.tol, 1e-5 * c.size)) {
+            if (!edge)
+                touching.push_back(line[line.size() / 2]);
+            continue;
+        }
+        kept.push_back(line);
+        if (!edge && line_curve(c, line, curve))
+            result.curves.push_back(std::move(curve));
+    }
+    lines = std::move(kept);
+    for (const Node& n : touching) {
+        double sine = 0.0;
+        tangent(c, n.x, sine);
+        if (sine > 1e-2 || on_lines(c, lines, n.p))
+            continue;
+        const double gap = (c.a.surface.point(n.x[0], n.x[1]) - c.b.surface.point(n.x[2], n.x[3])).length();
+        bool seen = false;
+        for (Point& q : result.points)
+            if ((xyz(q.point) - n.p).length() <= 1e-4 * c.size + c.tol) {
+                seen = true;
+                if (gap < q.tolerance)
+                    q = {P3(n.p), P3(n.x[0], n.x[1], 0), P3(n.x[2], n.x[3], 0), (1.0 + 1e-5) * gap};
+            }
+        if (!seen)
+            result.points.push_back({P3(n.p), P3(n.x[0], n.x[1], 0), P3(n.x[2], n.x[3], 0), (1.0 + 1e-5) * gap});
+    }
+}
+
+}
+
+// IntTools_FaceFace::Perform: face tolerances grown by half the fuzzy value (at least Precision::Confusion), planes by
+// PerformPlanes, other pairs over the faces' uv boxes: TangentFaces, else the section lines and tangent points.
 Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fuzzy) {
-    const NurbsSurface& sa = a.m_surfaces[a.m_faces[face_a].surface_index];
-    const NurbsSurface& sb = b.m_surfaces[b.m_faces[face_b].surface_index];
-    const double tolerance = std::max({a.m_faces[face_a].tolerance, b.m_faces[face_b].tolerance, 1e-7}) + fuzzy;
     Result result;
-    nurbs_coincidence::ParameterMap mapping;
-    if (nurbs_coincidence::same_parameters(sa, sb, tolerance) || nurbs_coincidence::parameter_mapping(sa, sb, tolerance, mapping)
-        || nurbs_coincidence::common_basis_agreement(sa, sb, tolerance) || nurbs_coincidence::coplanar(sa, sb, tolerance)
-        || (on_plane(sa, sb, tolerance) && on_plane(sb, sa, tolerance)) || same_form(sa, sb, tolerance)) {
-        result.same_domain = true;
-        return result;
-    }
-    if (plane_plane(sa, sb, tolerance, result))
-        return result;
-    std::vector<std::tuple<NurbsCurve, NurbsCurve, NurbsCurve>> sections;
-    bool complete = false;
     try {
-        surface_section::Result events = surface_section::intersect(sa, sb, tolerance);
-        sections = std::move(events.curves);
-        complete = events.complete;
-        for (const auto& p : events.points)
-            result.points.push_back({p.point, p.first, p.second, tolerance});
+        const double fuzz = 0.5 * std::max(fuzzy, 1e-7);
+        const double tol_f1 = std::max(a.m_faces[face_a].tolerance, 1e-7) + fuzz, tol_f2 = std::max(b.m_faces[face_b].tolerance, 1e-7) + fuzz;
+        const double tol = tol_f1 + tol_f2;
+        const Side sa = make_side(a, face_a, tol), sb = make_side(b, face_b, tol);
+        Plane3 pa, pb;
+        if (affine_plane(sa, pa) && affine_plane(sb, pb)) {
+            perform_planes(sa, pa, sb, pb, tol_f1, tol_f2, result);
+            return result;
+        }
+        if (same_domain(sa, sb, tol)) {
+            result.same_domain = true;
+            return result;
+        }
+        const double small = std::max(1e-300, std::min(sa.size, sb.size)), size = std::max(sa.size, sb.size);
+        const Context c{sa, sb, tol, size, 1e-14 * std::max(1.0, size), 0.02 * small, 1e-9 * small, 0.1 * small};
+        const std::vector<std::pair<Node, double>> found = seeds(c);
+        if (overlap(c, found))
+            result.same_domain = true;
+        else
+            march(c, found, result);
     } catch (const std::exception&) {
-    }
-    if (sections.empty() && !complete)
-        try {
-            sections = Intersection::surface_surface(sa, sb, tolerance);
-        } catch (const std::exception&) {
-        }
-    for (auto& [world, ua, ub] : sections) {
-        Curve c{world, ua, ub, tolerance, world.point_at_start().distance(world.point_at_end()) <= tolerance};
-        for (int i = 0; i <= 16; ++i) {
-            const double s = i / 16.0;
-            const session_cpp::Point p = world.point_at(world.domain_start() + s * (world.domain_end() - world.domain_start()));
-            const session_cpp::Point pa = ua.point_at(ua.domain_start() + s * (ua.domain_end() - ua.domain_start()));
-            const session_cpp::Point pb = ub.point_at(ub.domain_start() + s * (ub.domain_end() - ub.domain_start()));
-            c.tolerance = std::max({c.tolerance, p.distance(sa.point_at(pa[0], pa[1])), p.distance(sb.point_at(pb[0], pb[1]))});
-        }
-        result.curves.push_back(std::move(c));
     }
     return result;
 }
