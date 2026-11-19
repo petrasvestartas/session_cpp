@@ -10,3 +10,4 @@ Copyright (c) 1999-2026 OPEN CASCADE SAS. Licensed under the GNU Lesser General 
 - src/bop_builder_face.h, src/bop_builder_face.cpp: BOPAlgo_BuilderFace, BOPAlgo_WireSplitter
 - src/bop_builder_solid.h, src/bop_builder_solid.cpp: BOPAlgo_BuilderSolid, BOPAlgo_ShellSplitter, BOPTools_AlgoTools::GetFaceOff
 - src/bop.h, src/bop.cpp: BOPAlgo_Builder (FillImagesFaces, FillSameDomainFaces), BOPAlgo_BOP (BuildRC, BuildShape), BOPTools_AlgoTools::ComputeState
+src/intersection_analytic.h, src/intersection_analytic.cpp: IntAna_QuadQuadGeo, IntAna_IntConicQuad, IntAna_Quadric, ElSLib, ElCLib
