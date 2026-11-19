@@ -175,6 +175,57 @@ struct Builder {
                         }
     }
 
+    /// BOPTools_AlgoTools::IsInternalFace: at an edge shared with the other operand, a piece is inside it when it leaves the edge below the nearest of that operand's faces there; per piece the count of edges that say inside and outside
+    std::vector<std::array<int, 2>> edge_states(std::map<int, int>& operands) const {
+        struct Side {
+            int piece;
+            Vector inward, outward;
+        };
+        std::map<int, std::vector<Side>> around;
+        for (size_t k = 0; k < pieces.size(); ++k) {
+            const Piece& piece = pieces[k];
+            const Face& f = ds.faces[piece.face];
+            const NurbsSurface& s = ds.surface_of(f);
+            for (const auto& loop : piece.loops)
+                for (int i : loop) {
+                    const EdgeUse& use = uses[piece.face][i];
+                    const PaveBlock& block = ds.blocks[use.image];
+                    if (operands[use.image] != 3 || (block.edge >= 0 && ds.edges[block.edge].degenerated))
+                        continue;
+                    const NurbsCurve& c = ds.block_curve(block);
+                    const double t = 0.5 * (block.first.t + block.last.t);
+                    const Point p = c.point_at(t);
+                    Point uv = use.pcurve.point_at(use.pcurve.domain_middle());
+                    if (s.point_at(uv[0], uv[1]).distance(p) > 1e-3 * c.point_at(block.first.t).distance(c.point_at(block.last.t))) {
+                        const auto [u, v] = s.closest_parameters(p);
+                        uv = Point(u, v, 0);
+                    }
+                    Vector along = c.tangent_at(t), normal = s.normal_at(uv[0], uv[1]);
+                    along.normalize_self();
+                    normal.normalize_self();
+                    if (use.reversed)
+                        along *= -1.0;
+                    Vector inward = normal.cross(along);
+                    inward.normalize_self();
+                    around[use.image].push_back({static_cast<int>(k), inward, ds.brep(f.operand).face_orientation(f.local) == BRepOrientation::Reversed ? normal * -1.0 : normal});
+                }
+        }
+        std::vector<std::array<int, 2>> votes(pieces.size(), {0, 0});
+        for (const auto& [unused, sides] : around)
+            for (const Side& p : sides) {
+                if (pieces[p.piece].twin >= 0)
+                    continue;
+                const Side* nearest = nullptr;
+                for (const Side& q : sides)
+                    if (ds.faces[pieces[q.piece].face].operand != ds.faces[pieces[p.piece].face].operand && (!nearest || p.inward.dot(q.inward) > p.inward.dot(nearest->inward)))
+                        nearest = &q;
+                const double height = nearest ? p.inward.dot(nearest->outward) : 0.0;
+                if (std::abs(height) > 1e-3)
+                    ++votes[p.piece][height < 0.0 ? 0 : 1];
+            }
+        return votes;
+    }
+
     /// BOPTools_AlgoTools::ComputeState for blocks of pieces joined across edges the other operand does not touch
     void classify() {
         // An edge lying on a face of the other operand bounds a block of pieces, whether or not that face was split along it.
@@ -207,6 +258,7 @@ struct Builder {
         for (size_t k = 0; k < pieces.size(); ++k)
             if (pieces[k].twin < 0)
                 groups[root(static_cast<int>(k))].push_back(static_cast<int>(k));
+        const std::vector<std::array<int, 2>> votes = edge_states(operands);
         std::array<std::unique_ptr<brep_classify::Solid>, 2> solids;
         std::array<std::unique_ptr<Mesh>, 2> meshes;
         for (int o = 0; o < 2; ++o)
@@ -246,8 +298,19 @@ struct Builder {
             }
             if (state == 2)
                 report.log.push_back("piece without an interior point");
+            int in = 0, out = 0;
+            for (int k : group) {
+                in += votes[k][0];
+                out += votes[k][1];
+            }
+            if (in > 0 && out > 0)
+                report.log.push_back("classification conflict: a block of pieces is inside at " + std::to_string(in) + " shared edges and outside at " + std::to_string(out));
+            else if (in + out > 0 && (in > 0) != (state == 1)) {
+                report.log.push_back("classified at shared edges against the point classifier");
+                state = in > 0 ? 1 : -1;
+            }
             for (int k : group)
-                pieces[k].state = state == 1 ? 1 : -1;
+                pieces[k].state = in > 0 && out > 0 && votes[k][0] != votes[k][1] ? (votes[k][0] > votes[k][1] ? 1 : -1) : state == 1 ? 1 : -1;
         }
     }
 
@@ -379,7 +442,11 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
         for (const auto& [edge, count] : uses)
             open += count % 2;
         out.log.push_back("not solid: " + std::to_string(open) + " edges used an odd number of times");
+        out.failure = "result is not a closed solid";
     }
+    for (const std::string& line : out.log)
+        if (out.failure.empty() && line.rfind("classification conflict", 0) == 0)
+            out.failure = "pieces of one block are inside and outside the other operand";
     return result;
 }
 

@@ -17,7 +17,13 @@ struct Box {
 
 /// Sampled loops of a face in its surface parameters: the uv classifier of the filler and builders
 struct Region {
+    /// The pcurve piece a loop segment samples and how far it bulges from the segment
+    struct Arc {
+        const NurbsCurve* curve = nullptr;
+        double t0 = 0.0, t1 = 0.0, bulge = 0.0;
+    };
     std::vector<std::vector<Point>> loops;
+    std::vector<std::vector<Arc>> arcs; // per loop, one per segment or none
     double eps = 1e-9; // uv distance that counts as on a loop
     std::array<double, 2> period{0.0, 0.0}; // the surface's period per direction, else 0
     std::array<double, 2> lo{1e300, 1e300}, hi{-1e300, -1e300};
@@ -79,9 +85,11 @@ struct Face {
     int operand = 0, local = 0;
     double tolerance = 0.0;
     std::vector<int> edges; // DS edges of its wires
+    std::vector<int> seams; // those its wires use twice
     std::vector<int> in_blocks, sc_blocks;
     std::vector<int> in_vertices; // vertices of the other operand met inside it (VF, EF)
     Region region;
+    NurbsSurface patch; // the surface over the uv box of the region
     Box box;
 };
 

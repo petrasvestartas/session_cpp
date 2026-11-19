@@ -74,3 +74,12 @@ MINI_TEST("BRep BOP", "Rotated Copies") {
         MINI_CHECK(ab.face_count() == 0 || std::abs(ab.volume_exact() - ba.volume_exact()) < 1e-6);
     }
 }
+
+MINI_TEST("BRep BOP", "Coaxial Caps") {
+    const BRep a = BRep::create_box(40, 40, 20), b = moved(BRep::create_cylinder(5, 20), 0, 0, -10);
+    bop::Report report;
+    const BRep rest = bop::apply(a, b, bop::Operation::Xor, 1e-7, &report);
+    MINI_CHECK(report.solid && report.failure.empty());
+    MINI_CHECK(rest.face_count() == 7 && rest.edge_count() == 15 && rest.vertex_count() == 10);
+    MINI_CHECK(std::abs(rest.volume_exact() - (32000 - 500 * 3.14159265358979323846)) < 1e-6);
+}

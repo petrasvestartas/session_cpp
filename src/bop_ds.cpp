@@ -25,6 +25,7 @@ void Region::add_loop(std::vector<Point> loop) {
             hi[d] = std::max(hi[d], p[d]);
         }
     loops.push_back(std::move(loop));
+    arcs.emplace_back();
 }
 
 static double segment_distance(const Point& p, const Point& a, const Point& b) {
@@ -44,15 +45,32 @@ int Region::state(const Point& uv) const {
             if (q[0] < lo[0] - eps || q[0] > hi[0] + eps || q[1] < lo[1] - eps || q[1] > hi[1] + eps)
                 continue;
             bool inside = false, on = false;
-            for (const auto& loop : loops)
+            const auto visit = [&](const Point& a, const Point& b) {
+                if (segment_distance(q, a, b) <= eps)
+                    on = true;
+                else if ((a[1] > q[1]) != (b[1] > q[1]) && q[0] < a[0] + (q[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0]))
+                    inside = !inside;
+            };
+            for (size_t l = 0; l < loops.size(); ++l) {
+                const auto& loop = loops[l];
                 for (size_t k = 0; k < loop.size() && !on; ++k) {
                     const Point& a = loop[k];
                     const Point& b = loop[(k + 1) % loop.size()];
-                    if (segment_distance(q, a, b) <= eps)
-                        on = true;
-                    else if ((a[1] > q[1]) != (b[1] > q[1]) && q[0] < a[0] + (q[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0]))
-                        inside = !inside;
+                    // Near a segment that stands for a bulging pcurve, the pcurve itself decides.
+                    if (arcs[l].size() != loop.size() || segment_distance(q, a, b) > 2.0 * arcs[l][k].bulge + eps) {
+                        visit(a, b);
+                        continue;
+                    }
+                    const Arc& arc = arcs[l][k];
+                    const int n = 64;
+                    Point from = a;
+                    for (int i = 1; i <= n && !on; ++i) {
+                        const Point to = i == n ? b : arc.curve->point_at(arc.t0 + (arc.t1 - arc.t0) * i / n);
+                        visit(from, to);
+                        from = to;
+                    }
                 }
+            }
             best = std::max(best, on ? 0 : inside ? 1 : -1);
         }
     return best;
@@ -132,19 +150,30 @@ Region face_region(const BRep& brep, int face, double tolerance) {
     region.period = surface_period(s);
     for (const BRepRef& wire : brep.m_faces[face].wires) {
         std::vector<Point> loop;
+        std::vector<Region::Arc> arcs;
         for (const BRepRef& use : brep.wire_edges(wire)) {
             const int index = brep.pcurve_index(use.index, face, use.orientation);
             if (index < 0)
                 continue;
             const NurbsCurve& p = brep.m_curves_2d[index];
             const int n = samples(p);
+            const double t0 = p.domain_start(), span = p.domain_end() - t0;
             for (int i = 0; i < n; ++i) {
-                const double f = use.orientation == BRepOrientation::Reversed ? 1.0 - double(i) / n : double(i) / n;
-                loop.push_back(p.point_at(p.domain_start() + f * (p.domain_end() - p.domain_start())));
+                const bool back = use.orientation == BRepOrientation::Reversed;
+                const double f = back ? 1.0 - double(i) / n : double(i) / n, g = back ? 1.0 - double(i + 1) / n : double(i + 1) / n;
+                const Point a = p.point_at(t0 + f * span), b = p.point_at(t0 + g * span);
+                double bulge = 0.0;
+                if (p.degree() > 1)
+                    for (double k : {0.25, 0.5, 0.75})
+                        bulge = std::max(bulge, segment_distance(p.point_at(t0 + (f + k * (g - f)) * span), a, b));
+                loop.push_back(a);
+                arcs.push_back({&p, t0 + f * span, t0 + g * span, bulge});
             }
         }
-        if (loop.size() > 2)
+        if (loop.size() > 2) {
             region.add_loop(std::move(loop));
+            region.arcs.back() = std::move(arcs);
+        }
     }
     const double u = 0.5 * (s.domain(0).first + s.domain(0).second), v = 0.5 * (s.domain(1).first + s.domain(1).second);
     const std::vector<Vector> d = s.evaluate(u, v, 1);
