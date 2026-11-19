@@ -12,6 +12,7 @@
 #include "polyline.h"
 #include "surface.h"
 #include "xform.h"
+#include <array>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -80,6 +81,8 @@ struct BRepCurveOnSurface {
     int surface_index = -1; // Surface the pcurve lies on.
     int curve_2d_index = -1; // Pcurve of the forward use.
     int curve_2d_index_2 = -1; // Reversed use on a seam, else -1.
+    std::array<double, 2> range = {0.0, 0.0}; // Part of the pcurve in use, the whole pcurve when empty; it maps linearly onto the edge's range.
+    std::array<double, 2> range_2 = {0.0, 0.0}; // The same for the reversed use.
 };
 
 /// BRep_TEdge: curve_3d_index is -1 for a degenerated edge (sphere pole, cone apex)
@@ -90,6 +93,7 @@ struct BRepEdge {
     double tolerance = 0.0; // Edge tolerance.
     bool degenerated = false; // True for a pole or apex edge.
     std::vector<BRepCurveOnSurface> pcurves; // One per surface.
+    std::array<double, 2> range = {0.0, 0.0}; // Part of the 3D curve the edge runs over, the whole curve when empty: split edges share a curve and differ in range.
 };
 
 /// TopoDS_TWire
@@ -282,6 +286,24 @@ public:
     /// The plane of every face face_polylines emits: centroid origin, Newell normal flipped for a Reversed face, and the whole set flipped when a closed solid encloses negative volume so normals point outward; free faces keep the wire's sign
     std::vector<Plane> face_planes() const;
 
+    /// BRep_Tool::Range: the part of its 3D curve an edge runs over, the curve's domain when the edge has no range
+    std::pair<double, double> edge_range(int edge_index) const;
+
+    /// The part of a pcurve an edge use runs over (the reversed use of a seam with second), the pcurve's domain when it has no range
+    std::pair<double, double> pcurve_range(const BRepCurveOnSurface& use, bool second = false) const;
+
+    /// An edge's 3D curve over its range as NURBS: for consumers not yet on ranges
+    NurbsCurve edge_nurbs(int edge_index) const;
+
+    /// A pcurve over its range as NURBS
+    NurbsCurve pcurve_nurbs(const BRepCurveOnSurface& use, bool second = false) const;
+
+    /// Whether an edge or a pcurve use runs over a part of its curve.
+    bool has_ranges() const;
+
+    /// A copy in which every edge and pcurve use owns its whole curve (ranges cut into curves of their own), itself when there are no ranges: what consumers not yet on ranges read
+    BRep unshared() const;
+
     /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst gap between its curve ends (3D and lifted pcurves) and its vertices, every vertex to its worst edge; returns the largest
     double update_tolerances();
 
@@ -307,10 +329,10 @@ public:
     int add_vertex(const Point& pt, double tolerance = 0.0);
 
     /// MakeEdge: curve_3d_index -1 makes a degenerated edge (start == end vertex)
-    int add_edge(int curve_3d_index, int start_vertex, int end_vertex, double tolerance = 0.0);
+    int add_edge(int curve_3d_index, int start_vertex, int end_vertex, double tolerance = 0.0, const std::array<double, 2>& range = {0.0, 0.0});
 
     /// UpdateEdge(E, pcurve, S): attach a pcurve on a surface, curve_2d_index_2 for the reversed use on a closed surface; replaces an existing record for the same surface
-    void add_pcurve(int edge_index, int surface_index, int curve_2d_index, int curve_2d_index_2 = -1);
+    void add_pcurve(int edge_index, int surface_index, int curve_2d_index, int curve_2d_index_2 = -1, const std::array<double, 2>& range = {0.0, 0.0}, const std::array<double, 2>& range_2 = {0.0, 0.0});
 
     /// MakeWire + Add(edges)
     int add_wire(const std::vector<BRepRef>& edges);

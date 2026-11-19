@@ -1325,6 +1325,10 @@ void finalize_inventory(FaceResult& result,const BRep& a,const BRep& b,double to
 } // namespace
 
 FaceResult interferences(const BRep& first,const BRep& second,double tolerance) {
+
+    if (first.has_ranges() || second.has_ranges())
+        return interferences(first.unshared(), second.unshared(), tolerance);
+
     check_input(first,tolerance);
     check_input(second,tolerance);
     FaceResult result;

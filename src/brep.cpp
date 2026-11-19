@@ -2943,9 +2943,19 @@ nlohmann::ordered_json edge_to_json(const BRepEdge& e) {
         nlohmann::ordered_json pj;
         pj["curve_2d_index"] = pc.curve_2d_index;
         pj["curve_2d_index_2"] = pc.curve_2d_index_2;
+
+        if (pc.range[0] < pc.range[1])
+            pj["range"] = pc.range;
+
+        if (pc.range_2[0] < pc.range_2[1])
+            pj["range_2"] = pc.range_2;
+
         pj["surface_index"] = pc.surface_index;
         ej["pcurves"].push_back(pj);
     }
+
+    if (e.range[0] < e.range[1])
+        ej["range"] = e.range;
 
     ej["start_vertex"] = e.start_vertex;
     ej["tolerance"] = e.tolerance;
@@ -2962,8 +2972,10 @@ BRepEdge edge_from_json(const nlohmann::json& e) {
     be.end_vertex = e.at("end_vertex");
 
     for (const nlohmann::json& pc : e.at("pcurves"))
-        be.pcurves.push_back({pc.at("surface_index"), pc.at("curve_2d_index"), pc.at("curve_2d_index_2")});
+        be.pcurves.push_back({pc.at("surface_index"), pc.at("curve_2d_index"), pc.at("curve_2d_index_2"),
+            pc.value("range", std::array<double, 2>{0.0, 0.0}), pc.value("range_2", std::array<double, 2>{0.0, 0.0})});
 
+    be.range = e.value("range", std::array<double, 2>{0.0, 0.0});
     be.start_vertex = e.at("start_vertex");
     be.tolerance = e.at("tolerance");
 
@@ -3492,6 +3504,9 @@ int BRep::solid_count() const {
 
 bool BRep::is_valid() const {
 
+    if (has_ranges())
+        return unshared().is_valid();
+
     if (m_faces.empty())
         return false;
 
@@ -3750,6 +3765,9 @@ std::vector<Point> BRep::vertex_points() const {
 
 std::vector<Polyline> BRep::face_polylines() const {
 
+    if (has_ranges())
+        return unshared().face_polylines();
+
     return planar_faces(*this).first;
 }
 
@@ -3759,6 +3777,9 @@ std::vector<Plane> BRep::face_planes() const {
 }
 
 double BRep::update_tolerances() {
+
+    if (has_ranges())
+        *this = unshared();
 
     double worst = 0.0;
 
@@ -3799,10 +3820,16 @@ double BRep::update_tolerances() {
 
 double BRep::volume() const {
 
+    if (has_ranges())
+        return unshared().volume();
+
     return mesh().volume();
 }
 
 double BRep::volume_exact(double tolerance) const {
+
+    if (has_ranges())
+        return unshared().volume_exact(tolerance);
 
     return brep_measure::volume(*this, tolerance);
 }
@@ -3838,7 +3865,7 @@ int BRep::add_vertex(const Point& pt, double tolerance) {
     return (int)m_vertices.size() - 1;
 }
 
-int BRep::add_edge(int curve_3d_index, int start_vertex, int end_vertex, double tolerance) {
+int BRep::add_edge(int curve_3d_index, int start_vertex, int end_vertex, double tolerance, const std::array<double, 2>& range) {
 
     BRepEdge e;
     e.curve_3d_index = curve_3d_index;
@@ -3846,21 +3873,99 @@ int BRep::add_edge(int curve_3d_index, int start_vertex, int end_vertex, double 
     e.end_vertex = end_vertex;
     e.tolerance = tolerance;
     e.degenerated = curve_3d_index < 0;
+    e.range = range;
     m_edges.push_back(e);
 
     return (int)m_edges.size() - 1;
 }
 
-void BRep::add_pcurve(int edge_index, int surface_index, int curve_2d_index, int curve_2d_index_2) {
+void BRep::add_pcurve(int edge_index, int surface_index, int curve_2d_index, int curve_2d_index_2, const std::array<double, 2>& range, const std::array<double, 2>& range_2) {
 
     for (BRepCurveOnSurface& pc : m_edges[edge_index].pcurves)
         if (pc.surface_index == surface_index) {
-            pc.curve_2d_index = curve_2d_index;
-            pc.curve_2d_index_2 = curve_2d_index_2;
+            pc = {surface_index, curve_2d_index, curve_2d_index_2, range, range_2};
             return;
         }
 
-    m_edges[edge_index].pcurves.push_back({surface_index, curve_2d_index, curve_2d_index_2});
+    m_edges[edge_index].pcurves.push_back({surface_index, curve_2d_index, curve_2d_index_2, range, range_2});
+}
+
+std::pair<double, double> BRep::edge_range(int edge_index) const {
+
+    const BRepEdge& e = m_edges[edge_index];
+
+    return e.range[0] < e.range[1] || e.curve_3d_index < 0 ? std::pair<double, double>(e.range[0], e.range[1]) : m_curves_3d[e.curve_3d_index].domain();
+}
+
+std::pair<double, double> BRep::pcurve_range(const BRepCurveOnSurface& use, bool second) const {
+
+    const std::array<double, 2>& range = second ? use.range_2 : use.range;
+
+    return range[0] < range[1] ? std::pair<double, double>(range[0], range[1]) : m_curves_2d[second ? use.curve_2d_index_2 : use.curve_2d_index].domain();
+}
+
+NurbsCurve BRep::edge_nurbs(int edge_index) const {
+
+    const BRepEdge& e = m_edges[edge_index];
+    Curve c = m_curves_3d[e.curve_3d_index];
+
+    if (e.range[0] < e.range[1])
+        c.set_domain(e.range[0], e.range[1]);
+
+    return c.nurbs();
+}
+
+NurbsCurve BRep::pcurve_nurbs(const BRepCurveOnSurface& use, bool second) const {
+
+    const std::array<double, 2>& range = second ? use.range_2 : use.range;
+    Curve c = m_curves_2d[second ? use.curve_2d_index_2 : use.curve_2d_index];
+
+    if (range[0] < range[1])
+        c.set_domain(range[0], range[1]);
+
+    return c.nurbs();
+}
+
+bool BRep::has_ranges() const {
+
+    for (const BRepEdge& e : m_edges) {
+        if (e.range[0] < e.range[1])
+            return true;
+
+        for (const BRepCurveOnSurface& pc : e.pcurves)
+            if (pc.range[0] < pc.range[1] || pc.range_2[0] < pc.range_2[1])
+                return true;
+    }
+
+    return false;
+}
+
+BRep BRep::unshared() const {
+
+    BRep b = *this;
+
+    for (size_t i = 0; i < m_edges.size(); ++i) {
+        BRepEdge& e = b.m_edges[i];
+
+        if (e.range[0] < e.range[1])
+            e.curve_3d_index = b.add_curve_3d(edge_nurbs((int)i));
+
+        for (size_t k = 0; k < e.pcurves.size(); ++k) {
+            BRepCurveOnSurface& pc = e.pcurves[k];
+
+            if (pc.range[0] < pc.range[1])
+                pc.curve_2d_index = b.add_curve_2d(pcurve_nurbs(m_edges[i].pcurves[k]));
+
+            if (pc.range_2[0] < pc.range_2[1])
+                pc.curve_2d_index_2 = b.add_curve_2d(pcurve_nurbs(m_edges[i].pcurves[k], true));
+
+            pc.range = pc.range_2 = {0.0, 0.0};
+        }
+
+        e.range = {0.0, 0.0};
+    }
+
+    return b;
 }
 
 int BRep::add_wire(const std::vector<BRepRef>& edges) {
@@ -3951,12 +4056,15 @@ void mesh_key_edge(std::vector<double>& key, const BRepEdge& edge) {
     key.push_back(edge.end_vertex);
     key.push_back(edge.tolerance);
     key.push_back(edge.degenerated);
+    key.insert(key.end(), edge.range.begin(), edge.range.end());
     key.push_back((double)edge.pcurves.size());
 
     for (const BRepCurveOnSurface& pcurve : edge.pcurves) {
         key.push_back(pcurve.surface_index);
         key.push_back(pcurve.curve_2d_index);
         key.push_back(pcurve.curve_2d_index_2);
+        key.insert(key.end(), pcurve.range.begin(), pcurve.range.end());
+        key.insert(key.end(), pcurve.range_2.begin(), pcurve.range_2.end());
     }
 }
 
@@ -4038,7 +4146,7 @@ const Mesh& BRep::mesh() const {
     if (key == _mesh_key)
         return _mesh;
 
-    _mesh = weld_face_meshes(*this);
+    _mesh = weld_face_meshes(has_ranges() ? unshared() : *this);
     _mesh.guid() = ::guid();
     _mesh_key = std::move(key);
 
@@ -4105,6 +4213,9 @@ static void tag_parametric_boundaries(const BRep& brep, int face, Mesh& mesh, in
 }
 
 std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, double chord_factor) const {
+
+    if (has_ranges())
+        return unshared().face_meshes_q(has_quality, max_angle_deg, chord_factor);
 
     const int nf = (int)m_faces.size();
     const double angle = has_quality ? max_angle_deg : 20.0;
@@ -4358,6 +4469,9 @@ std::vector<Polyline> halfspace_polylines(
 
 BRep BRep::offset_convex(double distance, double tolerance) const {
 
+    if (has_ranges())
+        return unshared().offset_convex(distance, tolerance);
+
     if (!std::isfinite(distance) || !std::isfinite(tolerance) || tolerance <= 0.0)
         throw std::invalid_argument("BRep::offset_convex requires finite distance and positive tolerance");
 
@@ -4473,6 +4587,9 @@ BRep BRep::boolean_xor(const BRep& other, double tolerance) const {
 
 BRep BRep::offset(double distance, double tolerance) const {
 
+    if (has_ranges())
+        return unshared().offset(distance, tolerance);
+
     return brep_offset::shape(*this, distance, tolerance);
 }
 
@@ -4502,6 +4619,9 @@ static BRep half_space(const BRep& shape, const Plane& plane) {
 }
 
 BRep BRep::cut_by_plane(const Plane& plane) const {
+
+    if (has_ranges())
+        return unshared().cut_by_plane(plane);
 
     Mesh rings;
 
@@ -4694,6 +4814,9 @@ BRep BRep::file_json_load(const std::string& filename) {
 // Protobuf
 // ═══════════════════════════════════════════════════════════════════════════
 session_proto::BRep BRep::to_proto() const {
+
+    if (has_ranges())
+        return unshared().to_proto();
 
     session_proto::BRep proto;
 

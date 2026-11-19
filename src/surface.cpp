@@ -248,7 +248,12 @@ std::pair<double, double> Surface::closest_parameters(const Point& point) const 
     const double u = Curve::wrapped(std::atan2(b, a), m_domain[0], TWO_PI);
     switch (m_kind) {
     case Kind::Cylinder: return {u, h};
-    case Kind::Cone: return {u, (rho - m_radius) * std::sin(m_minor) + h * std::cos(m_minor)};
+    case Kind::Cone: {
+        // The nearer nappe (ElSLib::ConeParameters): beyond the apex the point lies at the opposite angle, at -rho.
+        const double c = std::cos(m_minor), s = std::sin(m_minor);
+        const bool far = std::abs((-rho - m_radius) * c - h * s) < std::abs((rho - m_radius) * c - h * s);
+        return {far ? Curve::wrapped(u + 0.5 * TWO_PI, m_domain[0], TWO_PI) : u, ((far ? -rho : rho) - m_radius) * s + h * c};
+    }
     case Kind::Sphere: return {u, std::atan2(h, rho)};
     default: return {u, Curve::wrapped(std::atan2(h, rho - m_radius), m_domain[2], TWO_PI)};
     }

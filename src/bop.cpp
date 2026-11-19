@@ -406,6 +406,10 @@ bool empty(const BRep& b) {
 }
 
 BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Report* report) {
+
+    if (a.has_ranges() || b.has_ranges())
+        return apply(a.unshared(), b.unshared(), operation, fuzzy, report);
+
     Report local;
     Report& out = report ? *report : local;
     if (empty(a) || empty(b)) {

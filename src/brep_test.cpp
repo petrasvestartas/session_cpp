@@ -2283,4 +2283,49 @@ namespace session_cpp {
         MINI_CHECK(std::abs(brep.volume_exact() - 500.0) < 1e-3);
     }
 
+    MINI_TEST("BRep", "Edge Ranges") {
+        // Every edge of a box on a line three times as long, every pcurve likewise: the box is the middle third of each.
+        const BRep box = BRep::create_box(2, 2, 2);
+        BRep shared = box;
+        const auto longer = [](const NurbsCurve& c) {
+            const Point a = c.point_at_start(), b = c.point_at_end();
+            NurbsCurve line = NurbsCurve::create(false, 1, {a + (a - b), b + (b - a)});
+            line.set_domain(0.0, 3.0);
+            return line;
+        };
+        for (BRepEdge& e : shared.m_edges) {
+            e.curve_3d_index = shared.add_curve_3d(longer(box.m_curves_3d[e.curve_3d_index].nurbs()));
+            e.range = {1.0, 2.0};
+            for (BRepCurveOnSurface& pc : e.pcurves) {
+                pc.curve_2d_index = shared.add_curve_2d(longer(box.m_curves_2d[pc.curve_2d_index].nurbs()));
+                pc.range = {1.0, 2.0};
+            }
+        }
+        MINI_CHECK(!box.has_ranges() && shared.has_ranges());
+        MINI_CHECK(box.edge_range(0) == box.m_curves_3d[box.m_edges[0].curve_3d_index].domain());
+        MINI_CHECK(shared.edge_range(0) == std::make_pair(1.0, 2.0) && shared.pcurve_range(shared.m_edges[0].pcurves[0]) == std::make_pair(1.0, 2.0));
+        for (int e = 0; e < shared.edge_count(); ++e) {
+            const NurbsCurve part = shared.edge_nurbs(e);
+            MINI_CHECK(part.domain() == std::make_pair(1.0, 2.0));
+            MINI_CHECK(part.point_at_start().distance(shared.m_vertices[shared.m_edges[e].start_vertex].point) < 1e-12);
+            MINI_CHECK(part.point_at_end().distance(shared.m_vertices[shared.m_edges[e].end_vertex].point) < 1e-12);
+            const NurbsCurve uv = shared.pcurve_nurbs(shared.m_edges[e].pcurves[0]);
+            MINI_CHECK(uv.point_at_start().distance(box.m_curves_2d[box.m_edges[e].pcurves[0].curve_2d_index].nurbs().point_at_start()) < 1e-12);
+        }
+        const BRep plain = shared.unshared();
+        MINI_CHECK(!plain.has_ranges() && plain.edge_count() == shared.edge_count() && plain.is_valid() && plain.is_solid());
+        // Consumers not yet on ranges read the unshared copy.
+        MINI_CHECK(shared.is_valid() && shared.is_solid());
+        MINI_CHECK(std::abs(shared.volume_exact() - 8.0) < 1e-9 && std::abs(shared.volume() - 8.0) < 1e-9);
+        MINI_CHECK(std::abs(shared.mesh().volume() - 8.0) < 1e-9);
+        const BRep cut = shared.boolean_difference(BRep::create_box(1, 1, 4));
+        MINI_CHECK(cut.is_solid() && std::abs(cut.volume_exact() - 6.0) < 1e-9);
+        const BRep loaded = BRep::jsonload(nlohmann::json::parse(shared.jsondump().dump()));
+        MINI_CHECK(loaded.has_ranges() && loaded.m_edges[3].range == shared.m_edges[3].range);
+        MINI_CHECK(loaded.m_edges[3].pcurves[1].range == shared.m_edges[3].pcurves[1].range && std::abs(loaded.volume_exact() - 8.0) < 1e-9);
+        MINI_CHECK(!BRep::jsonload(nlohmann::json::parse(box.jsondump().dump())).has_ranges() && !box.jsondump().dump().contains("range"));
+        const BRep restored = BRep::pb_loads(shared.pb_dumps());
+        MINI_CHECK(!restored.has_ranges() && std::abs(restored.volume_exact() - 8.0) < 1e-9);
+    }
+
 } // namespace session_cpp

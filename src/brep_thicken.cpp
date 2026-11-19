@@ -228,6 +228,8 @@ void append_walls(
 }
 
 BRep face(const BRep& source, double thickness, double tolerance) {
+    if (source.has_ranges())
+        return face(source.unshared(), thickness, tolerance);
     if (!source.is_valid() || source.face_count() != 1 || source.solid_count() != 0)
         throw std::invalid_argument("Face thickening requires one valid trimmed open face");
     if (!std::isfinite(thickness) || !std::isfinite(tolerance) || tolerance <= 0 || std::abs(thickness) <= 2 * tolerance)

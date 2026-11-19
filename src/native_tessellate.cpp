@@ -193,6 +193,10 @@ Mesh joined(const std::vector<TessellationTriangle>& triangles) {
 }
 
 Mesh BRep::tessellate(double deflection, double angle) const {
+
+    if (has_ranges())
+        return unshared().tessellate(deflection, angle);
+
     if (!std::isfinite(deflection) || !(deflection > 0)
         || !std::isfinite(angle) || !(angle > 0))
         throw std::invalid_argument("Native tessellation requires finite positive deflection and angle");
