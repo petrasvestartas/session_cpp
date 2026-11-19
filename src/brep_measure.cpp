@@ -834,8 +834,8 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& 
 
 double volume(const BRep& brep, double tolerance) {
 
-    if (brep.has_ranges())
-        return volume(brep.unshared(), tolerance);
+    if (!brep.is_nurbs())
+        return volume(brep.as_nurbs(), tolerance);
 
     if (!std::isfinite(tolerance) || tolerance <= 0.0)
         throw std::invalid_argument("Native BRep volume requires positive relative tolerance");

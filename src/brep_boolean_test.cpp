@@ -1284,7 +1284,7 @@ MINI_TEST("BRep Native Boolean", "Doubly Curved Void Operand Island And Exact Fi
 
 
 MINI_TEST("BRep Native Boolean", "Reversed Generator Periodic Coincident Owner") {
-    const BRep original = BRep::create_cylinder(1, 2);
+    const BRep original = BRep::create_cylinder(1, 2).as_nurbs();
     const BRep reversed = affine_solid(original, 2);
     check_void_boundary(original);
     check_void_boundary(reversed);
@@ -1321,7 +1321,7 @@ MINI_TEST("BRep Native Boolean", "Reversed Generator Periodic Coincident Owner")
 }
 
 MINI_TEST("BRep Native Boolean", "Refined Rational Boundary Curve Basis") {
-    const BRep original = BRep::create_cylinder(1, 2);
+    const BRep original = BRep::create_cylinder(1, 2).as_nurbs();
     BRep refined = original;
     bool nonuniform_rational = false;
     for (Curve& curve_ : refined.m_curves_3d) { NurbsCurve curve = curve_.nurbs();

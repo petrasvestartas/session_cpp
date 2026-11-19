@@ -164,8 +164,8 @@ MINI_TEST("BRep Native Tessellate", "Finite Positive Arguments") {
 }
 MINI_TEST("BRep Native Tessellate", "Parametric Metadata Is Opt In And Face Local") {
     std::set<int> paths;
-    for (const BRep& shape : {BRep::create_box(2, 3, 4), BRep::create_sphere(1),
-            BRep::create_cylinder(1, 2), BRep::create_block_with_hole(4, 4, 2, .5), tessellation_ruled_patch()}) {
+    for (const BRep& shape : {BRep::create_box(2, 3, 4).as_nurbs(), BRep::create_sphere(1).as_nurbs(),
+            BRep::create_cylinder(1, 2).as_nurbs(), BRep::create_block_with_hole(4, 4, 2, .5).as_nurbs(), tessellation_ruled_patch()}) {
         const std::vector<Mesh> ordinary = shape.face_meshes_q(true, 10, .0025);
         std::vector<Mesh> recorded;
         {

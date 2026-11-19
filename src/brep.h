@@ -292,6 +292,12 @@ public:
     /// The part of a pcurve an edge use runs over (the reversed use of a seam with second), the pcurve's domain when it has no range
     std::pair<double, double> pcurve_range(const BRepCurveOnSurface& use, bool second = false) const;
 
+    /// An edge's 3D curve over its range
+    Curve edge_curve(int edge_index) const;
+
+    /// A pcurve over its range
+    Curve2d pcurve(const BRepCurveOnSurface& use, bool second = false) const;
+
     /// An edge's 3D curve over its range as NURBS: for consumers not yet on ranges
     NurbsCurve edge_nurbs(int edge_index) const;
 
@@ -301,8 +307,17 @@ public:
     /// Whether an edge or a pcurve use runs over a part of its curve.
     bool has_ranges() const;
 
-    /// A copy in which every edge and pcurve use owns its whole curve (ranges cut into curves of their own), itself when there are no ranges: what consumers not yet on ranges read
+    /// A copy in which every edge and pcurve use owns its whole curve (ranges cut into curves of their own, of the same kind)
     BRep unshared() const;
+
+    /// Whether every surface, curve and pcurve is freeform, with or without ranges.
+    bool is_freeform() const;
+
+    /// Whether every surface, curve and pcurve is freeform and no edge has a range: what a consumer of NURBS can read as it is.
+    bool is_nurbs() const;
+
+    /// The bridge for consumers of NURBS: the same solid with every surface and curve as its NURBS and every pcurve in the parameter of that NURBS, over the parameter of its edge's NURBS; exact for lines on planes and for circles and rulings of a surface, fitted otherwise with the distance left put into the edge tolerance. Itself when is_nurbs()
+    BRep as_nurbs() const;
 
     /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst gap between its curve ends (3D and lifted pcurves) and its vertices, every vertex to its worst edge; returns the largest
     double update_tolerances();

@@ -407,7 +407,7 @@ static split::FaceCut planar_cut(const NurbsSurface& surface, const NurbsCurve& 
 
 MINI_TEST("Split", "Many Stretches Of One Source Curve") {
     for (bool rational : {false, true}) {
-        BRep box = BRep::create_box(10, 10, 10);
+        BRep box = BRep::create_box(10, 10, 10).as_nurbs();
         box.transform(Xform::translation(1048576, -524288, 262144));
         const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
         NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
@@ -444,7 +444,7 @@ MINI_TEST("Split", "Many Stretches Of One Source Curve") {
 }
 
 MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
-    const BRep box = BRep::create_box(10, 10, 10);
+    const BRep box = BRep::create_box(10, 10, 10).as_nurbs();
     const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve horizontal = NurbsCurve::create(false, 1, {{0, 0.5, 0}, {1, 0.5, 0}});
     const NurbsCurve shared = NurbsCurve::create(false, 1, {{0.75, 0.5, 0}, {0.25, 0.5, 0}});
@@ -466,7 +466,7 @@ MINI_TEST("Split", "Partial Reversed Common Trim Intervals") {
 }
 
 MINI_TEST("Split", "Rational Common Closed Trims") {
-    const BRep box = BRep::create_box(10, 10, 10);
+    const BRep box = BRep::create_box(10, 10, 10).as_nurbs();
     const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve circle = Primitives::circle(0.5, 0.5, 0, 0.25);
     NurbsCurve reversed = circle;
@@ -491,7 +491,7 @@ MINI_TEST("Split", "Rational Common Closed Trims") {
 }
 
 MINI_TEST("Split", "Distinct Curved Arcs With Shared Endpoints") {
-    const BRep box = BRep::create_box(10, 10, 10);
+    const BRep box = BRep::create_box(10, 10, 10).as_nurbs();
     const NurbsSurface& surface = box.m_surfaces[box.m_faces[0].surface_index].nurbs();
     const NurbsCurve upper = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.9, 0}, {1, 0.5, 0}});
     const NurbsCurve lower = NurbsCurve::create(false, 2, {{0, 0.5, 0}, {0.5, 0.1, 0}, {1, 0.5, 0}});
@@ -898,7 +898,7 @@ MINI_TEST("Split", "Preserved Affine Rational Boundary Endpoint Events") {
 
 MINI_TEST("Split", "Face Boundary Consumer Keeps Independent Raw Domains") {
     using namespace session_cpp;
-    BRep box = BRep::create_box(2, 2, 2);
+    BRep box = BRep::create_box(2, 2, 2).as_nurbs();
     const int face = 0;
     for (const auto& use : box.wire_edges(box.m_faces[face].wires[0])) {
         const int pc = box.pcurve_index(use.index, face, use.orientation);

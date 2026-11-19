@@ -319,13 +319,29 @@ void Curve::arc(double a0, double a1, std::vector<std::array<double, 3>>& contro
     const double step = (a1 - a0) / spans, weight = std::cos(0.5 * step);
     controls.clear();
     knots.clear();
+    // A coordinate within rounding of 0 or 1 is that: quarter arcs on the axes get the controls (1, 0), (1, 1), (0, 1) exactly.
+    const auto snap = [](double v) { return std::abs(v) < 1e-15 ? 0.0 : std::abs(std::abs(v) - 1.0) < 1e-15 ? std::copysign(1.0, v) : v; };
     for (int k = 0; k <= spans; ++k) {
         const double a = k == spans ? a1 : a0 + k * step;
         if (k > 0)
-            controls.push_back({std::cos(a - 0.5 * step) / weight, std::sin(a - 0.5 * step) / weight, weight});
-        controls.push_back({std::cos(a), std::sin(a), 1.0});
+            controls.push_back({snap(std::cos(a - 0.5 * step) / weight), snap(std::sin(a - 0.5 * step) / weight), weight});
+        controls.push_back({snap(std::cos(a)), snap(std::sin(a)), 1.0});
         knots.insert(knots.end(), 2, a);
     }
+}
+
+double Curve::rational(double angle, double a0, double a1) {
+    const int spans = std::max(1, static_cast<int>(std::ceil((a1 - a0) / (std::numbers::pi / 2) - 1e-9)));
+    const double step = (a1 - a0) / spans;
+    const int k = std::clamp(static_cast<int>(std::floor((angle - a0) / step)), 0, spans - 1);
+    return a0 + step * (k + 0.5 * (1.0 + std::tan(0.5 * (angle - a0 - (k + 0.5) * step)) / std::tan(0.25 * step)));
+}
+
+double Curve::angle(double parameter, double a0, double a1) {
+    const int spans = std::max(1, static_cast<int>(std::ceil((a1 - a0) / (std::numbers::pi / 2) - 1e-9)));
+    const double step = (a1 - a0) / spans;
+    const int k = std::clamp(static_cast<int>(std::floor((parameter - a0) / step)), 0, spans - 1);
+    return a0 + (k + 0.5) * step + 2.0 * std::atan((2.0 * (parameter - a0 - k * step) / step - 1.0) * std::tan(0.25 * step));
 }
 
 const NurbsCurve& Curve::nurbs() const {

@@ -1326,8 +1326,8 @@ void finalize_inventory(FaceResult& result,const BRep& a,const BRep& b,double to
 
 FaceResult interferences(const BRep& first,const BRep& second,double tolerance) {
 
-    if (first.has_ranges() || second.has_ranges())
-        return interferences(first.unshared(), second.unshared(), tolerance);
+    if (!first.is_nurbs() || !second.is_nurbs())
+        return interferences(first.as_nurbs(), second.as_nurbs(), tolerance);
 
     check_input(first,tolerance);
     check_input(second,tolerance);

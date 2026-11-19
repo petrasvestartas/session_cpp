@@ -135,6 +135,12 @@ public:
     /// Controls (cos, sin, weight) and knots of the unit arc from a0 to a1 in quarter turns or less.
     static void arc(double a0, double a1, std::vector<std::array<double, 3>>& controls, std::vector<double>& knots);
 
+    /// The parameter of that arc's NURBS at an angle: between two knots the rational parameter is not the angle.
+    static double rational(double angle, double a0, double a1);
+
+    /// The angle at a parameter of that arc's NURBS: the inverse of rational.
+    static double angle(double parameter, double a0, double a1);
+
     // ═══════════════════════════════════════════════════════════════════════════
     // JSON
     // ═══════════════════════════════════════════════════════════════════════════

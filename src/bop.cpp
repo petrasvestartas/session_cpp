@@ -466,6 +466,10 @@ bool empty(const BRep& b) {
 
 BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Report* report) {
 
+    // A bridge until the core reads analytic surfaces and their pcurves in true parameters.
+    if (!a.is_freeform() || !b.is_freeform())
+        return apply(a.as_nurbs(), b.as_nurbs(), operation, fuzzy, report);
+
     Report local;
     Report& out = report ? *report : local;
     if (empty(a) || empty(b)) {

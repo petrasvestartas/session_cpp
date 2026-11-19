@@ -591,7 +591,9 @@ namespace session_cpp {
         // using session_cpp::Vector;
 
         const BRep box = BRep::create_box(2.0, 3.0, 4.0);
-        const Point pt = box.point_at(0, 0.5, 0.5);
+        // The parameters of a face are its surface's own: on the planes of a box, lengths from a corner.
+        const Surface& bottom = box.m_surfaces[box.m_faces[0].surface_index];
+        const Point pt = box.point_at(0, 0.5 * bottom.domain(0).second, 0.5 * bottom.domain(1).second);
         const Vector n = box.normal_at(0, 0.5, 0.5);
         const Vector n_top = box.normal_at(1, 0.5, 0.5);
 
@@ -2326,6 +2328,78 @@ namespace session_cpp {
         MINI_CHECK(!BRep::jsonload(nlohmann::json::parse(box.jsondump().dump())).has_ranges() && !box.jsondump().dump().contains("range"));
         const BRep restored = BRep::pb_loads(shared.pb_dumps());
         MINI_CHECK(!restored.has_ranges() && std::abs(restored.volume_exact() - 8.0) < 1e-9);
+    }
+
+    MINI_TEST("BRep", "Analytic Primitives") {
+        const double pi = 3.14159265358979323846;
+        const std::vector<std::pair<BRep, double>> solids = {{BRep::create_box(2, 3, 4), 24.0}, {BRep::create_cylinder(1.5, 4), pi * 9.0}, {BRep::create_cone(1.5, 4), pi * 3.0},
+            {BRep::create_frustum(2, 1, 3), pi * 7.0}, {BRep::create_sphere(1.5), pi * 4.5}, {BRep::create_torus(3, 1), 6.0 * pi * pi},
+            {BRep::create_pyramid(2, 3), 4.0}, {BRep::create_block_with_hole(4, 4, 2, 1), 32.0 - 2.0 * pi}};
+        // Along every edge the surface at its pcurve is the 3D curve at the same share of the range: in the true parameters, and in the NURBS read through as_nurbs.
+        const auto gap = [](const BRep& b, bool as_nurbs) {
+            double worst = 0.0;
+            for (int e = 0; e < b.edge_count(); ++e)
+                for (const BRepCurveOnSurface& use : b.m_edges[e].pcurves)
+                    for (int k = 0; k < (use.curve_2d_index_2 >= 0 ? 2 : 1) && !b.m_edges[e].degenerated; ++k)
+                        for (double f : {0.0, 0.17, 0.5, 0.83, 1.0}) {
+                            const Curve world = b.edge_curve(e);
+                            const Curve2d pc = b.pcurve(use, k == 1);
+                            const double t = world.domain().first + f * (world.domain().second - world.domain().first);
+                            const double r = pc.domain().first + f * (pc.domain().second - pc.domain().first);
+                            const Point uv = as_nurbs ? pc.nurbs().point_at(t) : pc.point_at(r);
+                            const Surface& s = b.m_surfaces[use.surface_index];
+                            worst = std::max(worst, (as_nurbs ? s.nurbs().point_at(uv[0], uv[1]) : s.point_at(uv[0], uv[1])).distance(as_nurbs ? world.nurbs().point_at(t) : world.point_at(t)));
+                        }
+            return worst;
+        };
+        const Xform move = Xform::translation(3, -2, 5) * Xform::rotation_z(0.7) * Xform::rotation_x(0.4) * Xform::scale_xyz(2, 2, 2);
+        for (const auto& [solid, volume] : solids) {
+            MINI_CHECK(!solid.is_nurbs());
+            for (const Surface& s : solid.m_surfaces)
+                MINI_CHECK(s.kind() != Surface::Kind::Nurbs);
+            for (const Curve& c : solid.m_curves_3d)
+                MINI_CHECK(c.kind() == Curve::Kind::Line || c.kind() == Curve::Kind::Circle);
+            for (const Curve2d& c : solid.m_curves_2d)
+                MINI_CHECK(c.kind() == Curve::Kind::Line || c.kind() == Curve::Kind::Circle);
+            MINI_CHECK(gap(solid, false) < 1e-12);
+            MINI_CHECK(solid.is_valid() && solid.is_solid() && std::abs(solid.volume_exact() - volume) < 1e-8);
+            const BRep plain = solid.as_nurbs();
+            MINI_CHECK(plain.is_nurbs() && plain.is_valid() && plain.is_solid() && gap(plain, true) < 1e-12);
+            MINI_CHECK(plain.face_count() == solid.face_count() && plain.edge_count() == solid.edge_count() && std::abs(plain.volume_exact() - volume) < 1e-8);
+            const BRep moved = solid.transformed(move);
+            MINI_CHECK(!moved.is_nurbs() && moved.m_surfaces[0].kind() == solid.m_surfaces[0].kind() && gap(moved, false) < 1e-11);
+            MINI_CHECK(moved.is_solid() && std::abs(moved.volume_exact() - 8.0 * volume) < 1e-7);
+            const BRep mirrored = solid.transformed(Xform::scale_xyz(1, -1, 1));
+            MINI_CHECK(mirrored.m_surfaces[0].kind() == solid.m_surfaces[0].kind() && gap(mirrored, false) < 1e-12);
+            const BRep stretched = solid.transformed(Xform::scale_xyz(1, 2, 1));
+            MINI_CHECK(stretched.is_nurbs() && stretched.is_valid() && std::abs(stretched.volume_exact() - 2.0 * volume) < 1e-7);
+            const BRep loaded = BRep::jsonload(nlohmann::json::parse(solid.jsondump().dump()));
+            MINI_CHECK(loaded.m_surfaces.back().kind() == solid.m_surfaces.back().kind() && loaded.m_curves_2d.back().kind() == solid.m_curves_2d.back().kind());
+            MINI_CHECK(gap(loaded, false) < 1e-12 && std::abs(loaded.volume_exact() - volume) < 1e-8);
+            MINI_CHECK(std::abs(BRep::pb_loads(solid.pb_dumps()).volume_exact() - volume) < 1e-8);
+        }
+        // A cylinder whose edges run over parts of longer curves: read through as_nurbs it is the same closed solid.
+        BRep shared = BRep::create_cylinder(1.5, 4);
+        for (BRepEdge& e : shared.m_edges) {
+            const Curve c = shared.m_curves_3d[e.curve_3d_index];
+            Curve longer = c;
+            longer.set_domain(c.domain().first - 1.0, c.domain().second + 1.0);
+            e.curve_3d_index = shared.add_curve_3d(longer);
+            e.range = {c.domain().first, c.domain().second};
+            for (BRepCurveOnSurface& use : e.pcurves)
+                for (int k = 0; k < (use.curve_2d_index_2 >= 0 ? 2 : 1); ++k) {
+                    const Curve2d pc = shared.m_curves_2d[k == 0 ? use.curve_2d_index : use.curve_2d_index_2];
+                    Curve2d wide = pc;
+                    wide.set_domain(pc.domain().first - 0.5, pc.domain().second + 2.0);
+                    (k == 0 ? use.curve_2d_index : use.curve_2d_index_2) = shared.add_curve_2d(wide);
+                    (k == 0 ? use.range : use.range_2) = std::array<double, 2>{pc.domain().first, pc.domain().second};
+                }
+        }
+        MINI_CHECK(shared.has_ranges() && gap(shared, false) < 1e-12);
+        const BRep plain = shared.as_nurbs();
+        MINI_CHECK(plain.is_nurbs() && plain.is_valid() && plain.is_solid() && gap(plain, true) < 1e-12 && std::abs(plain.volume_exact() - pi * 9.0) < 1e-8);
+        MINI_CHECK(std::abs(shared.transformed(move).volume_exact() - 8.0 * pi * 9.0) < 1e-7);
+        MINI_CHECK(shared.point_at(0, 0.5 * pi, 1.0).distance(Point(0, 1.5, 1)) < 1e-12 && shared.normal_at(0, 0.5 * pi, 1.0).dot(Vector(0, 1, 0)) > 1.0 - 1e-12);
     }
 
 } // namespace session_cpp

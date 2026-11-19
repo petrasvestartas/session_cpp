@@ -171,14 +171,14 @@ MINI_TEST("Bop FF", "Freeform Patches Coincident") {
 }
 
 MINI_TEST("Bop FF", "Face Against Rotated Copy") {
-    const BRep box = BRep::create_box(2, 2, 2);
+    const BRep box = BRep::create_box(2, 2, 2).as_nurbs();
     const BRep turned = box.transformed(Xform::rotation_z(1e-3));
     MINI_CHECK(bop_ff::intersect(box, face_near(box, Point(0, 0, 1)), turned, face_near(turned, Point(0, 0, 1)), 0.0).same_domain);
     const int fa = face_near(box, Point(1, 0, 0)), fb = face_near(turned, Point(1, 0, 0));
     const bop_ff::Result side = bop_ff::intersect(box, fa, turned, fb, 0.0);
     MINI_CHECK(!side.same_domain && side.curves.size() == 1 && worst_fit(box, fa, turned, fb, side) <= 1.0);
     MINI_CHECK(std::abs(length(side) - 2.0) < 1e-6 && nearest_on_curves(side, Point(1, std::tan(5e-4), 0)) < 1e-9);
-    const BRep cylinder = BRep::create_cylinder(1, 4).transformed(Xform::translation(0, 0, -2));
+    const BRep cylinder = BRep::create_cylinder(1, 4).as_nurbs().transformed(Xform::translation(0, 0, -2));
     const int fc = face_near(cylinder, Point(0, 1, 0.5));
     MINI_CHECK(bop_ff::intersect(cylinder, fc, cylinder.transformed(Xform::rotation_z(1e-3)), fc, 0.0).same_domain);
     const BRep tilted = cylinder.transformed(Xform::rotation_x(1e-3));

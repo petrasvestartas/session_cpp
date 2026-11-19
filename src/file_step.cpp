@@ -4882,8 +4882,8 @@ public:
 /// Face-id groups of a brep written into w: one per shell with its closed flag, then the free faces as an open group.
 static std::vector<std::pair<std::vector<int>, bool>> emit_brep_shells(StepWriter& w, const BRep& brep) {
 
-    if (brep.has_ranges())
-        return emit_brep_shells(w, brep.unshared());
+    if (!brep.is_nurbs())
+        return emit_brep_shells(w, brep.as_nurbs());
 
     BRepEmitter em(w, brep);
     std::vector<std::pair<std::vector<int>, bool>> groups;

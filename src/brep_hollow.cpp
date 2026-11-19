@@ -247,8 +247,8 @@ BRep shape(const BRep& source, const std::vector<int>& openings, double thicknes
 namespace session_cpp {
 BRep BRep::hollow(const std::vector<int>& openings, double thickness, double tolerance) const {
 
-    if (has_ranges())
-        return unshared().hollow(openings, thickness, tolerance);
+    if (!is_nurbs())
+        return as_nurbs().hollow(openings, thickness, tolerance);
 
     return brep_hollow::shape(*this, openings, thickness, tolerance);
 }

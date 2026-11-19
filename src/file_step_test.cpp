@@ -548,7 +548,7 @@ MINI_TEST("FileStep", "Oblique Affine Support Preserves Raw Chart") {
         return Point(32.0 + p[0] + 0.5 * p[1], -16.0 + p[1] + 0.25 * p[2], 8.0 + p[2]);
     };
     for (bool rational : {false, true}) {
-        BRep source = BRep::create_box(2.0, 2.0, 2.0);
+        BRep source = BRep::create_box(2.0, 2.0, 2.0).as_nurbs();
         for (auto& vertex : source.m_vertices)
             vertex.point = shear(vertex.point);
         for (Curve& curve_ : source.m_curves_3d) { NurbsCurve curve = curve_.nurbs(); for (int i = 0; i < curve.cv_count(); ++i)

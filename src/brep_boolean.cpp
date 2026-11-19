@@ -759,8 +759,8 @@ static bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, s
 /// A section piece ends where it crosses a knot line of a NURBS surface or where a closed section closes; an analytic surface has neither.
 BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
 
-    if (b.has_ranges())
-        b = b.unshared();
+    if (!b.is_nurbs())
+        b = b.as_nurbs();
 
     const BRepOrientation F = BRepOrientation::Forward;
     const BRepOrientation R = BRepOrientation::Reversed;
@@ -993,8 +993,8 @@ BRep empty_operation(const BRep& first, const BRep& second, Operation operation)
 
 BRep apply(const BRep& first, const BRep& second, Operation operation, double tolerance) {
 
-    if (first.has_ranges() || second.has_ranges())
-        return apply(first.unshared(), second.unshared(), operation, tolerance);
+    if (!first.is_nurbs() || !second.is_nurbs())
+        return apply(first.as_nurbs(), second.as_nurbs(), operation, tolerance);
 
     if (!std::isfinite(tolerance) || tolerance <= 0.0)
         throw std::invalid_argument("Native BRep Boolean tolerance must be finite and positive");

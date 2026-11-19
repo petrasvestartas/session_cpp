@@ -78,7 +78,7 @@ MINI_TEST("BRep Native Section", "Transverse Boxes Paired Pcurves") {
 }
 
 MINI_TEST("BRep Native Section", "Coincident Support Is Explicit") {
-    const BRep sphere = BRep::create_sphere(1.0);
+    const BRep sphere = BRep::create_sphere(1.0).as_nurbs();
     const brep_section::FaceResult result = brep_section::faces(sphere, sphere, 1e-7);
     MINI_CHECK(result.complete);
     MINI_CHECK(result.curves.empty() && result.overlaps.size() == 1);
@@ -616,7 +616,7 @@ MINI_TEST("BRep Native Section", "Shared Inventory Declares Inactive Missing Pcu
 }
 
 MINI_TEST("BRep Native Section", "Shared Pole Contact Keeps Mixed Degenerate UV Ownership") {
-    const auto sphere=BRep::create_sphere(2);
+    const auto sphere=BRep::create_sphere(2).as_nurbs();
     const auto plane=inventory_exact_face({Point(0,0,2),Point(2,0,2),Point(2,2,2),Point(0,2,2)});
     const auto frozen_s=sphere.jsondump(),frozen_p=plane.jsondump();
     int degenerate=-1;bool ordinary_endpoint=false;
@@ -855,7 +855,7 @@ MINI_TEST("BRep Native Section", "Curve Ownership Cannot Spend Source Cap Plus F
 
 
 MINI_TEST("BRep Native Section", "Regular Meridian Retains Unrepresented Pole UV Uses") {
-    const auto sphere=BRep::create_sphere(2);
+    const auto sphere=BRep::create_sphere(2).as_nurbs();
     const auto plane=inventory_exact_face({Point(0,-3,-3),Point(0,3,-3),Point(0,3,3),Point(0,-3,3)});
     const auto frozen_s=sphere.jsondump(),frozen_p=plane.jsondump();
     for (bool swap:{false,true}) {
@@ -1000,7 +1000,7 @@ MINI_TEST("BRep Native Section", "Original Trim Receipts Preserve Both Raw Param
 
 namespace session_cpp {
 MINI_TEST("BRep Native Section", "Adjacent Original Supports Preserve Refined Boundary Aliases") {
-    const auto original = BRep::create_cylinder(1,2);
+    const auto original = BRep::create_cylinder(1,2).as_nurbs();
     auto refined = original;
     for (Curve& world_ : refined.m_curves_3d) { NurbsCurve world = world_.nurbs();
         MINI_CHECK(world.increase_degree(world.degree()+1));
@@ -1137,9 +1137,9 @@ MINI_TEST("BRep Native Section", "Section Curves Name The Node Two Faces Share")
 
 MINI_TEST("BRep Native Section", "Section Through Original Vertices Ends On Their Nodes") {
     // The plane z = x + y meets the box [0, 2]^3 in the triangle (0,0,0), (2,0,2), (0,2,2): three face diagonals between three corners.
-    const BRep first = BRep::create_box(2, 2, 2).transformed(Xform::translation(1, 1, 1));
+    const BRep first = BRep::create_box(2, 2, 2).as_nurbs().transformed(Xform::translation(1, 1, 1));
     const double third = 1.0 / std::sqrt(3.0);
-    const BRep second = BRep::create_box(8, 8, 8).transformed(Xform::translation(-4 * third, -4 * third, 4 * third)
+    const BRep second = BRep::create_box(8, 8, 8).as_nurbs().transformed(Xform::translation(-4 * third, -4 * third, 4 * third)
         * Xform::rotation(Vector(1, -1, 0), std::acos(third)));
     const auto inventory = brep_section::interferences(first, second, 1e-7);
     if (!inventory.complete)

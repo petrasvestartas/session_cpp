@@ -490,7 +490,7 @@ BRep reverse_support_v(BRep shape) {
 
 MINI_TEST("BRepAssemble", "Tangent Cylinders Preserve Distinct Seam Sectors") {
     for (int variant : {0, 1, 2, 3}) {
-        const BRep source = BRep::create_cylinder(1, 2);
+        const BRep source = BRep::create_cylinder(1, 2).as_nurbs();
         Xform turn = Xform::scale_xyz(-1, -1, 1);
         turn(0, 3) = 2;
         Xform affine = Xform::identity();
