@@ -1,4 +1,5 @@
 #include "bop.h"
+#include "bop_builder_face.h"
 #include "mini_test.h"
 #include "xform.h"
 #include <cmath>
@@ -82,4 +83,22 @@ MINI_TEST("BRep BOP", "Coaxial Caps") {
     MINI_CHECK(report.solid && report.failure.empty());
     MINI_CHECK(rest.face_count() == 7 && rest.edge_count() == 15 && rest.vertex_count() == 10);
     MINI_CHECK(std::abs(rest.volume_exact() - (32000 - 500 * 3.14159265358979323846)) < 1e-6);
+}
+
+MINI_TEST("BRep BOP", "Band Without Seam") {
+    // A face around a periodic surface with no seam edge, cut by a closed section that has no seam start either.
+    const auto line = [](double u0, double v0, double u1, double v1) { return bop::owned(NurbsCurve::create(false, 1, {Point(u0, v0, 0), Point(u1, v1, 0)})); };
+    bop::Region region;
+    region.period = {4.0, 0.0};
+    region.add_loop({Point(0, 0, 0), Point(2, 0, 0), Point(4, 0, 0)}, 0);
+    region.add_loop({Point(4, 1, 0), Point(2, 1, 0), Point(0, 1, 0)}, 0);
+    MINI_CHECK(region.state(Point(1, 0.5, 0)) == 1 && region.state(Point(5, 0.5, 0)) == 1 && region.state(Point(1, 2, 0)) == -1 && region.state(Point(3, 0, 0)) == 0);
+    Point inside;
+    MINI_CHECK(region.interior(inside) && region.state(inside) == 1);
+    std::vector<bop::EdgeUse> uses{{0, 0, 0, line(0, 0, 4, 0), false, false, 0.0}, {1, 1, 1, line(4, 1, 0, 1), false, false, 0.0},
+        {2, 2, 2, line(1, 0.5, 5, 0.5), false, true, 0.0}, {2, 2, 2, line(5, 0.5, 1, 0.5), true, true, 0.0}};
+    std::vector<std::string> log;
+    const auto faces = bop::build_faces(uses, region, log);
+    MINI_CHECK(log.empty() && faces.size() == 2 && faces[0].size() == 2 && faces[1].size() == 2);
+    MINI_CHECK(uses[2].pcurve.shift[0] == 0.0 && uses[2].pcurve.at(1.0).distance(Point(5, 0.5, 0)) < 1e-12);
 }

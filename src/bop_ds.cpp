@@ -1,6 +1,7 @@
 #include "bop_ds.h"
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace session_cpp::bop {
 
@@ -18,7 +19,22 @@ bool Box::overlaps(const Box& other, double gap) const {
     return true;
 }
 
-void Region::add_loop(std::vector<Point> loop) {
+int Region::winding(const Point& from, const Point& to) const {
+    for (int d = 0; d < 2; ++d)
+        if (period[d] > 0.0 && std::abs(std::abs(to[d] - from[d]) - period[d]) < 0.25 * period[d])
+            return d;
+    return -1;
+}
+
+int Region::band() const {
+    int axis = -1;
+    for (int w : winds)
+        axis = std::max(axis, w);
+    return axis;
+}
+
+void Region::add_loop(std::vector<Point> loop, int winding) {
+    winds.push_back(winding);
     for (const Point& p : loop)
         for (int d = 0; d < 2; ++d) {
             lo[d] = std::min(lo[d], p[d]);
@@ -36,6 +52,25 @@ static double segment_distance(const Point& p, const Point& a, const Point& b) {
 }
 
 int Region::state(const Point& uv) const {
+    if (const int axis = band(); axis >= 0) {
+        // A band around a periodic surface: a ray across it from the point, against the loops and their copies one period either way.
+        const int other = 1 - axis;
+        Point q = uv;
+        q[axis] -= std::floor((q[axis] - lo[axis]) / period[axis]) * period[axis];
+        bool inside = false;
+        for (size_t l = 0; l < loops.size(); ++l)
+            for (size_t k = 0; k + (winds[l] >= 0 ? 1 : 0) < loops[l].size(); ++k)
+                for (int copy = -1; copy <= 1; ++copy) {
+                    Point a = loops[l][k], b = loops[l][(k + 1) % loops[l].size()];
+                    a[axis] += copy * period[axis];
+                    b[axis] += copy * period[axis];
+                    if (segment_distance(q, a, b) <= eps)
+                        return 0;
+                    if ((a[axis] > q[axis]) != (b[axis] > q[axis]) && q[other] < a[other] + (q[axis] - a[axis]) / (b[axis] - a[axis]) * (b[other] - a[other]))
+                        inside = !inside;
+                }
+        return inside ? 1 : -1;
+    }
     int best = -1;
     for (int i = -1; i <= 1; ++i)
         for (int j = -1; j <= 1; ++j) {
@@ -88,27 +123,34 @@ double Region::area() const {
 }
 
 bool Region::interior(Point& uv) const {
+    // Scanlines of constant v; across a band, of constant position around it.
+    const int axis = band(), held = axis >= 0 ? axis : 1, run = 1 - held;
+    const double span = axis >= 0 ? period[axis] : hi[held] - lo[held];
     double widest = 0.0;
     for (double f : {0.5, 0.37, 0.63, 0.23, 0.77, 0.11, 0.89, 0.03, 0.97}) {
-        const double v = lo[1] + f * (hi[1] - lo[1]);
+        const double v = lo[held] + f * span;
         std::vector<double> xs;
-        for (const auto& loop : loops)
-            for (size_t k = 0; k < loop.size(); ++k) {
-                const Point& a = loop[k];
-                const Point& b = loop[(k + 1) % loop.size()];
-                if ((a[1] > v) != (b[1] > v))
-                    xs.push_back(a[0] + (v - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
-            }
+        for (size_t l = 0; l < loops.size(); ++l)
+            for (size_t k = 0; k + (winds[l] >= 0 ? 1 : 0) < loops[l].size(); ++k)
+                for (int copy = axis >= 0 ? -1 : 0; copy <= (axis >= 0 ? 1 : 0); ++copy) {
+                    Point a = loops[l][k], b = loops[l][(k + 1) % loops[l].size()];
+                    a[held] += axis >= 0 ? copy * period[axis] : 0.0;
+                    b[held] += axis >= 0 ? copy * period[axis] : 0.0;
+                    if ((a[held] > v) != (b[held] > v))
+                        xs.push_back(a[run] + (v - a[held]) / (b[held] - a[held]) * (b[run] - a[run]));
+                }
         std::sort(xs.begin(), xs.end());
         for (size_t k = 0; k + 1 < xs.size(); k += 2)
             if (xs[k + 1] - xs[k] > widest) {
-                const Point mid(0.5 * (xs[k] + xs[k + 1]), v, 0);
+                Point mid(0, 0, 0);
+                mid[run] = 0.5 * (xs[k] + xs[k + 1]);
+                mid[held] = v;
                 if (state(mid) == 1) {
                     widest = xs[k + 1] - xs[k];
                     uv = mid;
                 }
             }
-        if (widest > 0.2 * (hi[0] - lo[0]))
+        if (widest > 0.2 * (hi[run] - lo[run]))
             break;
     }
     return widest > 0.0;
@@ -147,10 +189,11 @@ std::array<double, 2> surface_period(const NurbsSurface& s) {
 Region face_region(const BRep& brep, int face, double tolerance) {
     Region region;
     const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
-    region.period = surface_period(s);
+    region.period = surface_period(brep.m_surfaces[brep.m_faces[face].surface_index]);
     for (const BRepRef& wire : brep.m_faces[face].wires) {
         std::vector<Point> loop;
         std::vector<Region::Arc> arcs;
+        Point last;
         for (const BRepRef& use : brep.wire_edges(wire)) {
             const int index = brep.pcurve_index(use.index, face, use.orientation);
             if (index < 0)
@@ -168,9 +211,15 @@ Region face_region(const BRep& brep, int face, double tolerance) {
                         bulge = std::max(bulge, segment_distance(p.point_at(t0 + (f + k * (g - f)) * span), a, b));
                 loop.push_back(a);
                 arcs.push_back({&p, t0 + f * span, t0 + g * span, bulge});
+                last = b;
             }
         }
-        if (loop.size() > 2) {
+        // A wire without a seam edge around a periodic surface does not close in uv: it ends one period from where it began.
+        const int winding = loop.empty() ? -1 : region.winding(loop.front(), last);
+        if (winding >= 0) {
+            loop.push_back(last);
+            region.add_loop(std::move(loop), winding);
+        } else if (loop.size() > 2) {
             region.add_loop(std::move(loop));
             region.arcs.back() = std::move(arcs);
         }
@@ -236,7 +285,11 @@ NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSur
         const double aa = a.dot(a), ab = a.dot(b), bb = b.dot(b), det = aa * bb - ab * ab;
         const auto [u0, u1] = surface.domain(0);
         const auto [v0, v1] = surface.domain(1);
-        NurbsCurve uv = trimmed(curve, curve.domain(), t0, t1);
+        NurbsCurve uv = curve;
+        if (std::min(t0, t1) > curve.domain_start() + 1e-12 * (curve.domain_end() - curve.domain_start()) || std::max(t0, t1) < curve.domain_end() - 1e-12 * (curve.domain_end() - curve.domain_start()))
+            uv.trim(std::max(std::min(t0, t1), curve.domain_start()), std::min(std::max(t0, t1), curve.domain_end()));
+        if (t0 > t1)
+            uv.reverse();
         for (int i = 0; i < uv.cv_count(); ++i) {
             const Point p = uv.get_cv(i);
             const Vector r(p[0] - o[0], p[1] - o[1], p[2] - o[2]);
@@ -261,22 +314,62 @@ NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSur
     return uv;
 }
 
-NurbsCurve trimmed(const NurbsCurve& curve, std::pair<double, double> domain, double t0, double t1) {
-    const auto map = [&](double t) {
-        return curve.domain_start() + (t - domain.first) / (domain.second - domain.first) * (curve.domain_end() - curve.domain_start());
-    };
-    double s0 = map(t0), s1 = map(t1);
-    const bool flip = s0 > s1;
-    if (flip)
-        std::swap(s0, s1);
-    NurbsCurve piece = curve;
-    const double span = curve.domain_end() - curve.domain_start();
-    const double snap = 1e-12 * std::max(1.0, std::abs(span));
-    if (s0 > curve.domain_start() + snap || s1 < curve.domain_end() - snap)
-        piece.trim(std::max(s0, curve.domain_start()), std::min(s1, curve.domain_end()));
-    if (flip)
+Span ranged(const std::shared_ptr<const Curve>& pcurve, std::pair<double, double> domain, double t0, double t1) {
+    const auto [p0, p1] = pcurve->domain();
+    const auto map = [&](double t) { return p0 + (t - domain.first) / (domain.second - domain.first) * (p1 - p0); };
+    return {pcurve, map(t0), map(t1), {}};
+}
+
+Span borrowed(const Curve& curve, double t0, double t1) {
+    return {std::shared_ptr<const Curve>(std::shared_ptr<const Curve>(), &curve), t0, t1, {}};
+}
+
+Span owned(Curve curve) {
+    const auto shared = std::make_shared<const Curve>(std::move(curve));
+    return {shared, shared->domain().first, shared->domain().second, {}};
+}
+
+Point Span::at(double s) const {
+    const auto [lo, hi] = curve->domain();
+    Point p = curve->point_at(std::clamp(t0 + s * (t1 - t0), lo, hi));
+    p[0] += shift[0];
+    p[1] += shift[1];
+    return p;
+}
+
+Curve Span::copy() const {
+    const auto [d0, d1] = curve->domain();
+    const double lo = std::max(std::min(t0, t1), d0), hi = std::min(std::max(t0, t1), d1);
+    if (curve->kind() != Curve::Kind::Nurbs) {
+        Curve2d piece(*curve);
+        piece.set_domain(lo, hi);
+        if (t0 > t1)
+            piece.reverse();
+        return shift[0] != 0.0 || shift[1] != 0.0 ? piece.shifted(shift[0], shift[1]) : piece;
+    }
+    NurbsCurve piece = curve->nurbs();
+    const double snap = 1e-12 * std::max(1.0, std::abs(d1 - d0));
+    if (lo > d0 + snap || hi < d1 - snap)
+        piece.trim(lo, hi);
+    if (t0 > t1)
         piece.reverse();
+    if (shift[0] != 0.0 || shift[1] != 0.0)
+        for (int i = 0; i < piece.cv_count(); ++i) {
+            double x, y, z, w;
+            piece.get_cv_4d(i, x, y, z, w);
+            piece.set_cv_4d(i, x + shift[0] * w, y + shift[1] * w, z, w);
+        }
     return piece;
+}
+
+std::array<double, 2> surface_period(const Surface& s) {
+    return s.kind() == Surface::Kind::Nurbs ? surface_period(s.nurbs()) : std::array<double, 2>{s.period(0), s.period(1)};
+}
+
+Span DS::edge_pcurve(const Edge& e, int local_face, BRepOrientation orientation, double t0, double t1) const {
+    const BRep& b = brep(e.operand);
+    const Curve& p = b.m_curves_2d[b.pcurve_index(e.local, local_face, orientation)];
+    return ranged(std::shared_ptr<const Curve>(std::shared_ptr<const Curve>(), &p), {e.t0, e.t1}, t0, t1);
 }
 
 }

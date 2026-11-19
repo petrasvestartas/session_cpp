@@ -720,7 +720,7 @@ struct Filler {
                         if (out || 2 * on <= n + 1)
                             continue;
                         f.in_blocks.push_back(b);
-                        ds.pcurves[{b, fid}] = project(c, block.first.t, block.last.t, s);
+                        ds.pcurves[{b, fid}] = owned(project(c, block.first.t, block.last.t, s));
                     }
                 }
             }
@@ -815,7 +815,7 @@ struct Filler {
                 if (s.point_at(u, v).distance(mid) > edge.tolerance + f.tolerance + ds.fuzzy || f.region.state(Point(u, v, 0)) != 1)
                     continue;
                 f.in_blocks.push_back(b);
-                ds.pcurves[{b, target}] = project(ds.curve_of(edge), block.first.t, block.last.t, s);
+                ds.pcurves[{b, target}] = owned(project(ds.curve_of(edge), block.first.t, block.last.t, s));
             }
         }
     }
@@ -861,17 +861,27 @@ struct Filler {
     bool loop_origin(int ia, int ib, const std::vector<bop_ff::Curve>& curves, const std::vector<int>& loop, int chain, Point& origin) const {
         const Point fallback = curves[chain].curve.point_at_start();
         for (const auto& [flat, other] : {std::pair{ia, ib}, std::pair{ib, ia}}) {
-            Point o;
-            Vector a, b;
-            if (!affine_patch(ds.surface_of(ds.faces[flat]), o, a, b))
+            // The plane and the quadric as the surfaces say them; recognized from the patches while those are freeform.
+            const Surface& plane = ds.face_surface(ds.faces[flat]);
+            const Surface& round = ds.face_surface(ds.faces[other]);
+            Point o = plane.origin();
+            Vector a = plane.x(), b = plane.y();
+            if (plane.kind() != Surface::Kind::Plane && !affine_patch(plane.nurbs(), o, a, b))
                 continue;
-            const NurbsSurface& s = ds.surface_of(ds.faces[other]);
+            const NurbsSurface& s = round.nurbs();
             nurbs_implicit::Implicit form;
-            try {
-                form = nurbs_implicit::recognize(s, std::max(ds.faces[other].tolerance, confusion));
-            } catch (const std::exception&) {
-                continue;
-            }
+            const bool said = round.kind() == Surface::Kind::Sphere || round.kind() == Surface::Kind::Cylinder || round.kind() == Surface::Kind::Cone;
+            if (said) {
+                form.kind = round.kind() == Surface::Kind::Sphere ? 2 : round.kind() == Surface::Kind::Cylinder ? 3 : 4;
+                form.point = {round.origin()[0], round.origin()[1], round.origin()[2]};
+                form.axis = {round.z()[0], round.z()[1], round.z()[2]};
+                form.radius = round.radius();
+            } else
+                try {
+                    form = nurbs_implicit::recognize(s, std::max(ds.faces[other].tolerance, confusion));
+                } catch (const std::exception&) {
+                    continue;
+                }
             Vector n = a.cross(b), axis(form.axis[0], form.axis[1], form.axis[2]), x;
             n.normalize_self();
             const Point c(form.point[0], form.point[1], form.point[2]);
@@ -886,7 +896,7 @@ struct Filler {
                 const int d = s.degree(0) == 1 ? 0 : 1;
                 const double u = 0.5 * (s.domain(1 - d).first + s.domain(1 - d).second);
                 const Point p0 = d == 0 ? s.point_at(s.domain(0).first, u) : s.point_at(u, s.domain(1).first), p1 = d == 0 ? s.point_at(s.domain(0).second, u) : s.point_at(u, s.domain(1).second);
-                if (axis.dot(Vector(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])) < 0)
+                if (!said && axis.dot(Vector(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])) < 0)
                     axis *= -1.0;
                 const double cosine = axis.dot(n);
                 if (std::abs(cosine) < 1e-9)
@@ -938,8 +948,9 @@ struct Filler {
     }
 
     void make_section(int ia, int ib, bop_ff::Curve& section, const Point* origin) {
-        Curve c{ia, ib, std::move(section.curve), std::move(section.pcurve_a), std::move(section.pcurve_b), std::max(section.tolerance, confusion), {}};
-        const NurbsCurve& w = c.world;
+        Section c{ia, ib, std::make_shared<const Curve>(section.curve), std::make_shared<const Curve>(section.pcurve_a), std::make_shared<const Curve>(section.pcurve_b),
+            std::max(section.tolerance, confusion), {}};
+        const NurbsCurve& w = c.world->nurbs();
         const double t0 = w.domain_start(), t1 = w.domain_end();
         const bool closed = w.point_at_start().distance(w.point_at_end()) <= c.tolerance;
         std::vector<int> candidates;
@@ -1018,10 +1029,9 @@ struct Filler {
                 ds.merge({block.first.vertex, block.last.vertex});
                 continue;
             }
-            const Curve& cc = ds.curves[curve];
-            const NurbsCurve pa = trimmed(cc.pcurve_a, {t0, t1}, block.first.t, block.last.t);
-            const NurbsCurve pb = trimmed(cc.pcurve_b, {t0, t1}, block.first.t, block.last.t);
-            if (ds.faces[ia].region.state(pa.point_at(pa.domain_middle())) < 0 || ds.faces[ib].region.state(pb.point_at(pb.domain_middle())) < 0)
+            const Section& cc = ds.curves[curve];
+            const Span pa = ranged(cc.pcurve_a, {t0, t1}, block.first.t, block.last.t), pb = ranged(cc.pcurve_b, {t0, t1}, block.first.t, block.last.t);
+            if (ds.faces[ia].region.state(pa.at(0.5)) < 0 || ds.faces[ib].region.state(pb.at(0.5)) < 0)
                 continue;
             // IsExistingPaveBlock: a piece whose ends and middle lie on a block of either face is that block.
             int existing = -1;
@@ -1060,9 +1070,8 @@ struct Filler {
             for (int f : {ia, ib})
                 if (!face_has(ds.faces[f], existing)) {
                     ds.faces[f].sc_blocks.push_back(existing);
-                    const NurbsCurve& p = f == ia ? cc.pcurve_a : cc.pcurve_b;
-                    ds.pcurves[{existing, f}] = !same ? project(ds.block_curve(kept), kept.first.t, kept.last.t, ds.surface_of(ds.faces[f]))
-                        : along ? trimmed(p, {t0, t1}, block.first.t, block.last.t) : trimmed(p, {t0, t1}, block.last.t, block.first.t);
+                    const Span& p = f == ia ? pa : pb;
+                    ds.pcurves[{existing, f}] = !same ? owned(project(ds.block_curve(kept), kept.first.t, kept.last.t, ds.surface_of(ds.faces[f]))) : along ? p : p.reversed();
                 }
         }
     }

@@ -24,11 +24,6 @@ bool occupied(bool a, bool b, Operation operation) {
     return false;
 }
 
-NurbsCurve reversed(NurbsCurve c) {
-    c.reverse();
-    return c;
-}
-
 /// A split face: loops of uses of its DS face, its state against the other operand (1 in, -1 out, 0 on) and its same-domain twin
 struct Piece {
     int face = -1;
@@ -48,7 +43,7 @@ struct Builder {
     BRep result;
     std::map<int, int> vertex_image, edge_image;
     std::map<std::pair<int, int>, int> surface_image;
-    std::map<std::pair<int, int>, std::array<std::vector<NurbsCurve>, 2>> slots; // (result edge, result surface) -> pcurves of forward and reversed uses
+    std::map<std::pair<int, int>, std::array<std::vector<Curve2d>, 2>> slots; // (result edge, result surface) -> pcurves of forward and reversed uses
 
     Builder(const DS& source, Report& out) : ds(source), report(out) {}
 
@@ -66,7 +61,7 @@ struct Builder {
         return p.distance(ds.block_point(y, 0.25)) <= p.distance(ds.block_point(y, 0.75));
     }
 
-    EdgeUse use_of(int b, bool backwards, NurbsCurve pcurve, bool internal, const Face& f) const {
+    EdgeUse use_of(int b, bool backwards, Span pcurve, bool internal, const Face& f) const {
         const PaveBlock& block = ds.blocks[b];
         const int r = image(b);
         const double gap = 2.0 * std::max(ds.vertices[block.first.vertex].tolerance, ds.vertices[block.last.vertex].tolerance) * f.region.eps / f.tolerance;
@@ -102,8 +97,7 @@ struct Builder {
                         if (!e.degenerated && ds.micro(block))
                             continue;
                         loop.push_back(static_cast<int>(list.size()));
-                        list.push_back(use_of(b, back, trimmed(brep.m_curves_2d[index].nurbs(), {e.t0, e.t1},
-                            back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false, f));
+                        list.push_back(use_of(b, back, ds.edge_pcurve(e, f.local, use.orientation, back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false, f));
                     }
                 }
                 wires.push_back(std::move(loop));
@@ -113,9 +107,9 @@ struct Builder {
                 for (int b : *blocks) {
                     if (ds.micro(ds.blocks[b]))
                         continue;
-                    const NurbsCurve& pcurve = ds.pcurves.at({b, static_cast<int>(id)});
+                    const Span& pcurve = ds.pcurves.at({b, static_cast<int>(id)});
                     list.push_back(use_of(b, false, pcurve, true, f));
-                    list.push_back(use_of(b, true, reversed(pcurve), true, f));
+                    list.push_back(use_of(b, true, pcurve.reversed(), true, f));
                 }
             std::vector<std::vector<std::vector<int>>> faces;
             if (list.size() == boundary)
@@ -142,8 +136,18 @@ struct Builder {
         const Face& f = ds.faces[piece.face];
         Region region;
         region.eps = f.region.eps;
-        for (const auto& loop : piece.loops)
-            region.add_loop(loop_polygon(uses[piece.face], loop));
+        for (const auto& loop : piece.loops) {
+            if (loop.empty())
+                continue;
+            const Point from = uses[piece.face][loop.front()].pcurve.at(0.0), to = uses[piece.face][loop.back()].pcurve.at(1.0);
+            std::vector<Point> polygon = loop_polygon(uses[piece.face], loop);
+            const int winding = f.region.winding(from, to);
+            if (winding >= 0) {
+                polygon.push_back(to);
+                region.period = f.region.period;
+            }
+            region.add_loop(std::move(polygon), winding);
+        }
         if (!region.interior(piece.uv))
             return false;
         piece.point = ds.surface_of(f).point_at(piece.uv[0], piece.uv[1]);
@@ -195,7 +199,7 @@ struct Builder {
                     const NurbsCurve& c = ds.block_curve(block);
                     const double t = 0.5 * (block.first.t + block.last.t);
                     const Point p = c.point_at(t);
-                    Point uv = use.pcurve.point_at(use.pcurve.domain_middle());
+                    Point uv = use.pcurve.at(0.5);
                     if (s.point_at(uv[0], uv[1]).distance(p) > 1e-3 * c.point_at(block.first.t).distance(c.point_at(block.last.t))) {
                         const auto [u, v] = s.closest_parameters(p);
                         uv = Point(u, v, 0);
@@ -332,8 +336,7 @@ struct Builder {
         const int v0 = emit_vertex(block.first.vertex), v1 = emit_vertex(block.last.vertex);
         if (block.edge >= 0 && ds.edges[block.edge].degenerated)
             return edge_image[r] = result.add_edge(-1, v0, v1, tolerance);
-        const NurbsCurve& c = ds.block_curve(block);
-        const int curve = result.add_curve_3d(trimmed(c, c.domain(), block.first.t, block.last.t));
+        const int curve = result.add_curve_3d(ds.block_span(block).copy());
         return edge_image[r] = result.add_edge(curve, v0, v1, tolerance);
     }
 
@@ -353,7 +356,7 @@ struct Builder {
                 refs.push_back({edge, use.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
                 auto& slot = slots[{edge, found->second}][use.reversed];
                 if (slot.empty())
-                    slot.push_back(use.reversed ? reversed(use.pcurve) : use.pcurve);
+                    slot.push_back((use.reversed ? use.pcurve.reversed() : use.pcurve).copy());
             }
             wires.push_back({result.add_wire(refs), BRepOrientation::Forward});
         }
@@ -387,12 +390,12 @@ struct Builder {
         }
         for (auto& [key, pair] : slots) {
             const auto& [edge, surface] = key;
-            std::vector<NurbsCurve> forward = pair[0], back = pair[1];
+            std::vector<Curve2d> forward = pair[0], back = pair[1];
             if (forward.empty())
                 std::swap(forward, back);
             const NurbsSurface& s = result.m_surfaces[surface].nurbs();
             const double span = std::hypot(s.domain(0).second - s.domain(0).first, s.domain(1).second - s.domain(1).first);
-            const bool seam = !back.empty() && forward[0].point_at_start().distance(back[0].point_at_start()) > 1e-6 * span;
+            const bool seam = !back.empty() && forward[0].point_at(forward[0].domain().first).distance(back[0].point_at(back[0].domain().first)) > 1e-6 * span;
             result.add_pcurve(edge, surface, result.add_curve_2d(forward[0]), seam ? result.add_curve_2d(back[0]) : -1);
         }
         build_solids(result, faces);

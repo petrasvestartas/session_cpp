@@ -3,6 +3,7 @@
 #include "brep.h"
 #include <array>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -24,10 +25,15 @@ struct Region {
     };
     std::vector<std::vector<Point>> loops;
     std::vector<std::vector<Arc>> arcs; // per loop, one per segment or none
+    std::vector<int> winds; // per loop: -1 when it closes in uv, else the periodic direction it runs once around, its last point its first moved by the period
     double eps = 1e-9; // uv distance that counts as on a loop
     std::array<double, 2> period{0.0, 0.0}; // the surface's period per direction, else 0
     std::array<double, 2> lo{1e300, 1e300}, hi{-1e300, -1e300};
-    void add_loop(std::vector<Point> loop);
+    void add_loop(std::vector<Point> loop, int winding = -1);
+    /// The periodic direction a wire runs once around, given where its uv ends against where it started; -1 when it closes
+    int winding(const Point& from, const Point& to) const;
+    /// The direction the loops wind around, -1 when all close: the region is then a band and is classified across it
+    int band() const;
     /// 1 inside, 0 on a loop, -1 outside; a closed direction is tried shifted by its period
     int state(const Point& uv) const;
     double area() const;
@@ -38,8 +44,29 @@ struct Region {
 /// The parameter step after which a surface repeats itself, per direction: its span when closed, less when a patch of revolution overlaps itself, else 0
 std::array<double, 2> surface_period(const NurbsSurface& s);
 
+/// Surface::period of an analytic surface; of a freeform one, as above
+std::array<double, 2> surface_period(const Surface& s);
+
 /// The loops of a face in its surface parameters, uv tolerance from the face tolerance and the surface's speed
 Region face_region(const BRep& brep, int face, double tolerance);
+
+/// A piece of a shared curve, as BOPDS keeps a split edge: the curve itself, never copied or refitted, with the range of the piece; run backwards when t0 > t1, and for a pcurve moved by whole periods of its surface
+struct Span {
+    std::shared_ptr<const Curve> curve;
+    double t0 = 0.0, t1 = 0.0;
+    std::array<double, 2> shift{0.0, 0.0};
+    /// The point at s in [0, 1] along the piece
+    Point at(double s) const;
+    Span reversed() const { return {curve, t1, t0, shift}; }
+    /// The piece as a curve of its own, for a BRep whose edges carry no range: an analytic curve with the range as its domain, a freeform one trimmed
+    Curve copy() const;
+};
+
+/// A span over a curve that outlives it (an operand's)
+Span borrowed(const Curve& curve, double t0, double t1);
+
+/// A span over the whole of a curve it owns
+Span owned(Curve curve);
 
 /// BOPDS_Pave
 struct Pave {
@@ -94,9 +121,9 @@ struct Face {
 };
 
 /// BOPDS_Curve: a face/face section with its pcurves on both faces
-struct Curve {
+struct Section {
     int face_a = -1, face_b = -1;
-    NurbsCurve world, pcurve_a, pcurve_b;
+    std::shared_ptr<const Curve> world, pcurve_a, pcurve_b; // as bop_ff returned them
     double tolerance = 0.0;
     std::vector<Pave> paves;
 };
@@ -110,15 +137,18 @@ struct DS {
     std::vector<Face> faces;
     std::vector<PaveBlock> blocks;
     std::vector<CommonBlock> commons;
-    std::vector<Curve> curves;
+    std::vector<Section> curves;
     std::array<int, 2> vertex_offset{}, edge_offset{}, face_offset{};
     std::vector<std::array<int, 2>> same_domain_faces; // DS faces of FF pairs on one surface
-    std::map<std::pair<int, int>, NurbsCurve> pcurves; // (block, DS face) -> pcurve of an In or Sc block, along the block
+    std::map<std::pair<int, int>, Span> pcurves; // (block, DS face) -> pcurve of an In or Sc block, along the block
     std::vector<std::string> log; // interferences that were found but not used, and refused geometry
 
     const BRep& brep(int operand) const { return *operands[operand]; }
-    const NurbsCurve& curve_of(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index].nurbs(); }
-    const NurbsSurface& surface_of(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index].nurbs(); }
+    const Curve& edge_curve(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index]; }
+    const Surface& face_surface(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index]; }
+    /// The same as NURBS, for the numeric steps
+    const NurbsCurve& curve_of(const Edge& e) const { return edge_curve(e).nurbs(); }
+    const NurbsSurface& surface_of(const Face& f) const { return face_surface(f).nurbs(); }
     int real(int v) const {
         while (vertices[v].sd >= 0)
             v = vertices[v].sd;
@@ -128,7 +158,11 @@ struct DS {
     int merge(const std::vector<int>& group);
     int add_vertex(const Point& p, double tolerance);
     /// The block's own geometry: the edge or section curve and its parameter range
-    const NurbsCurve& block_curve(const PaveBlock& b) const { return b.edge >= 0 ? curve_of(edges[b.edge]) : curves[b.curve].world; }
+    const NurbsCurve& block_curve(const PaveBlock& b) const { return b.edge >= 0 ? curve_of(edges[b.edge]) : curves[b.curve].world->nurbs(); }
+    /// The block as its curve and range
+    Span block_span(const PaveBlock& b) const { return b.edge >= 0 ? borrowed(edge_curve(edges[b.edge]), b.first.t, b.last.t) : Span{curves[b.curve].world, b.first.t, b.last.t, {}}; }
+    /// The pcurve of a piece [t0, t1] of an operand's edge on one of its faces, as the face's wire uses it: the edge's own pcurve and the matching range
+    Span edge_pcurve(const Edge& e, int local_face, BRepOrientation orientation, double t0, double t1) const;
     Point block_point(const PaveBlock& b, double s) const;
     double block_tolerance(const PaveBlock& b) const { return b.edge >= 0 ? edges[b.edge].tolerance : curves[b.curve].tolerance; }
     /// A block whose ends became one vertex that covers it: no edge of the result
@@ -146,7 +180,7 @@ bool affine_patch(const NurbsSurface& surface, Point& origin, Vector& a, Vector&
 /// The pcurve of a curve's piece [t0, t1] on a surface it lies on, in the curve's parameter: exact on a flat bilinear patch, interpolated elsewhere
 NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSurface& surface);
 
-/// A pcurve piece over [t0, t1] of a curve whose parameter maps affinely onto the pcurve's domain
-NurbsCurve trimmed(const NurbsCurve& curve, std::pair<double, double> domain, double t0, double t1);
+/// The range of a pcurve under [t0, t1] of a curve whose parameter maps affinely from `domain` onto the pcurve's domain
+Span ranged(const std::shared_ptr<const Curve>& pcurve, std::pair<double, double> domain, double t0, double t1);
 
 }
