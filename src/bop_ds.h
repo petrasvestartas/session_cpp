@@ -68,6 +68,12 @@ Span borrowed(const Curve& curve, double t0, double t1);
 /// A span over the whole of a curve it owns
 Span owned(Curve curve);
 
+/// The pcurve an edge has on a face for a use of that orientation, over its range (BRep_Tool::CurveOnSurface); without a curve when the edge has none there
+Span pcurve_span(const BRep& brep, int edge, int face, BRepOrientation orientation);
+
+/// The 3D curve of an edge over its range (BRep_Tool::Curve)
+Span edge_span(const BRep& brep, int edge);
+
 /// BOPDS_Pave
 struct Pave {
     int vertex = -1;
@@ -101,7 +107,8 @@ struct Edge {
     int operand = 0, local = 0;
     double tolerance = 0.0;
     bool degenerated = false;
-    double t0 = 0.0, t1 = 0.0;
+    double t0 = 0.0, t1 = 0.0; // its range on its curve
+    std::shared_ptr<const NurbsCurve> piece; // that range as NURBS for the numeric steps, when the edge shares its curve
     std::vector<Pave> paves;
     std::vector<int> blocks; // in parameter order
     Box box;
@@ -147,7 +154,7 @@ struct DS {
     const Curve& edge_curve(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index]; }
     const Surface& face_surface(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index]; }
     /// The same as NURBS, for the numeric steps
-    const NurbsCurve& curve_of(const Edge& e) const { return edge_curve(e).nurbs(); }
+    const NurbsCurve& curve_of(const Edge& e) const { return e.piece ? *e.piece : edge_curve(e).nurbs(); }
     const NurbsSurface& surface_of(const Face& f) const { return face_surface(f).nurbs(); }
     int real(int v) const {
         while (vertices[v].sd >= 0)

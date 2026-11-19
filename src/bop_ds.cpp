@@ -195,12 +195,12 @@ Region face_region(const BRep& brep, int face, double tolerance) {
         std::vector<Region::Arc> arcs;
         Point last;
         for (const BRepRef& use : brep.wire_edges(wire)) {
-            const int index = brep.pcurve_index(use.index, face, use.orientation);
-            if (index < 0)
+            const Span whole = pcurve_span(brep, use.index, face, use.orientation);
+            if (!whole.curve)
                 continue;
-            const NurbsCurve& p = brep.m_curves_2d[index].nurbs();
+            const NurbsCurve& p = whole.curve->nurbs();
             const int n = samples(p);
-            const double t0 = p.domain_start(), span = p.domain_end() - t0;
+            const double t0 = whole.t0, span = whole.t1 - t0;
             for (int i = 0; i < n; ++i) {
                 const bool back = use.orientation == BRepOrientation::Reversed;
                 const double f = back ? 1.0 - double(i) / n : double(i) / n, g = back ? 1.0 - double(i + 1) / n : double(i + 1) / n;
@@ -324,6 +324,21 @@ Span borrowed(const Curve& curve, double t0, double t1) {
     return {std::shared_ptr<const Curve>(std::shared_ptr<const Curve>(), &curve), t0, t1, {}};
 }
 
+Span pcurve_span(const BRep& brep, int edge, int face, BRepOrientation orientation) {
+    for (const BRepCurveOnSurface& use : brep.m_edges[edge].pcurves)
+        if (use.surface_index == brep.m_faces[face].surface_index) {
+            const bool second = orientation == BRepOrientation::Reversed && use.curve_2d_index_2 >= 0;
+            const auto [t0, t1] = brep.pcurve_range(use, second);
+            return borrowed(brep.m_curves_2d[second ? use.curve_2d_index_2 : use.curve_2d_index], t0, t1);
+        }
+    return {};
+}
+
+Span edge_span(const BRep& brep, int edge) {
+    const auto [t0, t1] = brep.edge_range(edge);
+    return borrowed(brep.m_curves_3d[brep.m_edges[edge].curve_3d_index], t0, t1);
+}
+
 Span owned(Curve curve) {
     const auto shared = std::make_shared<const Curve>(std::move(curve));
     return {shared, shared->domain().first, shared->domain().second, {}};
@@ -367,9 +382,9 @@ std::array<double, 2> surface_period(const Surface& s) {
 }
 
 Span DS::edge_pcurve(const Edge& e, int local_face, BRepOrientation orientation, double t0, double t1) const {
-    const BRep& b = brep(e.operand);
-    const Curve& p = b.m_curves_2d[b.pcurve_index(e.local, local_face, orientation)];
-    return ranged(std::shared_ptr<const Curve>(std::shared_ptr<const Curve>(), &p), {e.t0, e.t1}, t0, t1);
+    const Span whole = pcurve_span(brep(e.operand), e.local, local_face, orientation);
+    const auto map = [&](double t) { return whole.t0 + (t - e.t0) / (e.t1 - e.t0) * (whole.t1 - whole.t0); };
+    return {whole.curve, map(t0), map(t1), {}};
 }
 
 }

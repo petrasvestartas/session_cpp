@@ -65,17 +65,15 @@ struct Filler {
 
     /// How far an edge's curve runs from a face it bounds: the edge tolerance of BRepLib::SameParameter, which loose files do not carry
     static double deviation(const BRep& brep, const BRepRef& use, int face) {
-        const BRepEdge& e = brep.m_edges[use.index];
-        const int index = brep.pcurve_index(use.index, face, use.orientation);
-        if (e.degenerated || index < 0)
+        const Span p = pcurve_span(brep, use.index, face, use.orientation);
+        if (brep.m_edges[use.index].degenerated || !p.curve)
             return 0.0;
-        const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index].nurbs();
-        const NurbsCurve& p = brep.m_curves_2d[index].nurbs();
+        const Span c = edge_span(brep, use.index);
         const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
         double worst = 0.0;
         for (int i = 1; i < 8; ++i) {
-            const Point q = c.point_at(c.domain_start() + i / 8.0 * (c.domain_end() - c.domain_start()));
-            const Point uv = p.point_at(p.domain_start() + i / 8.0 * (p.domain_end() - p.domain_start()));
+            const Point q = c.at(i / 8.0);
+            const Point uv = p.at(i / 8.0);
             double d = s.point_at(uv[0], uv[1]).distance(q);
             if (d > std::max(worst, confusion))
                 d = std::min(d, s.closest_point(q).distance(q));
@@ -100,14 +98,12 @@ struct Filler {
                 edge.local = i;
                 edge.tolerance = std::max(e.tolerance, confusion);
                 edge.degenerated = e.degenerated;
-                if (e.degenerated) {
-                    const NurbsCurve& p = brep.m_curves_2d[e.pcurves.at(0).curve_2d_index].nurbs();
-                    edge.t0 = p.domain_start();
-                    edge.t1 = p.domain_end();
-                } else {
-                    const NurbsCurve& c = brep.m_curves_3d[e.curve_3d_index].nurbs();
-                    edge.t0 = c.domain_start();
-                    edge.t1 = c.domain_end();
+                if (e.degenerated)
+                    std::tie(edge.t0, edge.t1) = brep.pcurve_range(e.pcurves.at(0));
+                else {
+                    std::tie(edge.t0, edge.t1) = brep.edge_range(i);
+                    if (e.range[0] < e.range[1])
+                        edge.piece = std::make_shared<const NurbsCurve>(brep.edge_nurbs(i));
                 }
                 edge.paves = {{ds.vertex_offset[o] + e.start_vertex, edge.t0}, {ds.vertex_offset[o] + e.end_vertex, edge.t1}};
                 ds.edges.push_back(std::move(edge));

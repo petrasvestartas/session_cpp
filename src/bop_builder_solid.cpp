@@ -66,23 +66,21 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             continue;
         }
         // GetFaceOff: around the edge, a face whose use runs against the edge closes the material with the next face counterclockwise.
-        const NurbsCurve& c = result.m_curves_3d[result.m_edges[edge].curve_3d_index].nurbs();
-        const double t = c.domain_middle();
-        const Point p = c.point_at(t);
-        Vector axis = c.tangent_at(t);
+        const Span c = edge_span(result, edge);
+        const Point p = c.at(0.5);
+        Vector axis = c.curve->tangent_at(0.5 * (c.t0 + c.t1));
         axis.normalize_self();
         std::vector<std::pair<double, int>> around;
         Vector reference;
         for (size_t i = 0; i < uses.size(); ++i) {
             const auto& [k, orientation, own] = uses[i];
             const BRepFace& face = result.m_faces[faces[k].index];
-            const int index = result.pcurve_index(edge, faces[k].index, own);
+            const Span pc = pcurve_span(result, edge, faces[k].index, own);
             const NurbsSurface& s = result.m_surfaces[face.surface_index].nurbs();
             Point uv;
-            if (index >= 0) {
-                const NurbsCurve& pc = result.m_curves_2d[index].nurbs();
-                uv = pc.point_at(pc.domain_start() + (t - c.domain_start()) / (c.domain_end() - c.domain_start()) * (pc.domain_end() - pc.domain_start()));
-            } else {
+            if (pc.curve)
+                uv = pc.at(0.5);
+            else {
                 const auto [u, v] = s.closest_parameters(p);
                 uv = Point(u, v, 0);
             }

@@ -102,3 +102,17 @@ MINI_TEST("BRep BOP", "Band Without Seam") {
     MINI_CHECK(log.empty() && faces.size() == 2 && faces[0].size() == 2 && faces[1].size() == 2);
     MINI_CHECK(uses[2].pcurve.shift[0] == 0.0 && uses[2].pcurve.at(1.0).distance(Point(5, 0.5, 0)) < 1e-12);
 }
+
+MINI_TEST("BRep BOP", "Shared Curves") {
+    // A split edge is its operand's curve with a range, and a result with ranges is an operand like any other.
+    const BRep a = BRep::create_box(2, 2, 2), b = moved(BRep::create_box(2, 2, 2), 1, 1, 1);
+    const BRep cut = bop::apply(a, b, bop::Operation::Difference);
+    MINI_CHECK(cut.has_ranges() && cut.is_valid() && cut.is_solid());
+    MINI_CHECK(std::abs(cut.volume_exact() - 7) < 1e-9);
+    bop::Report report;
+    const BRep back = bop::apply(cut, b, bop::Operation::Union, 0.0, &report);
+    MINI_CHECK(report.solid && report.failure.empty());
+    MINI_CHECK(std::abs(back.volume_exact() - 15) < 1e-9);
+    const BRep twice = bop::apply(cut, moved(BRep::create_box(2, 2, 2), -1, -1, -1), bop::Operation::Difference, 0.0, &report);
+    MINI_CHECK(report.solid && std::abs(twice.volume_exact() - 6) < 1e-9);
+}

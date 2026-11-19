@@ -43,7 +43,8 @@ struct Builder {
     BRep result;
     std::map<int, int> vertex_image, edge_image;
     std::map<std::pair<int, int>, int> surface_image;
-    std::map<std::pair<int, int>, std::array<std::vector<Curve2d>, 2>> slots; // (result edge, result surface) -> pcurves of forward and reversed uses
+    std::map<std::pair<int, int>, std::array<std::vector<Span>, 2>> slots;
+    std::map<const Curve*, int> curve_image, pcurve_image; // shared curves of the operands and sections -> result pools // (result edge, result surface) -> pcurves of forward and reversed uses
 
     Builder(const DS& source, Report& out) : ds(source), report(out) {}
 
@@ -83,8 +84,7 @@ struct Builder {
                 std::vector<int> loop;
                 for (const BRepRef& use : brep.wire_edges(wire)) {
                     const Edge& e = ds.edges[ds.edge_offset[f.operand] + use.index];
-                    const int index = brep.pcurve_index(use.index, f.local, use.orientation);
-                    if (index < 0) {
+                    if (!pcurve_span(brep, use.index, f.local, use.orientation).curve) {
                         report.log.push_back("edge without pcurve on its face");
                         continue;
                     }
@@ -115,7 +115,12 @@ struct Builder {
             if (list.size() == boundary)
                 faces.push_back(wires);
             else
+            {
+                const size_t noted = report.log.size();
                 faces = build_faces(list, f.region, report.log);
+                for (size_t k = noted; k < report.log.size(); ++k)
+                    report.log[k] += std::string(" (face ") + "AB"[f.operand] + std::to_string(f.local) + ")";
+            }
             for (auto& loops : faces) {
                 Piece piece;
                 piece.face = static_cast<int>(id);
@@ -325,6 +330,12 @@ struct Builder {
         return vertex_image[v] = result.add_vertex(ds.vertices[v].point, ds.vertices[v].tolerance);
     }
 
+    /// Whether a span is all of its curve
+    static bool whole(const Span& span) {
+        const auto [t0, t1] = span.curve->domain();
+        return std::abs(span.t0 - t0) + std::abs(span.t1 - t1) <= 1e-12 * std::max(1.0, std::abs(t1 - t0));
+    }
+
     int emit_edge(int r) {
         const auto found = edge_image.find(r);
         if (found != edge_image.end())
@@ -336,8 +347,12 @@ struct Builder {
         const int v0 = emit_vertex(block.first.vertex), v1 = emit_vertex(block.last.vertex);
         if (block.edge >= 0 && ds.edges[block.edge].degenerated)
             return edge_image[r] = result.add_edge(-1, v0, v1, tolerance);
-        const int curve = result.add_curve_3d(ds.block_span(block).copy());
-        return edge_image[r] = result.add_edge(curve, v0, v1, tolerance);
+        // A split edge is its curve with a new range: the curve goes into the result once.
+        const Span span = ds.block_span(block);
+        auto shared = curve_image.find(span.curve.get());
+        if (shared == curve_image.end())
+            shared = curve_image.emplace(span.curve.get(), result.add_curve_3d(*span.curve)).first;
+        return edge_image[r] = result.add_edge(shared->second, v0, v1, tolerance, whole(span) ? std::array<double, 2>{0.0, 0.0} : std::array<double, 2>{span.t0, span.t1});
     }
 
     int emit_face(const Piece& piece) {
@@ -356,7 +371,7 @@ struct Builder {
                 refs.push_back({edge, use.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
                 auto& slot = slots[{edge, found->second}][use.reversed];
                 if (slot.empty())
-                    slot.push_back((use.reversed ? use.pcurve.reversed() : use.pcurve).copy());
+                    slot.push_back(use.reversed ? use.pcurve.reversed() : use.pcurve);
             }
             wires.push_back({result.add_wire(refs), BRepOrientation::Forward});
         }
@@ -390,17 +405,58 @@ struct Builder {
         }
         for (auto& [key, pair] : slots) {
             const auto& [edge, surface] = key;
-            std::vector<Curve2d> forward = pair[0], back = pair[1];
+            std::vector<Span> forward = pair[0], back = pair[1];
             if (forward.empty())
                 std::swap(forward, back);
             const NurbsSurface& s = result.m_surfaces[surface].nurbs();
             const double span = std::hypot(s.domain(0).second - s.domain(0).first, s.domain(1).second - s.domain(1).first);
-            const bool seam = !back.empty() && forward[0].point_at(forward[0].domain().first).distance(back[0].point_at(back[0].domain().first)) > 1e-6 * span;
-            result.add_pcurve(edge, surface, result.add_curve_2d(forward[0]), seam ? result.add_curve_2d(back[0]) : -1);
+            const bool seam = !back.empty() && forward[0].at(0.0).distance(back[0].at(0.0)) > 1e-6 * span;
+            // A pcurve running with its edge and not moved by a period is shared with its range; one that runs against it or was moved gets a curve of its own.
+            std::array<int, 2> index{-1, -1};
+            std::array<std::array<double, 2>, 2> range{};
+            for (int k = 0; k < (seam ? 2 : 1); ++k) {
+                const Span& p = k ? back[0] : forward[0];
+                if (p.t0 < p.t1 && p.shift[0] == 0.0 && p.shift[1] == 0.0) {
+                    auto shared = pcurve_image.find(p.curve.get());
+                    if (shared == pcurve_image.end())
+                        shared = pcurve_image.emplace(p.curve.get(), result.add_curve_2d(*p.curve)).first;
+                    index[k] = shared->second;
+                    range[k] = whole(p) ? std::array<double, 2>{0.0, 0.0} : std::array<double, 2>{p.t0, p.t1};
+                } else
+                    index[k] = result.add_curve_2d(p.copy());
+            }
+            result.add_pcurve(edge, surface, index[0], index[1], range[0], range[1]);
         }
         build_solids(result, faces);
     }
 };
+
+/// BRepLib::UpdateTolerances as BRep::update_tolerances, on the edges' and pcurves' ranges so that the shared curves stay shared
+void grow_tolerances(BRep& b) {
+    for (int i = 0; i < b.edge_count(); ++i) {
+        BRepEdge& e = b.m_edges[i];
+        BRepVertex& vs = b.m_vertices[e.start_vertex];
+        BRepVertex& ve = b.m_vertices[e.end_vertex];
+        double tol = e.tolerance;
+        if (e.curve_3d_index >= 0) {
+            const Span c = edge_span(b, i);
+            tol = std::max({tol, c.at(0.0).distance(vs.point), c.at(1.0).distance(ve.point)});
+        }
+        for (const BRepCurveOnSurface& pc : e.pcurves)
+            for (bool second : {false, true}) {
+                if (second && pc.curve_2d_index_2 < 0)
+                    continue;
+                const auto [t0, t1] = b.pcurve_range(pc, second);
+                const Curve2d& p = b.m_curves_2d[second ? pc.curve_2d_index_2 : pc.curve_2d_index];
+                const Point a = p.point_at(t0), z = p.point_at(t1);
+                const Surface& s = b.m_surfaces[pc.surface_index];
+                tol = std::max({tol, s.point_at(a[0], a[1]).distance(vs.point), s.point_at(z[0], z[1]).distance(ve.point)});
+            }
+        e.tolerance = tol;
+        vs.tolerance = std::max(vs.tolerance, tol);
+        ve.tolerance = std::max(ve.tolerance, tol);
+    }
+}
 
 bool empty(const BRep& b) {
     return b.m_faces.empty();
@@ -409,9 +465,6 @@ bool empty(const BRep& b) {
 }
 
 BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Report* report) {
-
-    if (a.has_ranges() || b.has_ranges())
-        return apply(a.unshared(), b.unshared(), operation, fuzzy, report);
 
     Report local;
     Report& out = report ? *report : local;
@@ -429,14 +482,24 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
     builder.build(operation);
     BRep result = builder.result;
     try {
+        // Joining refits curves, so it runs only where pieces of one section met: any other result keeps its shared curves and ranges.
         std::vector<bool> keep(result.vertex_count(), false);
-        for (const auto& [v, image] : builder.vertex_image)
+        std::vector<int> ends(result.vertex_count(), 0);
+        for (const BRepEdge& e : result.m_edges) {
+            ++ends[e.start_vertex];
+            ++ends[e.end_vertex];
+        }
+        bool joints = false;
+        for (const auto& [v, image] : builder.vertex_image) {
             keep[image] = !ds.vertices[v].joint;
-        result = brep_boolean::joined_edges(result, std::max(1e-7, fuzzy), keep);
+            joints = joints || (ds.vertices[v].joint && ends[image] == 2);
+        }
+        if (joints)
+            result = brep_boolean::joined_edges(result, std::max(1e-7, fuzzy), keep);
     } catch (const std::exception& error) {
         out.log.push_back(std::string("joined edges: ") + error.what());
     }
-    result.update_tolerances();
+    grow_tolerances(result);
     out.solid = result.is_solid();
     if (!out.solid && result.face_count() > 0) {
         std::map<int, int> uses;
