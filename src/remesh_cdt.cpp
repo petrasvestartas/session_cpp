@@ -655,7 +655,7 @@ size_t Delaunay::visible_vertex(size_t e_below, size_t v_above) const {
         const std::array<int64_t, 2> pr = vs[es[e].vr].pt;
         const std::array<int64_t, 2> eb = vs[es[e].vb].pt;
         const std::array<int64_t, 2> et = vs[es[e].vt].pt;
-        const bool spans = left ? (pr[0] > pb[0] && pl[0] < pa[0]) : (pr[0] < pb[0] && pl[0] > pa[0]);
+        const bool spans = left ? (pr[0] > pb[0] && pl[0] < pa[0]) : (pl[0] < pb[0] && pr[0] > pa[0]);
 
         if (spans && eb[1] > pa[1] && et[1] < pb[1] && segments_intersect(eb, et, pb, pa))
             best = et[1] > pa[1] ? es[e].vt : es[e].vb;

@@ -463,6 +463,13 @@ MINI_TEST("RemeshCDT", "Collinear Boundary Runs") {
     MINI_CHECK(failures == 0);
 }
 
+MINI_TEST("RemeshCDT", "Hole Beside A Leaning Border") {
+    const std::vector<std::pair<double, double>> border = {{-444.0, -599.0}, {-324.0, -552.0}, {323.0, -599.0}, {-303.0, 875.0}};
+    const std::vector<std::pair<double, double>> hole = {{-331.0, -53.0}, {-291.0, -56.0}, {-297.0, -123.0}, {-338.0, -120.0}};
+
+    MINI_CHECK(run_covers(border, {hole}));
+}
+
 MINI_TEST("RemeshCDT", "Plate Four Holes") {
     // using session_cpp::RemeshCDT;
     // using session_cpp::Polyline;
