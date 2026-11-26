@@ -2220,11 +2220,20 @@ static void center_inner_loops(std::vector<Loop>& loops, double tau_u) {
     if (tau_u <= 0.0)
         return;
 
+    // The middle of the outer loop's span: a hole anywhere in a full turn then stays within half a turn of it.
     std::optional<double> outer;
 
     for (const Loop& lp : loops)
         if (lp.is_outer) {
-            outer = loop_ucenter(lp);
+            double lo = 1e300, hi = -1e300;
+
+            for (const LoopEdge& le : lp.edges)
+                for (const Point& p : le.uv)
+                    lo = std::min(lo, p[0]), hi = std::max(hi, p[0]);
+
+            if (lo <= hi)
+                outer = 0.5 * (lo + hi);
+
             break;
         }
 
@@ -4107,6 +4116,23 @@ public:
         }
         std::vector<NurbsCurve>& pick = accepted.empty() ? loose : accepted;
         if (pick.empty()) return std::nullopt;
+        // A seam the file gives one boundary line for twice has its second alias a period across.
+        for (int d = 0; d < 2 && pick.size() == 2; ++d) {
+            const double period = d == 0 ? periods.first : periods.second;
+            const auto along = [&](const NurbsCurve& pc, double bound) {
+                for (double f : {0.0, 0.5, 1.0})
+                    if (std::abs(pc.point_at(pc.domain_start() + f * (pc.domain_end() - pc.domain_start()))[d] - bound) > 1e-9 * period) return false;
+                return true;
+            };
+            const auto domain = support.domain(d);
+            const bool low = along(pick[0], domain.first) && along(pick[1], domain.first);
+            if (!(period > 0.0) || !(low || (along(pick[0], domain.second) && along(pick[1], domain.second)))) continue;
+            for (int i = 0; i < pick[1].cv_count(); ++i) {
+                const auto [x, y, z, w] = pick[1].get_cv_4d(i);
+                const double shift = (low ? period : -period) * w;
+                pick[1].set_cv_4d(i, x + (d == 0 ? shift : 0.0), y + (d == 1 ? shift : 0.0), z, w);
+            }
+        }
         if (pick.size() > 1 && deviation(pick[1]) < deviation(pick[0])) std::swap(pick[0], pick[1]);
         const int selected = pick.size() == 2 && deviation(pick[1]) <= 2.0 * deviation(pick[0]) + tolerance ? forward_seam(pick) : -1;
         const NurbsCurve& pc = selected < 0 ? pick.front() : pick[forward ? selected : 1 - selected];

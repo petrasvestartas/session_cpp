@@ -519,13 +519,13 @@ struct Builder {
 /// BRepLib::UpdateTolerances as BRep::update_tolerances, on the edges' and pcurves' ranges so that the shared curves stay shared
 void grow_tolerances(BRep& b) {
     for (int i = 0; i < b.edge_count(); ++i) {
-        BRepEdge& e = b.m_edges[i];
+        const BRepEdge& e = b.m_edges[i];
         BRepVertex& vs = b.m_vertices[e.start_vertex];
         BRepVertex& ve = b.m_vertices[e.end_vertex];
-        double tol = e.tolerance;
+        double reach = e.tolerance;
         if (e.curve_3d_index >= 0) {
             const Span c = edge_span(b, i);
-            tol = std::max({tol, c.at(0.0).distance(vs.point), c.at(1.0).distance(ve.point)});
+            reach = std::max({reach, c.at(0.0).distance(vs.point), c.at(1.0).distance(ve.point)});
         }
         for (const BRepCurveOnSurface& pc : e.pcurves)
             for (bool second : {false, true}) {
@@ -535,12 +535,127 @@ void grow_tolerances(BRep& b) {
                 const Curve2d& p = b.m_curves_2d[second ? pc.curve_2d_index_2 : pc.curve_2d_index];
                 const Point a = p.point_at(t0), z = p.point_at(t1);
                 const Surface& s = b.m_surfaces[pc.surface_index];
-                tol = std::max({tol, s.point_at(a[0], a[1]).distance(vs.point), s.point_at(z[0], z[1]).distance(ve.point)});
+                reach = std::max({reach, s.point_at(a[0], a[1]).distance(vs.point), s.point_at(z[0], z[1]).distance(ve.point)});
             }
-        e.tolerance = tol;
-        vs.tolerance = std::max(vs.tolerance, tol);
-        ve.tolerance = std::max(ve.tolerance, tol);
+        vs.tolerance = std::max(vs.tolerance, reach);
+        ve.tolerance = std::max(ve.tolerance, reach);
     }
+}
+
+/// A loop segment of a face in uv: its chord and, where it bulges from it, its piece of the pcurve
+struct Chord {
+    Point a, b;
+    const Region::Arc* arc = nullptr;
+    double t0 = 0.0, t1 = 1.0; // the part of the arc's piece
+    size_t loop = 0, index = 0, count = 0;
+    Point at(double f) const {
+        if (!arc)
+            return a + (b - a) * f;
+        return arc->curve->point_at(arc->t0 + (t0 + f * (t1 - t0)) * (arc->t1 - arc->t0)) + arc->turn;
+    }
+};
+
+/// Whether two segments cross and where: their chords, then the chords of their quarters, four times over, so that two arcs lying along each other are not taken to cross where only their chords do
+bool cross(const Chord& x, const Chord& y, int depth, double margin, Point& at) {
+    const auto side = [](const Point& a, const Point& b, const Point& p) { return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]); };
+    const double d1 = side(x.a, x.b, y.a), d2 = side(x.a, x.b, y.b), d3 = side(y.a, y.b, x.a), d4 = side(y.a, y.b, x.b);
+    if (d1 * d2 >= 0.0 || d3 * d4 >= 0.0)
+        return false;
+    const double s = d1 / (d1 - d2), t = d3 / (d3 - d4);
+    if (std::min({s, 1.0 - s, t, 1.0 - t}) <= margin)
+        return false;
+    at = y.a + (y.b - y.a) * s;
+    if (depth == 0 || (!x.arc && !y.arc))
+        return true;
+    const auto quarters = [](const Chord& c) {
+        std::vector<Chord> parts;
+        for (int k = 0; k < (c.arc ? 4 : 1); ++k) {
+            Chord q = c;
+            if (c.arc) {
+                q.t0 = c.t0 + 0.25 * k * (c.t1 - c.t0);
+                q.t1 = c.t0 + 0.25 * (k + 1) * (c.t1 - c.t0);
+                q.a = k == 0 ? c.a : c.at(0.25 * k);
+                q.b = k == 3 ? c.b : c.at(0.25 * (k + 1));
+            }
+            parts.push_back(q);
+        }
+        return parts;
+    };
+    for (const Chord& p : quarters(x))
+        for (const Chord& q : quarters(y))
+            if (cross(p, q, depth - 1, 0.0, at))
+                return true;
+    return false;
+}
+
+/// Where two of a face's loop segments cross in uv away from their ends
+std::vector<Point> crossings(const Region& region) {
+    std::vector<Point> found;
+    std::vector<Chord> segments;
+    for (size_t l = 0; l < region.loops.size(); ++l) {
+        const std::vector<Point>& loop = region.loops[l];
+        const size_t n = loop.size() - (region.winds[l] >= 0 ? 1 : 0);
+        for (size_t i = 0; i < n; ++i)
+            segments.push_back({loop[i], loop[(i + 1) % loop.size()], i < region.arcs[l].size() && region.arcs[l][i].bulge > 0.0 ? &region.arcs[l][i] : nullptr, 0.0, 1.0, l, i, region.winds[l] >= 0 ? 0 : n});
+    }
+    std::sort(segments.begin(), segments.end(), [](const Chord& x, const Chord& y) { return std::min(x.a[0], x.b[0]) < std::min(y.a[0], y.b[0]); });
+    for (size_t i = 0; i < segments.size(); ++i) {
+        const Chord& x = segments[i];
+        const double right = std::max(x.a[0], x.b[0]);
+        for (size_t j = i + 1; j < segments.size() && std::min(segments[j].a[0], segments[j].b[0]) < right; ++j) {
+            const Chord& y = segments[j];
+            const size_t gap = x.index > y.index ? x.index - y.index : y.index - x.index;
+            Point at;
+            if ((x.loop != y.loop || (gap > 1 && gap + 1 != x.count)) && cross(x, y, 4, 1e-3, at))
+                found.push_back(at);
+        }
+    }
+    return found;
+}
+
+/// What makes a result untrustworthy although it closes: an edge far looser than the operands allow (their vertices, and their edges as far as they run from their faces) or a face whose loops cross in uv outside the tolerance of its vertices
+std::string invalid(const DS& ds, const BRep& result) {
+    double allowed = std::max(ds.fuzzy, 1e-7), worst = 0.0;
+    for (const Edge& e : ds.edges)
+        allowed = std::max(allowed, e.tolerance);
+    for (const BRep* o : ds.operands)
+        for (const BRepVertex& v : o->m_vertices)
+            allowed = std::max(allowed, v.tolerance);
+    for (const BRepEdge& e : result.m_edges)
+        worst = std::max(worst, e.tolerance);
+    if (worst > 100.0 * allowed)
+        return "an edge of the result has tolerance " + std::to_string(worst) + ", the operands' largest is " + std::to_string(allowed);
+    for (int f = 0; f < result.face_count(); ++f) {
+        const Surface& s = result.m_surfaces[result.m_faces[f].surface_index];
+        for (const Point& uv : crossings(face_region(result, f, result.m_faces[f].tolerance))) {
+            const Point p = s.point_at(uv[0], uv[1]);
+            bool covered = false;
+            for (const BRepRef& wire : result.m_faces[f].wires)
+                for (const BRepRef& use : result.wire_edges(wire))
+                    for (int v : {result.m_edges[use.index].start_vertex, result.m_edges[use.index].end_vertex})
+                        covered = covered || p.distance(result.m_vertices[v].point) <= result.m_vertices[v].tolerance;
+            if (!covered)
+                return "the loops of result face " + std::to_string(f) + " cross in uv";
+        }
+    }
+    return {};
+}
+
+/// A valid result whose shells close: every edge of a shell run as often one way as the other. Two parts of a solid that touch along an edge share it four times, as BOPAlgo_BuilderSolid leaves them, which BRep::is_solid does not take.
+bool closes(const BRep& b) {
+    if (b.m_solids.empty() || !b.is_valid())
+        return false;
+    for (const BRepShell& shell : b.m_shells) {
+        std::map<int, int> balance;
+        for (const BRepRef& face : shell.faces)
+            for (const BRepRef& wire : b.m_faces[face.index].wires)
+                for (const BRepRef& use : b.m_wires[wire.index].edges)
+                    if (!b.m_edges[use.index].degenerated)
+                        balance[use.index] += brep_compose(face.orientation, use.orientation) == BRepOrientation::Forward ? 1 : -1;
+        if (std::any_of(balance.begin(), balance.end(), [](const auto& e) { return e.second != 0; }))
+            return false;
+    }
+    return true;
 }
 
 bool empty(const BRep& b) {
@@ -585,7 +700,7 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
         out.log.push_back(std::string("joined edges: ") + error.what());
     }
     grow_tolerances(result);
-    out.solid = result.is_solid();
+    out.solid = closes(result);
     if (!out.solid && result.face_count() > 0) {
         std::map<int, int> uses;
         for (const BRepFace& face : result.m_faces)
@@ -602,6 +717,8 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
     for (const std::string& line : out.log)
         if (out.failure.empty() && line.rfind("classification conflict", 0) == 0)
             out.failure = "pieces of one block are inside and outside the other operand";
+    if (out.failure.empty())
+        out.failure = invalid(ds, result);
     // Where the analytic operands do not give a solid, their NURBS may: the result is then NURBS.
     if (!out.failure.empty() && (!a.is_freeform() || !b.is_freeform())) {
         Report plain;

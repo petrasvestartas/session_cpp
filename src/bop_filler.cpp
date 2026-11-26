@@ -1148,14 +1148,30 @@ struct Filler {
                     return true;
             return false;
         };
-        if (!near(t0)) {
+        // PutBoundPaveOnCurve makes a vertex at an end only where it lies in both faces, and IntPatch walks on past their bounds: an end on a bound is where the section has left a face, and only a vertex met there ends it.
+        const auto left = [&](double t) {
+            for (int side = 0; side < 2; ++side) {
+                const Region& region = ds.faces[side ? ib : ia].region;
+                const Point uv = (side ? c.pcurve_b : c.pcurve_a)->point_at(t);
+                for (int d = 0; d < 2; ++d) {
+                    const double period = region.period[d], lo = region.lo[d], hi = region.hi[d];
+                    if (period > 0.0 && hi - lo >= period - region.eps)
+                        continue;
+                    const double x = period > 0.0 ? lo + std::remainder(uv[d] - lo, period) : uv[d];
+                    if (std::abs(x - lo) <= region.eps || std::abs(x - hi) <= region.eps || (period > 0.0 && std::abs(x + period - hi) <= region.eps))
+                        return true;
+                }
+            }
+            return false;
+        };
+        if (!near(t0) && !left(t0)) {
             const int v = ds.add_vertex(w.point_at(t0), c.tolerance);
             ds.vertices[v].joint = !section.bound[0];
             c.paves.push_back({v, t0});
             if (closed)
                 c.paves.push_back({v, t1});
         }
-        if (!near(t1)) {
+        if (!near(t1) && !left(t1)) {
             c.paves.push_back({ds.add_vertex(w.point_at(t1), c.tolerance), t1});
             ds.vertices.back().joint = !section.bound[1];
         }

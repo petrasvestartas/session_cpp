@@ -1203,6 +1203,38 @@ MINI_TEST("FileStep", "BRep Read Degenerated Edge Only Where A Gap Spans No Leng
     MINI_CHECK(edges[0] == 4 && degenerated[0] == 1 && edges[1] == 3 && degenerated[1] == 0);
 }
 
+MINI_TEST("FileStep", "BRep Read Seam Given One Line Twice And Hole At The Turn") {
+    // two faces of nist_edm/chamber.stp: a tube closed in v whose seam edge has both its pcurves on the line v = 0 in the file, and a full-turn
+    // cylinder with a hole next to its seam: the seam's second pcurve lies a period across, the hole in the turn of the outer loop
+    const auto shapes = step_read_text(step_fixture("seam_on_one_line.step"), "seam_on_one_line.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].face_count() == 2);
+    const BRep& b = shapes[0];
+    const auto [v0, v1] = b.m_surfaces[b.m_faces[0].surface_index].domain(1);
+    int seams = 0;
+    for (const BRepEdge& e : b.m_edges)
+        for (const BRepCurveOnSurface& pc : e.pcurves)
+            if (pc.surface_index == b.m_faces[0].surface_index && pc.curve_2d_index_2 >= 0) {
+                const double a = b.m_curves_2d[pc.curve_2d_index].point_at(b.pcurve_range(pc, false).first)[1];
+                const double z = b.m_curves_2d[pc.curve_2d_index_2].point_at(b.pcurve_range(pc, true).first)[1];
+                seams += std::abs(std::abs(a - z) - (v1 - v0)) < 1e-9;
+            }
+    MINI_CHECK(seams == 1);
+    std::array<double, 2> lo = {1e300, 1e300}, hi = {-1e300, -1e300};
+    for (size_t w = 0; w < b.m_faces[1].wires.size() && w < 2; w++)
+        for (const BRepRef& use : b.wire_edges(b.m_faces[1].wires[w]))
+            for (const BRepCurveOnSurface& pc : b.m_edges[use.index].pcurves)
+                if (pc.surface_index == b.m_faces[1].surface_index)
+                    for (int k = 0; k <= 8; k++) {
+                        const auto [t0, t1] = b.pcurve_range(pc, false);
+                        const double u = b.m_curves_2d[pc.curve_2d_index].point_at(t0 + (t1 - t0) * k / 8.0)[0];
+                        lo[w] = std::min(lo[w], u);
+                        hi[w] = std::max(hi[w], u);
+                    }
+    MINI_CHECK(b.m_faces[1].wires.size() == 2 && lo[0] < lo[1] && hi[1] < hi[0]);
+    const std::vector<Mesh> meshes = b.face_meshes();
+    MINI_CHECK(meshes.size() == 2 && meshes[0].number_of_faces() > 0 && meshes[1].number_of_faces() > 0);
+}
+
 MINI_TEST("FileStep", "Analytic Entities Kept And Written") {
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "session_step_analytic";
     std::filesystem::create_directories(dir);

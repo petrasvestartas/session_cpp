@@ -328,7 +328,7 @@ public:
     /// The bridge for consumers of NURBS: the same solid with every surface and curve as its NURBS and every pcurve in the parameter of that NURBS, over the parameter of its edge's NURBS; exact for lines on planes and for circles and rulings of a surface, fitted otherwise with the distance left put into the edge tolerance. An angle becomes a parameter of one unit a quarter turn; a length runs from 0 to 1, or without unit_lengths keeps its parameter. Itself when is_nurbs()
     BRep as_nurbs(bool unit_lengths = true) const;
 
-    /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst gap between its curve ends (3D and lifted pcurves) and its vertices, every vertex to its worst edge; returns the largest
+    /// BRepLib::UpdateTolerances: raise every vertex tolerance to its edges' and to the worst gap between their curve ends (3D and lifted pcurves) and it; returns the largest
     double update_tolerances();
 
     /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only
