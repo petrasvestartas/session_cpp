@@ -1204,6 +1204,22 @@ MINI_TEST("FileStep", "BRep Read Degenerated Edge Only Where A Gap Spans No Leng
             }
     MINI_CHECK(edges[0] == 4 && degenerated[0] == 1 && edges[1] == 3 && degenerated[1] == 0);
 }
+MINI_TEST("FileStep", "BRep Read No Degenerated Edge Under The Vertex Tolerance") {
+    // the apex 0.6 off its edges' ends: the gap of 1 at the collapsed row is under twice the uv image of that reach (ShapeAnalysis_Wire::CheckLacking)
+    std::string text = step_fixture("lacking_gaps.step");
+    text.replace(text.find("#10=CARTESIAN_POINT('',(0.5,1.0,0.0));"), 38, "#10=CARTESIAN_POINT('',(0.5,1.6,0.0));");
+    const auto shapes = step_read_text(text, "lacking_reach.step");
+    MINI_CHECK(shapes.size() == 1 && shapes[0].edge_count() == 6);
+    MINI_CHECK(std::none_of(shapes[0].m_edges.begin(), shapes[0].m_edges.end(), [](const auto& edge) { return edge.degenerated; }));
+}
+MINI_TEST("FileStep", "BRep Read Uv Gap On A Cylinder Closed By Tolerance") {
+    // a vertex 7e-10 off the arc it starts, read at tolerance 1e-12: the line and the arc meet 7e-10 apart in uv on a surface without a pole or an apex,
+    // so no degenerated edge (ShapeFix_Wire::FixLacking asks ShapeAnalysis_Surface::IsDegenerated)
+    const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() / "tests/fixtures/step/quarter_cylinder.step";
+    const auto shapes = file_step::read_file_step_breps(path.string(), 1e-12);
+    MINI_CHECK(shapes.size() == 1 && shapes[0].edge_count() == 4);
+    MINI_CHECK(std::none_of(shapes[0].m_edges.begin(), shapes[0].m_edges.end(), [](const auto& edge) { return edge.degenerated; }));
+}
 
 MINI_TEST("FileStep", "BRep Read Seam Given One Line Twice And Hole At The Turn") {
     // two faces of nist_edm/chamber.stp: a tube closed in v whose seam edge has both its pcurves on the line v = 0 in the file, and a full-turn

@@ -3104,11 +3104,23 @@ class BRepBuilder {
     std::vector<BRepRef> face_refs; // Face references in file order.
     std::map<int, std::tuple<int, int, double>> splits; // Edge split for a missing seam: its pieces and the normalized parameter of the cut.
     std::map<int, Surface> forms; // The file's analytic surface of a brep surface, over the window its face was read in.
+    std::map<int, double> vertex_reach; // The largest reach any face gave a vertex in an earlier read.
+    std::vector<std::pair<int, double>> lacking; // Degenerated edge on a B-spline face: its vertex and the reach under which its gap is none.
 
 public:
 
-    /// Construct over an entity reader.
-    BRepBuilder(StepReader& reader, double precision) : r(reader), tolerance(precision) {}
+    std::map<int, double> reach; // The largest reach a face gives a vertex at a gap between its pcurves.
+
+    /// Construct over an entity reader, with the vertex reach of an earlier read.
+    BRepBuilder(StepReader& reader, double precision, std::map<int, double> known = {}) : r(reader), tolerance(precision), vertex_reach(std::move(known)) {}
+
+    /// Whether a degenerated edge was made across a gap that the reach other faces gave its vertex closes: read again with that reach.
+    bool reread() const {
+        for (const auto& [vertex, under] : lacking)
+            if (reach.at(vertex) > under)
+                return true;
+        return false;
+    }
 
     /// The second use of an edge on the same surface is a seam: the forward use keeps curve_2d_index, the reversed one curve_2d_index_2.
     void attach_pcurve(int edge, int si, int c2, bool reversed_use) {
@@ -3865,8 +3877,18 @@ public:
             const BRepEdge& be = brep.m_edges[pl[k].edge];
             const int vertex = pl[k].reversed ? be.start_vertex : be.end_vertex;
 
+            const Point pa = chart_eval(an, w, a2);
+            const Point pb = chart_eval(an, w, b2);
+
             if (std::abs(a2[0] - b2[0]) + std::abs(a2[1] - b2[1]) <= 1e-12 * (1.0 + std::abs(a2[0]) + std::abs(a2[1])) ||
-                chart_eval(an, w, a2).distance(chart_eval(an, w, b2)) > (an.radius + std::abs(an.r2) + 1.0) * 1e-9)
+                pa.distance(pb) > (an.radius + std::abs(an.r2) + 1.0) * 1e-9)
+                continue;
+
+            const Point& vp = brep.m_vertices[vertex].point;
+            reach[vertex] = std::max({reach[vertex], be.tolerance, brep.m_edges[next.edge].tolerance, pa.distance(vp), pb.distance(vp)});
+
+            // ShapeFix_Wire::FixLacking with ShapeAnalysis_Surface::IsDegenerated: a degenerated edge only where the surface is singular (a pole or an apex).
+            if (chart_eval(an, w, Point(a2[0] + 1e-6, a2[1], 0)).distance(pa) > 1e-12 * (an.radius + 1.0))
                 continue;
 
             out.push_back({brep.add_edge(-1, vertex, vertex), false, polyline_nurbs({a2, b2}, 2)});
@@ -4223,12 +4245,20 @@ public:
             const Point pa = Point(support.point(a[0], a[1])), pb = Point(support.point(b[0], b[1]));
             const Point pm = Point(support.point(0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])));
             const double allowed = std::max({tolerance, first_edge.tolerance, second_edge.tolerance, pa.distance(point), pb.distance(point)}) * (1.0 + 1e-9);
+            reach[vertex] = std::max(reach[vertex], allowed);
+            // ShapeAnalysis_Wire::CheckLacking: no gap under twice the uv image of the vertex tolerance, the largest reach any face gives the vertex.
+            const std::array<double, 2> bound = partial_bounds(support);
+            const double inverse = std::max(bound[0] > 0 ? 1.0 / bound[0] : 0.0, bound[1] > 0 ? 1.0 / bound[1] : 0.0);
+            const auto known = vertex_reach.find(vertex);
+            if (a.distance(b) < 2.0 * std::max(allowed, known == vertex_reach.end() ? 0.0 : known->second) * inverse)
+                continue;
             bool collapsed = true;
             for (int k = 1; k < 8 && collapsed; ++k)
                 collapsed = Point(support.point(a[0] + (b[0] - a[0]) * k / 8, a[1] + (b[1] - a[1]) * k / 8)).distance(point) <= allowed;
-            const std::array<double, 2> bound = partial_bounds(support);
-            if (collapsed && std::hypot((b[0] - a[0]) * bound[0], (b[1] - a[1]) * bound[1]) > 10.0 * std::max({pa.distance(pb), pm.distance(pa), pm.distance(pb)}))
+            if (collapsed && std::hypot((b[0] - a[0]) * bound[0], (b[1] - a[1]) * bound[1]) > 10.0 * std::max({pa.distance(pb), pm.distance(pa), pm.distance(pb)})) {
                 result.push_back({brep.add_edge(-1, vertex, vertex), false, polyline_nurbs({a, b}, 2)});
+                lacking.push_back({vertex, a.distance(b) / (2.0 * inverse)});
+            }
         }
         return result;
     }
@@ -5482,6 +5512,12 @@ std::vector<BRep> read_file_step_breps(
                     BRepBuilder builder(r, tolerance);
                     StepIds part;
                     BRep b = builder.build_from_shell(inner >= 0 ? inner : shell_ref, faces, part);
+
+                    if (builder.reread()) {
+                        BRepBuilder again(r, tolerance, builder.reach);
+                        part = {};
+                        b = again.build_from_shell(inner >= 0 ? inner : shell_ref, faces, part);
+                    }
 
                     if (!b.m_faces.empty())
                         built[model].push_back({std::move(b), std::move(part)});
