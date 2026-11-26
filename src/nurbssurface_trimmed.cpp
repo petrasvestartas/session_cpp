@@ -2793,8 +2793,13 @@ void flip_to_surface(const Delaunay2D& dt, const std::vector<Point>& points, std
         const double gamma = angle(c, a, b);
         const double delta = angle(d, b, a);
 
+        // the two new triangles face as the two old ones do: on a closed surface the flip would otherwise join points
+        // close in space the long way round in the parameters
+        const auto facing = [&](int p, int q, int r) { return (points[q] - points[p]).cross(points[r] - points[p]); };
+        const Vector before = facing(a, b, c) + facing(b, a, d);
+
         if (gamma < 0 || delta < 0 || gamma + delta <= Tolerance::PI * (1 + 1e-9) || !ccw(c, a, d) || !ccw(d, b, c)
-            || angle(a, c, d) < 0 || angle(b, d, c) < 0)
+            || angle(a, c, d) < 0 || angle(b, d, c) < 0 || facing(c, a, d).dot(before) <= 0 || facing(d, b, c).dot(before) <= 0)
             continue;
 
         const size_t i1 = first->second, i2 = second->second;
@@ -2888,6 +2893,7 @@ struct Barriers {
     std::vector<std::array<double, 5>> boxes;
     double cell = 1; // UV size of the grid cells the boxes are filed under.
     std::unordered_map<int64_t, std::vector<int>> cells;
+    std::vector<int> wide; // Boxes over more cells than are worth filing, checked everywhere.
 
     int64_t key(double u, double v) const {
         return (static_cast<int64_t>(std::floor(u / cell)) << 32) ^ static_cast<int64_t>(static_cast<uint32_t>(std::floor(v / cell)));
@@ -2921,6 +2927,11 @@ Barriers barriers(const Delaunay2D& dt, const NurbsSurface& surface, const std::
     for (int k = 0; k < (int)result.boxes.size(); ++k) {
         const std::array<double, 5>& box = result.boxes[k];
 
+        if ((std::floor(box[1] / result.cell) - std::floor(box[0] / result.cell) + 1) * (std::floor(box[3] / result.cell) - std::floor(box[2] / result.cell) + 1) > 256) {
+            result.wide.push_back(k);
+            continue;
+        }
+
         for (double u = std::floor(box[0] / result.cell); u <= std::floor(box[1] / result.cell); ++u)
             for (double v = std::floor(box[2] / result.cell); v <= std::floor(box[3] / result.cell); ++v)
                 result.cells[result.key((u + .5) * result.cell, (v + .5) * result.cell)].push_back(k);
@@ -2935,23 +2946,25 @@ bool blocked(const Barriers& sides, const NurbsSurface& surface, const std::arra
 
     const auto filed = sides.cells.find(sides.key(uv[0], uv[1]));
 
-    if (filed == sides.cells.end())
+    if (filed == sides.cells.end() && sides.wide.empty())
         return false;
 
     const Point point = surface.point_at(uv[0], uv[1]);
+    const std::vector<int> none;
 
-    for (int k : filed->second) {
-        const std::array<double, 5>& box = sides.boxes[k];
+    for (const std::vector<int>* list : {&sides.wide, filed == sides.cells.end() ? &none : &filed->second})
+        for (int k : *list) {
+            const std::array<double, 5>& box = sides.boxes[k];
 
-        if (uv[0] < box[0] || uv[0] > box[1] || uv[1] < box[2] || uv[1] > box[3]
-            || (sides.chords[k][0] - point).dot(sides.chords[k][1] - point) > 0)
-            continue;
+            if (uv[0] < box[0] || uv[0] > box[1] || uv[1] < box[2] || uv[1] > box[3]
+                || (sides.chords[k][0] - point).dot(sides.chords[k][1] - point) > 0)
+                continue;
 
-        const Vector along = sides.chords[k][1] - sides.chords[k][0];
+            const Vector along = sides.chords[k][1] - sides.chords[k][0];
 
-        if (box[4] > 0.25 * slope * along.cross(point - sides.chords[k][0]).magnitude() / std::max(along.magnitude(), 1e-300))
-            return true;
-    }
+            if (box[4] > 0.25 * slope * along.cross(point - sides.chords[k][0]).magnitude() / std::max(along.magnitude(), 1e-300))
+                return true;
+        }
 
     return false;
 }
@@ -3008,8 +3021,11 @@ void surface_refine(Delaunay2D& dt, const NurbsSurface& surface, const std::vect
             seat_poles(poles, seated);
             const auto found = held.try_emplace(key(tri), false);
 
+            // a triangle a small part of the deflection across is within it of the surface whatever its tilt: across a crease
+            // or a pinch of the surface the tilt never settles, and splitting would not end
             if (found.second)
-                found.first->second = !off_surface(surface, seated, {points[tri[0]], points[tri[1]], points[tri[2]]}, deflection, cos_max_angle);
+                found.first->second = std::max({points[tri[0]].distance(points[tri[1]]), points[tri[1]].distance(points[tri[2]]), points[tri[2]].distance(points[tri[0]])}) <= deflection / 16
+                    || !off_surface(surface, seated, {points[tri[0]], points[tri[1]], points[tri[2]]}, deflection, cos_max_angle);
 
             if (found.first->second)
                 continue;

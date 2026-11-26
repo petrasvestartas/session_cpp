@@ -1477,7 +1477,7 @@ void lift_canonical(
         const double start = next - ends.first <= ends.second - next ? ends.first : ends.second;
         samples.front() = {start, crv.point_at(start), points.front()};
 
-        if (same_boundary_point(points.front(), points.back())) {
+        if (same_boundary_point(points.front(), points.back()) || std::get<0>(samples.back()) == start) {
             const double end = start == ends.first ? ends.second : ends.first;
             samples.back() = {end, crv.point_at(end), points.back()};
         }
@@ -1943,8 +1943,13 @@ bool split_bulging_chords(const BRep& b, int fi, const std::vector<bool>& cdt, E
         for (const Chord& other : chords) {
             const Point &p = std::get<1>(other.first), &q = std::get<1>(other.last);
             const bool shares = same_boundary_point(std::get<2>(other.first), std::get<2>(c.first)) || same_boundary_point(std::get<2>(other.first), std::get<2>(c.last));
-            const bool crosses = !shares && other.bulge <= c.bulge && !same_boundary_point(std::get<2>(other.last), std::get<2>(c.first))
-                && !same_boundary_point(std::get<2>(other.last), std::get<2>(c.last)) && cross(a, z, p) * cross(a, z, q) < 0 && cross(p, q, a) * cross(p, q, z) < 0;
+            // chords meet where their ends meet in the parameters, not in space only: across a degenerated edge they part
+            const auto meet = [&](const std::tuple<double, Point, Point>& u, const std::tuple<double, Point, Point>& w) {
+                return std::get<1>(u).distance(std::get<1>(w)) <= 1e-3 * length;
+            };
+            const bool crosses = other.edge != c.edge && !meet(other.first, c.first) && !meet(other.first, c.last) && !meet(other.last, c.first)
+                && !meet(other.last, c.last) && other.bulge <= c.bulge
+                && cross(a, z, p) * cross(a, z, q) < -1e-6 * std::pow(length, 4) && cross(p, q, a) * cross(p, q, z) < -1e-6 * std::pow(p.distance(q), 4);
 
             if (!crosses && (shares || off(p, a, z) > reach))
                 continue;
@@ -1976,10 +1981,11 @@ bool split_bulging_chords(const BRep& b, int fi, const std::vector<bool>& cdt, E
             };
             const long i = at(std::get<2>(c.first)), j = at(std::get<2>(c.last)), n = canonical.size();
             const long slot = std::abs(i - j) == 1 ? std::max(i, j) : std::min(i, j) == 0 && std::max(i, j) == n - 1 ? n : -1;
-            const double t = (low + high) / 2;
+            // a crossing near the end of the chord is not split at that point: halving the chord brings the samples to where the loops part
+            const double t = crosses ? (from + to) / 2 : (low + high) / 2;
             const Point uv = crv.point_at(t);
 
-            if (slot < 0 || uv.distance(a) <= .05 * length || uv.distance(z) <= .05 * length)
+            if (slot < 0 || (!crosses && (uv.distance(a) <= .05 * length || uv.distance(z) <= .05 * length)))
                 continue;
 
             canonical.insert(canonical.begin() + slot, srf.point_at(uv[0], uv[1]));
@@ -2092,6 +2098,39 @@ void wind_to_normal(Mesh& mesh, const Vector& normal) {
 
     if ((b - a).cross(c - a).dot(normal) < 0.0)
         mesh.flip();
+}
+
+/// Phase 3 for a curved face: the loops triangulated in the surface's parameters stretched to about one length per unit
+/// along each over the loops, the surface's knots with them: a parameter of angle against one of length would make the
+/// triangulation, Delaunay in the parameters, of slivers across the surface that no refinement repairs.
+Mesh stretched_loops_mesh(const NurbsSurface& srf, TrimLoops loops, double angle, double chord) {
+
+    NurbsSurfaceTrimmed ts;
+    ts.m_surface = srf;
+    double length[2] = {0, 0};
+
+    for (const std::vector<Point>& loop : loops.uv)
+        for (size_t k = 0; k < loop.size(); k += 1 + loop.size() / 32) {
+            const std::vector<Vector> d = srf.evaluate(loop[k][0], loop[k][1], 1);
+            length[0] += d[2].magnitude();
+            length[1] += d[1].magnitude();
+        }
+
+    const double unit = std::min(length[0], length[1]);
+
+    if (!mesh_parametric_metadata::capture_depth && unit > 0 && std::isfinite(length[0] + length[1]))
+        for (int d = 0; d < 2; ++d) {
+            const double stretch = length[d] / unit;
+            for (double& knot : ts.m_surface.m_nurbsknot[d])
+                knot *= stretch;
+            for (std::vector<Point>& loop : loops.uv)
+                for (Point& point : loop)
+                    point[d] *= stretch;
+            for (Point& point : loops.interior_uv)
+                point[d] *= stretch;
+        }
+
+    return ts.mesh_loops(loops, angle, chord);
 }
 
 /// Phase 3 for a planar face: the sampled loops triangulated as one polygon with holes, wound to the surface normal, every loop vertex tagged boundary/{loop}/{sample} as mesh_loops does; no grid, no surface evaluation
@@ -4285,14 +4324,15 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
     for (int fi = 0; fi < nf; ++fi)
         cdt[fi] = !face_strip[fi] && face_ruled[fi] < 0 && !face_direct[fi];
 
-    for (int added = 0; !mesh_parametric_metadata::capture_depth && added < 64;) {
-        int round = 0;
+    std::string unmeshed;
+
+    // each face its own count: one whose loops never part does not starve the others
+    std::vector<int> added(nf, 0);
+    for (bool more = !mesh_parametric_metadata::capture_depth; more;) {
+        more = false;
         for (int fi = 0; fi < nf; ++fi)
-            while (cdt[fi] && added + round < 64 && split_bulging_chords(*this, fi, cdt, boundary, scale, angle, chord))
-                ++round;
-        if (!round)
-            break;
-        added += round;
+            while (cdt[fi] && added[fi] < 128 && split_bulging_chords(*this, fi, cdt, boundary, scale, angle, chord))
+                more = ++added[fi];
     }
 
     for (int fi = 0; fi < nf; ++fi) {
@@ -4311,19 +4351,29 @@ std::vector<Mesh> BRep::face_meshes_q(bool has_quality, double max_angle_deg, do
 
         std::vector<std::tuple<int, size_t, size_t, size_t>> uses;
 
-        if (!trim_loops(*this, fi, boundary, scale, angle, chord, loops, uses))
+        if (!trim_loops(*this, fi, boundary, scale, angle, chord, loops, uses)) {
+            unmeshed += fmt::format(" {} (an edge use without a pcurve on it)", fi);
             continue;
+        }
 
         if (loops.interior_uv.empty() && is_planar_patch(srf)) {
             fmesh[fi] = planar_loops_mesh(srf, loops);
-        } else {
-            NurbsSurfaceTrimmed ts;
-            ts.m_surface = srf;
-            fmesh[fi] = ts.mesh_loops(loops, angle, chord);
-        }
+        } else
+            fmesh[fi] = stretched_loops_mesh(srf, loops, angle, chord);
+
+        if (fmesh[fi].face.empty())
+            unmeshed += fmt::format(" {} (trim loops that cross or touch themselves)", fi);
 
         tag_edge_uses(fmesh[fi], loops, uses);
     }
+
+    // a face is drawn or the call says which is not and why: never a face silently left out
+    for (int fi = 0; fi < nf; ++fi)
+        if (fmesh[fi].face.empty() && (face_strip[fi] || face_ruled[fi] >= 0 || face_direct[fi]))
+            unmeshed += fmt::format(" {} (no triangles on its grid)", fi);
+
+    if (!unmeshed.empty())
+        throw std::runtime_error("BRep::face_meshes: faces without triangles:" + unmeshed);
 
     for (int face = 0; face < nf; ++face)
         tag_parametric_boundaries(*this, face, fmesh[face],

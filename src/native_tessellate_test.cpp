@@ -1,4 +1,5 @@
 #include "brep.h"
+#include "bop.h"
 #include "brep_assemble.h"
 #include "curve_surface_intersection.h"
 #include "mesh_parametric_metadata.h"
@@ -446,6 +447,77 @@ MINI_TEST("BRep Native Tessellate", "Loops Passing Close Keep Every Loop Point")
     const Mesh mesh = shape.tessellate(.005, .35);
     MINI_CHECK(mesh.is_closed());
     MINI_CHECK(std::abs(area / mesh.area() - 1) < .02);
+}
+
+MINI_TEST("BRep Native Tessellate", "Angle Against Length Meshes In Stretched Parameters") {
+    // a NURBS cylinder running its length in its own units and its angle in quarter turns: Delaunay in those parameters
+    // joins points across the cylinder into slivers, and the face's mesh grew by three quarters of its area
+    BRep stretched = BRep::create_cylinder(175, 327).as_nurbs();
+    for (size_t si = 0; si < stretched.m_surfaces.size(); ++si) {
+        NurbsSurface surface = stretched.m_surfaces[si].nurbs();
+        if (surface.m_order[1] != 2 || surface.m_cv_count[0] < 3)
+            continue;
+        for (double& knot : surface.m_nurbsknot[1])
+            knot *= 327;
+        stretched.m_surfaces[si] = Surface(surface);
+        for (BRepEdge& edge : stretched.m_edges)
+            for (BRepCurveOnSurface& use : edge.pcurves)
+                for (int* index : {&use.curve_2d_index, &use.curve_2d_index_2})
+                    if (use.surface_index == int(si) && *index >= 0) {
+                        NurbsCurve pcurve = stretched.m_curves_2d[*index].nurbs();
+                        pcurve.transform(Xform::scale_xyz(1, 327, 1));
+                        stretched.m_curves_2d[*index] = Curve2d(pcurve);
+                    }
+    }
+    BRep box = BRep::create_box(400, 400, 200);
+    box.transform(Xform::rotation(Vector(1, 0, 0), 20, true) * Xform::translation(0, 200, 0));
+    double area[2] = {0, 0};
+    for (int k = 0; k < 2; ++k)
+        for (const Mesh& face : bop::apply(k ? stretched : BRep::create_cylinder(175, 327), box, bop::Operation::Intersection).face_meshes())
+            area[k] += face.area();
+    MINI_CHECK(area[0] > 0 && std::abs(area[1] / area[0] - 1) < .01);
+}
+
+MINI_TEST("BRep Native Tessellate", "Crossing Chords Are Split Until The Loops Part") {
+    // a cylinder less a copy moved and tilted a little leaves a crescent cap whose two arcs meet at a hair's angle: their
+    // chords cross near the tips, where the old split stopped short, and the cap meshed to nothing
+    BRep cutter = BRep::create_cylinder(1, 2);
+    cutter.transform(Xform::rotation(Vector(0, 1, 0), 2, true) * Xform::translation(.01, 0, 0));
+    const BRep shape = bop::apply(BRep::create_cylinder(1, 1), cutter, bop::Operation::Difference);
+    const std::vector<Mesh> meshes = shape.face_meshes();
+    for (size_t fi = 0; fi < meshes.size(); ++fi) {
+        if (shape.m_surfaces[shape.m_faces[fi].surface_index].kind() != Surface::Kind::Plane)
+            continue;
+        Vector newell(0, 0, 0);
+        for (const BRepRef& wire : shape.m_faces[fi].wires)
+            for (const BRepRef& use : shape.wire_edges(wire)) {
+                if (shape.m_edges[use.index].degenerated)
+                    continue;
+                const Curve curve = shape.edge_curve(use.index);
+                const auto [t0, t1] = curve.domain();
+                for (int i = 0; i < 512; ++i) {
+                    const double a = i / 512.0, b = (i + 1) / 512.0;
+                    const bool back = use.orientation == BRepOrientation::Reversed;
+                    const Point p = curve.point_at(t0 + (t1 - t0) * (back ? 1 - a : a)), q = curve.point_at(t0 + (t1 - t0) * (back ? 1 - b : b));
+                    newell += Vector(p[0], p[1], p[2]).cross(Vector(q[0], q[1], q[2]));
+                }
+            }
+        MINI_CHECK(std::abs(meshes[fi].area() / (newell.magnitude() / 2) - 1) < .01);
+    }
+}
+
+MINI_TEST("BRep Native Tessellate", "Face Without Triangles Is A Named Error") {
+    // an edge use without its pcurve leaves the face no loops to mesh: the call says which face and why, never a face
+    // silently left out
+    BRep box = BRep::create_box(1, 1, 1).as_nurbs();
+    box.m_edges[0].pcurves.pop_back();
+    bool named = false;
+    try {
+        box.face_meshes();
+    } catch (const std::runtime_error& error) {
+        named = std::string(error.what()).find("faces without triangles") != std::string::npos;
+    }
+    MINI_CHECK(named);
 }
 
 }
