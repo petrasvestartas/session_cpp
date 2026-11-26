@@ -20,14 +20,16 @@ struct Box {
 struct Region {
     /// The pcurve piece a loop segment samples and how far it bulges from the segment
     struct Arc {
-        const NurbsCurve* curve = nullptr;
+        const Curve* curve = nullptr;
         double t0 = 0.0, t1 = 0.0, bulge = 0.0;
+        Vector turn{0, 0, 0}; // whole periods the piece is moved by
     };
     std::vector<std::vector<Point>> loops;
     std::vector<std::vector<Arc>> arcs; // per loop, one per segment or none
     std::vector<int> winds; // per loop: -1 when it closes in uv, else the periodic direction it runs once around, its last point its first moved by the period
     double eps = 1e-9; // uv distance that counts as on a loop
     std::array<double, 2> period{0.0, 0.0}; // the surface's period per direction, else 0
+    bool whole = false; // an analytic surface: its parameters run on past a period, and a loop may lie in any turn
     std::array<double, 2> lo{1e300, 1e300}, hi{-1e300, -1e300};
     void add_loop(std::vector<Point> loop, int winding = -1);
     /// The periodic direction a wire runs once around, given where its uv ends against where it started; -1 when it closes
@@ -108,7 +110,7 @@ struct Edge {
     double tolerance = 0.0;
     bool degenerated = false;
     double t0 = 0.0, t1 = 0.0; // its range on its curve
-    std::shared_ptr<const NurbsCurve> piece; // that range as NURBS for the numeric steps, when the edge shares its curve
+    std::shared_ptr<const Curve> piece; // the curve over that range alone, when the edge shares its curve
     std::vector<Pave> paves;
     std::vector<int> blocks; // in parameter order
     Box box;
@@ -153,9 +155,9 @@ struct DS {
     const BRep& brep(int operand) const { return *operands[operand]; }
     const Curve& edge_curve(const Edge& e) const { return brep(e.operand).m_curves_3d[brep(e.operand).m_edges[e.local].curve_3d_index]; }
     const Surface& face_surface(const Face& f) const { return brep(f.operand).m_surfaces[brep(f.operand).m_faces[f.local].surface_index]; }
-    /// The same as NURBS, for the numeric steps
-    const NurbsCurve& curve_of(const Edge& e) const { return e.piece ? *e.piece : edge_curve(e).nurbs(); }
-    const NurbsSurface& surface_of(const Face& f) const { return face_surface(f).nurbs(); }
+    /// The curve of an edge over its range alone, in its true parameter
+    const Curve& curve_of(const Edge& e) const { return e.piece ? *e.piece : edge_curve(e); }
+    const Surface& surface_of(const Face& f) const { return face_surface(f); }
     int real(int v) const {
         while (vertices[v].sd >= 0)
             v = vertices[v].sd;
@@ -165,7 +167,7 @@ struct DS {
     int merge(const std::vector<int>& group);
     int add_vertex(const Point& p, double tolerance);
     /// The block's own geometry: the edge or section curve and its parameter range
-    const NurbsCurve& block_curve(const PaveBlock& b) const { return b.edge >= 0 ? curve_of(edges[b.edge]) : curves[b.curve].world->nurbs(); }
+    const Curve& block_curve(const PaveBlock& b) const { return b.edge >= 0 ? curve_of(edges[b.edge]) : *curves[b.curve].world; }
     /// The block as its curve and range
     Span block_span(const PaveBlock& b) const { return b.edge >= 0 ? borrowed(edge_curve(edges[b.edge]), b.first.t, b.last.t) : Span{curves[b.curve].world, b.first.t, b.last.t, {}}; }
     /// The pcurve of a piece [t0, t1] of an operand's edge on one of its faces, as the face's wire uses it: the edge's own pcurve and the matching range
@@ -181,11 +183,27 @@ struct DS {
 /// BOPAlgo_PaveFiller::PerformInternal on two solids
 DS fill(const BRep& a, const BRep& b, double fuzzy);
 
+/// Where IntAna_QuadQuadGeo starts the circle or ellipse that the plane through o with normal n cuts from a sphere (kind 2, centre c, radius size), a cylinder (3, axis through c, radius size) or, across its axis, a cone (4): the X direction DirToAx2 gives; false for any other section
+bool conic_origin(const Point& o, Vector n, int kind, const Point& c, const Vector& axis, double size, const Point& fallback, Point& origin);
+
 /// A flat bilinear patch S(u, v) = origin + a s + b r with s, r its normalized parameters
 bool affine_patch(const NurbsSurface& surface, Point& origin, Vector& a, Vector& b);
 
-/// The pcurve of a curve's piece [t0, t1] on a surface it lies on, in the curve's parameter: exact on a flat bilinear patch, interpolated elsewhere
-NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSurface& surface);
+/// The pcurve of a curve's piece [t0, t1] on a surface it lies on, its parameter affine in the curve's, in the surface's true parameters: a 2D line where the piece runs at one speed along one (a line on a plane, a ruling or a circle about the axis), a 2D circle or ellipse under one in a plane, exact on a flat bilinear patch, interpolated elsewhere
+Curve project(const Curve& curve, double t0, double t1, const Surface& surface);
+
+/// The parameter in [lo, hi] of the point of a curve's piece nearest to p: by closed form on an analytic curve, on the turn of a circle or ellipse that passes the piece
+double parameter(const Curve& curve, const Point& p, double lo, double hi);
+
+/// The parameter of a curve at a parameter of its nurbs(): the angle on a circle or ellipse, whose NURBS runs rationally between its knots
+double true_parameter(const Curve& curve, double t);
+
+/// The parameters of a surface under a point of its nurbs(), each angle likewise
+Point true_parameters(const Surface& surface, double u, double v);
+
+/// How many pieces a curve is sampled in, and whether it is straight
+int samples(const Curve& curve);
+bool straight(const Curve& curve);
 
 /// The range of a pcurve under [t0, t1] of a curve whose parameter maps affinely from `domain` onto the pcurve's domain
 Span ranged(const std::shared_ptr<const Curve>& pcurve, std::pair<double, double> domain, double t0, double t1);

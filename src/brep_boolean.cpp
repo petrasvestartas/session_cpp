@@ -759,9 +759,6 @@ static bool joined_curve(NurbsCurve a, NurbsCurve b, bool flip_a, bool flip_b, s
 /// A section piece ends where it crosses a knot line of a NURBS surface or where a closed section closes; an analytic surface has neither.
 BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
 
-    if (!b.is_nurbs())
-        b = b.as_nurbs();
-
     const BRepOrientation F = BRepOrientation::Forward;
     const BRepOrientation R = BRepOrientation::Reversed;
     std::vector<bool> dropped_edge(b.edge_count(), false), dropped_vertex(b.vertex_count(), false);
@@ -775,11 +772,38 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
                     ends.push_back({e, last});
         if (ends.size() != 2 || ends[0].first == ends[1].first || (v < (int)keep.size() && keep[v]))
             continue;
+        // Pieces of one line or conic are joined along it: first the one that arrives at the vertex.
+        if (!ends[0].second && ends[1].second && b.m_edges[ends[0].first].curve_3d_index >= 0 && b.m_curves_3d[b.m_edges[ends[0].first].curve_3d_index].kind() != Curve::Kind::Nurbs)
+            std::swap(ends[0], ends[1]);
         const int e1 = ends[0].first, e2 = ends[1].first;
         const bool flip1 = !ends[0].second, flip2 = ends[1].second;
         BRepEdge& x = b.m_edges[e1];
         const BRepEdge& y = b.m_edges[e2];
         if (x.degenerated || y.degenerated || x.pcurves.size() != y.pcurves.size())
+            continue;
+        // Freeform pieces are refitted into one curve; pieces of one line or conic become one range of it, their pcurves likewise.
+        const auto freeform = [&](const BRepEdge& e) {
+            bool all = b.m_curves_3d[e.curve_3d_index].kind() == Curve::Kind::Nurbs;
+            for (const BRepCurveOnSurface& p : e.pcurves)
+                for (int index : {p.curve_2d_index, p.curve_2d_index_2})
+                    all = all && (index < 0 || b.m_curves_2d[index].kind() == Curve::Kind::Nurbs);
+            return all;
+        };
+        const auto one = [&](const Curve& p, const Curve& q) {
+            return p.kind() == q.kind() && p.kind() != Curve::Kind::Nurbs && p.origin().distance(q.origin()) <= tolerance && p.x().dot(q.x()) >= 1.0 - 1e-12 && (p.kind() == Curve::Kind::Line || p.y().dot(q.y()) >= 1.0 - 1e-12)
+                && std::abs(p.radius() - q.radius()) <= tolerance && std::abs(p.minor() - q.minor()) <= tolerance;
+        };
+        // Whether the second range starts where the first ends, up to whole periods, which it is then moved by.
+        const auto adjacent = [](const std::pair<double, double>& first, std::pair<double, double>& second, double period) {
+            const double gap = second.first - first.second, turns = period > 0.0 ? std::round(gap / period) * period : 0.0;
+            if (std::abs(gap - turns) > 1e-9 * std::max({1.0, std::abs(first.second), std::abs(second.first)}))
+                return false;
+            second = {second.first - turns, second.second - turns};
+            return true;
+        };
+        const Curve &cx = b.m_curves_3d[x.curve_3d_index], &cy = b.m_curves_3d[y.curve_3d_index];
+        const bool analytic = cx.kind() != Curve::Kind::Nurbs || cy.kind() != Curve::Kind::Nurbs;
+        if (analytic ? flip1 || flip2 || !one(cx, cy) : !freeform(x) || !freeform(y))
             continue;
 
         std::vector<std::array<int, 3>> uses;
@@ -808,10 +832,10 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
         if (!consecutive || uses.empty())
             continue;
 
-        const std::pair<double, double> d1 = b.m_curves_3d[x.curve_3d_index].nurbs().domain();
-        const std::pair<double, double> d2 = b.m_curves_3d[y.curve_3d_index].nurbs().domain();
+        const std::pair<double, double> d1 = b.edge_range(e1);
+        std::pair<double, double> d2 = b.edge_range(e2);
         NurbsCurve curve;
-        if (!joined_curve(b.m_curves_3d[x.curve_3d_index].nurbs(), b.m_curves_3d[y.curve_3d_index].nurbs(), flip1, flip2, d1, d2, tolerance, curve))
+        if (analytic ? !adjacent(d1, d2, cx.period()) : !joined_curve(b.edge_nurbs(e1), b.edge_nurbs(e2), flip1, flip2, d1, d2, tolerance, curve))
             continue;
         std::vector<BRepCurveOnSurface> pcurves;
         std::vector<NurbsCurve> curves_2d;
@@ -823,10 +847,19 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
             for (bool second : {false, true}) {
                 if (second && p.curve_2d_index_2 < 0)
                     continue;
-                const int a = second != flip1 && p.curve_2d_index_2 >= 0 ? p.curve_2d_index_2 : p.curve_2d_index;
-                const int c = second != flip2 && q->curve_2d_index_2 >= 0 ? q->curve_2d_index_2 : q->curve_2d_index;
+                const bool a = second != flip1 && p.curve_2d_index_2 >= 0, c = second != flip2 && q->curve_2d_index_2 >= 0;
+                const int ia = a ? p.curve_2d_index_2 : p.curve_2d_index, ic = c ? q->curve_2d_index_2 : q->curve_2d_index;
+                if (b.m_curves_2d[ia].kind() != Curve::Kind::Nurbs || b.m_curves_2d[ic].kind() != Curve::Kind::Nurbs) {
+                    const std::pair<double, double> r1 = b.pcurve_range(p, a);
+                    std::pair<double, double> r2 = b.pcurve_range(*q, c);
+                    if (!one(b.m_curves_2d[ia], b.m_curves_2d[ic]) || !adjacent(r1, r2, b.m_curves_2d[ia].period()))
+                        break;
+                    (second ? joined.curve_2d_index_2 : joined.curve_2d_index) = ia;
+                    (second ? joined.range_2 : joined.range) = {r1.first, r2.second};
+                    continue;
+                }
                 NurbsCurve pcurve;
-                if (!joined_curve(b.m_curves_2d[a].nurbs(), b.m_curves_2d[c].nurbs(), flip1, flip2, d1, d2, tolerance, pcurve))
+                if (!joined_curve(b.pcurve(p, a).nurbs(), b.pcurve(*q, c).nurbs(), flip1, flip2, d1, d2, tolerance, pcurve))
                     break;
                 (second ? joined.curve_2d_index_2 : joined.curve_2d_index) = (int)(b.m_curves_2d.size() + curves_2d.size());
                 curves_2d.push_back(pcurve);
@@ -854,10 +887,13 @@ BRep joined_edges(BRep b, double tolerance, const std::vector<bool>& keep) {
         x.start_vertex = flip1 ? x.end_vertex : x.start_vertex;
         x.end_vertex = flip2 ? y.start_vertex : y.end_vertex;
         x.tolerance = std::max(x.tolerance, y.tolerance);
-        x.curve_3d_index = b.add_curve_3d(curve);
+        x.range = analytic ? std::array<double, 2>{d1.first, d2.second} : std::array<double, 2>{0.0, 0.0};
+        if (!analytic) {
+            x.curve_3d_index = b.add_curve_3d(curve);
+            stale_3d.push_back(false);
+        }
         x.pcurves = pcurves;
         b.m_curves_2d.insert(b.m_curves_2d.end(), curves_2d.begin(), curves_2d.end());
-        stale_3d.push_back(false);
         stale_2d.resize(b.m_curves_2d.size(), false);
         dropped_edge[e2] = true;
         dropped_vertex[v] = true;

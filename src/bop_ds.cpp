@@ -71,12 +71,17 @@ int Region::state(const Point& uv) const {
                 }
         return inside ? 1 : -1;
     }
+    // On an analytic surface the point may come from any turn: first into the one the loops start in.
+    Point base = uv;
+    for (int d = 0; d < 2 && whole; ++d)
+        if (period[d] > 0.0 && lo[d] <= hi[d])
+            base[d] -= std::floor((base[d] - lo[d]) / period[d]) * period[d];
     int best = -1;
     for (int i = -1; i <= 1; ++i)
         for (int j = -1; j <= 1; ++j) {
             if ((i && !period[0]) || (j && !period[1]))
                 continue;
-            const Point q(uv[0] + i * period[0], uv[1] + j * period[1], 0);
+            const Point q(base[0] + i * period[0], base[1] + j * period[1], 0);
             if (q[0] < lo[0] - eps || q[0] > hi[0] + eps || q[1] < lo[1] - eps || q[1] > hi[1] + eps)
                 continue;
             bool inside = false, on = false;
@@ -100,7 +105,7 @@ int Region::state(const Point& uv) const {
                     const int n = 64;
                     Point from = a;
                     for (int i = 1; i <= n && !on; ++i) {
-                        const Point to = i == n ? b : arc.curve->point_at(arc.t0 + (arc.t1 - arc.t0) * i / n);
+                        const Point to = i == n ? b : arc.curve->point_at(arc.t0 + (arc.t1 - arc.t0) * i / n) + arc.turn;
                         visit(from, to);
                         from = to;
                     }
@@ -156,8 +161,45 @@ bool Region::interior(Point& uv) const {
     return widest > 0.0;
 }
 
-static int samples(const NurbsCurve& c) {
-    return std::clamp(4 * c.cv_count(), 8, 256);
+int samples(const Curve& curve) {
+    return std::clamp(4 * curve.nurbs().cv_count(), 8, 256);
+}
+
+bool straight(const Curve& curve) {
+    return curve.kind() == Curve::Kind::Line || (curve.kind() == Curve::Kind::Nurbs && curve.nurbs().degree() == 1);
+}
+
+double parameter(const Curve& curve, const Point& p, double lo, double hi) {
+    double t = curve.closest_parameter(p);
+    if (const double period = curve.kind() == Curve::Kind::Nurbs ? 0.0 : curve.period(); period > 0.0) {
+        t = Curve::wrapped(t, lo, period);
+        // Past the piece: the end nearer around the turn.
+        return t <= hi ? t : t - hi < lo + period - t ? hi : lo;
+    }
+    return std::clamp(t, lo, hi);
+}
+
+double true_parameter(const Curve& curve, double t) {
+    switch (curve.kind()) {
+    case Curve::Kind::Circle:
+    case Curve::Kind::Ellipse: return Curve::angle(t, curve.domain().first, curve.domain().second);
+    case Curve::Kind::Hyperbola: return curve.closest_parameter(curve.nurbs().point_at(t));
+    default: return t;
+    }
+}
+
+Point true_parameters(const Surface& surface, double u, double v) {
+    if (surface.kind() == Surface::Kind::Nurbs || surface.kind() == Surface::Kind::Plane)
+        return Point(u, v, 0);
+    if (surface.kind() == Surface::Kind::Revolution || surface.kind() == Surface::Kind::Extrusion) {
+        const auto [a, b] = surface.closest_parameters(surface.nurbs().point_at(u, v));
+        const auto [x, y] = surface.adjusted(a, b, {u - 1.0, u + 1.0, v - 1.0, v + 1.0});
+        return Point(x, y, 0);
+    }
+    const auto [u0, u1] = surface.domain(0);
+    const auto [v0, v1] = surface.domain(1);
+    const bool round = surface.kind() == Surface::Kind::Sphere || surface.kind() == Surface::Kind::Torus;
+    return Point(Curve::angle(u, u0, u1), round ? Curve::angle(v, v0, v1) : v, 0);
 }
 
 std::array<double, 2> surface_period(const NurbsSurface& s) {
@@ -188,8 +230,9 @@ std::array<double, 2> surface_period(const NurbsSurface& s) {
 
 Region face_region(const BRep& brep, int face, double tolerance) {
     Region region;
-    const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
-    region.period = surface_period(brep.m_surfaces[brep.m_faces[face].surface_index]);
+    const Surface& s = brep.m_surfaces[brep.m_faces[face].surface_index];
+    region.period = surface_period(s);
+    region.whole = s.kind() != Surface::Kind::Nurbs;
     for (const BRepRef& wire : brep.m_faces[face].wires) {
         std::vector<Point> loop;
         std::vector<Region::Arc> arcs;
@@ -198,19 +241,24 @@ Region face_region(const BRep& brep, int face, double tolerance) {
             const Span whole = pcurve_span(brep, use.index, face, use.orientation);
             if (!whole.curve)
                 continue;
-            const NurbsCurve& p = whole.curve->nurbs();
+            const Curve& p = *whole.curve;
             const int n = samples(p);
             const double t0 = whole.t0, span = whole.t1 - t0;
+            const bool back = use.orientation == BRepOrientation::Reversed;
+            // On an analytic surface each edge starts in the turn the one before it ends in.
+            Vector turn(0, 0, 0);
+            for (int d = 0; d < 2 && region.whole && !loop.empty(); ++d)
+                if (region.period[d] > 0.0)
+                    turn[d] = std::round((last[d] - p.point_at(back ? whole.t1 : t0)[d]) / region.period[d]) * region.period[d];
             for (int i = 0; i < n; ++i) {
-                const bool back = use.orientation == BRepOrientation::Reversed;
                 const double f = back ? 1.0 - double(i) / n : double(i) / n, g = back ? 1.0 - double(i + 1) / n : double(i + 1) / n;
-                const Point a = p.point_at(t0 + f * span), b = p.point_at(t0 + g * span);
+                const Point a = p.point_at(t0 + f * span) + turn, b = p.point_at(t0 + g * span) + turn;
                 double bulge = 0.0;
-                if (p.degree() > 1)
+                if (!straight(p))
                     for (double k : {0.25, 0.5, 0.75})
-                        bulge = std::max(bulge, segment_distance(p.point_at(t0 + (f + k * (g - f)) * span), a, b));
+                        bulge = std::max(bulge, segment_distance(p.point_at(t0 + (f + k * (g - f)) * span) + turn, a, b));
                 loop.push_back(a);
-                arcs.push_back({&p, t0 + f * span, t0 + g * span, bulge});
+                arcs.push_back({&p, t0 + f * span, t0 + g * span, bulge, turn});
                 last = b;
             }
         }
@@ -267,6 +315,95 @@ Point DS::block_point(const PaveBlock& b, double s) const {
     return block_curve(b).point_at(b.first.t + s * (b.last.t - b.first.t));
 }
 
+namespace {
+
+NurbsCurve interpolated(const std::vector<Point>& points, double t0, double t1) {
+    NurbsCurve uv = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform);
+    uv.set_domain(t0, t1);
+    return uv;
+}
+
+/// The pcurve on an analytic surface, or of an analytic curve on a freeform one
+Curve project_true(const Curve& curve, double t0, double t1, const Surface& surface) {
+    const int n = 32;
+    const std::array<double, 2> period = surface_period(surface);
+    std::vector<Point> points;
+    std::vector<bool> singular;
+    for (int i = 0; i <= n; ++i) {
+        const auto [u, v] = surface.closest_parameters(curve.point_at(t0 + (t1 - t0) * i / n));
+        const std::vector<Vector> d = surface.evaluate(u, v, 1);
+        points.push_back(Point(u, v, 0));
+        singular.push_back(std::min(d[1].magnitude(), d[2].magnitude()) <= 1e-9 * std::max(d[1].magnitude(), d[2].magnitude()));
+    }
+    // At a pole or an apex the angle is the one the curve arrives at; elsewhere each sample is on the turn of the one before.
+    const int regular = static_cast<int>(std::find(singular.begin(), singular.end(), false) - singular.begin());
+    for (int i = regular + 1; i <= n; ++i)
+        for (int d = 0; d < 2; ++d)
+            if (singular[i] && d == 0)
+                points[i][d] = points[i - 1][d];
+            else if (period[d] > 0.0)
+                points[i][d] -= std::round((points[i][d] - points[i - 1][d]) / period[d]) * period[d];
+    for (int i = std::min(regular, n) - 1; i >= 0; --i)
+        points[i][0] = points[i + 1][0];
+    double scale = 1.0, bend = 0.0;
+    for (const Point& p : points)
+        scale = std::max({scale, std::abs(p[0]), std::abs(p[1])});
+    for (int i = 0; i <= n; ++i)
+        for (int d = 0; d < 2; ++d)
+            bend = std::max(bend, std::abs(points[0][d] + (points[n][d] - points[0][d]) * i / n - points[i][d]));
+    if (bend <= 1e-12 * scale && points[0].distance(points[n]) > 1e-12 * scale)
+        return Curve2d::line(points[0][0], points[0][1], points[n][0], points[n][1]);
+    const bool conic = curve.kind() == Curve::Kind::Circle || curve.kind() == Curve::Kind::Ellipse;
+    if (surface.kind() == Surface::Kind::Plane && conic && t0 < t1 && std::abs(curve.z().dot(surface.z())) >= 1.0 - 1e-14) {
+        const auto [u, v] = surface.closest_parameters(curve.origin());
+        const Vector x(curve.x().dot(surface.x()), curve.x().dot(surface.y()), 0), y(curve.y().dot(surface.x()), curve.y().dot(surface.y()), 0);
+        return curve.kind() == Curve::Kind::Circle ? Curve::circle(Point(u, v, 0), x, y, curve.radius(), t0, t1) : Curve::ellipse(Point(u, v, 0), x, y, curve.radius(), curve.minor(), t0, t1);
+    }
+    return interpolated(points, t0, t1);
+}
+
+}
+
+/// The X direction gp_Ax2 gets from a main direction alone (DirToAx2)
+static Vector canonical(const Vector& d) {
+    const double x = std::abs(d[0]) < 1e-12 ? 0.0 : d[0], y = std::abs(d[1]) < 1e-12 ? 0.0 : d[1], z = std::abs(d[2]) < 1e-12 ? 0.0 : d[2];
+    const double ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
+    Vector r = ax == 0.0 || (ax < ay && ax < az) ? Vector(0, -z, y) : ay == 0.0 || (ay < ax && ay < az) ? Vector(-z, 0, x) : Vector(-y, x, 0);
+    r.normalize_self();
+    return r;
+}
+
+bool conic_origin(const Point& o, Vector n, int kind, const Point& c, const Vector& axis, double size, const Point& fallback, Point& origin) {
+    n.normalize_self();
+    Vector x;
+    Point center;
+    double radius = 0.0;
+    if (kind == 2) {
+        const double d = Vector(c[0] - o[0], c[1] - o[1], c[2] - o[2]).dot(n);
+        center = Point(c[0] - n[0] * d, c[1] - n[1] * d, c[2] - n[2] * d);
+        radius = std::sqrt(std::max(size * size - d * d, 0.0));
+        x = canonical(n);
+    } else if (kind == 3 || kind == 4) {
+        const double cosine = axis.dot(n);
+        if (std::abs(cosine) < 1e-9)
+            return false;
+        const double k = Vector(o[0] - c[0], o[1] - c[1], o[2] - c[2]).dot(n) / cosine;
+        center = Point(c[0] + axis[0] * k, c[1] + axis[1] * k, c[2] + axis[2] * k);
+        if (axis.cross(n).magnitude() < 1e-9) {
+            radius = center.distance(fallback);
+            x = canonical(axis);
+        } else if (kind == 3) {
+            radius = size / std::abs(cosine);
+            x = axis - n * cosine;
+            x.normalize_self();
+        } else
+            return false;
+    } else
+        return false;
+    origin = Point(center[0] + x[0] * radius, center[1] + x[1] * radius, center[2] + x[2] * radius);
+    return true;
+}
+
 bool affine_patch(const NurbsSurface& surface, Point& origin, Vector& a, Vector& b) {
     if (surface.degree(0) != 1 || surface.degree(1) != 1 || surface.cv_count(0) != 2 || surface.cv_count(1) != 2 || surface.is_rational())
         return false;
@@ -278,13 +415,17 @@ bool affine_patch(const NurbsSurface& surface, Point& origin, Vector& a, Vector&
     return gap <= 1e-12 * std::sqrt(a.dot(a) + b.dot(b)) && a.cross(b).magnitude() > 0;
 }
 
-NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSurface& surface) {
-    Point o;
-    Vector a, b;
-    if (affine_patch(surface, o, a, b)) {
+Curve project(const Curve& whole, double t0, double t1, const Surface& form) {
+    const bool flat = form.kind() == Surface::Kind::Plane;
+    if (whole.kind() != Curve::Kind::Nurbs || (form.kind() != Surface::Kind::Nurbs && !flat))
+        return project_true(whole, t0, t1, form);
+    const NurbsCurve& curve = whole.nurbs();
+    Point o = form.origin();
+    Vector a = form.x(), b = form.y();
+    if (flat || affine_patch(form.nurbs(), o, a, b)) {
         const double aa = a.dot(a), ab = a.dot(b), bb = b.dot(b), det = aa * bb - ab * ab;
-        const auto [u0, u1] = surface.domain(0);
-        const auto [v0, v1] = surface.domain(1);
+        const auto [u0, u1] = flat ? std::pair{0.0, 1.0} : form.nurbs().domain(0);
+        const auto [v0, v1] = flat ? std::pair{0.0, 1.0} : form.nurbs().domain(1);
         NurbsCurve uv = curve;
         if (std::min(t0, t1) > curve.domain_start() + 1e-12 * (curve.domain_end() - curve.domain_start()) || std::max(t0, t1) < curve.domain_end() - 1e-12 * (curve.domain_end() - curve.domain_start()))
             uv.trim(std::max(std::min(t0, t1), curve.domain_start()), std::min(std::max(t0, t1), curve.domain_end()));
@@ -298,6 +439,7 @@ NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSur
         }
         return uv;
     }
+    const NurbsSurface& surface = form.nurbs();
     std::vector<Point> points;
     const std::array<double, 2> period = surface_period(surface);
     const int n = 32;
@@ -309,9 +451,7 @@ NurbsCurve project(const NurbsCurve& curve, double t0, double t1, const NurbsSur
                 uv[d] -= std::round((uv[d] - points.back()[d]) / period[d]) * period[d];
         points.push_back(uv);
     }
-    NurbsCurve uv = NurbsCurve::create_interpolated(points, CurveNurbsKnotStyle::Uniform);
-    uv.set_domain(t0, t1);
-    return uv;
+    return interpolated(points, t0, t1);
 }
 
 Span ranged(const std::shared_ptr<const Curve>& pcurve, std::pair<double, double> domain, double t0, double t1) {
@@ -346,7 +486,8 @@ Span owned(Curve curve) {
 
 Point Span::at(double s) const {
     const auto [lo, hi] = curve->domain();
-    Point p = curve->point_at(std::clamp(t0 + s * (t1 - t0), lo, hi));
+    const double t = t0 + s * (t1 - t0);
+    Point p = curve->point_at(curve->kind() == Curve::Kind::Nurbs ? std::clamp(t, lo, hi) : t);
     p[0] += shift[0];
     p[1] += shift[1];
     return p;
@@ -357,7 +498,7 @@ Curve Span::copy() const {
     const double lo = std::max(std::min(t0, t1), d0), hi = std::min(std::max(t0, t1), d1);
     if (curve->kind() != Curve::Kind::Nurbs) {
         Curve2d piece(*curve);
-        piece.set_domain(lo, hi);
+        piece.set_domain(std::min(t0, t1), std::max(t0, t1));
         if (t0 > t1)
             piece.reverse();
         return shift[0] != 0.0 || shift[1] != 0.0 ? piece.shifted(shift[0], shift[1]) : piece;

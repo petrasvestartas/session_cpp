@@ -6,11 +6,11 @@
 
 namespace session_cpp::bop_ff {
 
-/// IntTools_Curve: a section curve and its pcurves on both faces over one parameter range; tolerance bounds its distance to both surfaces.
+/// IntTools_Curve: a section curve and its pcurves on both faces over one parameter range, a pcurve in the true parameters of its surface; tolerance bounds its distance to both surfaces. Two analytic surfaces with a closed-form section give the line or conic it is and pcurves as the closed form has them.
 struct Curve {
-    NurbsCurve curve;
-    NurbsCurve pcurve_a;
-    NurbsCurve pcurve_b;
+    session_cpp::Curve curve;
+    Curve2d pcurve_a;
+    Curve2d pcurve_b;
     double tolerance = 0.0;
     bool closed = false;
     std::array<bool, 2> bound{}; // its start, its end: a vertex of the section whatever else meets there (the origin of an ellipse two cylinders share)

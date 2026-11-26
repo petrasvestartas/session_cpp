@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <numbers>
 #include <numeric>
 #include <tuple>
 
@@ -31,7 +32,22 @@ Box surface_box(const NurbsSurface& s, double grow) {
 }
 
 /// The surface cut down to the uv box of a face, a little wider; whole where the face wraps a period
-NurbsSurface patch(const NurbsSurface& s, const Region& region) {
+NurbsSurface patch(const Surface& form, const Region& region) {
+    if (form.kind() != Surface::Kind::Nurbs) {
+        // An analytic surface has no bounds of its own: over the box of the face, an angle over no more than its turn.
+        Surface cut = form;
+        for (int d = 0; d < 2 && !region.loops.empty(); ++d) {
+            const double pad = 0.02 * (region.hi[d] - region.lo[d]), period = form.period(d);
+            double a = region.lo[d] - pad, b = region.hi[d] + pad;
+            if (period > 0.0 && b - a >= period)
+                a = region.lo[d], b = a + period;
+            if (form.kind() == Surface::Kind::Sphere && d == 1)
+                a = std::max(a, -0.5 * std::numbers::pi), b = std::min(b, 0.5 * std::numbers::pi);
+            cut.set_domain(d, a, b);
+        }
+        return cut.nurbs();
+    }
+    const NurbsSurface& s = form.nurbs();
     NurbsSurface result = s;
     for (int d = 0; d < 2; ++d) {
         const auto [lo, hi] = s.domain(d);
@@ -65,17 +81,23 @@ struct Filler {
 
     /// The line, circle or ellipse an edge is to rounding, recognized while the pools hold freeform curves
     const Curve& form(int e) {
+        const Curve& c = ds.curve_of(ds.edges[e]);
+        if (c.kind() != Curve::Kind::Nurbs)
+            return c;
         const auto found = edge_forms.find(e);
-        return found != edge_forms.end() ? found->second : edge_forms[e] = Curve::recognized(ds.curve_of(ds.edges[e]));
+        return found != edge_forms.end() ? found->second : edge_forms[e] = Curve::recognized(c.nurbs());
     }
 
     /// The plane, cylinder, cone, sphere or torus a face's surface is to rounding
     const Surface& form(const Face& f, int id) {
+        if (ds.surface_of(f).kind() != Surface::Kind::Nurbs)
+            return ds.surface_of(f);
         const auto found = face_forms.find(id);
         if (found != face_forms.end())
             return found->second;
-        const Box box = surface_box(ds.surface_of(f), 0.0);
-        return face_forms[id] = Surface::recognized(ds.surface_of(f), 1e-10 * Point(box.lo[0], box.lo[1], box.lo[2]).distance(Point(box.hi[0], box.hi[1], box.hi[2])));
+        const NurbsSurface& s = ds.surface_of(f).nurbs();
+        const Box box = surface_box(s, 0.0);
+        return face_forms[id] = Surface::recognized(s, 1e-10 * Point(box.lo[0], box.lo[1], box.lo[2]).distance(Point(box.hi[0], box.hi[1], box.hi[2])));
     }
 
     /// IntAna_IntConicQuad for an edge and a face that have forms: the clean crossings of the edge's range with the whole surface. False where there is no closed form, where the edge touches the surface or meets it at a shallow angle, or comes within the tolerance of it without crossing: those are the tolerant intersection's.
@@ -88,14 +110,14 @@ struct Filler {
         const intersection_analytic::Result exact = intersection_analytic::curve_surface(curve, surface, tolerance);
         if (!exact.done || exact.coincident)
             return false;
-        const NurbsCurve& c = ds.curve_of(edge);
-        const NurbsSurface& s = ds.surface_of(ds.faces[fid]);
+        const Curve& c = ds.curve_of(edge);
+        const Surface& s = ds.surface_of(ds.faces[fid]);
         const auto [d0, d1] = curve.domain();
         std::vector<curve_surface_intersection::Hit> hits;
         for (const intersection_analytic::Hit& hit : exact.points) {
             if (hit.t < d0 - 1e-9 * (d1 - d0) || hit.t > d1 + 1e-9 * (d1 - d0))
                 continue;
-            const double t = std::clamp(c.closest_parameter(hit.point), edge.t0, edge.t1);
+            const double t = parameter(c, hit.point, edge.t0, edge.t1);
             const auto [u, v] = s.closest_parameters(hit.point);
             Vector along = c.tangent_at(t), normal = s.normal_at(u, v);
             along.normalize_self();
@@ -129,6 +151,9 @@ struct Filler {
         return true;
     }
 
+    /// The point of an edge nearest to p
+    Point nearest(const Edge& e, const Point& p) const { return ds.curve_of(e).point_at(parameter(ds.curve_of(e), p, e.t0, e.t1)); }
+
     double tol(int v) const { return ds.vertices[ds.real(v)].tolerance; }
     const Point& at(int v) const { return ds.vertices[ds.real(v)].point; }
 
@@ -138,7 +163,7 @@ struct Filler {
         if (brep.m_edges[use.index].degenerated || !p.curve)
             return 0.0;
         const Span c = edge_span(brep, use.index);
-        const NurbsSurface& s = brep.m_surfaces[brep.m_faces[face].surface_index].nurbs();
+        const Surface& s = brep.m_surfaces[brep.m_faces[face].surface_index];
         double worst = 0.0;
         for (int i = 1; i < 8; ++i) {
             const Point q = c.at(i / 8.0);
@@ -172,7 +197,7 @@ struct Filler {
                 else {
                     std::tie(edge.t0, edge.t1) = brep.edge_range(i);
                     if (e.range[0] < e.range[1])
-                        edge.piece = std::make_shared<const NurbsCurve>(brep.edge_nurbs(i));
+                        edge.piece = std::make_shared<const Curve>(brep.m_curves_3d[e.curve_3d_index].kind() == Curve::Kind::Nurbs ? Curve(brep.edge_nurbs(i)) : brep.edge_curve(i));
                 }
                 edge.paves = {{ds.vertex_offset[o] + e.start_vertex, edge.t0}, {ds.vertex_offset[o] + e.end_vertex, edge.t1}};
                 ds.edges.push_back(std::move(edge));
@@ -214,7 +239,7 @@ struct Filler {
                     ds.vertices[p.vertex].tolerance = std::max(ds.vertices[p.vertex].tolerance, edge.tolerance);
                 }
                 if (!edge.degenerated)
-                    edge.box = curve_box(ds.curve_of(edge), edge.tolerance);
+                    edge.box = curve_box(ds.curve_of(edge).nurbs(), edge.tolerance);
             }
             for (int i = 0; i < brep.vertex_count(); ++i)
                 if (used_v[i])
@@ -281,13 +306,13 @@ struct Filler {
     }
 
     /// The parameter step over which a crossing leaves the tolerance and a common part does not
-    static double probe(const NurbsCurve& c, const Edge& edge, double tolerance) {
+    static double probe(const Curve& c, const Edge& edge, double tolerance) {
         const double length = c.point_at(edge.t0).distance(c.point_at(edge.t1)) + c.point_at(edge.t0).distance(c.point_at(0.5 * (edge.t0 + edge.t1)));
         return (edge.t1 - edge.t0) * std::max(1e-2, 4.0 * tolerance / std::max(length, 1e-300));
     }
 
     /// How far an edge runs, closed or not: its ends by way of its middle
-    static double extent(const NurbsCurve& c, const Edge& edge) {
+    static double extent(const Curve& c, const Edge& edge) {
         const Point mid = c.point_at(0.5 * (edge.t0 + edge.t1));
         return c.point_at(edge.t0).distance(mid) + mid.distance(c.point_at(edge.t1));
     }
@@ -322,8 +347,8 @@ struct Filler {
                     box.add(at(v), tol(v));
                     if (edge.degenerated || !box.overlaps(edge.box) || has_pave(e, v))
                         continue;
-                    const NurbsCurve& c = ds.curve_of(edge);
-                    const double t = std::clamp(c.closest_parameter(at(v)), edge.t0, edge.t1);
+                    const Curve& c = ds.curve_of(edge);
+                    const double t = parameter(c, at(v), edge.t0, edge.t1);
                     const double d = c.point_at(t).distance(at(v));
                     if (d > tol(v) + edge.tolerance + ds.fuzzy)
                         continue;
@@ -342,8 +367,11 @@ struct Filler {
                 const double tolerance = a.tolerance + b.tolerance + ds.fuzzy;
                 curve_intersection::Result r;
                 try {
-                    if (!circles(ea, eb, tolerance, r))
-                        r = curve_intersection::intersect(ds.curve_of(a), ds.curve_of(b), tolerance);
+                    if (!circles(ea, eb, tolerance, r)) {
+                        r = curve_intersection::intersect(ds.curve_of(a).nurbs(), ds.curve_of(b).nurbs(), tolerance);
+                        for (curve_intersection::Hit& hit : r.points)
+                            hit.a = true_parameter(ds.curve_of(a), hit.a), hit.b = true_parameter(ds.curve_of(b), hit.b);
+                    }
                 } catch (const std::exception& error) {
                     ds.log.push_back(std::string("EE ") + error.what());
                     continue;
@@ -399,7 +427,7 @@ struct Filler {
         }
         const Edge &x = ds.edges[ea], &y = ds.edges[eb];
         for (const Point& p : found) {
-            const double ta = std::clamp(ds.curve_of(x).closest_parameter(p), x.t0, x.t1), tb = std::clamp(ds.curve_of(y).closest_parameter(p), y.t0, y.t1);
+            const double ta = parameter(ds.curve_of(x), p, x.t0, x.t1), tb = parameter(ds.curve_of(y), p, y.t0, y.t1);
             if (ds.curve_of(x).point_at(ta).distance(p) <= tolerance && ds.curve_of(y).point_at(tb).distance(p) <= tolerance)
                 r.points.push_back({p, ta, tb, false});
         }
@@ -414,11 +442,11 @@ struct Filler {
         if (d > tolerance)
             return;
         // A hit inside a common part is no vertex: the edges stay together on both sides of it.
-        const NurbsCurve& ca = ds.curve_of(a);
+        const Curve& ca = ds.curve_of(a);
         const double step = probe(ca, a, tolerance);
         if (ta - step > a.t0 && ta + step < a.t1) {
             const Point before = ca.point_at(ta - step), after = ca.point_at(ta + step);
-            if (ds.curve_of(b).closest_point(before).distance(before) <= tolerance && ds.curve_of(b).closest_point(after).distance(after) <= tolerance)
+            if (nearest(b, before).distance(before) <= tolerance && nearest(b, after).distance(after) <= tolerance)
                 return;
         }
         const Point p((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2);
@@ -441,11 +469,12 @@ struct Filler {
     /// IntTools_EdgeEdge within the tolerance: local minima of the distance between two edges that come within it away from a common part
     void tolerant_ee(int ea, int eb, double tolerance) {
         const Edge& a = ds.edges[ea];
-        const NurbsCurve& ca = ds.curve_of(a);
-        const NurbsCurve& cb = ds.curve_of(ds.edges[eb]);
-        const int n = std::clamp(4 * ca.cv_count() + 8, 16, 96);
+        const Edge& b = ds.edges[eb];
+        const Curve& ca = ds.curve_of(a);
+        const Curve& cb = ds.curve_of(b);
+        const int n = std::clamp(4 * ca.nurbs().cv_count() + 8, 16, 96);
         std::vector<double> d(n + 1);
-        const auto distance = [&](double t) { return cb.closest_point(ca.point_at(t)).distance(ca.point_at(t)); };
+        const auto distance = [&](double t) { return nearest(b, ca.point_at(t)).distance(ca.point_at(t)); };
         for (int i = 0; i <= n; ++i)
             d[i] = distance(a.t0 + (a.t1 - a.t0) * i / n);
         for (int i = 0; i <= n; ++i) {
@@ -460,7 +489,7 @@ struct Filler {
             }
             const double ta = 0.5 * (lo + hi);
             if (distance(ta) <= tolerance)
-                ee_point(ea, eb, ta, cb.closest_parameter(ca.point_at(ta)));
+                ee_point(ea, eb, ta, parameter(cb, ca.point_at(ta), b.t0, b.t1));
         }
     }
 
@@ -476,7 +505,7 @@ struct Filler {
                     const std::vector<int> known = face_vertices(f);
                     if (std::find(known.begin(), known.end(), v) != known.end())
                         continue;
-                    const NurbsSurface& s = ds.surface_of(f);
+                    const Surface& s = ds.surface_of(f);
                     const auto [u, w] = s.closest_parameters(at(v));
                     const double d = s.point_at(u, w).distance(at(v));
                     if (d > tol(v) + f.tolerance + ds.fuzzy || f.region.state(Point(u, w, 0)) != 1)
@@ -502,8 +531,8 @@ struct Filler {
                     const Edge& edge = ds.edges[e];
                     if (edge.degenerated || !edge.box.overlaps(f.box))
                         continue;
-                    const NurbsCurve& c = ds.curve_of(edge);
-                    const NurbsSurface& s = ds.surface_of(f);
+                    const Curve& c = ds.curve_of(edge);
+                    const Surface& s = ds.surface_of(f);
                     const double tolerance = edge.tolerance + f.tolerance + ds.fuzzy;
                     // An edge that lies on the surface from end to end has no crossing: the exact intersection of a common part is slow and tells no more.
                     int on = 0;
@@ -525,7 +554,15 @@ struct Filler {
                     }
                     if (on < 5 && !exact)
                         try {
-                            r = curve_surface_intersection::intersect(c, f.patch, tolerance);
+                            r = curve_surface_intersection::intersect(c.nurbs(), f.patch, tolerance);
+                            // The numeric route ran on the NURBS of the edge and of the patch: back to the true parameters.
+                            for (curve_surface_intersection::Hit& hit : r.points) {
+                                hit.t = true_parameter(c, hit.t);
+                                if (s.kind() != Surface::Kind::Nurbs)
+                                    std::tie(hit.u, hit.v) = s.closest_parameters(c.point_at(hit.t));
+                            }
+                            for (curve_surface_intersection::Overlap& run : r.overlaps)
+                                run.t0 = true_parameter(c, run.t0), run.t1 = true_parameter(c, run.t1);
                         } catch (const std::exception& error) {
                             r.complete = false;
                             r.failure = error.what();
@@ -534,6 +571,12 @@ struct Filler {
                         ds.log.push_back("EF incomplete: " + r.failure);
                     for (const curve_surface_intersection::Hit& hit : r.points)
                         ef_point(e, fid, hit.t, Point(hit.u, hit.v, 0));
+                    const auto over = [&](const curve_surface_intersection::Overlap& run, bool last) {
+                        if (s.kind() == Surface::Kind::Nurbs)
+                            return last ? run.pcurve.point_at_end() : run.pcurve.point_at_start();
+                        const auto [u, v] = s.closest_parameters(c.point_at(last ? run.t1 : run.t0));
+                        return Point(u, v, 0);
+                    };
                     // A run that ends inside the face leaves the surface there; one that ends on or beyond its boundary is cut by EE and VE.
                     for (const curve_surface_intersection::Overlap& run : r.overlaps)
                         for (bool last : {false, true}) {
@@ -541,7 +584,7 @@ struct Filler {
                             bool joined = false;
                             for (const curve_surface_intersection::Overlap& other : r.overlaps)
                                 joined = joined || (&other != &run && std::min(std::abs(other.t0 - t), std::abs(other.t1 - t)) <= 1e-9 * (edge.t1 - edge.t0));
-                            if (!joined && f.region.state(last ? run.pcurve.point_at_end() : run.pcurve.point_at_start()) == 1)
+                            if (!joined && f.region.state(over(run, last)) == 1)
                                 add_pave(e, vertex_at(e, f, c.point_at(t), edge.tolerance), t);
                         }
                     if (!r.complete || tolerance > 1e-6)
@@ -556,8 +599,8 @@ struct Filler {
             return;
         // A hit inside a common part of the edge and the surface is no vertex.
         const Edge& edge = ds.edges[e];
-        const NurbsCurve& c = ds.curve_of(edge);
-        const NurbsSurface& s = ds.surface_of(f);
+        const Curve& c = ds.curve_of(edge);
+        const Surface& s = ds.surface_of(f);
         const double tolerance = edge.tolerance + f.tolerance + ds.fuzzy, step = probe(c, edge, tolerance);
         if (t - step > edge.t0 && t + step < edge.t1) {
             const Point before = c.point_at(t - step), after = c.point_at(t + step);
@@ -595,9 +638,9 @@ struct Filler {
     void tolerant_ef(int e, int fid, double tolerance, const curve_surface_intersection::Result& exact) {
         const Edge& edge = ds.edges[e];
         const Face& f = ds.faces[fid];
-        const NurbsCurve& c = ds.curve_of(edge);
-        const NurbsSurface& s = ds.surface_of(f);
-        const int n = std::clamp(4 * c.cv_count() + 8, 16, 96);
+        const Curve& c = ds.curve_of(edge);
+        const Surface& s = ds.surface_of(f);
+        const int n = std::clamp(4 * c.nurbs().cv_count() + 8, 16, 96);
         std::vector<double> t(n + 1), d(n + 1);
         std::vector<int> state(n + 1);
         const auto measure = [&](double at, double& distance, Point& uv) {
@@ -734,12 +777,14 @@ struct Filler {
     bool on_block(const PaveBlock& b, const Point& p, double tolerance) const {
         if (b.edge >= 0 && ds.edges[b.edge].degenerated)
             return false;
-        const NurbsCurve& c = ds.block_curve(b);
+        const Curve& c = ds.block_curve(b);
         const double lo = std::min(b.first.t, b.last.t), hi = std::max(b.first.t, b.last.t);
+        if (c.kind() != Curve::Kind::Nurbs)
+            return c.point_at(parameter(c, p, lo, hi)).distance(p) <= tolerance;
         double t = c.closest_parameter(p);
         if (t < lo || t > hi) {
             // A closest point outside the range may still have a near twin inside it on a closed curve.
-            NurbsCurve piece = c;
+            NurbsCurve piece = c.nurbs();
             if (!piece.trim(lo, hi))
                 return false;
             t = piece.closest_parameter(p);
@@ -815,15 +860,15 @@ struct Filler {
             for (int fi : act_f[1 - o]) {
                 const int fid = ds.face_offset[1 - o] + fi;
                 Face& f = ds.faces[fid];
-                const NurbsSurface& s = ds.surface_of(f);
+                const Surface& s = ds.surface_of(f);
                 std::vector<int> known = face_vertices(f);
                 std::sort(known.begin(), known.end());
-                const bool flat = s.degree(0) == 1 && s.degree(1) == 1;
+                const bool flat = s.kind() == Surface::Kind::Plane || (s.kind() == Surface::Kind::Nurbs && s.nurbs().degree(0) == 1 && s.nurbs().degree(1) == 1);
                 for (int e : act_e[o]) {
                     const Edge& edge = ds.edges[e];
                     if (edge.degenerated || !edge.box.overlaps(f.box))
                         continue;
-                    const NurbsCurve& c = ds.curve_of(edge);
+                    const Curve& c = ds.curve_of(edge);
                     for (int b : edge.blocks) {
                         const PaveBlock& block = ds.blocks[b];
                         if (!std::binary_search(known.begin(), known.end(), block.first.vertex) || !std::binary_search(known.begin(), known.end(), block.last.vertex) || face_has(f, b))
@@ -843,7 +888,7 @@ struct Filler {
                             if (d < check)
                                 criterion = std::max(criterion, d + ds.fuzzy);
                         }
-                        const int n = flat && c.degree() == 1 ? 2 : 8;
+                        const int n = flat && straight(c) ? 2 : 8;
                         int on = 0;
                         bool out = false;
                         for (int i = 0; i <= n && !out; ++i) {
@@ -942,7 +987,7 @@ struct Filler {
     /// The edges of a face lying inside a face on the same surface are In edges of it, whatever EF found
     void same_domain_in_blocks(int target, int source) {
         Face& f = ds.faces[target];
-        const NurbsSurface& s = ds.surface_of(f);
+        const Surface& s = ds.surface_of(f);
         for (int e : ds.faces[source].edges) {
             const Edge& edge = ds.edges[e];
             if (edge.degenerated)
@@ -968,7 +1013,7 @@ struct Filler {
         std::vector<double> reach;
         for (const bop_ff::Curve& c : curves)
             for (bool last : {false, true}) {
-                ends.push_back(last ? c.curve.point_at_end() : c.curve.point_at_start());
+                ends.push_back(c.curve.point_at(last ? c.curve.domain().second : c.curve.domain().first));
                 reach.push_back(std::max(c.tolerance, confusion));
             }
         std::vector<int> node(2 * n), piece(n);
@@ -1000,7 +1045,7 @@ struct Filler {
 
     /// Where IntAna_QuadQuadGeo starts the circle or ellipse a plane cuts from a sphere, cylinder or cone (DirToAx2); false for another closed curve, which OCCT starts at a seam
     bool loop_origin(int ia, int ib, const std::vector<bop_ff::Curve>& curves, const std::vector<int>& loop, int chain, Point& origin) const {
-        const Point fallback = curves[chain].curve.point_at_start();
+        const Point fallback = curves[chain].curve.point_at(curves[chain].curve.domain().first);
         for (const auto& [flat, other] : {std::pair{ia, ib}, std::pair{ib, ia}}) {
             // The plane and the quadric as the surfaces say them; recognized from the patches while those are freeform.
             const Surface& plane = ds.face_surface(ds.faces[flat]);
@@ -1023,41 +1068,18 @@ struct Filler {
                 } catch (const std::exception&) {
                     continue;
                 }
-            Vector n = a.cross(b), axis(form.axis[0], form.axis[1], form.axis[2]), x;
-            n.normalize_self();
-            const Point c(form.point[0], form.point[1], form.point[2]);
-            Point center;
-            double radius = 0.0;
-            if (form.kind == 2) {
-                const double d = Vector(c[0] - o[0], c[1] - o[1], c[2] - o[2]).dot(n);
-                center = Point(c[0] - n[0] * d, c[1] - n[1] * d, c[2] - n[2] * d);
-                radius = std::sqrt(std::max(form.radius * form.radius - d * d, 0.0));
-                x = canonical(n);
-            } else if (form.kind == 3 || form.kind == 4) {
+            Vector n = plane.kind() == Surface::Kind::Plane ? plane.z() : a.cross(b), axis(form.axis[0], form.axis[1], form.axis[2]);
+            if (!said && (form.kind == 3 || form.kind == 4)) {
                 const int d = s.degree(0) == 1 ? 0 : 1;
                 const double u = 0.5 * (s.domain(1 - d).first + s.domain(1 - d).second);
                 const Point p0 = d == 0 ? s.point_at(s.domain(0).first, u) : s.point_at(u, s.domain(1).first), p1 = d == 0 ? s.point_at(s.domain(0).second, u) : s.point_at(u, s.domain(1).second);
-                if (!said && axis.dot(Vector(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])) < 0)
+                if (axis.dot(Vector(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])) < 0)
                     axis *= -1.0;
-                const double cosine = axis.dot(n);
-                if (std::abs(cosine) < 1e-9)
-                    continue;
-                const double k = Vector(o[0] - c[0], o[1] - c[1], o[2] - c[2]).dot(n) / cosine;
-                center = Point(c[0] + axis[0] * k, c[1] + axis[1] * k, c[2] + axis[2] * k);
-                if (axis.cross(n).magnitude() < 1e-9) {
-                    radius = center.distance(fallback);
-                    x = canonical(axis);
-                } else if (form.kind == 3) {
-                    radius = form.radius / std::abs(cosine);
-                    x = axis - n * cosine;
-                    x.normalize_self();
-                } else
-                    continue;
-            } else
+            }
+            if (!conic_origin(o, n, form.kind, Point(form.point[0], form.point[1], form.point[2]), axis, form.radius, fallback, origin))
                 continue;
-            origin = Point(center[0] + x[0] * radius, center[1] + x[1] * radius, center[2] + x[2] * radius);
             for (size_t i = 0; i < curves.size(); ++i)
-                if (loop[i] == chain && curves[i].curve.closest_point(origin).distance(origin) <= std::max(curves[i].tolerance, confusion) + ds.fuzzy)
+                if (loop[i] == chain && curves[i].curve.point_at(parameter(curves[i].curve, origin, curves[i].curve.domain().first, curves[i].curve.domain().second)).distance(origin) <= std::max(curves[i].tolerance, confusion) + ds.fuzzy)
                     return true;
         }
         return false;
@@ -1070,8 +1092,13 @@ struct Filler {
                 for (size_t i = 0; i < curves.size(); ++i) {
                     if (loop[i] != chain || ds.edges[e].degenerated)
                         continue;
+                    // A section cut at the seam ends on it: the intersection of two curves may miss a hit at an end.
+                    const double reach = ds.edges[e].tolerance + curves[i].tolerance + ds.fuzzy;
+                    for (double t : {curves[i].curve.domain().first, curves[i].curve.domain().second})
+                        if (nearest(ds.edges[e], curves[i].curve.point_at(t)).distance(curves[i].curve.point_at(t)) <= reach)
+                            return true;
                     try {
-                        if (!curve_intersection::intersect(ds.curve_of(ds.edges[e]), curves[i].curve, ds.edges[e].tolerance + curves[i].tolerance + ds.fuzzy).points.empty())
+                        if (!curve_intersection::intersect(ds.curve_of(ds.edges[e]).nurbs(), curves[i].curve.nurbs(), ds.edges[e].tolerance + curves[i].tolerance + ds.fuzzy).points.empty())
                             return true;
                     } catch (const std::exception&) {
                     }
@@ -1079,21 +1106,14 @@ struct Filler {
         return false;
     }
 
-    /// The X direction gp_Ax2 gets from a main direction alone (DirToAx2)
-    static Vector canonical(const Vector& d) {
-        const double x = std::abs(d[0]) < 1e-12 ? 0.0 : d[0], y = std::abs(d[1]) < 1e-12 ? 0.0 : d[1], z = std::abs(d[2]) < 1e-12 ? 0.0 : d[2];
-        const double ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
-        Vector r = ax == 0.0 || (ax < ay && ax < az) ? Vector(0, -z, y) : ay == 0.0 || (ay < ax && ay < az) ? Vector(-z, 0, x) : Vector(-y, x, 0);
-        r.normalize_self();
-        return r;
-    }
+
 
     void make_section(int ia, int ib, bop_ff::Curve& section, const Point* origin) {
         Section c{ia, ib, std::make_shared<const Curve>(section.curve), std::make_shared<const Curve>(section.pcurve_a), std::make_shared<const Curve>(section.pcurve_b),
             std::max(section.tolerance, confusion), {}};
-        const NurbsCurve& w = c.world->nurbs();
-        const double t0 = w.domain_start(), t1 = w.domain_end();
-        const bool closed = w.point_at_start().distance(w.point_at_end()) <= c.tolerance;
+        const Curve& w = *c.world;
+        const auto [t0, t1] = w.domain();
+        const bool closed = w.point_at(t0).distance(w.point_at(t1)) <= c.tolerance;
         std::vector<int> candidates;
         for (int f : {ia, ib}) {
             std::vector<int> more = face_vertices(ds.faces[f]);
@@ -1103,13 +1123,13 @@ struct Filler {
         }
         std::sort(candidates.begin(), candidates.end());
         candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
-        Box box = curve_box(w, c.tolerance);
+        Box box = curve_box(w.nurbs(), c.tolerance);
         for (int v : candidates) {
             Box ball;
             ball.add(at(v), std::max(tol(v), ds.vertices[ds.real(v)].reach) + ds.fuzzy);
             if (!ball.overlaps(box))
                 continue;
-            const double t = w.closest_parameter(at(v));
+            const double t = parameter(w, at(v), t0, t1);
             const double d = w.point_at(t).distance(at(v));
             if (d > std::max(tol(v), ds.vertices[ds.real(v)].reach) + c.tolerance + ds.fuzzy)
                 continue;
@@ -1138,7 +1158,7 @@ struct Filler {
             ds.vertices.back().joint = !section.bound[1];
         }
         // PutBoundPaveOnCurve: a closed curve keeps a vertex at its bound unless one sits there already.
-        const double bound = origin ? w.closest_parameter(*origin) : t0;
+        const double bound = origin ? parameter(w, *origin, t0, t1) : t0;
         if (origin && w.point_at(bound).distance(*origin) <= c.tolerance + confusion + ds.fuzzy) {
             bool found = false;
             for (const Pave& p : c.paves)
@@ -1189,9 +1209,9 @@ struct Filler {
                         shared = shared || std::find(g.in_blocks.begin(), g.in_blocks.end(), b) != g.in_blocks.end();
                     if (shared)
                         reach = std::max(reach, fat) * (face_has(ds.faces[ia], b) && face_has(ds.faces[ib], b) ? 2.0 : 1.0);
-                    else if (key(old) == key(block) && (w.degree() > 1 || ds.block_curve(old).degree() > 1)) {
-                        const NurbsCurve& oc = ds.block_curve(old);
-                        Vector t1 = w.tangent_at(0.5 * (block.first.t + block.last.t)), t2 = oc.tangent_at(oc.closest_parameter(mid));
+                    else if (key(old) == key(block) && (!straight(w) || !straight(ds.block_curve(old)))) {
+                        const Curve& oc = ds.block_curve(old);
+                        Vector t1 = w.tangent_at(0.5 * (block.first.t + block.last.t)), t2 = oc.tangent_at(parameter(oc, mid, oc.domain().first, oc.domain().second));
                         t1.normalize_self();
                         t2.normalize_self();
                         if (std::abs(t1.dot(t2)) >= 0.9063)

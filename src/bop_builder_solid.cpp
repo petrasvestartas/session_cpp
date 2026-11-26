@@ -76,7 +76,7 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             const auto& [k, orientation, own] = uses[i];
             const BRepFace& face = result.m_faces[faces[k].index];
             const Span pc = pcurve_span(result, edge, faces[k].index, own);
-            const NurbsSurface& s = result.m_surfaces[face.surface_index].nurbs();
+            const Surface& s = result.m_surfaces[face.surface_index];
             Point uv;
             if (pc.curve)
                 uv = pc.at(0.5);
@@ -110,11 +110,20 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
     for (auto& [unused, shell] : shells) {
         list.push_back(shell);
         Box box;
-        for (const BRepRef& face : shell)
+        for (const BRepRef& face : shell) {
             for (const BRepRef& wire : result.m_faces[face.index].wires)
                 for (const BRepRef& use : result.m_wires[wire.index].edges)
                     for (int v : {result.m_edges[use.index].start_vertex, result.m_edges[use.index].end_vertex})
                         box.add(result.m_vertices[v].point);
+            // A round face has few vertices, or one: its surface over the box of its pcurves tells where it reaches.
+            const Surface& s = result.m_surfaces[result.m_faces[face.index].surface_index];
+            if (s.kind() == Surface::Kind::Nurbs || s.kind() == Surface::Kind::Plane)
+                continue;
+            const Region region = face_region(result, face.index, 1e-7);
+            for (int i = 0; i <= 8 && !region.loops.empty(); ++i)
+                for (int j = 0; j <= 8; ++j)
+                    box.add(s.point_at(region.lo[0] + (region.hi[0] - region.lo[0]) * i / 8, region.lo[1] + (region.hi[1] - region.lo[1]) * j / 8));
+        }
         boxes.push_back(box);
     }
     const auto size = [](const Box& b) { return (b.hi[0] - b.lo[0]) * (b.hi[1] - b.lo[1]) * (b.hi[2] - b.lo[2]); };
@@ -143,12 +152,13 @@ void build_solids(BRep& result, const std::vector<BRepRef>& faces) {
             Point uv;
             const Region region = face_region(result, list[h][i].index, 1e-7);
             if (region.interior(uv))
-                samples.push_back(result.m_surfaces[result.m_faces[list[h][i].index].surface_index].nurbs().point_at(uv[0], uv[1]));
+                samples.push_back(result.m_surfaces[result.m_faces[list[h][i].index].surface_index].point_at(uv[0], uv[1]));
         }
         for (size_t o = 0; o < list.size() && !samples.empty(); ++o) {
             if (o == h || !closed[o] || !inside(boxes[h], boxes[o]) || size(boxes[o]) <= size(boxes[h]) || (around[h] >= 0 && size(boxes[o]) >= size(boxes[around[h]])))
                 continue;
-            const BRep part = subset(result, list[o]);
+            // The point classifier reads NURBS.
+            const BRep part = subset(result, list[o]).as_nurbs();
             brep_classify::State state = brep_classify::State::Unknown;
             for (size_t i = 0; i < samples.size() && state == brep_classify::State::Unknown; ++i)
                 try {

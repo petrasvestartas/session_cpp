@@ -116,3 +116,53 @@ MINI_TEST("BRep BOP", "Shared Curves") {
     const BRep twice = bop::apply(cut, moved(BRep::create_box(2, 2, 2), -1, -1, -1), bop::Operation::Difference, 0.0, &report);
     MINI_CHECK(report.solid && std::abs(twice.volume_exact() - 6) < 1e-9);
 }
+
+MINI_TEST("BRep BOP", "Analytic Result") {
+    // Analytic operands are cut in their true parameters and the result stays analytic: its surfaces as they were, its sections the lines and circles they are, read as NURBS by the consumers still on them.
+    const BRep box = BRep::create_box(2, 2, 2), drill = moved(BRep::create_cylinder(0.5, 4), 0.2, 0, -2);
+    bop::Report report;
+    const BRep sum = bop::apply(box, drill, bop::Operation::Union, 0.0, &report);
+    bool analytic = report.solid && report.failure.empty();
+    for (const Surface& s : sum.m_surfaces)
+        analytic = analytic && s.kind() != Surface::Kind::Nurbs;
+    for (const Curve& c : sum.m_curves_3d)
+        analytic = analytic && c.kind() != Curve::Kind::Nurbs;
+    for (const Curve2d& c : sum.m_curves_2d)
+        analytic = analytic && c.kind() != Curve::Kind::Nurbs;
+    MINI_CHECK(analytic && sum.is_valid() && sum.as_nurbs().is_solid());
+    MINI_CHECK(sum.face_count() == 10 && sum.edge_count() == 18 && sum.vertex_count() == 12);
+    MINI_CHECK(std::abs(sum.volume_exact() - (8 + 0.5 * std::numbers::pi)) < 1e-9);
+}
+
+MINI_TEST("BRep BOP", "Cylinder Without Seam") {
+    // A cylinder whose side face is bounded by its two circles alone: a cut across the angle origin and one around the axis come out as with the seam edge.
+    const BRep seamed = BRep::create_cylinder(0.5, 2);
+    BRep bare = seamed;
+    for (BRepFace& f : bare.m_faces)
+        if (bare.m_surfaces[f.surface_index].kind() == Surface::Kind::Cylinder) {
+            std::vector<BRepRef> wires;
+            for (const BRepRef& use : std::vector<BRepRef>(bare.m_wires[f.wires[0].index].edges))
+                if (bare.m_edges[use.index].start_vertex == bare.m_edges[use.index].end_vertex)
+                    wires.push_back({bare.add_wire({use}), BRepOrientation::Forward});
+            f.wires = wires;
+        }
+    for (const BRep& cutter : {moved(BRep::create_box(0.6, 0.6, 0.6), 0.5, 0.1, 1), moved(BRep::create_box(3, 3, 0.5), 0.1, 0.1, 1), moved(BRep::create_sphere(0.4), 0.45, 0.1, 1)})
+        for (bop::Operation operation : {bop::Operation::Intersection, bop::Operation::Union, bop::Operation::Difference, bop::Operation::ReverseDifference}) {
+            bop::Report report;
+            const BRep result = bop::apply(bare, cutter, operation, 0.0, &report);
+            MINI_CHECK(report.solid && report.log.empty() && result.is_valid());
+            MINI_CHECK(std::abs(result.volume_exact() - bop::apply(seamed, cutter, operation).volume_exact()) < 1e-9);
+        }
+}
+
+MINI_TEST("BRep BOP", "Torus Sphere") {
+    // A walked section crosses the seams of both faces a short way apart: the piece between them is shorter than a step of the walk.
+    const BRep torus = BRep::create_torus(1.1646083967015148, 0.27873076502000915);
+    const BRep sphere = BRep::create_sphere(0.82153776235878473).transformed(Xform::translation(0.10451730906497687, 0.19312218977138401, 0.16540525769814848)
+        * Xform::rotation(Vector(-0.66029139049351215, -0.23508306173607707, 0.71192960673943162), -0.3838125541806221));
+    bop::Report report;
+    const BRep common = bop::apply(torus, sphere, bop::Operation::Intersection, 0.0, &report);
+    MINI_CHECK(report.solid && report.failure.empty() && common.is_valid());
+    MINI_CHECK(common.face_count() == 4 && common.edge_count() == 6 && common.vertex_count() == 4);
+    MINI_CHECK(std::abs(common.volume_exact() - 0.05150034080275) < 1e-7);
+}

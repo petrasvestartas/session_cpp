@@ -20,7 +20,7 @@ struct EdgeUse {
 /// Internal pcurves are moved by whole periods of the region onto the face (their spans' shift), no curve is edited.
 std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& uses, const Region& region, std::vector<std::string>& log);
 
-/// The sampled uv polygon of a loop
-std::vector<Point> loop_polygon(const std::vector<EdgeUse>& uses, const std::vector<int>& loop);
+/// The sampled uv polygon of a loop. With the periods of a surface whose parameters run on past them, each use is moved by whole periods (`turns`) to start where the one before it ends, and `end` is where the loop arrives: at its start, or one period on.
+std::vector<Point> loop_polygon(const std::vector<EdgeUse>& uses, const std::vector<int>& loop, const std::array<double, 2>& period = {0.0, 0.0}, Point* end = nullptr, std::vector<std::array<double, 2>>* turns = nullptr);
 
 }

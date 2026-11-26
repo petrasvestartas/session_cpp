@@ -142,23 +142,58 @@ struct Builder {
         }
     }
 
+    /// The loops of a piece as polygons, where each arrives and which periodic direction it runs around. On an analytic surface every loop is in one piece, its uses moved by whole periods (turns), and the holes of a piece that closes lie in the turn of its outer loop.
+    struct Layout {
+        std::vector<std::vector<Point>> polygons;
+        std::vector<Point> ends;
+        std::vector<int> winds;
+        std::vector<std::vector<std::array<double, 2>>> turns;
+        bool band = false;
+    };
+
+    Layout layout(const Piece& piece) const {
+        const Region& whole = ds.faces[piece.face].region;
+        Layout l;
+        for (const auto& loop : piece.loops) {
+            l.ends.emplace_back();
+            l.turns.emplace_back();
+            l.polygons.push_back(loop.empty() ? std::vector<Point>{} : loop_polygon(uses[piece.face], loop, whole.whole ? whole.period : std::array<double, 2>{0.0, 0.0}, &l.ends.back(), &l.turns.back()));
+            l.winds.push_back(loop.empty() ? -1 : whole.winding(l.polygons.back().front(), l.ends.back()));
+            l.band = l.band || l.winds.back() >= 0;
+        }
+        const auto middle = [](const std::vector<Point>& polygon, int d) {
+            double lo = 1e300, hi = -1e300;
+            for (const Point& p : polygon)
+                lo = std::min(lo, p[d]), hi = std::max(hi, p[d]);
+            return 0.5 * (lo + hi);
+        };
+        for (size_t k = 1; k < l.polygons.size() && whole.whole && !l.band && !l.polygons[0].empty() && !l.polygons[k].empty(); ++k)
+            for (int d = 0; d < 2; ++d) {
+                const double move = whole.period[d] > 0.0 ? std::round((middle(l.polygons[0], d) - middle(l.polygons[k], d)) / whole.period[d]) * whole.period[d] : 0.0;
+                for (Point& p : l.polygons[k])
+                    p[d] += move;
+                for (std::array<double, 2>& turn : l.turns[k])
+                    turn[d] += move;
+                l.ends[k][d] += move;
+            }
+        return l;
+    }
+
     bool sample(Piece& piece) {
         if (piece.has_point)
             return true;
         const Face& f = ds.faces[piece.face];
         Region region;
         region.eps = f.region.eps;
-        for (const auto& loop : piece.loops) {
-            if (loop.empty())
+        Layout l = layout(piece);
+        for (size_t k = 0; k < l.polygons.size(); ++k) {
+            if (l.polygons[k].empty())
                 continue;
-            const Point from = uses[piece.face][loop.front()].pcurve.at(0.0), to = uses[piece.face][loop.back()].pcurve.at(1.0);
-            std::vector<Point> polygon = loop_polygon(uses[piece.face], loop);
-            const int winding = f.region.winding(from, to);
-            if (winding >= 0) {
-                polygon.push_back(to);
+            if (l.winds[k] >= 0) {
+                l.polygons[k].push_back(l.ends[k]);
                 region.period = f.region.period;
             }
-            region.add_loop(std::move(polygon), winding);
+            region.add_loop(std::move(l.polygons[k]), l.winds[k]);
         }
         if (!region.interior(piece.uv))
             return false;
@@ -169,7 +204,7 @@ struct Builder {
 
     Vector normal(const Piece& piece, const Point& p) const {
         const Face& f = ds.faces[piece.face];
-        const NurbsSurface& s = ds.surface_of(f);
+        const Surface& s = ds.surface_of(f);
         const auto [u, v] = s.closest_parameters(p);
         Vector n = s.normal_at(u, v);
         if (ds.brep(f.operand).face_orientation(f.local) == BRepOrientation::Reversed)
@@ -201,14 +236,14 @@ struct Builder {
         for (size_t k = 0; k < pieces.size(); ++k) {
             const Piece& piece = pieces[k];
             const Face& f = ds.faces[piece.face];
-            const NurbsSurface& s = ds.surface_of(f);
+            const Surface& s = ds.surface_of(f);
             for (const auto& loop : piece.loops)
                 for (int i : loop) {
                     const EdgeUse& use = uses[piece.face][i];
                     const PaveBlock& block = ds.blocks[use.image];
                     if (operands[use.image] != 3 || (block.edge >= 0 && ds.edges[block.edge].degenerated))
                         continue;
-                    const NurbsCurve& c = ds.block_curve(block);
+                    const Curve& c = ds.block_curve(block);
                     const double t = 0.5 * (block.first.t + block.last.t);
                     const Point p = c.point_at(t);
                     Point uv = use.pcurve.at(0.5);
@@ -277,9 +312,13 @@ struct Builder {
         const std::vector<std::array<int, 2>> votes = edge_states(operands);
         std::array<std::unique_ptr<brep_classify::Solid>, 2> solids;
         std::array<std::unique_ptr<Mesh>, 2> meshes;
+        // The point classifier reads NURBS.
+        std::array<BRep, 2> plain;
         for (int o = 0; o < 2; ++o)
             try {
-                solids[o] = std::make_unique<brep_classify::Solid>(ds.brep(o));
+                if (!ds.brep(o).is_nurbs())
+                    plain[o] = ds.brep(o).as_nurbs();
+                solids[o] = std::make_unique<brep_classify::Solid>(ds.brep(o).is_nurbs() ? ds.brep(o) : plain[o]);
             } catch (const std::exception& error) {
                 report.log.push_back(std::string("classifier: ") + error.what());
             }
@@ -368,23 +407,56 @@ struct Builder {
         const Face& f = ds.faces[piece.face];
         const BRep& brep = ds.brep(f.operand);
         const int source = brep.m_faces[f.local].surface_index;
-        auto found = surface_image.find({f.operand, source});
-        if (found == surface_image.end())
-            found = surface_image.emplace(std::make_pair(f.operand, source), result.add_surface(brep.m_surfaces[source].nurbs())).first;
+        // A piece that closes on a periodic analytic surface is written in one turn: the one its outer loop starts in from the surface's rectangle, and where it runs past that, on the surface over a rectangle of its own.
+        const Surface& s = brep.m_surfaces[source];
+        Layout l;
+        Surface own;
+        if (f.region.whole && (s.period(0) > 0.0 || s.period(1) > 0.0) && !(l = layout(piece)).band && !l.polygons.empty() && !l.polygons[0].empty())
+            for (int d = 0; d < 2; ++d) {
+                const double period = s.period(d), e = 1e-9 * period;
+                if (!(period > 0.0))
+                    continue;
+                double lo = 1e300, hi = -1e300;
+                for (const Point& p : l.polygons[0])
+                    lo = std::min(lo, p[d]), hi = std::max(hi, p[d]);
+                const double move = -std::floor((lo - s.domain(d).first + e) / period) * period;
+                for (auto& loop : l.turns)
+                    for (std::array<double, 2>& turn : loop)
+                        turn[d] += move;
+                if (hi + move > s.domain(d).second + e) {
+                    if (!own.is_valid())
+                        own = s;
+                    own.set_domain(d, lo + move, hi + move);
+                }
+            }
+        else
+            l.turns.clear();
+        int surface = 0;
+        if (own.is_valid())
+            surface = result.add_surface(own);
+        else {
+            auto found = surface_image.find({f.operand, source});
+            if (found == surface_image.end())
+                found = surface_image.emplace(std::make_pair(f.operand, source), result.add_surface(s)).first;
+            surface = found->second;
+        }
         std::vector<BRepRef> wires;
-        for (const auto& loop : piece.loops) {
+        for (size_t i = 0; i < piece.loops.size(); ++i) {
             std::vector<BRepRef> refs;
-            for (int k : loop) {
-                const EdgeUse& use = uses[piece.face][k];
+            for (size_t k = 0; k < piece.loops[i].size(); ++k) {
+                const EdgeUse& use = uses[piece.face][piece.loops[i][k]];
                 const int edge = emit_edge(use.image);
                 refs.push_back({edge, use.reversed ? BRepOrientation::Reversed : BRepOrientation::Forward});
-                auto& slot = slots[{edge, found->second}][use.reversed];
-                if (slot.empty())
-                    slot.push_back(use.reversed ? use.pcurve.reversed() : use.pcurve);
+                auto& slot = slots[{edge, surface}][use.reversed];
+                if (!slot.empty())
+                    continue;
+                slot.push_back(use.reversed ? use.pcurve.reversed() : use.pcurve);
+                for (int d = 0; d < 2 && !l.turns.empty(); ++d)
+                    slot.back().shift[d] += l.turns[i][k][d];
             }
             wires.push_back({result.add_wire(refs), BRepOrientation::Forward});
         }
-        return result.add_face(found->second, wires, f.tolerance);
+        return result.add_face(surface, wires, f.tolerance);
     }
 
     /// BOPAlgo_BOP::BuildRC and BuildShape: the pieces each operation keeps, oriented, then shells and solids
@@ -417,7 +489,7 @@ struct Builder {
             std::vector<Span> forward = pair[0], back = pair[1];
             if (forward.empty())
                 std::swap(forward, back);
-            const NurbsSurface& s = result.m_surfaces[surface].nurbs();
+            const Surface& s = result.m_surfaces[surface];
             const double span = std::hypot(s.domain(0).second - s.domain(0).first, s.domain(1).second - s.domain(1).first);
             const bool seam = !back.empty() && forward[0].at(0.0).distance(back[0].at(0.0)) > 1e-6 * span;
             // A pcurve running with its edge and not moved by a period is shared with its range; one that runs against it or was moved gets a curve of its own.
@@ -475,10 +547,6 @@ bool empty(const BRep& b) {
 
 BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Report* report) {
 
-    // A bridge until the core reads analytic surfaces and their pcurves in true parameters.
-    if (!a.is_freeform() || !b.is_freeform())
-        return apply(a.as_nurbs(false), b.as_nurbs(false), operation, fuzzy, report);
-
     Report local;
     Report& out = report ? *report : local;
     if (empty(a) || empty(b)) {
@@ -530,6 +598,16 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
     for (const std::string& line : out.log)
         if (out.failure.empty() && line.rfind("classification conflict", 0) == 0)
             out.failure = "pieces of one block are inside and outside the other operand";
+    // Where the analytic operands do not give a solid, their NURBS may: the result is then NURBS.
+    if (!out.failure.empty() && (!a.is_freeform() || !b.is_freeform())) {
+        Report plain;
+        const BRep through = apply(a.as_nurbs(false), b.as_nurbs(false), operation, fuzzy, &plain);
+        if (plain.failure.empty()) {
+            plain.log.insert(plain.log.begin(), "analytic operands: " + out.failure + "; result from their NURBS");
+            out = plain;
+            return through;
+        }
+    }
     return result;
 }
 

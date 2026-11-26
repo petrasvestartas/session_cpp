@@ -22,12 +22,12 @@ int face_near(const BRep& brep, const Point& p) {
 
 // The largest distance from each curve to both faces' surfaces along its pcurves, over its own tolerance.
 double worst_fit(const BRep& a, int fa, const BRep& b, int fb, const bop_ff::Result& r) {
-    const NurbsSurface& sa = a.m_surfaces[a.m_faces[fa].surface_index].nurbs();
-    const NurbsSurface& sb = b.m_surfaces[b.m_faces[fb].surface_index].nurbs();
+    const Surface& sa = a.m_surfaces[a.m_faces[fa].surface_index];
+    const Surface& sb = b.m_surfaces[b.m_faces[fb].surface_index];
     double worst = 0.0;
     for (const bop_ff::Curve& c : r.curves)
         for (int i = 0; i <= 50; ++i) {
-            const double t = c.curve.domain_start() + (c.curve.domain_end() - c.curve.domain_start()) * i / 50;
+            const double t = c.curve.domain().first + (c.curve.domain().second - c.curve.domain().first) * i / 50;
             const Point p = c.curve.point_at(t), ua = c.pcurve_a.point_at(t), ub = c.pcurve_b.point_at(t);
             worst = std::max({worst, p.distance(sa.point_at(ua[0], ua[1])) / c.tolerance, p.distance(sb.point_at(ub[0], ub[1])) / c.tolerance});
         }
@@ -37,7 +37,7 @@ double worst_fit(const BRep& a, int fa, const BRep& b, int fb, const bop_ff::Res
 double nearest_on_curves(const bop_ff::Result& r, const Point& p) {
     double best = 1e300;
     for (const bop_ff::Curve& c : r.curves)
-        best = std::min(best, Closest::curve_point(c.curve, p).second);
+        best = std::min(best, Closest::curve_point(c.curve.nurbs(), p).second);
     return best;
 }
 
@@ -45,7 +45,7 @@ double length(const bop_ff::Result& r) {
     double total = 0.0;
     for (const bop_ff::Curve& c : r.curves)
         for (int i = 1; i <= 2000; ++i) {
-            const double t0 = c.curve.domain_start(), t1 = c.curve.domain_end();
+            const double t0 = c.curve.domain().first, t1 = c.curve.domain().second;
             total += c.curve.point_at(t0 + (t1 - t0) * (i - 1) / 2000).distance(c.curve.point_at(t0 + (t1 - t0) * i / 2000));
         }
     return total;

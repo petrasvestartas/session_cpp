@@ -101,6 +101,8 @@ NurbsCurve nurbs_pcurve(const Surface& surface, const Curve* world, const Curve2
                     breaks.push_back(0.5 * (lo + hi));
                 }
     std::sort(breaks.begin(), breaks.end());
+    // A knot line crossed right at an end is the bound of the surface, passed within tolerance: no piece of its own.
+    breaks.erase(std::remove_if(breaks.begin(), breaks.end(), [&](double x) { return x != a && x != b && std::min(x - a, b - x) <= 1e-9 * (b - a); }), breaks.end());
     breaks.erase(std::unique(breaks.begin(), breaks.end(), [&](double x, double y) { return y - x <= 1e-12 * (b - a); }), breaks.end());
     const double scale = 1.0 + std::abs(window[0].first) + std::abs(window[0].second) + std::abs(window[1].first) + std::abs(window[1].second);
     // Rational-linear pieces: the weight ratio that carries the middle of the piece to its image, kept where the quarter points agree.

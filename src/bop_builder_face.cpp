@@ -30,14 +30,28 @@ double area(const std::vector<Point>& polygon) {
 
 }
 
-std::vector<Point> loop_polygon(const std::vector<EdgeUse>& uses, const std::vector<int>& loop) {
+std::vector<Point> loop_polygon(const std::vector<EdgeUse>& uses, const std::vector<int>& loop, const std::array<double, 2>& period, Point* end, std::vector<std::array<double, 2>>* turns) {
     std::vector<Point> polygon;
+    Point last;
     for (int i : loop) {
         const Span& c = uses[i].pcurve;
-        const int n = std::clamp(4 * c.curve->nurbs().cv_count(), 8, 256);
-        for (int k = 0; k < n; ++k)
-            polygon.push_back(c.at(double(k) / n));
+        const int n = samples(*c.curve);
+        std::array<double, 2> turn{0.0, 0.0};
+        for (int d = 0; d < 2 && !polygon.empty(); ++d)
+            if (period[d] > 0.0)
+                turn[d] = std::round((last[d] - c.at(0.0)[d]) / period[d]) * period[d];
+        for (int k = 0; k <= n; ++k) {
+            last = c.at(double(k) / n);
+            last[0] += turn[0];
+            last[1] += turn[1];
+            if (k < n)
+                polygon.push_back(last);
+        }
+        if (turns)
+            turns->push_back(turn);
     }
+    if (end)
+        *end = last;
     return polygon;
 }
 
@@ -142,9 +156,13 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
             log.push_back("face split: open loop");
     }
     std::vector<std::vector<Point>> polygons;
+    std::vector<Point> ends(loops.size());
     std::vector<double> areas;
-    for (const auto& loop : loops) {
-        polygons.push_back(loop_polygon(uses, loop));
+    const std::array<double, 2> turn = region.whole ? region.period : std::array<double, 2>{0.0, 0.0};
+    for (size_t i = 0; i < loops.size(); ++i) {
+        polygons.push_back(loop_polygon(uses, loops[i], turn, &ends[i]));
+        if (!region.whole)
+            ends[i] = p1[loops[i].back()];
         areas.push_back(area(polygons.back()));
     }
     const double small = 1e-12 * diag * diag;
@@ -161,16 +179,19 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
     std::vector<int> winds(loops.size(), -1);
     std::vector<std::tuple<double, bool, int>> around; // level across the period, whether the face lies above, loop
     for (size_t i = 0; i < loops.size(); ++i) {
-        winds[i] = region.winding(p0[loops[i].front()], p1[loops[i].back()]);
+        winds[i] = region.winding(polygons[i].front(), ends[i]);
         if (winds[i] < 0)
             continue;
-        polygons[i].push_back(p1[loops[i].back()]);
+        polygons[i].push_back(ends[i]);
         double level = 0.0;
         for (const Point& p : polygons[i])
             level += p[1 - winds[i]] / polygons[i].size();
-        around.push_back({level, (p1[loops[i].back()][winds[i]] > p0[loops[i].front()][winds[i]]) == (winds[i] == 0), static_cast<int>(i)});
+        around.push_back({level, (ends[i][winds[i]] > polygons[i].front()[winds[i]]) == (winds[i] == 0), static_cast<int>(i)});
     }
-    std::sort(around.begin(), around.end());
+    // Two ways along one edge lie at one level to rounding: the one whose face lies below comes first.
+    std::sort(around.begin(), around.end(), [&](const auto& x, const auto& y) {
+        return std::abs(std::get<0>(x) - std::get<0>(y)) > near ? std::get<0>(x) < std::get<0>(y) : std::tie(std::get<1>(x), std::get<2>(x)) < std::tie(std::get<1>(y), std::get<2>(y));
+    });
     std::vector<Region> bands;
     for (size_t k = 0; k < around.size(); ++k) {
         const auto [level, below, i] = around[k];
@@ -205,6 +226,9 @@ std::vector<std::vector<std::vector<int>>> build_faces(std::vector<EdgeUse>& use
             Region r;
             if (outer_of[f] >= 0) {
                 r.eps = near;
+                r.whole = region.whole;
+                if (region.whole)
+                    r.period = region.period;
                 r.add_loop(polygons[outer_of[f]]);
             } else
                 r = bands[-outer_of[f] - 1];
