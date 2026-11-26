@@ -1451,8 +1451,11 @@ public:
 
         if (refs.size() > 2)
             a.ax = get_direction(refs[2]);
-        else
-            a.ax = std::abs(a.az[0]) < 0.9 ? Vector(1, 0, 0) : Vector(0, 1, 0);
+        else {
+            // No reference direction: the X gp_Ax2(P, V) takes, so angles start where OCCT's do.
+            const double x = a.az[0], y = a.az[1], z = a.az[2], ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
+            a.ax = ay <= ax && ay <= az ? (ax > az ? Vector(-z, 0, x) : Vector(z, 0, -x)) : ax <= ay && ax <= az ? (ay > az ? Vector(0, -z, y) : Vector(0, z, -y)) : ax > ay ? Vector(-y, x, 0) : Vector(y, -x, 0);
+        }
 
         a.ax = a.ax - a.az * a.ax.dot(a.az);
 
@@ -3675,13 +3678,21 @@ public:
             split_at_angle(in_b ? a : b, an, best);
 
         const auto on_seam = [&](const LoopEdge& le) { return std::abs(std::remainder(angle(start(le)) - best, 2.0 * PI)) * an.radius <= tolerance; };
-        const size_t i = std::find_if(a.edges.begin(), a.edges.end(), on_seam) - a.edges.begin();
+        size_t i = std::find_if(a.edges.begin(), a.edges.end(), on_seam) - a.edges.begin();
         // The material lies left of a loop on the surface, so the cap of a loop turning up in s holds the north pole.
         const Point pole = an_eval(an, best, turn > 0.0 ? PI_2 : -PI_2);
-        const size_t j = std::find_if(b.edges.begin(), b.edges.end(), on_seam) - b.edges.begin();
+        size_t j = std::find_if(b.edges.begin(), b.edges.end(), on_seam) - b.edges.begin();
 
         if (i == a.edges.size() || (!b.edges.empty() && j == b.edges.size()))
             return;
+
+        // Of several vertices on the seam line the two nearest: the seam never runs over an edge that lies on it.
+        for (size_t ia = 0; ia < a.edges.size(); ia++)
+            for (size_t jb = 0; jb < b.edges.size(); jb++)
+                if (on_seam(a.edges[ia]) && on_seam(b.edges[jb]) && foot(a.edges[ia]).distance(foot(b.edges[jb])) < foot(a.edges[i]).distance(foot(b.edges[j]))) {
+                    i = ia;
+                    j = jb;
+                }
 
         // The other loops are split where they cross the seam, as ShapeFix_ComposeShell cuts every wire at it; a hole met there twice
         // between the joined loops is cut in two halves the seam runs to and on from, its stretch inside the hole dropped.

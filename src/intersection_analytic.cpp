@@ -928,7 +928,14 @@ struct Builder {
         };
         const auto jet = [&](double l, int order, Jet& made) {
             const double k = key(l);
-            return section(a, b, l <= 0 ? p0 : l >= length ? p1 : at(k), at(std::min(k + step, k1)) - at(std::max(k - step, k0)), order, made);
+            // Beside a turning point of a pencil the discriminant is its own rounding and the points stand still: the sense is taken over a wider step there.
+            xyz toward;
+            for (double wide = step; wide <= 1e-2 * (k1 - k0); wide *= 10) {
+                toward = at(std::min(k + wide, k1)) - at(std::max(k - wide, k0));
+                if (toward.length() * (k1 - k0) >= 0.5 * wide * length)
+                    break;
+            }
+            return section(a, b, l <= 0 ? p0 : l >= length ? p1 : at(k), toward, order, made);
         };
         const auto node = [&](double l) {
             Node made;

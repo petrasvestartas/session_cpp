@@ -261,7 +261,8 @@ struct Builder {
                     around[use.image].push_back({static_cast<int>(k), inward, ds.brep(f.operand).face_orientation(f.local) == BRepOrientation::Reversed ? normal * -1.0 : normal});
                 }
         }
-        std::vector<std::array<int, 2>> votes(pieces.size(), {0, 0});
+        // A piece that leaves a shared edge almost along the other operand's face there is told by the edges it leaves steeply, where it has any.
+        std::vector<std::array<int, 2>> votes(pieces.size(), {0, 0}), faint = votes;
         for (const auto& [unused, sides] : around)
             for (const Side& p : sides) {
                 if (pieces[p.piece].twin >= 0)
@@ -272,8 +273,11 @@ struct Builder {
                         nearest = &q;
                 const double height = nearest ? p.inward.dot(nearest->outward) : 0.0;
                 if (std::abs(height) > 1e-3)
-                    ++votes[p.piece][height < 0.0 ? 0 : 1];
+                    ++(std::abs(height) > 0.1 ? votes : faint)[p.piece][height < 0.0 ? 0 : 1];
             }
+        for (size_t k = 0; k < votes.size(); ++k)
+            if (votes[k][0] + votes[k][1] == 0)
+                votes[k] = faint[k];
         return votes;
     }
 

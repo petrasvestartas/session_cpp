@@ -601,18 +601,20 @@ struct Filler {
         const Edge& edge = ds.edges[e];
         const Curve& c = ds.curve_of(edge);
         const Surface& s = ds.surface_of(f);
-        const double tolerance = edge.tolerance + f.tolerance + ds.fuzzy, step = probe(c, edge, tolerance);
-        if (t - step > edge.t0 && t + step < edge.t1) {
-            const Point before = c.point_at(t - step), after = c.point_at(t + step);
-            if (s.closest_point(before).distance(before) <= tolerance && s.closest_point(after).distance(after) <= tolerance)
-                return;
-        }
+        const double tolerance = edge.tolerance + f.tolerance + ds.fuzzy;
         // The common part of a crossing runs where the edge stays within the tolerance of the surface.
         Vector tangent = c.tangent_at(t), normal = s.normal_at(uv[0], uv[1]);
         tangent.normalize_self();
         normal.normalize_self();
         const Point p = c.point_at(t);
-        const double reach = std::min(tolerance / std::max(std::abs(tangent.dot(normal)), 1e-12), extent(c, edge));
+        const double sine = std::abs(tangent.dot(normal)), reach = std::min(tolerance / std::max(sine, 1e-12), extent(c, edge));
+        // An edge that crosses at an angle is within a wide tolerance for longer than the probe: it is looked at past that reach.
+        const double step = std::max(probe(c, edge, tolerance), sine > 0.05 ? 1.5 * reach * (edge.t1 - edge.t0) / extent(c, edge) : 0.0);
+        if (t - step > edge.t0 && t + step < edge.t1) {
+            const Point before = c.point_at(t - step), after = c.point_at(t + step);
+            if (s.closest_point(before).distance(before) <= tolerance && s.closest_point(after).distance(after) <= tolerance)
+                return;
+        }
         // PerformEF, a common part that reaches a pave of the edge: no new vertex, the pave's vertex grows to cover a real crossing.
         if (s.point_at(uv[0], uv[1]).distance(p) < confusion)
             for (const Pave& pave : edge.paves) {

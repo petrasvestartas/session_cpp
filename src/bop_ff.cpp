@@ -453,6 +453,15 @@ Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop,
                        cur.x[2] + f * (guess[2] - cur.x[2]), cur.x[3] + f * (guess[3] - cur.x[3])};
                 clamp(c, y);
                 if (correct(c, y, {k, value}, gap)) {
+                    // Next to a second bound the one the section crosses more squarely places the end: a bound it only touches leaves the end loose along it.
+                    const auto pace = [&](int i) { return travel(c, y, i, predict(c, y, t)[i] - y[i]); };
+                    for (int i = 0; i < 4; ++i)
+                        for (int end = 0; end < 2; ++end) {
+                            X z = y;
+                            z[i] = bound(c, i, end);
+                            if (i != k && travel(c, y, i, z[i] - y[i]) <= std::sqrt(c.tol * c.size) && pace(i) > pace(k) && correct(c, z, {i, z[i]}, gap))
+                                y = z, k = i;
+                        }
                     const xyz p = point(c, y), d = p - cur.p;
                     if (d.dot(t) > 0.5 * d.length() && d.length() <= 2 * h && d.length() > 0) {
                         nodes.push_back({y, p});
@@ -1146,7 +1155,7 @@ bool closed_form(const Context& c, Result& result) {
             const double period = form[s].period(d);
             if (period > 0 && hi - lo > 0.9 * period && !(sides[s]->analytic && !sides[s]->closed[d]))
                 seams.push_back({s, d, lo, false});
-            else if (period > 0 && sides[s]->analytic && std::floor((hi - 1e-9) / period) >= std::ceil((lo + 1e-9) / period))
+            if (period > 0 && sides[s]->analytic && std::floor((hi - 1e-9) / period) >= std::ceil((lo + 1e-9) / period))
                 seams.push_back({s, d, 0.0, true});
         }
     }
@@ -1154,13 +1163,16 @@ bool closed_form(const Context& c, Result& result) {
     if (!exact.done || exact.coincident)
         return false;
     // How far inside the uv box of a face a point of a section lies, negative outside, and beside which bound of it.
-    const auto margin = [&](int s, const P3& p, std::array<int, 2>* bound = nullptr) {
+    const auto margin = [&](int s, const P3& p, std::array<int, 2>* bound = nullptr, std::array<double, 2>* each = nullptr) {
         const std::pair<double, double> uv = form[s].closest_parameters(p);
         double least = infinity;
         for (int d = 0; d < 2; ++d) {
             const auto [lo, hi] = form[s].domain(d);
             const double period = form[s].period(d), w = d ? uv.second : uv.first, e = 1e-9 * (hi - lo);
-            least = std::min(least, e + (period > 0 && w > hi ? -std::min(w - hi, lo + period - w) : std::min(w - lo, hi - w)));
+            const double inside = e + (period > 0 && w > hi ? -std::min(w - hi, lo + period - w) : std::min(w - lo, hi - w));
+            least = std::min(least, inside);
+            if (each)
+                (*each)[d] = (inside - e) * form[s].point_at(uv.first + (d ? 0.0 : 1e-3 * (hi - lo)), uv.second + (d ? 1e-3 * (hi - lo) : 0.0)).distance(form[s].point_at(uv.first, uv.second)) / (1e-3 * (hi - lo));
             if (bound)
                 (*bound)[d] = std::abs(std::remainder(w - lo, period > 0 ? period : 1e300)) <= e ? 0 : std::abs(std::remainder(w - hi, period > 0 ? period : 1e300)) <= e ? 1 : -1;
         }
@@ -1179,7 +1191,19 @@ bool closed_form(const Context& c, Result& result) {
         const intersection_analytic::Section& s = exact.curves[i];
         const auto [t0, t1] = s.curve.domain();
         const auto at = [&](int k) { return t0 + (t1 - t0) * k / n; };
-        const auto leave = [&](double in, double out) { cuts[i].push_back(bisect(in, out, [&](double t) { return both(s, t) >= 0; })); };
+        // A section ends on the bound it crosses, to rounding: the bound it is furthest outside of where it has left the boxes. Where it grazes one bound, the rounding of a file putting it outside by less than a tenth of the tolerance, and crosses another beside it, that other ends it.
+        const auto lengths = [&](double t) {
+            std::array<std::array<double, 2>, 2> g{};
+            margin(0, s.curve.point_at(t), nullptr, &g[0]);
+            margin(1, s.curve.point_at(t), nullptr, &g[1]);
+            return std::array<double, 4>{g[0][0], g[0][1], g[1][0], g[1][1]};
+        };
+        const auto least = [&](double t) { const std::array<double, 4> g = lengths(t); return std::min_element(g.begin(), g.end()) - g.begin(); };
+        const auto leave = [&](double in, double out) {
+            const double far = lengths(out)[least(out)] < -0.1 * c.tol ? bisect(in, out, [&](double t) { return lengths(t)[least(t)] >= -0.1 * c.tol; }) : bisect(in, out, [&](double t) { return both(s, t) >= 0; });
+            const size_t k = least(far);
+            cuts[i].push_back(lengths(in)[k] > 0 ? bisect(in, far, [&](double t) { return lengths(t)[k] >= 0; }) : far);
+        };
         cuts[i] = {t0, t1};
         std::vector<double> m(n + 1);
         for (int k = 0; k <= n; ++k)
@@ -1207,6 +1231,11 @@ bool closed_form(const Context& c, Result& result) {
                 };
                 const double g0 = side_of(at(k)), g1 = side_of(at(k + 1));
                 seamed[i] = seamed[i] || (k == 0 && std::abs(g0) <= 1e-9);
+                // A sweep that starts or stops on the origin has its end where the walked line is cut.
+                if (seam.walked && k == 0 && std::abs(g0) <= 1e-9)
+                    kept[i].push_back(t0);
+                if (seam.walked && k == n - 1 && std::abs(g1) <= 1e-9)
+                    kept[i].push_back(t1);
                 if ((g0 < 0) != (g1 < 0) && std::abs(g0) < 1.0 && std::abs(g1) < 1.0) {
                     cuts[i].push_back(bisect(at(k), at(k + 1), [&](double t) { return (side_of(t) < 0) == (g0 < 0); }));
                     if (seam.walked)
@@ -1389,6 +1418,51 @@ void cut_crossings(std::vector<Curve>& curves) {
     curves = std::move(result);
 }
 
+// IntPatch cuts a walking line at u = 0 and v = 0 of a periodic surface: a marched section that passes the angle origin of an analytic face which does not end there is cut and keeps a vertex, as closed_form does for its own.
+void cut_origins(const Context& c, std::vector<Curve>& curves) {
+    std::vector<Curve> result;
+    for (const Curve& curve : curves) {
+        const auto [t0, t1] = curve.curve.domain();
+        std::vector<double> at = {t0};
+        for (int s = 0; s < 2; ++s)
+            for (int d = 0; d < 2; ++d) {
+                const Side& side = s ? c.b : c.a;
+                const double period = side.analytic ? side.form.period(d) : 0.0;
+                const auto [lo, hi] = side.form.domain(d);
+                if (!(period > 0) || std::floor((hi - 1e-9) / period) < std::ceil((lo + 1e-9) / period))
+                    continue;
+                const auto off = [&](double t) { return std::remainder((s ? curve.pcurve_b : curve.pcurve_a).point_at(t)[d], period); };
+                const int n = 64;
+                for (int k = 0; k < n; ++k) {
+                    double a = t0 + (t1 - t0) * k / n, b = t0 + (t1 - t0) * (k + 1) / n;
+                    const double g0 = off(a), g1 = off(b);
+                    // A section that runs along the origin crosses it only in its rounding.
+                    if ((g0 < 0) == (g1 < 0) || std::abs(g0) > 1.0 || std::abs(g1) > 1.0 || std::abs(g1 - g0) <= 1e-9 * period)
+                        continue;
+                    for (int it = 0; it < 60; ++it)
+                        ((off(0.5 * (a + b)) < 0) == (g0 < 0) ? a : b) = 0.5 * (a + b);
+                    at.push_back(0.5 * (a + b));
+                }
+            }
+        std::sort(at.begin(), at.end());
+        at.erase(std::remove_if(at.begin() + 1, at.end(), [&](double t) { return std::min(t - t0, t1 - t) <= 1e-6 * (t1 - t0); }), at.end());
+        at.push_back(t1);
+        for (size_t k = 0; k + 1 < at.size() && at.size() > 2; ++k) {
+            Curve piece = curve;
+            if (!piece.curve.set_domain(at[k], at[k + 1]) || !piece.pcurve_a.set_domain(at[k], at[k + 1]) || !piece.pcurve_b.set_domain(at[k], at[k + 1])) {
+                at.clear();
+                break;
+            }
+            piece.closed = false;
+            piece.bound = {k > 0 || curve.bound[0], k + 2 < at.size() || curve.bound[1]};
+            result.push_back(std::move(piece));
+        }
+        if (at.size() <= 2)
+            result.push_back(curve);
+    }
+    curves = std::move(result);
+}
+
 }
 
 // IntTools_FaceFace::Perform: face tolerances grown by half the fuzzy value (at least Precision::Confusion), planes by
@@ -1433,6 +1507,9 @@ Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fu
         else {
             march(c, found, result);
             cut_crossings(result.curves);
+            // A plane's sections IntPatch has in closed form: they are not walked.
+            if (!(c.a.analytic && c.a.form.kind() == Surface::Kind::Plane) && !(c.b.analytic && c.b.form.kind() == Surface::Kind::Plane))
+                cut_origins(c, result.curves);
         }
     } catch (const std::exception&) {
     }
