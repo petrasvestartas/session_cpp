@@ -13,6 +13,7 @@
 #include "surface.h"
 #include "xform.h"
 #include <array>
+#include <functional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -43,6 +44,14 @@ template <typename T>
 NurbsEdit<T> edit(T& item) {
     return {item};
 }
+
+class BRep;
+
+/// The pcurve of a curve lying on a plane: the same line, circle or ellipse in the plane's parameters over the same parameter, the affine image of any other curve
+Curve2d plane_pcurve(const Surface& plane, const Curve& c);
+
+/// The pcurve of an edge curve on a surface in its true parameters, by closed-form inversion along the curve: each periodic parameter on the turn nearest `guess` (a rough uv at a curve parameter), which also gives the angle where it is free. A 2D line over its own length where the image is one at even speed, the same conic on a plane, else a cubic fit over the curve's parameter. `deviation` is the largest distance found from the curve to the surface
+Curve2d true_pcurve(const Surface& surface, const Curve& world, const std::function<Point(double)>& guess, double& deviation);
 
 /// TopAbs_Orientation: carried by the parent -> child reference, never by the shape
 enum class BRepOrientation {
@@ -316,8 +325,8 @@ public:
     /// Whether every surface, curve and pcurve is freeform and no edge has a range: what a consumer of NURBS can read as it is.
     bool is_nurbs() const;
 
-    /// The bridge for consumers of NURBS: the same solid with every surface and curve as its NURBS and every pcurve in the parameter of that NURBS, over the parameter of its edge's NURBS; exact for lines on planes and for circles and rulings of a surface, fitted otherwise with the distance left put into the edge tolerance. Itself when is_nurbs()
-    BRep as_nurbs() const;
+    /// The bridge for consumers of NURBS: the same solid with every surface and curve as its NURBS and every pcurve in the parameter of that NURBS, over the parameter of its edge's NURBS; exact for lines on planes and for circles and rulings of a surface, fitted otherwise with the distance left put into the edge tolerance. An angle becomes a parameter of one unit a quarter turn; a length runs from 0 to 1, or without unit_lengths keeps its parameter. Itself when is_nurbs()
+    BRep as_nurbs(bool unit_lengths = true) const;
 
     /// BRepLib::UpdateTolerances: raise every edge tolerance to the worst gap between its curve ends (3D and lifted pcurves) and its vertices, every vertex to its worst edge; returns the largest
     double update_tolerances();

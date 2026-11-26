@@ -233,22 +233,6 @@ Surface plane_of(const NurbsSurface& patch) {
     return Surface::plane(o, x.cross(y), x, {0.0, x.magnitude(), 0.0, y.magnitude()});
 }
 
-/// The pcurve of a curve lying on a plane: the same line, circle or ellipse in the plane's parameters, over the same parameter
-Curve2d on_plane(const Surface& plane, const Curve& c) {
-
-    const auto uv = [&](const Vector& v) { return Vector(v.dot(plane.x()), v.dot(plane.y()), 0.0); };
-    const Vector o = uv(c.origin() - plane.origin());
-    const Point origin(o[0], o[1], 0.0);
-    const std::pair<double, double> t = c.domain();
-
-    switch (c.kind()) {
-    case Curve::Kind::Line: return Curve::line(origin, uv(c.x()), t.first, t.second);
-    case Curve::Kind::Circle: return Curve::circle(origin, uv(c.x()), uv(c.y()), c.radius(), t.first, t.second);
-    case Curve::Kind::Ellipse: return Curve::ellipse(origin, uv(c.x()), uv(c.y()), c.radius(), c.minor(), t.first, t.second);
-    default: return project_to_patch(c.nurbs(), plane.nurbs());
-    }
-}
-
 /// Straight pcurve from (u0, v0) to (u1, v1) over the parameter of an edge's 3D curve, which runs the same length
 Curve2d edge_uv(const BRep& b, int edge, double u0, double v0, double u1, double v1) {
 
@@ -297,7 +281,7 @@ struct PolyFaceBuilder {
             const int va = vi[i];
             const int vb = vi[(i + 1) % n];
             const int ei = edge(va, vb);
-            b.add_pcurve(ei, si, b.add_curve_2d(on_plane(b.m_surfaces[si], b.m_curves_3d[b.m_edges[ei].curve_3d_index])));
+            b.add_pcurve(ei, si, b.add_curve_2d(plane_pcurve(b.m_surfaces[si], b.m_curves_3d[b.m_edges[ei].curve_3d_index])));
             refs.push_back({ei, b.m_edges[ei].start_vertex == va ? F : R});
         }
 
@@ -362,7 +346,7 @@ NurbsSurface cap_patch(double r, double z, bool up) {
 int cap_face(BRep& b, const NurbsSurface& cap, int edge) {
 
     const int si = b.add_surface(plane_of(cap));
-    const Curve2d c2d = on_plane(b.m_surfaces[si], b.m_curves_3d[b.m_edges[edge].curve_3d_index]);
+    const Curve2d c2d = plane_pcurve(b.m_surfaces[si], b.m_curves_3d[b.m_edges[edge].curve_3d_index]);
     const BRepOrientation o = uv_signed_area(c2d.nurbs()) > 0.0 ? F : R;
     b.add_pcurve(edge, si, b.add_curve_2d(c2d));
 
@@ -3358,7 +3342,7 @@ BRep BRep::create_block_with_hole(double sx, double sy, double sz, double hole_r
         const int si = b.add_surface(plane_of(quad_patch(b, fv)));
         const std::vector<BRepRef> outer = pb.wire_refs(si, fv);
         const int e_hole = fi == 0 ? e_bot : e_top;
-        const Curve2d c2d = on_plane(b.m_surfaces[si], b.m_curves_3d[b.m_edges[e_hole].curve_3d_index]);
+        const Curve2d c2d = plane_pcurve(b.m_surfaces[si], b.m_curves_3d[b.m_edges[e_hole].curve_3d_index]);
         const BRepOrientation o = uv_signed_area(c2d.nurbs()) < 0.0 ? F : R;
         b.add_pcurve(e_hole, si, b.add_curve_2d(c2d));
         faces.push_back({b.add_face(si, {{b.add_wire(outer), F}, {b.add_wire({{e_hole, o}}), F}}), F});
@@ -3826,32 +3810,33 @@ std::vector<Plane> BRep::face_planes() const {
 
 double BRep::update_tolerances() {
 
-    if (!is_nurbs())
-        *this = as_nurbs();
-
     double worst = 0.0;
 
-    for (BRepEdge& e : m_edges) {
+    for (size_t i = 0; i < m_edges.size(); ++i) {
+        BRepEdge& e = m_edges[i];
         BRepVertex& vs = m_vertices[e.start_vertex];
         BRepVertex& ve = m_vertices[e.end_vertex];
         double tol = e.tolerance;
 
         if (e.curve_3d_index >= 0) {
-            const NurbsCurve& c = m_curves_3d[e.curve_3d_index].nurbs();
-            tol = std::max(tol, c.point_at(c.domain().first).distance(vs.point));
-            tol = std::max(tol, c.point_at(c.domain().second).distance(ve.point));
+            const std::pair<double, double> range = edge_range((int)i);
+            const Curve& c = m_curves_3d[e.curve_3d_index];
+            tol = std::max(tol, c.point_at(range.first).distance(vs.point));
+            tol = std::max(tol, c.point_at(range.second).distance(ve.point));
         }
 
         for (const BRepCurveOnSurface& pc : e.pcurves) {
-            const NurbsSurface& srf = m_surfaces[pc.surface_index].nurbs();
+            const Surface& srf = m_surfaces[pc.surface_index];
 
-            for (const int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
+            for (int k = 0; k < 2; ++k) {
+                const int ci = k == 0 ? pc.curve_2d_index : pc.curve_2d_index_2;
+
                 if (ci < 0)
                     continue;
 
-                const NurbsCurve& c2 = m_curves_2d[ci].nurbs();
-                const Point a = c2.point_at(c2.domain().first);
-                const Point z = c2.point_at(c2.domain().second);
+                const std::pair<double, double> range = pcurve_range(pc, k == 1);
+                const Point a = m_curves_2d[ci].point_at(range.first);
+                const Point z = m_curves_2d[ci].point_at(range.second);
                 tol = std::max(tol, srf.point_at(a[0], a[1]).distance(vs.point));
                 tol = std::max(tol, srf.point_at(z[0], z[1]).distance(ve.point));
             }

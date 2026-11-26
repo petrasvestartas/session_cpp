@@ -796,7 +796,7 @@ double face_volume(const BRep& brep, int face, const Frame& frame, double tolera
     return value;
 }
 
-double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& sums) {
+double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& sums, std::vector<double>* shares = nullptr) {
     Work work;
     PrimitiveMemo memo;
     double volume = 0.0;
@@ -808,6 +808,7 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& 
                     continue;
                 const double sign = orientation == BRepOrientation::Reversed ? -1.0 : 1.0;
                 const Work before = work;
+                const double sofar = volume;
                 try {
                     // A face whose enclosed polynomial cache cannot resolve its boundary (loose pcurves) integrates adaptively instead.
                     try {
@@ -826,6 +827,8 @@ double sum_volume(const BRep& brep, const Frame& frame, double tolerance, Sums& 
                         + ", inner_max_depth=" + std::to_string(work.inner_depth)
                         + ", outer_max_depth=" + std::to_string(work.outer_depth));
                 }
+                if (shares)
+                    (*shares)[face.index] += volume - sofar;
             }
     return volume;
 }
@@ -858,6 +861,25 @@ double volume(const BRep& brep, double tolerance) {
         throw std::runtime_error("Native BRep volume tolerance is below numerical resolution");
     const double refined = sum_volume(brep, bounds, requested, sums);
     return refined * bounds.scale * bounds.scale * bounds.scale;
+}
+
+std::vector<std::array<double, 2>> faces(const BRep& brep, double tolerance) {
+
+    if (!brep.is_nurbs())
+        return faces(brep.as_nurbs(), tolerance);
+
+    if (!brep.is_valid() || !brep.is_solid())
+        throw std::invalid_argument("Native BRep face measures require a closed oriented solid");
+    const Frame bounds = frame(brep);
+    Sums sums;
+    const double estimate = sum_volume(brep, bounds, 1e-4, sums);
+    std::vector<double> shares(brep.face_count(), 0.0);
+    sum_volume(brep, bounds, std::max(tolerance * std::abs(estimate) * 0.1, 1e-12), sums, &shares);
+    const std::vector<Mesh> meshes = brep.face_meshes();
+    std::vector<std::array<double, 2>> result;
+    for (int i = 0; i < brep.face_count(); ++i)
+        result.push_back({meshes[i].area(), shares[i] * bounds.scale * bounds.scale * bounds.scale});
+    return result;
 }
 
 }

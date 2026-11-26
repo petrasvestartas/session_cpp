@@ -189,6 +189,12 @@ MINI_TEST("Surface", "Recognized") {
             MINI_CHECK(std::abs((again.domain(dir).second - again.domain(dir).first) - (s.domain(dir).second - s.domain(dir).first)) < 1e-7 * size(s));
     }
     MINI_CHECK(recognised >= 5);
+    // A patch of a tilted sphere: the axis is the one its circles of latitude run around, so the extent is the patch's own rectangle.
+    const Surface patch = Surface::sphere(O, Z, X, 2.0, {0.3, 2.0, -1.0, 0.7});
+    const Surface found = Surface::recognized(patch.nurbs());
+    MINI_CHECK(found.kind() == Surface::Kind::Sphere && std::abs(std::abs(found.z().dot(patch.z())) - 1.0) < 1e-9);
+    MINI_CHECK(std::abs((found.domain(0).second - found.domain(0).first) - 1.7) < 1e-9 && std::abs((found.domain(1).second - found.domain(1).first) - 1.7) < 1e-9);
+    MINI_CHECK(std::abs(std::abs(found.domain(1).first) - 1.0) < 1e-9 || std::abs(std::abs(found.domain(1).first) - 0.7) < 1e-9);
 }
 
 MINI_TEST("Surface", "Json") {

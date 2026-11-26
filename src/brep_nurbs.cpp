@@ -20,6 +20,54 @@ std::vector<double> span_knots(double a0, double a1, bool angular) {
     return knots;
 }
 
+/// A cubic curve through the values of h at nodes with its one-sided slopes there, each piece between breaks halved until it is within `slack` of h as `apart` measures two parameter points: a break may sit where the slope of h turns.
+NurbsCurve cubic(const std::function<Uv(double)>& h, const std::vector<double>& breaks, double slack, const std::function<double(const Uv&, const Uv&)>& apart) {
+    const auto slope = [&](double t, double reach) {
+        Uv f[5], d;
+        for (int k = 0; k < 5; ++k)
+            f[k] = h(t + 1e-3 * k * reach);
+        for (int c = 0; c < 2; ++c)
+            d[c] = (-25.0 * f[0][c] + 48.0 * f[1][c] - 36.0 * f[2][c] + 16.0 * f[3][c] - 3.0 * f[4][c]) / 12e-3;
+        return d;
+    };
+    std::vector<double> nodes = {breaks[0]};
+    const std::function<void(double, double, int)> refine = [&](double lo, double hi, int depth) {
+        const Uv f0 = h(lo), f1 = h(hi), s0 = slope(lo, hi - lo), s1 = slope(hi, lo - hi);
+        double error = 0.0;
+        // At three uneven places: a wave that returns at the middle is not mistaken for the cubic.
+        for (double x : {0.2, 0.5, 0.85}) {
+            Uv fit;
+            for (int c = 0; c < 2; ++c)
+                fit[c] = (2 * x * x * x - 3 * x * x + 1) * f0[c] + (x * x * x - 2 * x * x + x) * s0[c] + (3 * x * x - 2 * x * x * x) * f1[c] - (x * x * x - x * x) * s1[c];
+            error = std::max(error, apart(fit, h(lo + x * (hi - lo))));
+        }
+        if (error > slack && depth < 10) {
+            refine(lo, 0.5 * (lo + hi), depth + 1);
+            refine(0.5 * (lo + hi), hi, depth + 1);
+        } else
+            nodes.push_back(hi);
+    };
+    for (size_t i = 0; i + 1 < breaks.size(); ++i)
+        refine(breaks[i], breaks[i + 1], 0);
+    NurbsCurve c(3, false, 4, 3 * static_cast<int>(nodes.size()) - 2);
+    for (size_t i = 0; i < nodes.size(); ++i)
+        for (int k = 0; k < 3; ++k)
+            c.set_nurbsknot(static_cast<int>(3 * i) + k, nodes[i]);
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const Uv f = h(nodes[i]);
+        c.set_cv(static_cast<int>(3 * i), Point(f[0], f[1], 0.0));
+        if (i > 0) {
+            const Uv s = slope(nodes[i], nodes[i - 1] - nodes[i]);
+            c.set_cv(static_cast<int>(3 * i) - 1, Point(f[0] + s[0] / 3.0, f[1] + s[1] / 3.0, 0.0));
+        }
+        if (i + 1 < nodes.size()) {
+            const Uv s = slope(nodes[i], nodes[i + 1] - nodes[i]);
+            c.set_cv(static_cast<int>(3 * i) + 1, Point(f[0] + s[0] / 3.0, f[1] + s[1] / 3.0, 0.0));
+        }
+    }
+    return c;
+}
+
 /// A pcurve given in a surface's true parameters, in the parameter of the surface's nurbs() and over the parameter of the edge's own NURBS: what a consumer of NURBS reads. Exact where the image is a line with a rational-linear parameter (a circle or a ruling of the surface, a line on a plane), else a cubic through values and slopes refined to `slack`; `deviation` is the distance in 3D left between the two.
 NurbsCurve nurbs_pcurve(const Surface& surface, const Curve* world, const Curve2d& pcurve, double slack, double& deviation) {
     const auto [p0, p1] = pcurve.domain();
@@ -112,45 +160,73 @@ NurbsCurve nurbs_pcurve(const Surface& surface, const Curve* world, const Curve2
         deviation = gap(c);
         return c;
     }
-    // Else a cubic through the values and slopes at nodes, halved where its middle strays. Slopes are one-sided: a node may sit on a knot line, where the slope turns.
-    const auto slope = [&](double t, double reach) {
-        const Uv f0 = h(t), f1 = h(t + 1e-3 * reach), f2 = h(t + 2e-3 * reach);
-        return Uv{(-3.0 * f0[0] + 4.0 * f1[0] - f2[0]) / 2e-3, (-3.0 * f0[1] + 4.0 * f1[1] - f2[1]) / 2e-3};
-    };
-    std::vector<double> nodes = {breaks[0]};
-    const std::function<void(double, double, int)> refine = [&](double lo, double hi, int depth) {
-        const Uv f0 = h(lo), f1 = h(hi), s0 = slope(lo, hi - lo), s1 = slope(hi, lo - hi), fm = h(0.5 * (lo + hi));
-        double error = 0.0;
-        for (int c = 0; c < 2; ++c)
-            error = std::max(error, std::abs(0.5 * (f0[c] + f1[c]) + 0.125 * (s0[c] + s1[c]) - fm[c]));
-        if (error > slack * scale && depth < 10) {
-            refine(lo, 0.5 * (lo + hi), depth + 1);
-            refine(0.5 * (lo + hi), hi, depth + 1);
-        } else
-            nodes.push_back(hi);
-    };
-    for (size_t i = 0; i + 1 < breaks.size(); ++i)
-        refine(breaks[i], breaks[i + 1], 0);
-    NurbsCurve c(3, false, 4, 3 * static_cast<int>(nodes.size()) - 2);
-    for (size_t i = 0; i < nodes.size(); ++i)
-        for (int k = 0; k < 3; ++k)
-            c.set_nurbsknot(static_cast<int>(3 * i) + k, nodes[i]);
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        const Uv f = h(nodes[i]);
-        c.set_cv(static_cast<int>(3 * i), Point(f[0], f[1], 0.0));
-        if (i > 0) {
-            const Uv s = slope(nodes[i], nodes[i - 1] - nodes[i]);
-            c.set_cv(static_cast<int>(3 * i) - 1, Point(f[0] + s[0] / 3.0, f[1] + s[1] / 3.0, 0.0));
-        }
-        if (i + 1 < nodes.size()) {
-            const Uv s = slope(nodes[i], nodes[i + 1] - nodes[i]);
-            c.set_cv(static_cast<int>(3 * i) + 1, Point(f[0] + s[0] / 3.0, f[1] + s[1] / 3.0, 0.0));
-        }
-    }
+    // Measured in 3D on the surface's NURBS, before the parameters are moved to their units.
+    const NurbsCurve c = cubic(h, breaks, slack, [&](const Uv& p, const Uv& q) { return support.point_at(p[0], p[1]).distance(support.point_at(q[0], q[1])); });
     deviation = gap(c);
     return c;
 }
 
+}
+
+Curve2d plane_pcurve(const Surface& plane, const Curve& c) {
+    const auto uv = [&](const Vector& v) { return Vector(v.dot(plane.x()), v.dot(plane.y()), 0.0); };
+    const Vector o = uv(c.origin() - plane.origin());
+    const Point origin(o[0], o[1], 0.0);
+    const std::pair<double, double> t = c.domain();
+    switch (c.kind()) {
+    case Curve::Kind::Line: return Curve::line(origin, uv(c.x()), t.first, t.second);
+    case Curve::Kind::Circle: return Curve::circle(origin, uv(c.x()), uv(c.y()), c.radius(), t.first, t.second);
+    case Curve::Kind::Ellipse: return Curve::ellipse(origin, uv(c.x()), uv(c.y()), c.radius(), c.minor(), t.first, t.second);
+    default: break;
+    }
+    // Any other curve: the affine image of its controls.
+    const NurbsCurve& n = c.nurbs();
+    NurbsCurve image(3, n.is_rational(), n.order(), n.cv_count());
+    image.m_nurbsknot = n.m_nurbsknot;
+    for (int i = 0; i < n.cv_count(); ++i) {
+        const double w = n.is_rational() ? n.weight(i) : 1.0;
+        const Vector q = uv(n.get_cv(i) - plane.origin());
+        if (n.is_rational())
+            image.set_cv_4d(i, q[0] * w, q[1] * w, 0.0, w);
+        else
+            image.set_cv(i, Point(q[0], q[1], 0.0));
+    }
+    return image;
+}
+
+Curve2d true_pcurve(const Surface& surface, const Curve& world, const std::function<Point(double)>& guess, double& deviation) {
+    const auto [t0, t1] = world.domain();
+    const auto [u0, u1] = surface.domain(0);
+    const auto [v0, v1] = surface.domain(1);
+    const double scale = 1.0 + std::abs(u0) + std::abs(u1) + std::abs(v0) + std::abs(v1);
+    deviation = 0.0;
+    const auto h = [&](double t) {
+        const Point p = world.point_at(t), g = guess(t);
+        std::pair<double, double> uv = surface.closest_parameters(p);
+        // Where the angle is free (a pole, an apex, the axis) it is the guess's.
+        const Vector d = p - surface.origin();
+        const bool free = surface.period(0) > 0.0 && (d - surface.z() * d.dot(surface.z())).magnitude() <= 1e-9 * (1.0 + d.magnitude());
+        uv = surface.adjusted(free ? g[0] : uv.first, uv.second, {g[0], g[0], g[1], g[1]});
+        return Uv{uv.first, uv.second};
+    };
+    for (double f : {0.0, 0.071, 0.137, 0.29, 0.41, 0.5, 0.553, 0.683, 0.79, 0.93, 1.0}) {
+        const double t = t0 + (t1 - t0) * f;
+        const Uv uv = h(t);
+        deviation = std::max(deviation, surface.point_at(uv[0], uv[1]).distance(world.point_at(t)));
+    }
+    if (surface.kind() == Surface::Kind::Plane && world.kind() != Curve::Kind::Nurbs)
+        return plane_pcurve(surface, world);
+    const Uv first = h(t0), last = h(t1);
+    bool straight = std::hypot(last[0] - first[0], last[1] - first[1]) > 1e-12 * scale;
+    // At uneven places: a curve of even spans that meets the line at each of their ends is not mistaken for it.
+    for (double f : {0.071, 0.137, 0.29, 0.41, 0.5, 0.553, 0.683, 0.79, 0.93}) {
+        const Uv uv = h(t0 + (t1 - t0) * f);
+        for (int d = 0; d < 2 && straight; ++d)
+            straight = std::abs(first[d] + (last[d] - first[d]) * f - uv[d]) <= 1e-10 * scale;
+    }
+    if (straight)
+        return Curve2d::line(first[0], first[1], last[0], last[1]);
+    return cubic(h, {t0, t1}, 2e-9 + 1e-10 * surface.radius(), [&](const Uv& p, const Uv& q) { return surface.point_at(p[0], p[1]).distance(surface.point_at(q[0], q[1])); });
 }
 
 Curve BRep::edge_curve(int edge_index) const {
@@ -198,16 +274,16 @@ bool BRep::is_nurbs() const {
     return !has_ranges() && is_freeform();
 }
 
-BRep BRep::as_nurbs() const {
+BRep BRep::as_nurbs(bool unit_lengths) const {
     if (is_nurbs())
         return *this;
     BRep b = unshared();
     const BRep source = b;
-    // Consumers of NURBS were written on parameters of about one unit a span: a quarter turn is one unit, a length runs from 0 to 1 (a line keeps its length).
+    // Consumers of NURBS were written on a quarter turn as one unit of the parameter, as the STEP reader's windows and the old primitives had it. A length runs from 0 to 1 as on the old primitives, which the old tessellation needs; without unit_lengths it keeps its own parameter, as the STEP reader had it and the boolean core needs.
     const double quarter = std::numbers::pi / 2;
     const auto stretch = [&](const Surface& s, int d) {
         const bool angular = s.period(d) > 0.0 || (d == 1 && s.kind() == Surface::Kind::Sphere);
-        return (angular ? 1.0 / quarter : 1.0 / (s.domain(d).second - s.domain(d).first));
+        return angular ? 1.0 / quarter : unit_lengths ? 1.0 / (s.domain(d).second - s.domain(d).first) : 1.0;
     };
     // Knots of evenly cut spans moved to run from 0 to `end`: whole numbers where a span is one unit, without the rounding of a rescale.
     const auto units = [](std::vector<double>& knots, double end) {
@@ -217,6 +293,11 @@ BRep BRep::as_nurbs() const {
             const double j = std::round((k - first) / (last - first) * spans);
             k = j == spans ? end : end * j / spans;
         }
+    };
+    // An angle starts at 0, and so does a length made to run to 1.
+    const auto shift = [&](const Surface& s, int d) {
+        const bool angular = s.period(d) > 0.0 || (d == 1 && s.kind() == Surface::Kind::Sphere);
+        return angular || unit_lengths ? -s.domain(d).first : 0.0;
     };
     for (BRepEdge& e : b.m_edges) {
         const Curve* world = e.curve_3d_index >= 0 ? &source.m_curves_3d[e.curve_3d_index] : nullptr;
@@ -229,9 +310,9 @@ BRep BRep::as_nurbs() const {
                 if (s.kind() == Surface::Kind::Nurbs && pc.kind() == Curve::Kind::Nurbs && (!world || world->kind() == Curve::Kind::Nurbs))
                     continue;
                 double deviation = 0.0;
-                NurbsCurve c = nurbs_pcurve(s, world, pc, 1e-11, deviation);
+                NurbsCurve c = nurbs_pcurve(s, world, pc, 2e-9 + 1e-10 * s.radius(), deviation);
                 if (s.kind() != Surface::Kind::Nurbs)
-                    c.transform(Xform::scale_xyz(stretch(s, 0), stretch(s, 1), 1.0) * Xform::translation(-s.domain(0).first, -s.domain(1).first, 0.0));
+                    c.transform(Xform::scale_xyz(stretch(s, 0), stretch(s, 1), 1.0) * Xform::translation(shift(s, 0), shift(s, 1), 0.0));
                 if (world && world->period() > 0.0) {
                     c.set_domain(0.0, (world->domain().second - world->domain().first) / quarter);
                     for (double& k : c.m_nurbsknot)
@@ -246,7 +327,10 @@ BRep BRep::as_nurbs() const {
         if (s.kind() != Surface::Kind::Nurbs) {
             NurbsSurface n = s.nurbs();
             for (int d = 0; d < 2; ++d)
-                units(n.m_nurbsknot[d], (s.domain(d).second - s.domain(d).first) * stretch(s, d));
+                if (s.period(d) > 0.0 || (d == 1 && s.kind() == Surface::Kind::Sphere) || unit_lengths)
+                    units(n.m_nurbsknot[d], (s.domain(d).second - s.domain(d).first) * stretch(s, d));
+                else
+                    n.m_nurbsknot[d] = {s.domain(d).first * stretch(s, d), s.domain(d).second * stretch(s, d)};
             s = Surface(n);
         }
     for (Curve& c : b.m_curves_3d)

@@ -607,3 +607,25 @@ MINI_TEST("BRep Native Measure", "Enclosure Of A Point Is One Control") {
     MINI_CHECK(nurbs_interval::curve_bounds(broken, {spans[0], std::midpoint(spans[0], spans[1])}, origin, piece));
     MINI_CHECK(!nurbs_interval::curve_bounds(broken, {spans[0], std::midpoint(spans[1], spans[2])}, origin, piece));
 }
+
+MINI_TEST("BRep Native Measure", "Faces Area And Volume Share") {
+    const double pi = 3.14159265358979323846;
+    const BRep box = BRep::create_box(2, 3, 4);
+    const std::vector<std::array<double, 2>> sides = brep_measure::faces(box);
+    double area = 0.0, volume = 0.0;
+    for (const std::array<double, 2>& side : sides) {
+        area += side[0];
+        volume += side[1];
+        // A face of a box centred at the origin holds a third of its pyramid to the centre, twice over: a sixth of the box by the divergence of z alone or none.
+        MINI_CHECK(std::abs(side[0] - 6.0) < 1e-9 || std::abs(side[0] - 8.0) < 1e-9 || std::abs(side[0] - 12.0) < 1e-9);
+    }
+    MINI_CHECK(sides.size() == 6 && std::abs(area - 52.0) < 1e-9 && std::abs(volume - 24.0) < 1e-9 && std::abs(volume - box.volume_exact()) < 1e-12);
+    const BRep cylinder = BRep::create_cylinder(1.5, 4);
+    const std::vector<std::array<double, 2>> parts = brep_measure::faces(cylinder);
+    area = volume = 0.0;
+    for (const std::array<double, 2>& part : parts) {
+        area += part[0];
+        volume += part[1];
+    }
+    MINI_CHECK(parts.size() == 3 && std::abs(volume - pi * 9.0) < 1e-6 && std::abs(area - (2.0 * pi * 2.25 + 2.0 * pi * 1.5 * 4.0)) < 0.6);
+}

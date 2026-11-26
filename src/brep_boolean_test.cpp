@@ -516,6 +516,13 @@ bool platonic_case(nlohmann::ordered_json& report, const Mesh& mesh, const std::
 
 }
 
+/// STEP BReps as the NURBS their consumers read.
+static std::vector<BRep> nurbs_breps(std::vector<BRep> breps) {
+    for (BRep& b : breps)
+        b = b.as_nurbs();
+    return breps;
+}
+
 MINI_TEST("BRep Native Boolean", "Transverse Boxes All Operations") {
     const BRep a = BRep::create_box(2, 2, 2);
     const BRep b = a.transformed(Xform::translation(0.5, 0.7, 0.9));
@@ -1677,8 +1684,8 @@ void rhino_public_fixture_matrix(const std::string& family, bool union_only = fa
     const auto read_operand = [&](int operand) {
         const auto& identity = oracle["input_order"][operand];
         MINI_CHECK(identity["object_table_index"] == operand);
-        const auto shapes = file_step::read_file_step_breps(
-            (root / identity["qualified_step"].get<std::string>()).string(), tolerance);
+        const auto shapes = nurbs_breps(file_step::read_file_step_breps(
+            (root / identity["qualified_step"].get<std::string>()).string(), tolerance));
         MINI_CHECK(shapes.size() == 1);
         return shapes.at(0);
     };

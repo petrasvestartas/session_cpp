@@ -251,14 +251,26 @@ double Curve::closest_parameter(const Point& point) const {
         return open_parameter(m_radius, m_minor, d.dot(m_x), d.dot(m_y));
     const double u = d.dot(m_x), v = d.dot(m_y);
     double t = std::atan2(v / m_minor, u / m_radius);
-    // On an ellipse the foot of the normal: Newton on (C(t) - point) . C'(t) from the angle of the scaled point.
-    for (int i = 0; i < 50 && m_kind == Kind::Ellipse; ++i) {
-        const double c = std::cos(t), s = std::sin(t), dx = m_radius * c - u, dy = m_minor * s - v;
-        const double f = -dx * m_radius * s + dy * m_minor * c;
-        const double slope = m_radius * m_radius * s * s + m_minor * m_minor * c * c - dx * m_radius * c - dy * m_minor * s;
-        if (!(slope > 0.0) || std::abs(f / slope) <= 1e-16)
-            break;
-        t -= f / slope;
+    if (m_kind == Kind::Ellipse) {
+        // The nearest of the feet of the normals through the point: Newton on (C(t) - point) . C'(t) from the angle of the scaled point and from each quarter turn on, as a point near the centre has up to four feet.
+        double best = 1e300;
+        const double start = t;
+        for (int q = 0; q < 4; ++q) {
+            double a = start + q * 0.25 * TWO_PI;
+            for (int i = 0; i < 50; ++i) {
+                const double c = std::cos(a), s = std::sin(a), dx = m_radius * c - u, dy = m_minor * s - v;
+                const double f = -dx * m_radius * s + dy * m_minor * c;
+                const double slope = m_radius * m_radius * s * s + m_minor * m_minor * c * c - dx * m_radius * c - dy * m_minor * s;
+                if (!(slope > 0.0) || std::abs(f / slope) <= 1e-16)
+                    break;
+                a -= std::clamp(f / slope, -0.5, 0.5);
+            }
+            const double distance = std::hypot(m_radius * std::cos(a) - u, m_minor * std::sin(a) - v);
+            if (distance < best - 1e-14 * (m_radius + m_minor)) {
+                best = distance;
+                t = a;
+            }
+        }
     }
     return wrapped(t, m_domain[0], TWO_PI);
 }

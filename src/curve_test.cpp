@@ -1,6 +1,7 @@
 #include "curve.h"
 #include "mini_test.h"
 #include "primitives.h"
+#include <array>
 #include <cmath>
 #include <numbers>
 
@@ -68,6 +69,20 @@ MINI_TEST("Curve", "Closest Parameter") {
         const double t = t0 + 0.37 * (t1 - t0);
         const Vector out = c.evaluate(t, 1)[1].cross(c.z());
         MINI_CHECK(std::abs(c.closest_parameter(c.point_at(t) + out * (0.2 / out.magnitude())) - t) < 1e-12);
+    }
+}
+
+MINI_TEST("Curve", "Closest Parameter Near An Ellipse's Centre") {
+    // Inside the evolute a point has four feet: the nearest is on the flat side, never a farther one.
+    const Curve c = Curve::ellipse(O, X, Y, 4.0, 1.5);
+    const Vector x = c.x(), y = c.y();
+    for (const std::array<double, 2>& uv : {std::array<double, 2>{0.0, 0.0}, {0.3, 0.1}, {-0.5, 0.05}, {1.0, -0.2}, {-2.0, 0.4}, {3.9, 0.0}, {0.0, 1.4}, {1e-9, -1e-9}}) {
+        const Point p = O + x * uv[0] + y * uv[1];
+        const double found = c.closest_point(p).distance(p);
+        double least = 1e300;
+        for (int i = 0; i < 20000; ++i)
+            least = std::min(least, c.point_at(2.0 * PI * i / 20000).distance(p));
+        MINI_CHECK(found <= least + 1e-12 && found >= least - 1e-6);
     }
 }
 

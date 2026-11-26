@@ -72,9 +72,21 @@ Surface Surface::recognized(const NurbsSurface& nurbs, double tolerance) {
             axis *= -1.0;
         s = plane(corner, axis, nurbs.point_at(s1, t0) - corner);
     } else if (f.kind == 2) {
-        // A sphere has no axis of its own: the poles of the patch where it has them, else the normal of its first corner's meridian.
+        // A sphere has no axis of its own. Where the patch runs around one, its curves along one parameter are circles in parallel planes: their normal is the axis, and the extent of the patch is a rectangle in the angle and the latitude. Else the poles of the patch, else any axis, about which the extent only encloses the patch.
+        const auto around = [&](int d, double at) {
+            const auto p = [&](double f) { return d == 0 ? nurbs.point_at(s0 + f * (s1 - s0), t0 + at * (t1 - t0)) : nurbs.point_at(s0 + at * (s1 - s0), t0 + f * (t1 - t0)); };
+            return unit((p(0.4) - p(0.1)).cross(p(0.8) - p(0.1)));
+        };
         const Vector pole = nurbs.point_at(s0, t1) - nurbs.point_at(s0, t0);
         axis = nurbs.point_at(s0, t0).distance(nurbs.point_at(0.5 * (s0 + s1), t0)) <= tolerance && pole.magnitude() > f.radius ? pole : Vector(0, 0, 1);
+        for (int d = 0; d < 2; ++d) {
+            const Vector a = around(d, 0.3), b = around(d, 0.7), c = around(d, 0.5);
+            // Circles of latitude lie in parallel planes; meridians each in a plane of their own.
+            if (a.magnitude() > 0.5 && std::abs(a.dot(b)) > 1.0 - 1e-9 && std::abs(a.dot(c)) > 1.0 - 1e-9) {
+                axis = a;
+                break;
+            }
+        }
         const Vector out = nurbs.point_at(s0, 0.5 * (t0 + t1)) - point;
         s = sphere(point, axis, out.cross(axis).magnitude() > 0.5 * f.radius ? out : Vector(axis[1], axis[2], axis[0]), f.radius);
     } else if (f.kind >= 3 && f.kind <= 5) {
@@ -269,7 +281,11 @@ std::pair<double, double> Surface::closest_parameters(const Point& point) const 
         return {far ? Curve::wrapped(u + 0.5 * TWO_PI, m_domain[0], TWO_PI) : u, ((far ? -rho : rho) - m_radius) * s + h * c};
     }
     case Kind::Sphere: return {u, std::atan2(h, rho)};
-    default: return {u, Curve::wrapped(std::atan2(h, rho - m_radius), m_domain[2], TWO_PI)};
+    default: {
+        // A spindle torus (minor radius beyond the major one) also reaches a point from the opposite side of the axis: the nearer of the two.
+        const bool across = std::abs(std::hypot(rho + m_radius, h) - m_minor) < std::abs(std::hypot(rho - m_radius, h) - m_minor);
+        return {across ? Curve::wrapped(u + 0.5 * TWO_PI, m_domain[0], TWO_PI) : u, Curve::wrapped(std::atan2(h, (across ? -rho : rho) - m_radius), m_domain[2], TWO_PI)};
+    }
     }
 }
 

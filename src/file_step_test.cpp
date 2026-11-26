@@ -30,6 +30,13 @@ namespace session_cpp {
         return "serialization/" + name;
     }
 
+    /// STEP BReps as the NURBS their consumers read.
+    static std::vector<BRep> nurbs_breps(std::vector<BRep> breps) {
+        for (BRep& b : breps)
+            b = b.as_nurbs();
+        return breps;
+    }
+
     MINI_TEST("FileStep", "NurbsCurve Round Trip") {
         // using session_cpp::NurbsCurve;
         // using session_cpp::Point;
@@ -380,7 +387,7 @@ namespace session_cpp {
         if (!std::filesystem::exists(step_path))
             return;
 
-        const std::vector<BRep> breps = file_step::read_file_step_breps(step_path.string());
+        const std::vector<BRep> breps = nurbs_breps(file_step::read_file_step_breps(step_path.string()));
 
         MINI_CHECK(breps.size() == 3);
 
@@ -423,7 +430,7 @@ namespace session_cpp {
 
         MINI_CHECK(file_step::write_file_step_brep(cyl, path));
 
-        const std::vector<BRep> breps = file_step::read_file_step_breps(path);
+        const std::vector<BRep> breps = nurbs_breps(file_step::read_file_step_breps(path));
 
         MINI_CHECK(breps.size() == 1);
         MINI_CHECK(breps[0].is_valid());
@@ -495,7 +502,7 @@ void rhino_step_input_contract(const std::string& family) {
         MINI_CHECK(evidence != manifest["files"].end());
         MINI_CHECK((*evidence)["roundtrip_evidence_qualified"] == true);
         MINI_CHECK((*evidence)["original_object_guid"] == identity["object_guid"]);
-        const auto imported = file_step::read_file_step_breps((root/relative).string(),0.001);
+        const auto imported = nurbs_breps(file_step::read_file_step_breps((root/relative).string(),0.001));
         MINI_CHECK(imported.size() == 1);
         const auto& shape = imported.at(0);
         MINI_CHECK(shape.is_valid());
@@ -581,7 +588,7 @@ MINI_TEST("FileStep", "Oblique Affine Support Preserves Raw Chart") {
         const auto frozen = source.jsondump();
         const std::string path = serialization_path(rational ? "oblique_raw_rational.step" : "oblique_raw.step");
         MINI_CHECK(file_step::write_file_step_brep(source, path));
-        const auto imported = file_step::read_file_step_breps(path, 1e-7);
+        const auto imported = nurbs_breps(file_step::read_file_step_breps(path, 1e-7));
         MINI_CHECK(imported.size() == 1);
         const BRep& result = imported.front();
         MINI_CHECK(result.is_valid());
@@ -630,7 +637,7 @@ std::vector<BRep> step_import_proposal(const std::string& text, const std::strin
     const auto path = serialization_path(name);
     std::ofstream output(path); output << text; output.close();
     MINI_CHECK(output.good());
-    const auto shapes = file_step::read_file_step_breps(path, .001);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path, .001));
     std::filesystem::remove(path);
     return shapes;
 }
@@ -705,7 +712,7 @@ MINI_TEST("FileStep", "Original Trimmed Sphere Circle Retains Exact Sense") {
         }
         const auto temporary = serialization_path("original_trimmed_circle_" + std::to_string(variant) + ".step");
         std::ofstream output(temporary); output << text; output.close(); MINI_CHECK(output.good());
-        const auto shapes = file_step::read_file_step_breps(temporary, .001);
+        const auto shapes = nurbs_breps(file_step::read_file_step_breps(temporary, .001));
         std::filesystem::remove(temporary);
         MINI_CHECK(shapes.size() == 1); if (shapes.size() != 1) continue;
         const auto& shape = shapes.front();
@@ -804,7 +811,7 @@ namespace session_cpp {
 MINI_TEST("FileStep", "Rounded Trimmed Sphere Quarter Proposal Preserves Original PCs") {
     const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() /
         "tests/fixtures/rhino_booleans/inputs/InputSpheres-object-1.step";
-    const auto shapes = file_step::read_file_step_breps(path.string(), .001);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path.string(), .001));
     MINI_CHECK(shapes.size() == 1);
     if (shapes.size() != 1) return;
     const auto& shape = shapes.front();
@@ -862,7 +869,9 @@ MINI_TEST("FileStep", "Trimmed Circle Quarter Proposal Keeps Distinct Small And 
         if (shapes.size() != 1) continue;
         const auto& shape = shapes.front();
         MINI_CHECK(shape.edge_count() == 1);
-        const auto& curve = shape.m_curves_3d.at(shape.m_edges.front().curve_3d_index).nurbs();
+        // The edge runs over its range of the file's circle, in the angle from the reference direction.
+        MINI_CHECK(shape.m_curves_3d.at(shape.m_edges.front().curve_3d_index).kind() == Curve::Kind::Circle && shape.edge_range(0).first == 0.0);
+        const NurbsCurve curve = shape.edge_nurbs(0);
         MINI_CHECK(curve.degree() == 2 && curve.m_is_rat != 0);
         MINI_CHECK(curve.cv_count() == (angle > 1 ? 7 : 3));
         MINI_CHECK(std::abs((curve.domain_end() - curve.domain_start()) - angle) < 1e-14);
@@ -931,7 +940,7 @@ MINI_TEST("FileStep", "Noncollapsed Cylinder Boundary Is Not A Pole Bridge") {
     source.m_faces.erase(source.m_faces.begin() + 1, source.m_faces.end());
     const auto path = serialization_path("noncollapsed_cylinder_gap.step");
     MINI_CHECK(file_step::write_file_step_brep(source, path));
-    const auto imported = file_step::read_file_step_breps(path, .001);
+    const auto imported = nurbs_breps(file_step::read_file_step_breps(path, .001));
     std::filesystem::remove(path);
     MINI_CHECK(imported.size() == 1);
     MINI_CHECK(std::none_of(imported.front().m_edges.begin(), imported.front().m_edges.end(),
@@ -951,7 +960,7 @@ std::vector<BRep> step_read_text(const std::string& text, const std::string& nam
     std::ofstream(path) << text;
     std::vector<BRep> shapes;
     try {
-        shapes = file_step::read_file_step_breps(path);
+        shapes = nurbs_breps(file_step::read_file_step_breps(path));
     } catch (...) {
         std::filesystem::remove(path);
         throw;
@@ -1016,7 +1025,7 @@ MINI_TEST("FileStep", "BRep Primitives Round Trip Exact") {
                               BRep::create_block_with_hole(2.0, 2.0, 1.0, 0.3)}) {
         const std::string path = serialization_path("round_trip_" + shape.name + ".step");
         MINI_CHECK(file_step::write_file_step_brep(shape, path));
-        const auto read = file_step::read_file_step_breps(path);
+        const auto read = nurbs_breps(file_step::read_file_step_breps(path));
         MINI_CHECK(read.size() == 1 && read[0].is_solid());
         MINI_CHECK(std::abs(read[0].volume_exact() - shape.volume_exact()) < 1e-12 * shape.volume_exact());
         MINI_CHECK(step_uncertified_pcurves(read[0]) == 0);
@@ -1027,14 +1036,14 @@ MINI_TEST("FileStep", "BRep Write Pcurves Round Trip Exact") {
     // SURFACE_CURVE and SEAM_CURVE carry the pcurves, so a second round trip reads the first one's BRep again
     const std::string first = serialization_path("pcurves_first.step");
     const std::string second = serialization_path("pcurves_second.step");
-    MINI_CHECK(file_step::write_file_step_brep(BRep::create_cylinder(1.0, 2.0), first));
+    MINI_CHECK(file_step::write_file_step_brep(BRep::create_cylinder(1.0, 2.0).as_nurbs(), first));
     std::ifstream input(first);
     const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     input.close();
     MINI_CHECK(text.find("SEAM_CURVE(") != std::string::npos && text.find("PCURVE(") != std::string::npos);
-    const auto once = file_step::read_file_step_breps(first);
+    const auto once = nurbs_breps(file_step::read_file_step_breps(first));
     MINI_CHECK(once.size() == 1 && file_step::write_file_step_brep(once[0], second));
-    const auto twice = file_step::read_file_step_breps(second);
+    const auto twice = nurbs_breps(file_step::read_file_step_breps(second));
     MINI_CHECK(twice.size() == 1 && twice[0].is_solid());
     MINI_CHECK(twice[0].volume_exact() == once[0].volume_exact());
     MINI_CHECK(twice[0].m_curves_2d.size() == once[0].m_curves_2d.size());
@@ -1046,7 +1055,7 @@ MINI_TEST("FileStep", "BRep Read Seamless Loops Seam At Angle Nearest Zero") {
     const std::string path = serialization_path("seamless_cylinder.step");
     std::ofstream(path) << step_fixture("seamless_cylinder.step");
     std::vector<file_step::StepIds> ids;
-    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path, 1e-7, &ids));
     std::filesystem::remove(path);
     MINI_CHECK(shapes.size() == 1 && ids.size() == 1);
     MINI_CHECK(shapes[0].is_valid() && shapes[0].is_solid());
@@ -1065,7 +1074,7 @@ MINI_TEST("FileStep", "BRep Read Hole Across The Seam Joins The Loop") {
     const std::string path = serialization_path("seamless_window.step");
     std::ofstream(path) << step_fixture("seamless_window.step");
     std::vector<file_step::StepIds> ids;
-    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path, 1e-7, &ids));
     std::filesystem::remove(path);
     MINI_CHECK(shapes.size() == 1 && shapes[0].is_valid() && shapes[0].is_solid());
     MINI_CHECK(std::abs(shapes[0].volume_exact() - 2.0 * Tolerance::PI) < 1e-12);
@@ -1091,7 +1100,7 @@ MINI_TEST("FileStep", "BRep Read Entity Ids And Counts") {
     const std::string path = serialization_path("ids_cube.step");
     std::ofstream(path) << step_fixture("senses_cube.step");
     std::vector<file_step::StepIds> ids;
-    const auto shapes = file_step::read_file_step_breps(path, 1e-7, &ids);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path, 1e-7, &ids));
     const auto counts = file_step::read_file_step_entity_counts(path);
     std::filesystem::remove(path);
     MINI_CHECK(shapes.size() == 1 && ids.size() == 1);
@@ -1142,12 +1151,12 @@ MINI_TEST("FileStep", "BRep Write Assembly Places Each Instance") {
     const Xform turned = Xform::from_matrix({0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 5, 0, 1});
     const std::string path = serialization_path("assembly_written.step");
     MINI_CHECK(file_step::write_file_step_brep(cube[0], path));
-    const auto alone = file_step::read_file_step_breps(path);
+    const auto alone = nurbs_breps(file_step::read_file_step_breps(path));
     MINI_CHECK(file_step::write_file_step_assembly(cube, {{0, moved}, {0, turned}}, "assembly", path));
     MINI_CHECK(!file_step::write_file_step_assembly(cube, {{1, moved}}, "assembly", path));
     std::vector<BRep> parts;
     std::vector<std::pair<int, Xform>> instances;
-    const auto shapes = file_step::read_file_step_breps(path, 1e-7, nullptr, &parts, &instances);
+    const auto shapes = nurbs_breps(file_step::read_file_step_breps(path, 1e-7, nullptr, &parts, &instances));
     std::filesystem::remove(path);
     MINI_CHECK(shapes.size() == 2 && parts.size() == 1 && instances.size() == 2);
     MINI_CHECK(instances[0].first == 0 && instances[1].first == 0 && instances[0].second.m == moved.m && instances[1].second.m == turned.m);
@@ -1192,5 +1201,93 @@ MINI_TEST("FileStep", "BRep Read Degenerated Edge Only Where A Gap Spans No Leng
                 degenerated[f] += shapes[0].m_edges[edge.index].degenerated;
             }
     MINI_CHECK(edges[0] == 4 && degenerated[0] == 1 && edges[1] == 3 && degenerated[1] == 0);
+}
+
+MINI_TEST("FileStep", "Analytic Entities Kept And Written") {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "session_step_analytic";
+    std::filesystem::create_directories(dir);
+    const double pi = 3.14159265358979323846;
+    const std::vector<std::tuple<BRep, double, std::string, Surface::Kind>> solids = {
+        {BRep::create_cylinder(1.5, 4), pi * 9.0, "CYLINDRICAL_SURFACE", Surface::Kind::Cylinder}, {BRep::create_cone(1.5, 4), pi * 3.0, "CONICAL_SURFACE", Surface::Kind::Cone},
+        {BRep::create_frustum(2, 1, 3), pi * 7.0, "CONICAL_SURFACE", Surface::Kind::Cone}, {BRep::create_sphere(1.5), pi * 4.5, "SPHERICAL_SURFACE", Surface::Kind::Sphere},
+        {BRep::create_torus(3, 1), 6.0 * pi * pi, "TOROIDAL_SURFACE", Surface::Kind::Torus}, {BRep::create_box(2, 3, 4), 24.0, "PLANE", Surface::Kind::Plane},
+        {BRep::create_block_with_hole(4, 4, 2, 1), 32.0 - 2.0 * pi, "CYLINDRICAL_SURFACE", Surface::Kind::Cylinder}};
+    const Xform move = Xform::translation(3, -2, 5) * Xform::rotation_z(0.7) * Xform::rotation_x(0.4);
+    for (const auto& [solid, volume, entity, kind] : solids)
+        for (const Xform& placed : {Xform::identity(), move, Xform::scale_xyz(1, -1, 1)}) {
+            const BRep source = solid.transformed(placed);
+            const std::string path = (dir / (solid.name + ".step")).string();
+            MINI_CHECK(file_step::write_file_step_brep(source, path));
+            std::stringstream text;
+            text << std::ifstream(path).rdbuf();
+            MINI_CHECK(text.str().find(entity + "(") != std::string::npos && text.str().find("B_SPLINE_SURFACE") == std::string::npos);
+            MINI_CHECK(text.str().find("B_SPLINE_CURVE") == std::string::npos && text.str().find("PCURVE") == std::string::npos);
+            MINI_CHECK(kind == Surface::Kind::Plane || kind == Surface::Kind::Sphere || kind == Surface::Kind::Torus || text.str().find("CIRCLE(") != std::string::npos);
+            const std::vector<BRep> read = file_step::read_file_step_breps(path);
+            MINI_CHECK(read.size() == 1);
+            const BRep& b = read[0];
+            MINI_CHECK(std::any_of(b.m_surfaces.begin(), b.m_surfaces.end(), [&](const Surface& s) { return s.kind() == kind; }));
+            for (const BRepFace& f : b.m_faces)
+                MINI_CHECK(b.m_surfaces[f.surface_index].kind() != Surface::Kind::Nurbs);
+            for (int e = 0; e < b.edge_count(); ++e)
+                MINI_CHECK(b.m_edges[e].degenerated || b.m_curves_3d[b.m_edges[e].curve_3d_index].kind() == Curve::Kind::Line || b.m_curves_3d[b.m_edges[e].curve_3d_index].kind() == Curve::Kind::Circle);
+            // The file's placement is kept: a face's surface is one of the source's, whatever window it was read in.
+            for (const BRepFace& f : b.m_faces)
+                MINI_CHECK(std::any_of(source.m_surfaces.begin(), source.m_surfaces.end(), [&](const Surface& s) { return s.coincident(b.m_surfaces[f.surface_index], 1e-9) != 0; }));
+            // A mirrored solid keeps its faces' senses: its volume is the source's, negative.
+            MINI_CHECK(b.is_valid() && b.is_solid() && std::abs(b.volume_exact() - source.volume_exact()) < 1e-7 && std::abs(std::abs(b.volume_exact()) - volume) < 1e-7);
+            // Along every edge its pcurve on the surface, in true parameters, is the 3D curve.
+            double gap = 0.0;
+            for (int e = 0; e < b.edge_count(); ++e)
+                for (const BRepCurveOnSurface& use : b.m_edges[e].pcurves)
+                    for (int k = 0; k < (use.curve_2d_index_2 >= 0 ? 2 : 1) && !b.m_edges[e].degenerated; ++k)
+                        for (double f : {0.0, 0.3, 0.5, 0.8, 1.0}) {
+                            const Curve world = b.edge_curve(e);
+                            const Curve2d pc = b.pcurve(use, k == 1);
+                            const Point uv = pc.point_at(pc.domain().first + f * (pc.domain().second - pc.domain().first));
+                            gap = std::max(gap, b.m_surfaces[use.surface_index].point_at(uv[0], uv[1]).distance(world.point_at(world.domain().first + f * (world.domain().second - world.domain().first))));
+                        }
+            MINI_CHECK(gap < 1e-9);
+            const BRep plain = b.as_nurbs();
+            MINI_CHECK(plain.is_nurbs() && plain.is_valid() && plain.is_solid() && std::abs(plain.volume_exact() - source.volume_exact()) < 1e-7);
+        }
+    const std::string bellow = "/home/user/session_data/brep_boolean_bench/nist_edm/bellow.stp";
+    if (std::filesystem::exists(bellow)) {
+        int cones = 0;
+        for (const BRep& b : file_step::read_file_step_breps(bellow))
+            for (const Surface& s : b.m_surfaces)
+                cones += s.kind() == Surface::Kind::Cone;
+        MINI_CHECK(cones == 64);
+    }
+}
+
+MINI_TEST("FileStep", "Sphere Cap With Its Seam To The Pole Round Trips") {
+    // A cap of a sphere above a latitude: its loop runs the circle, up the seam to the pole and back down it. Read back, the seam is the loop's own: no second one is made to the pole.
+    const double pi = 3.14159265358979323846, r = 2.0, v0 = 0.4, z0 = r * std::sin(v0), rho = r * std::cos(v0);
+    const BRepOrientation F = BRepOrientation::Forward, R = BRepOrientation::Reversed;
+    BRep b;
+    const Point o(0, 0, 0);
+    const Vector x(1, 0, 0), y(0, 1, 0), z(0, 0, 1);
+    const int a = b.add_vertex(Point(rho, 0, z0)), n = b.add_vertex(Point(0, 0, r));
+    const int e_circle = b.add_edge(b.add_curve_3d(Curve::circle(Point(0, 0, z0), x, y, rho)), a, a);
+    const int e_seam = b.add_edge(b.add_curve_3d(Curve::circle(o, x, z, r, v0, 0.5 * pi)), a, n);
+    const int e_pole = b.add_edge(-1, n, n);
+    const int sphere = b.add_surface(Surface::sphere(o, z, x, r, {0.0, 2.0 * pi, v0, 0.5 * pi}));
+    b.add_pcurve(e_circle, sphere, b.add_curve_2d(Curve2d::line(0, v0, 2.0 * pi, v0)));
+    b.add_pcurve(e_seam, sphere, b.add_curve_2d(Curve::line(Point(2.0 * pi, 0, 0), Vector(0, 1, 0), v0, 0.5 * pi)), b.add_curve_2d(Curve::line(Point(0, 0, 0), Vector(0, 1, 0), v0, 0.5 * pi)));
+    b.add_pcurve(e_pole, sphere, b.add_curve_2d(Curve2d::line(0, 0.5 * pi, 2.0 * pi, 0.5 * pi)));
+    const int f_cap = b.add_face(sphere, {{b.add_wire({{e_circle, F}, {e_seam, F}, {e_pole, R}, {e_seam, R}}), F}});
+    const int plane = b.add_surface(Surface::plane(Point(0, 0, z0), z * -1.0, x, {-r, r, -r, r}));
+    b.add_pcurve(e_circle, plane, b.add_curve_2d(plane_pcurve(b.m_surfaces[plane], b.m_curves_3d[b.m_edges[e_circle].curve_3d_index])));
+    const int f_disc = b.add_face(plane, {{b.add_wire({{e_circle, R}}), F}});
+    b.add_solid({{b.add_shell({{f_cap, F}, {f_disc, F}}), F}});
+    const double h = r - z0, volume = pi * h * h * (3.0 * r - h) / 3.0;
+    MINI_CHECK(b.is_valid() && b.is_solid() && std::abs(b.volume_exact() - volume) < 1e-8);
+    const std::string path = (std::filesystem::temp_directory_path() / "sphere_cap_seam.step").string();
+    MINI_CHECK(file_step::write_file_step_brep(b, path));
+    const std::vector<BRep> read = file_step::read_file_step_breps(path);
+    MINI_CHECK(read.size() == 1 && read[0].face_count() == 2 && read[0].is_valid() && read[0].is_solid());
+    MINI_CHECK(read.size() == 1 && std::abs(read[0].volume_exact() - volume) < 1e-8);
+    MINI_CHECK(read.size() == 1 && std::count_if(read[0].m_surfaces.begin(), read[0].m_surfaces.end(), [](const Surface& s) { return s.kind() == Surface::Kind::Sphere; }) == 1);
 }
 }

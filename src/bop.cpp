@@ -477,7 +477,7 @@ BRep apply(const BRep& a, const BRep& b, Operation operation, double fuzzy, Repo
 
     // A bridge until the core reads analytic surfaces and their pcurves in true parameters.
     if (!a.is_freeform() || !b.is_freeform())
-        return apply(a.as_nurbs(), b.as_nurbs(), operation, fuzzy, report);
+        return apply(a.as_nurbs(false), b.as_nurbs(false), operation, fuzzy, report);
 
     Report local;
     Report& out = report ? *report : local;

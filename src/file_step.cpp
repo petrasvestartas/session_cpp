@@ -3091,6 +3091,7 @@ class BRepBuilder {
     std::unordered_map<int, int> emap; // Brep edge by EDGE_CURVE id.
     std::vector<BRepRef> face_refs; // Face references in file order.
     std::map<int, std::tuple<int, int, double>> splits; // Edge split for a missing seam: its pieces and the normalized parameter of the cut.
+    std::map<int, Surface> forms; // The file's analytic surface of a brep surface, over the window its face was read in.
 
 public:
 
@@ -3436,6 +3437,10 @@ public:
                           const NurbsCurve& file = NurbsCurve(), double file_error = INFINITY) {
 
         const BRepEdge& be = brep.m_edges[edge];
+
+        if (be.curve_3d_index < 0 || brep.m_curves_3d[be.curve_3d_index].nurbs().get_span_vector().empty())
+            throw std::runtime_error("edge " + std::to_string(edge) + " has no curve to fit a pcurve along (degenerated " + std::to_string(be.degenerated) + ")");
+
         const NurbsCurve& world = brep.m_curves_3d[be.curve_3d_index].nurbs();
         const Point& vs = brep.m_vertices[be.start_vertex].point;
         const Point& ve = brep.m_vertices[be.end_vertex].point;
@@ -3630,7 +3635,12 @@ public:
             const double t = (lp.edges.back().reversed ? lp.edges.back().uv.front() : lp.edges.back().uv.back())[0] -
                 (lp.edges.front().reversed ? lp.edges.front().uv.back() : lp.edges.front().uv.front())[0];
 
-            if (std::abs(std::abs(t) - 2.0 * PI) <= 1e-2) {
+            // A loop that runs along one edge there and back has its seam already.
+            const bool seamed = std::any_of(lp.edges.begin(), lp.edges.end(), [&](const LoopEdge& le) {
+                return std::count_if(lp.edges.begin(), lp.edges.end(), [&](const LoopEdge& other) { return other.edge_idx == le.edge_idx; }) > 1;
+            });
+
+            if (std::abs(std::abs(t) - 2.0 * PI) <= 1e-2 && !seamed) {
                 around.push_back(k);
                 turn = t;
             }
@@ -3860,6 +3870,7 @@ public:
             throw std::runtime_error("analytic surface is invalid");
 
         const int srf_idx = brep.add_surface(srf);
+        forms[srf_idx] = form_of(an, w->su0, w->nsu, w->t0, w->t1, w->sv0, w->nsv);
         outer_first(loops);
 
         std::vector<std::vector<PendingEdge>> pending;
@@ -3992,6 +4003,11 @@ public:
             return false;
 
         const int si = brep.add_surface(srf);
+        const AnFace whole = r.get_analytic_srf(surface_ref);
+
+        if (whole.kind == 4 || whole.kind == 5)
+            forms[si] = form_of(whole, 0, 4, 0.0, 0.0, whole.kind == 4 ? -1 : 0, whole.kind == 4 ? 2 : 4);
+
         const std::vector<PendingEdge> wire =
             degen_v0 && degen_v1 ? pole_wire(srf, grid, vl_vertex_ids, tol) : seam_wire(srf, grid, vl_vertex_ids, tol);
 
@@ -4249,6 +4265,10 @@ public:
         }
 
         const int srf_idx = brep.add_surface(srf);
+
+        if (proj.kind == 1 && !proj_srf.is_valid())
+            forms[srf_idx] = Surface::plane(proj.a.origin, proj.a.az, proj.a.ax, {srf.domain(0).first, srf.domain(0).second, srf.domain(1).first, srf.domain(1).second});
+
         const Preimage pre = [&](const Point& p, const Point& guess) { return newton_uv(srf, p, guess, tau_u, tau_v); };
         outer_first(loops);
 
@@ -4263,6 +4283,169 @@ public:
         }
 
         finish_face(srf_idx, !same_sense, pending);
+    }
+
+    /// The file's cylinder, cone, sphere or torus with its own placement, over the window a face was read in: the angle runs from the file's reference direction.
+    static Surface form_of(const AnFace& an, int su0, int nsu, double t0, double t1, int sv0, int nsv) {
+
+        const bool round = an.kind == 4 || an.kind == 5;
+        const std::array<double, 4> window = {su0 * PI_2, (su0 + nsu) * PI_2, round ? sv0 * PI_2 : t0, round ? (sv0 + nsv) * PI_2 : t1};
+
+        switch (an.kind) {
+        case 2: return Surface::cylinder(an.a.origin, an.a.az, an.a.ax, an.radius, window);
+        case 3: return Surface::cone(an.a.origin, an.a.az, an.a.ax, an.radius, an.r2, window);
+        case 4: return Surface::sphere(an.a.origin, an.a.az, an.a.ax, an.radius, window);
+        default: return Surface::torus(an.a.origin, an.a.az, an.a.ax, an.radius, an.r2, window);
+        }
+    }
+
+    /// The file's LINE, CIRCLE or ELLIPSE behind an edge curve entity, with its own placement; none for any other curve.
+    std::optional<Curve> curve_of(int curve_id, int depth = 0) {
+
+        const StepEntity* e = r.get(curve_id);
+
+        if (!e || depth > MAX_DEPTH)
+            return std::nullopt;
+
+        if (const StepSubEntity* trim = e->find("TRIMMED_CURVE"))
+            return curve_of(r.basis_curve_of(first_ref(trim->params)), depth + 1);
+
+        if (const auto line = r.line_of(curve_id))
+            return line->second.magnitude() > 0.0 ? std::optional<Curve>(Curve::line(line->first, line->second, 0.0, 1.0)) : std::nullopt;
+
+        for (const char* type : {"CIRCLE", "ELLIPSE"})
+            if (const StepSubEntity* conic = e->find(type)) {
+                const Axis2 a = r.get_axis2(first_ref(conic->params));
+                const std::vector<double> rr = nums(conic->params);
+
+                if (!a.ok || rr.empty() || !(rr[0] > 0.0) || (rr.size() > 1 && !(rr[1] > 0.0)))
+                    return std::nullopt;
+
+                return rr.size() > 1 ? Curve::ellipse(a.origin, a.ax, a.ay, rr[0], rr[1]) : Curve::circle(a.origin, a.ax, a.ay, rr[0]);
+            }
+
+        return std::nullopt;
+    }
+
+    /// Geometry as the file has it, after the faces are built on NURBS: each edge on a line, circle or ellipse of the file runs over a range of that curve in its own parameter (the angle from the file's reference direction), any other line or circle is recognised; each face on a plane, cylinder, cone, sphere or torus of the file gets that surface and pcurves in its true parameters.
+    void to_analytic(const StepIds& ids) {
+
+        std::map<std::pair<int, bool>, int> pool;
+
+        for (size_t i = 0; i < brep.m_edges.size(); i++) {
+            BRepEdge& e = brep.m_edges[i];
+
+            // A pcurve on a freeform surface runs over the parameter of the edge's B-spline: such an edge keeps it.
+            if (e.curve_3d_index < 0 || !std::all_of(e.pcurves.begin(), e.pcurves.end(), [&](const BRepCurveOnSurface& use) { return forms.count(use.surface_index) > 0; }))
+                continue;
+
+            const NurbsCurve n = brep.m_curves_3d[e.curve_3d_index].nurbs();
+            const int ec = std::abs(ids.edges[i]);
+            const std::vector<int> refs = ec > 0 ? edge_refs(r, ec) : std::vector<int>();
+            std::optional<Curve> c = refs.size() > 2 ? curve_of(r.basis_curve_of(refs[2])) : std::nullopt;
+
+            // An edge the reader made (a seam) is a line or circle of its surface; a B-spline of the file stays one.
+            if (!c) {
+                const Curve found = ec == 0 ? Curve::recognized(n) : Curve(n);
+
+                if (found.kind() != Curve::Kind::Nurbs)
+                    e.curve_3d_index = brep.add_curve_3d(found);
+
+                continue;
+            }
+
+            // The side of the curve the edge runs along: its middle lies between its ends.
+            const Point p0 = n.point_at_start(), p1 = n.point_at_end(), pm = n.point_at(0.5 * (n.domain_start() + n.domain_end()));
+            const double turn = c->period();
+            double t0 = 0.0, t1 = 0.0;
+            bool ok = false, reversed = false;
+
+            for (int side = 0; side < 2 && !ok; side++) {
+                if (side == 1)
+                    c->reverse();
+
+                reversed = side == 1;
+                t0 = c->closest_parameter(p0);
+                t1 = c->closest_parameter(p1);
+                const double tm = c->closest_parameter(pm);
+
+                if (turn > 0.0)
+                    t1 = p0.distance(p1) <= tolerance && n.is_closed() ? t0 + turn : Curve::wrapped(t1, t0, turn);
+
+                const double at = Curve::wrapped(tm, t0, turn);
+                ok = t0 < at && at < t1 && c->tangent_at(at).dot(n.tangent_at(0.5 * (n.domain_start() + n.domain_end()))) > 0.0;
+            }
+
+            double off = 0.0;
+
+            for (int k = 0; k <= 8 && ok; k++) {
+                const Point q = n.point_at(n.domain_start() + (n.domain_end() - n.domain_start()) * k / 8.0);
+                off = std::max(off, c->closest_point(q).distance(q));
+            }
+
+            if (!ok || off > std::max(tolerance, 1e-9 * (1.0 + c->radius())))
+                continue;
+
+            const auto found = pool.find({refs[2], reversed});
+            e.curve_3d_index = found != pool.end() ? found->second : (pool[{refs[2], reversed}] = brep.add_curve_3d(*c));
+            e.range = {t0, t1};
+        }
+
+        for (const auto& [si, form] : forms)
+            brep.m_surfaces[si] = form;
+
+        for (size_t i = 0; i < brep.m_edges.size(); i++) {
+            BRepEdge& e = brep.m_edges[i];
+            const std::optional<Curve> world = e.curve_3d_index >= 0 ? std::optional<Curve>(brep.edge_curve((int)i)) : std::nullopt;
+
+            for (BRepCurveOnSurface& use : e.pcurves) {
+                const auto form = forms.find(use.surface_index);
+
+                if (form == forms.end())
+                    continue;
+
+                const Surface& s = form->second;
+                const bool plane = s.kind() == Surface::Kind::Plane;
+
+                // On a plane the pcurve of a freeform edge is already in the plane's own lengths.
+                if (plane && world && world->kind() == Curve::Kind::Nurbs)
+                    continue;
+
+                for (int* index : {&use.curve_2d_index, &use.curve_2d_index_2}) {
+                    if (*index < 0)
+                        continue;
+
+                    // The pcurve the face was read with, in quarter turns from the window's start, as true parameters: exact at its ends, a guide between them.
+                    const NurbsCurve chart = brep.m_curves_2d[*index].nurbs();
+                    const auto truth = [&](const Point& q) {
+                        if (plane)
+                            return q;
+
+                        const double u = Curve::angle(s.domain(0).first + q[0] * PI_2, s.domain(0).first, s.domain(0).second);
+                        const bool round = s.kind() == Surface::Kind::Sphere || s.kind() == Surface::Kind::Torus;
+
+                        return Point(u, round ? Curve::angle(s.domain(1).first + q[1] * PI_2, s.domain(1).first, s.domain(1).second) : q[1], 0.0);
+                    };
+
+                    if (!world) {
+                        const Point a = truth(chart.point_at_start()), b = truth(chart.point_at_end());
+
+                        if (a.distance(b) > 0.0)
+                            *index = brep.add_curve_2d(Curve2d::line(a[0], a[1], b[0], b[1]));
+
+                        continue;
+                    }
+
+                    const std::pair<double, double> t = world->domain();
+                    double deviation = 0.0;
+                    const Curve2d pc = true_pcurve(s, *world, [&](double at) {
+                        return truth(chart.point_at(chart.domain_start() + (at - t.first) / (t.second - t.first) * (chart.domain_end() - chart.domain_start())));
+                    }, deviation);
+                    *index = brep.add_curve_2d(pc);
+                    e.tolerance = std::max(e.tolerance, deviation > 1e-9 ? deviation : e.tolerance);
+                }
+            }
+        }
     }
 
     /// ADVANCED_FACE or FACE_SURFACE: vertex-loop face, analytic face, or face on a plane or B-spline surface.
@@ -4332,6 +4515,7 @@ public:
                 brep.add_solid({{sh, BRepOrientation::Forward}});
         }
 
+        to_analytic(ids);
         brep.update_tolerances();
 
         return std::move(brep);
@@ -4628,6 +4812,18 @@ public:
         return write_raw("SHELL_BASED_SURFACE_MODEL('',(#" + std::to_string(shell) + "))");
     }
 
+    /// Emit a DIRECTION and return its id.
+    int write_direction(const Vector& d) {
+        return write_raw("DIRECTION('',(" + fmt(d[0]) + "," + fmt(d[1]) + "," + fmt(d[2]) + "))");
+    }
+
+    /// AXIS2_PLACEMENT_3D at an origin with its axis and reference direction.
+    int write_axis(const Point& origin, const Vector& z, const Vector& x) {
+        const int o = write_point(origin[0], origin[1], origin[2]);
+        const int dz = write_direction(z);
+        return write_raw("AXIS2_PLACEMENT_3D('',#" + std::to_string(o) + ",#" + std::to_string(dz) + ",#" + std::to_string(write_direction(x)) + ")");
+    }
+
     /// AXIS2_PLACEMENT_3D of a placement's frame: its translation, its z and x columns.
     int write_axis(const Xform& x) {
 
@@ -4737,6 +4933,7 @@ class BRepEmitter {
     std::map<int, int> vid; // VERTEX_POINT id by vertex.
     std::map<int, int> eid; // EDGE_CURVE id by edge.
     std::map<int, int> sid; // Surface id by surface.
+    std::map<int, bool> flipped; // Whether the written surface's normal runs against the brep surface's.
     int context_2d = -1; // Parameter-space context of every PCURVE.
 
 public:
@@ -4766,20 +4963,27 @@ public:
             return it->second;
 
         const BRepEdge& e = brep.m_edges[ei];
-        const NurbsCurve& world = brep.m_curves_3d[e.curve_3d_index].nurbs();
-        const int c = w.write_nurbs_curve(world);
+        const Curve curve = brep.edge_curve(ei);
+        const NurbsCurve& world = curve.nurbs();
+        const bool analytic = curve.kind() == Curve::Kind::Line || curve.kind() == Curve::Kind::Circle || curve.kind() == Curve::Kind::Ellipse;
+        // A line, circle or ellipse as itself, trimmed by the edge's vertices and running with its parameter; pcurves only where edge, pcurve and surface are all B-splines in one parameter.
+        const int c = !analytic ? w.write_nurbs_curve(world)
+            : curve.kind() == Curve::Kind::Line ? w.write_raw("LINE('',#" + std::to_string(w.write_point(curve.origin()[0], curve.origin()[1], curve.origin()[2])) + ",#" +
+                std::to_string(w.write_raw("VECTOR('',#" + std::to_string(w.write_direction(curve.x())) + ",1.)")) + ")")
+            : w.write_raw(std::string(curve.kind() == Curve::Kind::Circle ? "CIRCLE" : "ELLIPSE") + "('',#" + std::to_string(w.write_axis(curve.origin(), curve.z(), curve.x())) + "," + fmt(curve.radius()) +
+                (curve.kind() == Curve::Kind::Circle ? "" : "," + fmt(curve.minor())) + ")");
 
         if (c < 0)
             return eid[ei] = -1;
 
-        // A SURFACE_CURVE with the PCURVE of each face, a SEAM_CURVE with both of a seam (TopoDSToStep_MakeStepEdge), each in the parameter of the 3D curve.
         std::vector<int> pcurves;
         bool seam = false;
 
         for (const BRepCurveOnSurface& pc : e.pcurves)
-            for (int ci : {pc.curve_2d_index, pc.curve_2d_index_2}) {
-                NurbsCurve c2d = ci >= 0 ? brep.m_curves_2d[ci].nurbs() : NurbsCurve();
-                const int srf = ci >= 0 ? surface_id(pc.surface_index) : -1;
+            for (int k = 0; k < 2 && !analytic && brep.m_surfaces[pc.surface_index].kind() == Surface::Kind::Nurbs; k++) {
+                const int ci = k == 0 ? pc.curve_2d_index : pc.curve_2d_index_2;
+                NurbsCurve c2d = ci >= 0 && brep.m_curves_2d[ci].kind() == Curve::Kind::Nurbs ? brep.pcurve_nurbs(pc, k == 1) : NurbsCurve();
+                const int srf = c2d.is_valid() ? surface_id(pc.surface_index) : -1;
                 const int curve = srf >= 0 && c2d.set_domain(world.domain_start(), world.domain_end()) ? w.write_nurbs_curve(c2d, true) : -1;
 
                 if (curve < 0)
@@ -4790,7 +4994,7 @@ public:
 
                 const int rep = w.write_raw("DEFINITIONAL_REPRESENTATION('',(#" + std::to_string(curve) + "),#" + std::to_string(context_2d) + ")");
                 pcurves.push_back(w.write_raw("PCURVE('',#" + std::to_string(srf) + ",#" + std::to_string(rep) + ")"));
-                seam = seam || ci == pc.curve_2d_index_2;
+                seam = seam || k == 1;
             }
 
         const int geometry = pcurves.empty() ? c : w.write_raw(std::string(seam ? "SEAM_CURVE" : "SURFACE_CURVE") + "('',#" + std::to_string(c) + "," + fmt_ref_list(pcurves) + ",.PCURVE_S1.)");
@@ -4811,14 +5015,47 @@ public:
         if (it != sid.end())
             return it->second;
 
-        return sid[si] = w.write_nurbs_surface(brep.m_surfaces[si].nurbs());
+        const Surface& s = brep.m_surfaces[si];
+        const Surface::Kind kind = s.kind();
+
+        if (kind != Surface::Kind::Plane && kind != Surface::Kind::Cylinder && kind != Surface::Kind::Cone && kind != Surface::Kind::Sphere && kind != Surface::Kind::Torus)
+            return sid[si] = w.write_nurbs_surface(s.nurbs());
+
+        // The same surface on a right-handed placement, a cone widening along its axis; the face's sense follows the normal of what is written.
+        const Vector z = kind == Surface::Kind::Cone && s.minor() < 0.0 ? s.z() * -1.0 : s.z();
+        const double angle = std::abs(s.minor());
+        const std::array<double, 4> any = {0.0, 1.0, 0.0, 1.0};
+        const Surface written = kind == Surface::Kind::Plane ? Surface::plane(s.origin(), z, s.x(), any) : kind == Surface::Kind::Cylinder ? Surface::cylinder(s.origin(), z, s.x(), s.radius(), any)
+            : kind == Surface::Kind::Cone ? Surface::cone(s.origin(), z, s.x(), s.radius(), angle, any) : kind == Surface::Kind::Sphere ? Surface::sphere(s.origin(), z, s.x(), s.radius(), any)
+            : Surface::torus(s.origin(), z, s.x(), s.radius(), s.minor(), any);
+        const double u = 0.5 * (s.domain(0).first + s.domain(0).second) + 1e-3, v = 0.5 * (s.domain(1).first + s.domain(1).second) + 1e-3;
+        const std::pair<double, double> uv = written.closest_parameters(s.point_at(u, v));
+        flipped[si] = written.normal_at(uv.first, uv.second).dot(s.normal_at(u, v)) < 0.0;
+        const std::string axis = "('',#" + std::to_string(w.write_axis(s.origin(), z, s.x()));
+
+        switch (kind) {
+        case Surface::Kind::Plane: return sid[si] = w.write_raw("PLANE" + axis + ")");
+        case Surface::Kind::Cylinder: return sid[si] = w.write_raw("CYLINDRICAL_SURFACE" + axis + "," + fmt(s.radius()) + ")");
+        case Surface::Kind::Cone: return sid[si] = w.write_raw("CONICAL_SURFACE" + axis + "," + fmt(s.radius()) + "," + fmt(angle) + ")");
+        case Surface::Kind::Sphere: return sid[si] = w.write_raw("SPHERICAL_SURFACE" + axis + "," + fmt(s.radius()) + ")");
+        default: return sid[si] = w.write_raw("TOROIDAL_SURFACE" + axis + "," + fmt(s.radius()) + "," + fmt(s.minor()) + ")");
+        }
     }
 
     /// EDGE_LOOP of the non-degenerated edges, a VERTEX_LOOP when there are none, -1 for an empty wire.
-    int wire_id(const BRepRef& wire) {
+    int wire_id(const BRepRef& wire, int surface) {
 
         std::vector<int> oes;
         int any_vertex = -1;
+        // The whole of a sphere or torus is bounded by seams and poles alone, each seam there and back: a VERTEX_LOOP, as its natural bounds are written.
+        const Surface::Kind kind = brep.m_surfaces[surface].kind();
+        std::map<int, int> uses;
+
+        for (const BRepRef& er : brep.wire_edges(wire))
+            if (!brep.m_edges[er.index].degenerated)
+                uses[er.index] += er.orientation == BRepOrientation::Forward ? 1 : -1;
+
+        const bool whole = (kind == Surface::Kind::Sphere || kind == Surface::Kind::Torus) && std::all_of(uses.begin(), uses.end(), [](const auto& use) { return use.second == 0; });
 
         for (const BRepRef& er : brep.wire_edges(wire)) {
             const BRepEdge& e = brep.m_edges[er.index];
@@ -4826,7 +5063,7 @@ public:
             if (any_vertex < 0)
                 any_vertex = e.start_vertex;
 
-            if (e.degenerated)
+            if (e.degenerated || whole)
                 continue;
 
             const int ec = edge_id(er.index);
@@ -4860,7 +5097,7 @@ public:
         const std::string sense = fo == BRepOrientation::Forward ? "T" : "F";
 
         for (size_t wi = 0; wi < f.wires.size(); wi++) {
-            const int loop = wire_id(f.wires[wi]);
+            const int loop = wire_id(f.wires[wi], f.surface_index);
 
             if (loop < 0)
                 continue;
@@ -4874,7 +5111,7 @@ public:
             return -1;
 
         return w.write_raw(
-            "ADVANCED_FACE(''," + fmt_ref_list(bounds) + ",#" + std::to_string(srf) + ",." + sense + ".)"
+            "ADVANCED_FACE(''," + fmt_ref_list(bounds) + ",#" + std::to_string(srf) + ",." + ((sense == "T") != flipped[f.surface_index] ? "T" : "F") + ".)"
         );
     }
 };
@@ -4882,8 +5119,6 @@ public:
 /// Face-id groups of a brep written into w: one per shell with its closed flag, then the free faces as an open group.
 static std::vector<std::pair<std::vector<int>, bool>> emit_brep_shells(StepWriter& w, const BRep& brep) {
 
-    if (!brep.is_nurbs())
-        return emit_brep_shells(w, brep.as_nurbs());
 
     BRepEmitter em(w, brep);
     std::vector<std::pair<std::vector<int>, bool>> groups;
