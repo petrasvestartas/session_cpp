@@ -298,6 +298,14 @@ int DS::merge(const std::vector<int>& group) {
     double tolerance = 0.0;
     for (int v : real_ids)
         tolerance = std::max(tolerance, c.distance(vertices[v].point) + vertices[v].tolerance);
+    // BRepLib::BoundingVertex of two: the smallest ball that holds both, the larger one itself where it holds the other.
+    if (real_ids.size() == 2) {
+        const Vertex &large = vertices[real_ids[vertices[real_ids[0]].tolerance < vertices[real_ids[1]].tolerance ? 1 : 0]], &small = vertices[real_ids[&large == &vertices[real_ids[0]] ? 1 : 0]];
+        const double apart = large.point.distance(small.point), k = apart <= large.tolerance - small.tolerance ? 0.0 : 0.5 * (1.0 - (large.tolerance - small.tolerance) / apart);
+        for (int d = 0; d < 3; ++d)
+            c[d] = large.point[d] + k * (small.point[d] - large.point[d]);
+        tolerance = k == 0.0 ? large.tolerance : 0.5 * (large.tolerance + small.tolerance + apart);
+    }
     const int merged = add_vertex(c, tolerance);
     vertices[merged].joint = true;
     for (int v : real_ids) {

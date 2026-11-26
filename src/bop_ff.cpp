@@ -46,6 +46,7 @@ struct Context {
     const Side& b;
     double tol, size, eps, h0, hmin, hmax;
     double flat = 1e-6;
+    std::vector<xyz> through{};
 };
 
 struct Constraint {
@@ -425,6 +426,8 @@ int touched(const Context& c, const X& x, const X& y) {
 
 enum class Stop { Stuck, Closed, Exit };
 
+Node midpoint(const Context& c, const Node& a, const Node& b);
+
 // IntWalk_PWalking: march from nodes.back() along dir until a box bound, back to loop's start, or no step converges.
 Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop, int& exit, xyz& last) {
     double h = c.h0;
@@ -433,9 +436,10 @@ Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop,
         const Node cur = nodes.back();
         double sine = 0.0;
         xyz t = tangent(c, cur.x, sine);
+        const bool against = t.dot(dir) < 0;
         if (sine < c.flat)
             t = dir;
-        else if (t.dot(dir) < 0)
+        else if (against)
             t = -t;
         bool moved = false;
         while (!moved && h >= c.hmin) {
@@ -445,6 +449,31 @@ Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop,
             for (int i = 0; i < 4; ++i)
                 if ((guess[i] < bound(c, i, 0) || guess[i] > bound(c, i, 1)) && travel(c, cur.x, i, guess[i] - cur.x[i]) <= heading(i) * h)
                     guess[i] = std::clamp(guess[i], bound(c, i, 0), bound(c, i, 1));
+            // The cross product of the normals keeps its sense along a branch of the section and has the other sense on the branch that passes it where the surfaces all but touch, with no point of the section between the two. A step that landed there is cut back to the last point of its own branch, found by halving, and the section turns from it; where the two meet, the surfaces touch and the section runs on through. 0 for a step along its branch, 1 for one to retry shorter, 2 where the walk moved to the cut.
+            const auto cut_back = [&](const X& y, const xyz& p) {
+                double s2 = 0.0, sm = 0.0;
+                const xyz t2 = tangent(c, y, s2);
+                if (sine < c.flat || s2 < c.flat || (t2.dot(t) < 0) == against)
+                    return 0;
+                Node own = cur, other{y, p};
+                bool apart = true;
+                for (int it = 0; it < 48 && apart && (other.p - own.p).length() > c.eps; ++it) {
+                    const Node mid = midpoint(c, own, other);
+                    const xyz tm = tangent(c, mid.x, sm);
+                    const bool on = half_gap(c, mid.x) <= 1e3 * c.eps;
+                    apart = !on || sm >= c.flat;
+                    (on && (tm.dot(t) < 0) == against ? own : other) = mid;
+                }
+                if (!apart)
+                    return 0;
+                if ((own.p - cur.p).length() <= c.hmin)
+                    return 1;
+                const xyz to = tangent(c, own.x, sm);
+                nodes.push_back(own);
+                dir = against ? -to : to, last = unit(own.p - cur.p), moved = true;
+                h = std::max(c.hmin, std::min(h, (other.p - own.p).length()));
+                return 2;
+            };
             int k = -1;
             double value = 0.0, gap = 0.0;
             const double f = crossing(c, cur.x, guess, k, value);
@@ -463,6 +492,10 @@ Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop,
                                 y = z, k = i;
                         }
                     const xyz p = point(c, y), d = p - cur.p;
+                    if (const int cut = cut_back(y, p)) {
+                        h *= cut == 1 ? 0.5 : 1.0;
+                        continue;
+                    }
                     if (d.dot(t) > 0.5 * d.length() && d.length() <= 2 * h && d.length() > 0) {
                         nodes.push_back({y, p});
                         exit = k, last = unit(d);
@@ -481,6 +514,10 @@ Stop walk(const Context& c, std::vector<Node>& nodes, xyz dir, const Node* loop,
             const double len = d.length();
             if (!(len > 0) || d.dot(t) < 0.98 * len) {
                 h *= 0.5;
+                continue;
+            }
+            if (const int cut = cut_back(y, p)) {
+                h *= cut == 1 ? 0.5 : 1.0;
                 continue;
             }
             double s2 = 0.0;
@@ -792,6 +829,9 @@ void perform_planes(const Side& a, const Plane3& pa, const Side& b, const Plane3
                 line(P3(ua[0] + pmin * da[0], ua[1] + pmin * da[1], 0), P3(ua[0] + pmax * da[0], ua[1] + pmax * da[1], 0), a.analytic),
                 line(P3(ub[0] + pmin * db[0], ub[1] + pmin * db[1], 0), P3(ub[0] + pmax * db[0], ub[1] + pmax * db[1], 0), b.analytic),
                 std::max(tol_f1, tol_f2), false};
+    // Its tangential tolerance (IntTools_Tools::ComputeIntRange): how far along the faces the section may lie where the planes meet at a shallow angle.
+    const double angle = std::atan2(cross.length(), std::abs(cosine)), dt = angle > 0.5 * std::numbers::pi - 1e-12 ? tol_f2 : tol_f1 / std::tan(angle) + tol_f2 / std::sin(angle);
+    curve.tolerance = std::max(curve.tolerance, std::hypot(dt, tol_f1));
     result.curves.push_back(std::move(curve));
     result.certified = true;
 }
@@ -973,7 +1013,12 @@ void march(const Context& c, const std::vector<std::pair<Node, double>>& found, 
             length += (line[i].p - line[i - 1].p).length();
         const bool edge = restriction(c, line);
         Curve curve;
-        if (length < std::max(10 * c.tol, 1e-5 * c.size)) {
+        // A line shorter than a touch can be told from is one where it is known to pass.
+        bool known = false;
+        for (const xyz& p : c.through)
+            for (const Node& n : line)
+                known = known || (n.p - p).length() <= std::max(10 * c.tol, 1e-5 * c.size);
+        if (length < std::max(10 * c.tol, 1e-5 * c.size) && !(known && length > 2 * c.tol)) {
             if (!edge)
                 touching.push_back(line[line.size() / 2]);
             continue;
@@ -1132,6 +1177,16 @@ bool exact_curve(const Context& c, const session_cpp::Curve& c3d, const std::arr
     return true;
 }
 
+// Whether a walked section is cut at the angle origin of a side's face where it passes it: a face that runs all the way around (IntPatch cuts a walking line at u = 0 and v = 0 of a periodic surface), and the quadric over whose angle the section is found, however far its face runs: both cylinders of a pair (IntPatch_ImpImpIntersection_6), the cylinder against a cone or sphere, the first of two cones, the cone against a sphere (IntAna_IntQuadQuad). Any other face that only straddles its origin has no bound there.
+bool origin_cut(const Side& side, Surface::Kind other, int s, int d) {
+    const double period = side.analytic ? side.form.period(d) : 0.0;
+    if (!(period > 0) || std::floor((side.form.domain(d).second - 1e-9) / period) < std::ceil((side.form.domain(d).first + 1e-9) / period))
+        return false;
+    const Surface::Kind own = side.form.kind();
+    return side.closed[d] || (d == 0 && ((own == Surface::Kind::Cylinder && (other == Surface::Kind::Cylinder || other == Surface::Kind::Cone || other == Surface::Kind::Sphere))
+        || (own == Surface::Kind::Cone && ((other == Surface::Kind::Cone && s == 0) || other == Surface::Kind::Sphere))));
+}
+
 // IntPatch_ImpImpIntersection with GeomInt_LineConstructor: the closed-form sections of two recognised surfaces, each kept where it
 // passes the uv boxes of both faces and cut where it crosses a seam of a face that closes around it or another section of the pair.
 // False where no closed form applies.
@@ -1149,16 +1204,17 @@ bool closed_form(const Context& c, Result& result) {
         form[s] = sides[s]->analytic ? sides[s]->form : Surface::recognized(sides[s]->surface, 1e-10 * sides[s]->size);
         if (form[s].kind() == Surface::Kind::Nurbs)
             return false;
-        // Where a face runs all or nearly all the way around, its section is cut at the angle its box starts from; where an analytic face passes the angle origin, a walked section is cut there (IntPatch cuts a walking line at u = 0 and v = 0 of a periodic surface).
+    }
+    // Where a face runs all or nearly all the way around, its section is cut at the angle its box starts from; where an analytic face passes its angle origin, a walked section is cut there and keeps a vertex (origin_cut).
+    for (int s = 0; s < 2; ++s)
         for (int d = 0; d < 2; ++d) {
             const auto [lo, hi] = form[s].domain(d);
             const double period = form[s].period(d);
             if (period > 0 && hi - lo > 0.9 * period && !(sides[s]->analytic && !sides[s]->closed[d]))
                 seams.push_back({s, d, lo, false});
-            if (period > 0 && sides[s]->analytic && std::floor((hi - 1e-9) / period) >= std::ceil((lo + 1e-9) / period))
+            if (origin_cut(*sides[s], form[1 - s].kind(), s, d))
                 seams.push_back({s, d, 0.0, true});
         }
-    }
     const intersection_analytic::Result exact = intersection_analytic::surface_surface(form[0], form[1], c.tol);
     if (!exact.done || exact.coincident)
         return false;
@@ -1418,7 +1474,7 @@ void cut_crossings(std::vector<Curve>& curves) {
     curves = std::move(result);
 }
 
-// IntPatch cuts a walking line at u = 0 and v = 0 of a periodic surface: a marched section that passes the angle origin of an analytic face which does not end there is cut and keeps a vertex, as closed_form does for its own.
+// A marched section that passes the angle origin of an analytic face is cut there and keeps a vertex where a walked one is (origin_cut), as closed_form does for its own.
 void cut_origins(const Context& c, std::vector<Curve>& curves) {
     std::vector<Curve> result;
     for (const Curve& curve : curves) {
@@ -1426,11 +1482,10 @@ void cut_origins(const Context& c, std::vector<Curve>& curves) {
         std::vector<double> at = {t0};
         for (int s = 0; s < 2; ++s)
             for (int d = 0; d < 2; ++d) {
-                const Side& side = s ? c.b : c.a;
-                const double period = side.analytic ? side.form.period(d) : 0.0;
-                const auto [lo, hi] = side.form.domain(d);
-                if (!(period > 0) || std::floor((hi - 1e-9) / period) < std::ceil((lo + 1e-9) / period))
+                const Side &side = s ? c.b : c.a, &other = s ? c.a : c.b;
+                if (!origin_cut(side, other.analytic ? other.form.kind() : Surface::Kind::Nurbs, s, d))
                     continue;
+                const double period = side.form.period(d);
                 const auto off = [&](double t) { return std::remainder((s ? curve.pcurve_b : curve.pcurve_a).point_at(t)[d], period); };
                 const int n = 64;
                 for (int k = 0; k < n; ++k) {
@@ -1467,7 +1522,7 @@ void cut_origins(const Context& c, std::vector<Curve>& curves) {
 
 // IntTools_FaceFace::Perform: face tolerances grown by half the fuzzy value (at least Precision::Confusion), planes by
 // PerformPlanes, other pairs over the faces' uv boxes: TangentFaces, else the section lines and tangent points.
-Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fuzzy) {
+Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fuzzy, const std::vector<session_cpp::Point>& through) {
     Result result;
     try {
         const double fuzz = 0.5 * std::max(fuzzy, 1e-7);
@@ -1484,8 +1539,17 @@ Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fu
             return result;
         }
         const double small = std::max(1e-300, std::min(sa.size, sb.size)), size = std::max(sa.size, sb.size);
-        const Context c{sa, sb, tol, size, 1e-14 * std::max(1.0, size), 0.02 * small, 1e-9 * small, 0.1 * small};
-        const std::vector<std::pair<Node, double>> found = seeds(c);
+        const Context c{sa, sb, tol, size, 1e-14 * std::max(1.0, size), 0.02 * small, 1e-9 * small, 0.1 * small, 1e-6, std::vector<xyz>(through.begin(), through.end())};
+        std::vector<std::pair<Node, double>> found = seeds(c);
+        for (const session_cpp::Point& p : through) {
+            const std::pair<double, double> on_a = sa.surface.closest_parameters(p), on_b = sb.surface.closest_parameters(p);
+            X x{on_a.first, on_a.second, on_b.first, on_b.second};
+            double gap = 0.0, sine = 0.0;
+            if (!correct(c, x, {}, gap, true))
+                continue;
+            tangent(c, x, sine);
+            found.push_back({{x, point(c, x)}, sine});
+        }
         // The closed form stands where every crossing the grids found lies on one of its sections.
         try {
             bool whole = closed_form(c, result);

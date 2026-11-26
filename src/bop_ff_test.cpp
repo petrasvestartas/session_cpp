@@ -246,3 +246,39 @@ MINI_TEST("Bop FF", "Cylinder Plane Tangent") {
     const bop_ff::Result fuzzy = bop_ff::intersect(cylinder, fc, lifted, 0, 4e-6);
     MINI_CHECK(fuzzy.curves.size() == 1 && worst_fit(cylinder, fc, lifted, 0, fuzzy) <= 1.0 && fuzzy.curves[0].tolerance >= 0.5e-6 && fuzzy.curves[0].tolerance < 5e-6);
 }
+
+MINI_TEST("Bop FF", "Planes At A Shallow Angle") {
+    // IntTools_Tools::ComputeIntRange: the section of two planes a thousandth of a radian apart may lie 3e-4 along them.
+    const BRep a = BRep::create_box(2, 2, 2);
+    const BRep b = a.transformed(Xform::rotation_x(1e-3));
+    const bop_ff::Result r = bop_ff::intersect(a, face_near(a, Point(0, 0, 1)), b, face_near(b, Point(0, 0, 1)), 0.0);
+    MINI_CHECK(!r.same_domain && r.curves.size() == 1);
+    MINI_CHECK(std::abs(r.curves[0].tolerance - 3e-4) < 1e-6);
+}
+
+MINI_TEST("Bop FF", "Saddle Against A Plane") {
+    // z = x x - y y against z = 0 crosses itself at the origin; against z = 1e-8 its two branches pass each other 2e-4 apart.
+    const std::vector<std::array<double, 4>> saddle = {{-1, -1, 0, 1}, {-1, 0, 2, 1}, {-1, 1, 0, 1}, {0, -1, -2, 1}, {0, 0, 0, 1}, {0, 1, -2, 1}, {1, -1, 0, 1}, {1, 0, 2, 1}, {1, 1, 0, 1}};
+    const BRep a = face(2, 2, {-1, -1, 1, 1}, {-1, -1, 1, 1}, saddle);
+    const auto plane = [](double z) { return face(1, 1, {-1, 1}, {-1, 1}, {{-1, -1, z, 1}, {-1, 1, z, 1}, {1, -1, z, 1}, {1, 1, z, 1}}); };
+    const BRep touching = plane(0), apart = plane(1e-8);
+    const bop_ff::Result crossed = bop_ff::intersect(a, 0, touching, 0, 0.0), passed = bop_ff::intersect(a, 0, apart, 0, 0.0);
+    MINI_CHECK(crossed.curves.size() == 4 && nearest_on_curves(crossed, Point(0, 0, 0)) < 1e-7);
+    MINI_CHECK(passed.curves.size() == 2 && std::abs(nearest_on_curves(passed, Point(0, 0, 1e-8)) - 1e-4) < 1e-6);
+    MINI_CHECK(worst_fit(a, 0, apart, 0, passed) <= 1.0 && std::abs(length(passed) - length(crossed)) < 1e-3);
+}
+
+MINI_TEST("Bop FF", "Section Across A Corner") {
+    // A plane cuts 1e-5 of a corner off a freeform face: the section is too short to tell from a touch unless the edge crossings that end it are given.
+    const NurbsSurface s = bump();
+    const BRep a = patch(s);
+    const Point p = s.point_at(1e-5, 0), q = s.point_at(0, 1e-5);
+    Vector along(q[0] - p[0], q[1] - p[1], q[2] - p[2]), up = s.normal_at(0, 0);
+    along.normalize_self();
+    up.normalize_self();
+    const auto corner = [&](double i, double j) { return std::array<double, 4>{p[0] + i * along[0] + j * up[0], p[1] + i * along[1] + j * up[1], p[2] + i * along[2] + j * up[2], 1}; };
+    const BRep b = face(1, 1, {-1, 1}, {-1, 1}, {corner(-1, -1), corner(-1, 1), corner(1, -1), corner(1, 1)});
+    MINI_CHECK(bop_ff::intersect(a, 0, b, 0, 0.0).curves.empty());
+    const bop_ff::Result r = bop_ff::intersect(a, 0, b, 0, 0.0, {p, q});
+    MINI_CHECK(r.curves.size() == 1 && std::abs(length(r) - p.distance(q)) < 1e-7 && worst_fit(a, 0, b, 0, r) <= 1.0);
+}

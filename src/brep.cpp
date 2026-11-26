@@ -3612,7 +3612,7 @@ bool BRep::is_closed(int shell_index) const {
     }
 
     for (size_t i = 0; i < m_edges.size(); ++i)
-        if (!m_edges[i].degenerated && uses[i] != 0 && uses[i] != 2)
+        if (!m_edges[i].degenerated && uses[i] % 2 != 0)
             return false;
 
     return boundary;

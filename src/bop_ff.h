@@ -32,7 +32,7 @@ struct Result {
     std::vector<Point> points;
 };
 
-/// IntTools_FaceFace::Perform: sections of the two supporting surfaces over the boxes of the faces' pcurves, within the face tolerances plus fuzzy: coincident faces are same_domain, tangent ones give points or curves, every curve carries the tolerance that bounds its distance to both surfaces. Never throws.
-Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fuzzy);
+/// IntTools_FaceFace::Perform: sections of the two supporting surfaces over the boxes of the faces' pcurves, within the face tolerances plus fuzzy: coincident faces are same_domain, tangent ones give points or curves, every curve carries the tolerance that bounds its distance to both surfaces. `through` are points a section is known to pass (where an edge of one face crosses the other): the walk starts from each as well, and a section through one is kept however short. Never throws.
+Result intersect(const BRep& a, int face_a, const BRep& b, int face_b, double fuzzy, const std::vector<session_cpp::Point>& through = {});
 
 }

@@ -268,7 +268,7 @@ public:
     /// brep_check::check finds nothing but shell and solid statuses or how edges, vertices and pcurves agree and loops turn: what the old pipeline admits (bop judges its results by the whole check).
     bool is_valid() const;
 
-    /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used exactly twice by the shell's faces (a seam counts twice through its two pcurves)
+    /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used an even number of times by the shell's faces (a seam counts twice through its two pcurves; four times where two parts of the shell touch along it)
     bool is_closed(int shell_index) const;
 
     /// is_valid with at least one solid whose shells are closed and orientable; the sign of the volume is left to its readers (face_planes flips it).

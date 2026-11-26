@@ -166,3 +166,33 @@ MINI_TEST("BRep BOP", "Torus Sphere") {
     MINI_CHECK(common.face_count() == 4 && common.edge_count() == 6 && common.vertex_count() == 4);
     MINI_CHECK(std::abs(common.volume_exact() - 0.05150034080275) < 1e-7);
 }
+
+MINI_TEST("BRep BOP", "Boxes Sharing An Edge") {
+    // BRep_Tool::IsClosed: the shell of two boxes that touch along an edge runs it four times.
+    const BRep a = BRep::create_box(1, 1, 1), b = moved(BRep::create_box(1, 1, 1), 1, 1, 0);
+    bop::Report report;
+    const BRep both = bop::apply(a, b, bop::Operation::Union, 0.0, &report);
+    MINI_CHECK(report.solid && report.failure.empty() && both.is_solid());
+    MINI_CHECK(both.face_count() == 12 && both.edge_count() == 23 && both.vertex_count() == 14);
+    MINI_CHECK(std::abs(both.volume_exact() - 2.0) < 1e-9);
+}
+
+MINI_TEST("BRep BOP", "Fused Vertices") {
+    // BRepLib::BoundingVertex of two: the larger ball where it holds the other, else the smallest ball around both.
+    bop::DS ds;
+    const int inside = ds.merge({ds.add_vertex(Point(0, 0, 0), 1.0), ds.add_vertex(Point(0.5, 0, 0), 0.1)});
+    MINI_CHECK(ds.vertices[inside].point.distance(Point(0, 0, 0)) < 1e-12 && std::abs(ds.vertices[inside].tolerance - 1.0) < 1e-12);
+    const int across = ds.merge({ds.add_vertex(Point(0, 0, 0), 0.3), ds.add_vertex(Point(1, 0, 0), 0.1)});
+    MINI_CHECK(ds.vertices[across].point.distance(Point(0.4, 0, 0)) < 1e-12 && std::abs(ds.vertices[across].tolerance - 0.7) < 1e-12);
+}
+
+MINI_TEST("BRep BOP", "Arc Through The End Of An Edge It Touches") {
+    // A stadium prism against its copy turned 30 degrees about an axis 5e-8 off its own: the copy's arc passes the vertex where an arc of the first meets its straight edge and crosses that edge 3e-4 on, inside the common part that holds the vertex.
+    const BRep a = bop::apply(moved(BRep::create_box(2, 2, 1), 1, 0, 0.5), BRep::create_cylinder(1, 1), bop::Operation::Union);
+    const BRep b = a.transformed(Xform::translation(5e-8, 0, 0) * Xform::rotation_z(30, true) * Xform::translation(-5e-8, 0, 0));
+    bop::Report joined, shared;
+    const BRep both = bop::apply(a, b, bop::Operation::Union, 0.0, &joined), common = bop::apply(a, b, bop::Operation::Intersection, 0.0, &shared);
+    MINI_CHECK(joined.solid && joined.failure.empty() && shared.solid && shared.failure.empty());
+    MINI_CHECK(both.face_count() == 27 && common.face_count() == 17);
+    MINI_CHECK(std::abs(both.volume_exact() + common.volume_exact() - 2.0 * a.volume_exact()) < 1e-6);
+}

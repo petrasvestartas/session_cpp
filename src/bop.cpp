@@ -88,6 +88,7 @@ struct Builder {
             const BRep& brep = ds.brep(f.operand);
             std::vector<EdgeUse>& list = uses[id];
             std::vector<std::vector<int>> wires;
+            std::vector<int> source;
             for (const BRepRef& wire : brep.m_faces[f.local].wires) {
                 std::vector<int> loop;
                 for (const BRepRef& use : brep.wire_edges(wire)) {
@@ -106,10 +107,21 @@ struct Builder {
                             continue;
                         loop.push_back(static_cast<int>(list.size()));
                         list.push_back(use_of(b, back, ds.edge_pcurve(e, f.local, use.orientation, back ? block.last.t : block.first.t, back ? block.first.t : block.last.t), false, f));
+                        source.push_back(b);
                     }
                 }
                 wires.push_back(std::move(loop));
             }
+            // Two edges of the face that became one edge, run one each way, bound nothing between them: both uses go and the loops are built anew.
+            std::vector<bool> gone(list.size(), false);
+            for (size_t i = 0; i < list.size(); ++i)
+                for (size_t j = i + 1; j < list.size() && !gone[i]; ++j)
+                    if (!gone[j] && list[i].image == list[j].image && list[i].reversed != list[j].reversed && ds.blocks[source[i]].edge != ds.blocks[source[j]].edge)
+                        gone[i] = gone[j] = true;
+            const bool pinched = std::find(gone.begin(), gone.end(), true) != gone.end();
+            for (size_t i = list.size(); i-- > 0 && pinched;)
+                if (gone[i])
+                    list.erase(list.begin() + i);
             const size_t boundary = list.size();
             for (const std::vector<int>* blocks : {&f.in_blocks, &f.sc_blocks})
                 for (int b : *blocks) {
@@ -120,7 +132,7 @@ struct Builder {
                     list.push_back(use_of(b, true, pcurve.reversed(), true, f));
                 }
             std::vector<std::vector<std::vector<int>>> faces;
-            if (list.size() == boundary)
+            if (list.size() == boundary && !pinched)
                 faces.push_back(wires);
             else
             {
@@ -262,7 +274,7 @@ struct Builder {
                     around[use.image].push_back({static_cast<int>(k), inward, ds.brep(f.operand).face_orientation(f.local) == BRepOrientation::Reversed ? normal * -1.0 : normal});
                 }
         }
-        // A piece that leaves a shared edge almost along the other operand's face there is told by the edges it leaves steeply, where it has any.
+        // A piece that leaves a shared edge almost along the other operand's face there is told by the edges it leaves steeply, where it has any; shallow edges that disagree tell nothing.
         std::vector<std::array<int, 2>> votes(pieces.size(), {0, 0}), faint = votes;
         for (const auto& [unused, sides] : around)
             for (const Side& p : sides) {
@@ -277,7 +289,7 @@ struct Builder {
                     ++(std::abs(height) > 0.1 ? votes : faint)[p.piece][height < 0.0 ? 0 : 1];
             }
         for (size_t k = 0; k < votes.size(); ++k)
-            if (votes[k][0] + votes[k][1] == 0)
+            if (votes[k][0] + votes[k][1] == 0 && (faint[k][0] == 0 || faint[k][1] == 0))
                 votes[k] = faint[k];
         return votes;
     }

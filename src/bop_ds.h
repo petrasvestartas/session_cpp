@@ -88,6 +88,7 @@ struct PaveBlock {
     int curve = -1; // DS curve of a section piece
     Pave first, last;
     int common = -1; // DS common block
+    double tolerance = 0.0; // its own, where it grew past its edge's or curve's
 };
 
 /// BOPDS_CommonBlock: pave blocks of different edges lying on each other
@@ -173,7 +174,7 @@ struct DS {
     /// The pcurve of a piece [t0, t1] of an operand's edge on one of its faces, as the face's wire uses it: the edge's own pcurve and the matching range
     Span edge_pcurve(const Edge& e, int local_face, BRepOrientation orientation, double t0, double t1) const;
     Point block_point(const PaveBlock& b, double s) const;
-    double block_tolerance(const PaveBlock& b) const { return b.edge >= 0 ? edges[b.edge].tolerance : curves[b.curve].tolerance; }
+    double block_tolerance(const PaveBlock& b) const { return std::max(b.tolerance, b.edge >= 0 ? edges[b.edge].tolerance : curves[b.curve].tolerance); }
     /// A block whose ends became one vertex that covers it: no edge of the result
     bool micro(const PaveBlock& b) const { return b.first.vertex == b.last.vertex && block_point(b, 0.5).distance(vertices[b.first.vertex].point) <= vertices[b.first.vertex].tolerance + block_tolerance(b); }
     /// Blocks sharing the image of b: its common block or b alone

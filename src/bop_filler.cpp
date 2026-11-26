@@ -450,6 +450,15 @@ struct Filler {
                 return;
         }
         const Point p((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2);
+        // The common part of a crossing runs where the edges stay within the tolerance of each other: far along them at a shallow angle.
+        Vector da = ca.tangent_at(ta), db = ds.curve_of(b).tangent_at(tb);
+        da.normalize_self();
+        db.normalize_self();
+        const double reach = std::min(tolerance / std::max(da.cross(db).magnitude(), 1e-12), extent(ca, a));
+        // PerformEE: a common part that holds a vertex both edges already have is that vertex.
+        for (const Pave& pave : a.paves)
+            if (has_pave(eb, pave.vertex) && at(pave.vertex).distance(p) <= tol(pave.vertex) + reach)
+                return;
         std::vector<int> candidates = edge_vertices(ea), more = edge_vertices(eb);
         candidates.insert(candidates.end(), more.begin(), more.end());
         int v = find_vertex(candidates, p, std::max(a.tolerance, b.tolerance));
@@ -457,13 +466,9 @@ struct Filler {
             v = ds.add_vertex(p, std::max(a.tolerance, b.tolerance) + 0.5 * d);
         add_pave(ea, v, ta);
         add_pave(eb, v, tb);
-        // The common part of a crossing runs where the edges stay within the tolerance of each other: far along them at a shallow angle.
-        Vector da = ca.tangent_at(ta), db = ds.curve_of(b).tangent_at(tb);
-        da.normalize_self();
-        db.normalize_self();
         Vertex& made = ds.vertices[ds.real(v)];
         if (made.operand < 0)
-            made.reach = std::max(made.reach, std::min(tolerance / std::max(da.cross(db).magnitude(), 1e-12), extent(ca, a)));
+            made.reach = std::max(made.reach, reach);
     }
 
     /// IntTools_EdgeEdge within the tolerance: local minima of the distance between two edges that come within it away from a common part
@@ -519,7 +524,12 @@ struct Filler {
         std::vector<int> candidates = edge_vertices(e), more = face_vertices(f);
         candidates.insert(candidates.end(), more.begin(), more.end());
         const int v = find_vertex(candidates, p, tolerance);
-        return v >= 0 ? v : ds.add_vertex(p, tolerance);
+        if (v < 0)
+            return ds.add_vertex(p, tolerance);
+        // TreatNewVertices: the vertex this crossing would make is fused with the one another crossing made there, into the ball that holds both.
+        if (ds.vertices[v].operand >= 0 || at(v).distance(p) + tolerance <= tol(v))
+            return v;
+        return ds.merge({v, ds.add_vertex(p, tolerance)});
     }
 
     void perform_ef() {
@@ -823,7 +833,19 @@ struct Filler {
         }
     }
 
-    /// Common blocks of edges lying on each other (the EE common parts of PerformEE)
+    /// Whether two blocks run alike where the middle of the first projects on the second: within 25 degrees, two lines always (ForceInterfEE)
+    bool alike(const PaveBlock& a, const PaveBlock& b) const {
+        const Curve &ca = ds.block_curve(a), &cb = ds.block_curve(b);
+        if (straight(ca) && straight(cb))
+            return true;
+        const double t = 0.5 * (a.first.t + a.last.t);
+        Vector ta = ca.tangent_at(t), tb = cb.tangent_at(parameter(cb, ca.point_at(t), std::min(b.first.t, b.last.t), std::max(b.first.t, b.last.t)));
+        ta.normalize_self();
+        tb.normalize_self();
+        return std::abs(ta.dot(tb)) >= 0.9063;
+    }
+
+    /// Common blocks of edges lying on each other (the EE common parts of PerformEE, and ForceInterfEE: blocks between the same two vertices, within twice the larger vertex tolerance more where they run alike; two edges of one operand only between vertices the interferences made)
     void make_commons() {
         std::map<std::pair<int, int>, std::vector<int>> by_key;
         for (int o = 0; o < 2; ++o)
@@ -831,13 +853,13 @@ struct Filler {
                 for (int b : ds.edges[e].blocks)
                     if (!ds.edges[e].degenerated)
                         by_key[key(ds.blocks[b])].push_back(b);
-        for (const auto& [unused, list] : by_key)
+        for (const auto& [ends, list] : by_key)
             for (size_t i = 0; i < list.size(); ++i)
                 for (size_t j = i + 1; j < list.size(); ++j) {
                     const PaveBlock &a = ds.blocks[list[i]], &b = ds.blocks[list[j]];
-                    if (ds.edges[a.edge].operand == ds.edges[b.edge].operand)
+                    if (ds.edges[a.edge].operand == ds.edges[b.edge].operand && (a.edge == b.edge || ds.vertices[ends.first].operand >= 0 || ds.vertices[ends.second].operand >= 0))
                         continue;
-                    if (coincide(a, b, ds.edges[a.edge].tolerance + ds.edges[b.edge].tolerance + ds.fuzzy))
+                    if (coincide(a, b, ds.edges[a.edge].tolerance + ds.edges[b.edge].tolerance + ds.fuzzy + (alike(a, b) ? 2.0 * std::max(tol(ends.first), tol(ends.second)) : 0.0)))
                         join(list[i], list[j]);
                 }
     }
@@ -943,7 +965,28 @@ struct Filler {
                 const size_t first = ds.curves.size();
                 for (size_t i = 0; i < r.curves.size(); ++i)
                     make_section(ia, ib, r.curves[i], origins.count(loop[i]) ? &origins[loop[i]] : nullptr);
-                missed_sections(ia, ib, first);
+                // Where an edge of one face crosses the other and no section passes, a section the grids did not find is walked from there.
+                std::vector<int> missed = missed_sections(ia, ib, first);
+                if (!missed.empty()) {
+                    std::vector<Point> through;
+                    for (int v : missed)
+                        through.push_back(at(v));
+                    bop_ff::Result again;
+                    try {
+                        again = bop_ff::intersect(ds.brep(0), fa, ds.brep(1), fb, ds.fuzzy, through);
+                    } catch (const std::exception&) {
+                    }
+                    for (bop_ff::Curve& curve : again.curves) {
+                        bool passes = false;
+                        for (int v : missed)
+                            passes = passes || curve.curve.point_at(parameter(curve.curve, at(v), curve.curve.domain().first, curve.curve.domain().second)).distance(at(v)) <= std::max(tol(v), ds.vertices[v].reach) + curve.tolerance + ds.fuzzy;
+                        if (passes)
+                            make_section(ia, ib, curve, nullptr);
+                    }
+                    missed = missed_sections(ia, ib, first);
+                }
+                if (!missed.empty())
+                    ds.log.push_back("FF incomplete: " + std::to_string(missed.size()) + " edge crossings on no section");
                 // Another closed curve starts at a vertex it already has (a seam crossing); one without any keeps its start.
                 for (size_t i = 0; i < loop.size(); ++i) {
                     if (loop[i] != static_cast<int>(i) || origins.count(loop[i]))
@@ -958,8 +1001,8 @@ struct Filler {
             }
     }
 
-    /// A recorded check: a vertex both faces hold, where an edge of one crosses the other, lies on a section of the pair or on an edge they share
-    void missed_sections(int ia, int ib, size_t first) {
+    /// The vertices both faces hold, where an edge of one crosses the other, that lie on no section of the pair and on no edge they share
+    std::vector<int> missed_sections(int ia, int ib, size_t first) {
         std::vector<int> va = face_vertices(ds.faces[ia]), vb = face_vertices(ds.faces[ib]), both, used;
         for (std::vector<int>* list : {&va, &vb}) {
             std::sort(list->begin(), list->end());
@@ -979,11 +1022,11 @@ struct Filler {
                     return true;
             return false;
         };
-        int missed = 0;
+        std::vector<int> missed;
         for (int v : both)
-            missed += ds.vertices[v].reach > 0.0 && std::find(used.begin(), used.end(), v) == used.end() && !(on_boundary(ia, v) && on_boundary(ib, v));
-        if (missed > 0)
-            ds.log.push_back("FF incomplete: " + std::to_string(missed) + " edge crossings on no section");
+            if (ds.vertices[v].reach > 0.0 && std::find(used.begin(), used.end(), v) == used.end() && !(on_boundary(ia, v) && on_boundary(ib, v)))
+                missed.push_back(v);
+        return missed;
     }
 
     /// The edges of a face lying inside a face on the same surface are In edges of it, whatever EF found
@@ -1247,6 +1290,9 @@ struct Filler {
             if (existing < 0) {
                 existing = static_cast<int>(ds.blocks.size());
                 ds.blocks.push_back(block);
+                // BOPTools_AlgoTools::MakeEdge: the vertices of a new edge cover its tolerance.
+                grow(block.first.vertex, c.tolerance);
+                grow(block.last.vertex, c.tolerance);
             }
             // An existing edge that runs off the section keeps its own curve: its pcurve is its projection, as BuildPCurveForEdgeOnFace makes it.
             const PaveBlock& kept = ds.blocks[existing];
@@ -1257,6 +1303,44 @@ struct Filler {
                     const Span& p = f == ia ? pa : pb;
                     ds.pcurves[{existing, f}] = !same ? owned(project(ds.block_curve(kept), kept.first.t, kept.last.t, ds.surface_of(ds.faces[f]))) : along ? p : p.reversed();
                 }
+        }
+    }
+
+    /// ForceInterfEE as PostTreatFF runs it on the section edges: a section piece and a block of one of its faces between the same two vertices that run alike in the middle are one edge when they lie within their tolerances and twice the larger vertex tolerance; the block stands for the piece and takes the distance as its tolerance
+    void force_sections() {
+        for (size_t s = 0; s < ds.blocks.size(); ++s) {
+            const PaveBlock piece = ds.blocks[s];
+            if (piece.curve < 0 || piece.first.vertex == piece.last.vertex)
+                continue;
+            const Section& c = ds.curves[piece.curve];
+            const Curve& w = *c.world;
+            const auto holds = [&](int f) { return std::find(ds.faces[f].sc_blocks.begin(), ds.faces[f].sc_blocks.end(), static_cast<int>(s)) != ds.faces[f].sc_blocks.end(); };
+            int found = -1;
+            for (int f : {c.face_a, c.face_b})
+                for (int b : face_blocks(ds.faces[f])) {
+                    const PaveBlock& old = ds.blocks[b];
+                    if (found >= 0 || !holds(f) || old.edge < 0 || ds.edges[old.edge].degenerated || key(old) != key(piece))
+                        continue;
+                    if (!(straight(w) && straight(ds.block_curve(old))) && alike(piece, old) && coincide(piece, old, c.tolerance + ds.block_tolerance(old) + ds.fuzzy + 2.0 * std::max(tol(piece.first.vertex), tol(piece.last.vertex))))
+                        found = b;
+                }
+            if (found < 0)
+                continue;
+            PaveBlock& kept = ds.blocks[found];
+            const Curve& oc = ds.block_curve(kept);
+            for (double k : {0.25, 0.5, 0.75}) {
+                const Point p = ds.block_point(piece, k);
+                kept.tolerance = std::max(kept.tolerance, oc.point_at(parameter(oc, p, kept.first.t, kept.last.t)).distance(p));
+            }
+            for (int f : {c.face_a, c.face_b}) {
+                Face& face = ds.faces[f];
+                face.sc_blocks.erase(std::remove(face.sc_blocks.begin(), face.sc_blocks.end(), static_cast<int>(s)), face.sc_blocks.end());
+                ds.pcurves.erase({static_cast<int>(s), f});
+                if (!face_has(face, found)) {
+                    face.sc_blocks.push_back(found);
+                    ds.pcurves[{found, f}] = owned(project(oc, kept.first.t, kept.last.t, ds.surface_of(face)));
+                }
+            }
         }
     }
 };
@@ -1277,6 +1361,7 @@ DS fill(const BRep& a, const BRep& b, double fuzzy) {
     filler.make_commons();
     filler.make_in_blocks();
     filler.perform_ff();
+    filler.force_sections();
     for (PaveBlock& b : ds.blocks) {
         b.first.vertex = ds.real(b.first.vertex);
         b.last.vertex = ds.real(b.last.vertex);
