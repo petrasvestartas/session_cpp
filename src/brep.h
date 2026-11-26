@@ -265,13 +265,13 @@ public:
     /// Return the number of solids.
     int solid_count() const;
 
-    /// Check finite geometry, table references, tolerances, and connected closed boundary wires.
+    /// brep_check::check finds nothing but shell and solid statuses or how edges, vertices and pcurves agree and loops turn: what the old pipeline admits (bop judges its results by the whole check).
     bool is_valid() const;
 
     /// BRep_Tool::IsClosed(shell): every non-degenerated edge is used exactly twice by the shell's faces (a seam counts twice through its two pcurves)
     bool is_closed(int shell_index) const;
 
-    /// Check valid topology and closed shells with opposite boundary-edge uses.
+    /// is_valid with at least one solid whose shells are closed and orientable; the sign of the volume is left to its readers (face_planes flips it).
     bool is_solid() const;
 
     /// Compose the first solid-shell-face orientation; Forward for a free face.
@@ -328,7 +328,7 @@ public:
     /// The bridge for consumers of NURBS: the same solid with every surface and curve as its NURBS and every pcurve in the parameter of that NURBS, over the parameter of its edge's NURBS; exact for lines on planes and for circles and rulings of a surface, fitted otherwise with the distance left put into the edge tolerance. An angle becomes a parameter of one unit a quarter turn; a length runs from 0 to 1, or without unit_lengths keeps its parameter. Itself when is_nurbs()
     BRep as_nurbs(bool unit_lengths = true) const;
 
-    /// BRepLib::UpdateTolerances: raise every vertex tolerance to its edges' and to the worst gap between their curve ends (3D and lifted pcurves) and it; returns the largest
+    /// BRepLib::SameParameter + UpdateTolerances: raise an edge tolerance brep_check::deviation exceeds to it (the check allows a margin), every vertex tolerance to its edges' and to the worst gap between their curve ends (3D and lifted pcurves) and it; returns the largest
     double update_tolerances();
 
     /// Volume of the tessellated boundary (divergence theorem); meaningful for solids only

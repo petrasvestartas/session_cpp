@@ -417,12 +417,12 @@ MINI_TEST("BRep Native Measure", "Plane Primitive Reuses Certified C1 Derivative
             throw std::runtime_error("test cache exceeded fixed work budget");
     });
     MINI_CHECK(cache.shared && cache.cells.size() == 420);
-    const size_t expected_charge = 2 * (22 * 41 + 43 * 21) + 420 * 88;
+    const size_t expected_charge = 3 * (22 * 41 + 43 * 21) + 420 * 192;
     MINI_CHECK(charged == expected_charge);
     for (double u : {5 / 128., 41 / 128., 79 / 128.})
         for (double v : {7 / 128., 31 / 128., 73 / 128.}) {
             const auto value = cache.at(u, v);
-            const double exact = 32 * u + v * u * u * .5;
+            const double exact = (32 * u - v * u * u * .5) / 3;
             MINI_CHECK(nurbs_interval::finite(value));
             MINI_CHECK(value.lo <= exact && value.hi >= exact);
             MINI_CHECK(value.hi - value.lo < 1e-9);
@@ -447,7 +447,7 @@ MINI_TEST("BRep Native Measure", "Plane Primitive Reuses Certified C1 Derivative
     const brep_measure::plane::Primitive c0(crease, {0, 1, 0, 1}, 200000, []() {});
     MINI_CHECK(!c0.shared && c0.cells.size() == 2);
     const auto beyond = c0.at(.75, .25);
-    MINI_CHECK(beyond.lo <= 1.625 && beyond.hi >= 1.625);
+    MINI_CHECK(beyond.lo <= 1 / 3. + 1e-15 && beyond.hi >= 1 / 3. - 1e-15);
 }
 
 MINI_TEST("BRep Native Measure", "Trim Gauge Preserves Tolerance Closed Rotated Boundary") {
@@ -494,6 +494,46 @@ MINI_TEST("BRep Native Measure", "Trim Gauge Preserves Tolerance Closed Rotated 
     MINI_CHECK(std::abs(rotated.volume_exact(1e-8) - 24) <= 24e-8);
     rotated.m_solids[0].shells[0].orientation = BRepOrientation::Reversed;
     MINI_CHECK(std::abs(rotated.volume_exact(1e-8) + 24) <= 24e-8);
+}
+
+MINI_TEST("BRep Native Measure", "Loop Open In UV Is Closed Along The Gap") {
+    BRep shape = BRep::create_box(2, 3, 4);
+    int altered = -1;
+    for (const auto& edge : shape.m_edges)
+        for (const auto& relation : edge.pcurves)
+            if (relation.surface_index == 0 && altered < 0) {
+                auto pc = edit(shape.m_curves_2d[relation.curve_2d_index]);
+                const auto first = pc->get_cv(0), last = pc->get_cv(pc->cv_count() - 1);
+                if (first[1] == last[1])
+                    continue;
+                MINI_CHECK(pc->set_cv(pc->cv_count() - 1, last + (first - last) * 1e-5));
+                altered = relation.curve_2d_index;
+            }
+    MINI_CHECK(altered >= 0);
+    MINI_CHECK(shape.is_valid() && shape.is_solid());
+    const brep_measure::Volume measured = brep_measure::volume_closure(shape, 1e-10);
+    MINI_CHECK(std::abs(measured.value - 24) <= 24e-10);
+}
+
+MINI_TEST("BRep Native Measure", "Volume Closure") {
+    BRep shape = BRep::create_box(2, 3, 4);
+    const brep_measure::Volume closed = brep_measure::volume_closure(shape, 1e-10);
+    MINI_CHECK(std::abs(closed.value - 24) <= 24e-13 && closed.closure_error <= 24e-13);
+    const NurbsSurface original = shape.m_surfaces[0].nurbs();
+    const auto u = original.domain(0), v = original.domain(1);
+    NurbsSurface leaky(3, false, 2, 2, 2, 2);
+    leaky.m_nurbsknot[0] = {u.first, u.second};
+    leaky.m_nurbsknot[1] = {v.first, v.second};
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j)
+            MINI_CHECK(leaky.set_cv(i, j, original.point_at(i ? u.second : u.first, j ? v.second : v.first) + Vector(.03, .02, .05) * (i * j)));
+    shape.m_surfaces[0] = leaky;
+    const brep_measure::Volume measured = brep_measure::volume_closure(shape, 1e-10);
+    BRep rotated = shape.transformed(Xform::rotation({1, 2, 3}, .73));
+    rotated.transform(Xform::translation(100, -50, 25));
+    const brep_measure::Volume moved = brep_measure::volume_closure(rotated, 1e-10);
+    MINI_CHECK(measured.closure_error > 1e-3 && std::abs(measured.closure_error - moved.closure_error) <= measured.closure_error * 1e-9);
+    MINI_CHECK(std::abs(measured.value - moved.value) <= 24e-10);
 }
 
 namespace session_cpp {
@@ -616,8 +656,8 @@ MINI_TEST("BRep Native Measure", "Faces Area And Volume Share") {
     for (const std::array<double, 2>& side : sides) {
         area += side[0];
         volume += side[1];
-        // A face of a box centred at the origin holds a third of its pyramid to the centre, twice over: a sixth of the box by the divergence of z alone or none.
-        MINI_CHECK(std::abs(side[0] - 6.0) < 1e-9 || std::abs(side[0] - 8.0) < 1e-9 || std::abs(side[0] - 12.0) < 1e-9);
+        // A face of a box holds its pyramid to the centre, a sixth of the box.
+        MINI_CHECK((std::abs(side[0] - 6.0) < 1e-9 || std::abs(side[0] - 8.0) < 1e-9 || std::abs(side[0] - 12.0) < 1e-9) && std::abs(side[1] - 4.0) < 1e-9);
     }
     MINI_CHECK(sides.size() == 6 && std::abs(area - 52.0) < 1e-9 && std::abs(volume - 24.0) < 1e-9 && std::abs(volume - box.volume_exact()) < 1e-12);
     const BRep cylinder = BRep::create_cylinder(1.5, 4);

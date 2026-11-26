@@ -767,7 +767,7 @@ MINI_TEST("FileStep", "Original Circle Cap Retains Rational World Law") {
         const auto shapes = step_import_proposal(text, "original_circle_cap_" + std::to_string(variant) + ".step");
         MINI_CHECK(shapes.size() == 1);
         const auto& shape = shapes.front();
-        MINI_CHECK(shape.is_valid());
+        MINI_CHECK(shape.is_valid() == (variant != 3)); // #98 reverses circle #62 of edge #59 but its pcurve #52 on the cylinder runs as before.
         const auto& edge = shape.m_edges.at(0);
         const auto& world = shape.m_curves_3d.at(edge.curve_3d_index).nurbs();
         MINI_CHECK(world.is_rational());
@@ -1006,7 +1006,8 @@ MINI_TEST("FileStep", "BRep Read Ellipse On Cylinder Exact") {
     const auto shapes = step_read_text(step_fixture("oblique_cylinder.step"), "oblique_cylinder.step");
     MINI_CHECK(shapes.size() == 1);
     MINI_CHECK(shapes[0].is_valid() && shapes[0].is_solid());
-    MINI_CHECK(std::abs(shapes[0].volume_exact() - 2.0 * Tolerance::PI) < 1e-12);
+    const auto [volume, leak] = brep_measure::volume_closure(shapes[0]);
+    MINI_CHECK(leak < 1e-8 && std::abs(volume - 2.0 * Tolerance::PI) < 1e-12 + leak);
     MINI_CHECK(step_uncertified_pcurves(shapes[0]) == 0);
 }
 MINI_TEST("FileStep", "BRep Read Loose Vertex Carries Tolerance") {
@@ -1018,7 +1019,8 @@ MINI_TEST("FileStep", "BRep Read Loose Vertex Carries Tolerance") {
     for (const auto& e : shapes[0].m_edges)
         edge = std::max(edge, e.tolerance);
     MINI_CHECK(std::abs(edge - 1e-5) < 1e-12);
-    MINI_CHECK(std::abs(shapes[0].volume_exact() - 1.0) < 1e-12);
+    const auto [volume, leak] = brep_measure::volume_closure(shapes[0]);
+    MINI_CHECK(leak < 1e-5 && std::abs(volume - 1.0) < 1e-12 + leak);
 }
 MINI_TEST("FileStep", "BRep Primitives Round Trip Exact") {
     for (const BRep& shape : {BRep::create_cylinder(1.0, 2.0), BRep::create_cone(1.0, 2.0), BRep::create_sphere(1.5), BRep::create_torus(2.0, 0.5),

@@ -4078,8 +4078,8 @@ public:
         return (m0[1 - varying] > m1[1 - varying]) == maximum ? 0 : 1;
     }
 
-    /// The file's pcurve of an edge on a B-spline surface: one certified against the world curve at the tolerance (error 0), else the one of least deviation (error); the forward or reversed seam alias by the use.
-    std::optional<NurbsCurve> source_pcurve(int edge, int geometry_id, int surface_id, const NurbsSurface& support, bool forward, double& error) {
+    /// The file's pcurve of an edge on a B-spline surface: one certified against the world curve at the tolerance (error 0), else the one of least deviation (error); the forward or reversed seam alias by the use, a seam the face uses twice on one pcurve given its second alias.
+    std::optional<NurbsCurve> source_pcurve(int edge, int geometry_id, int surface_id, const NurbsSurface& support, bool forward, bool seam, double& error) {
         const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[edge].curve_3d_index].nurbs();
         const StepEntity* source = r.get(surface_id);
         if (!support.is_valid() || !source || !surface_params(*source)) return std::nullopt;
@@ -4116,6 +4116,7 @@ public:
         }
         std::vector<NurbsCurve>& pick = accepted.empty() ? loose : accepted;
         if (pick.empty()) return std::nullopt;
+        if (seam && pick.size() == 1) pick.push_back(pick[0]);
         // A seam the file gives one boundary line for twice has its second alias a period across.
         for (int d = 0; d < 2 && pick.size() == 2; ++d) {
             const double period = d == 0 ? periods.first : periods.second;
@@ -4151,6 +4152,11 @@ public:
     ) {
 
         const Proj exact = proj.kind == 1 ? proj : bilinear_projector(proj_srf);
+        std::map<int, int> uses;
+        for (int bid : bound_refs)
+            if (const std::optional<Bound> b = bound_loop(r, bid))
+                for (const std::pair<int, bool>& use : bound_uses(r, *b, same_sense))
+                    ++uses[use.first];
 
         for (int bid : bound_refs) {
             const std::optional<Bound> b = bound_loop(r, bid);
@@ -4166,7 +4172,7 @@ public:
                 le.edge_idx = get_edge(use.first);
                 le.reversed = use.second;
                 const NurbsCurve& world = brep.m_curves_3d[brep.m_edges[le.edge_idx].curve_3d_index].nurbs();
-                const std::optional<NurbsCurve> pc = source_pcurve(le.edge_idx, edge_geom_id(r, use.first), surface_ref, proj_srf, !le.reversed, le.error);
+                const std::optional<NurbsCurve> pc = source_pcurve(le.edge_idx, edge_geom_id(r, use.first), surface_ref, proj_srf, !le.reversed, uses[use.first] == 2, le.error);
 
                 if (pc) {
                     le.pc2d = *pc;

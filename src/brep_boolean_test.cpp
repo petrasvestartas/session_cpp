@@ -2546,19 +2546,22 @@ static BRep drill_along(const Point& a, const Point& b, double radius) {
 /// Cutting a tool from a solid: exact sewn solids on both sides of the cut, the kept and the removed parts adding up to the whole.
 static void check_feature(const BRep& solid, const BRep& tool, double removed, int faces, const std::string& label, std::string& failures, double allowed = 1e-6) {
     try {
-        const double whole = solid.volume_exact();
+        const auto [whole, whole_leak] = brep_measure::volume_closure(solid);
         const BRep kept = solid.boolean_difference(tool);
         const BRep common = solid.boolean_intersection(tool);
-        const double a = kept.volume_exact(), b = common.volume_exact();
-        // The three volumes round apart: their sum is held to 64 units in the last place of the whole, and to 1e-6 where that is less.
-        const double rounding = std::max(1e-6, 64.0 * (std::nextafter(whole, std::numeric_limits<double>::infinity()) - whole));
+        const auto [a, a_leak] = brep_measure::volume_closure(kept);
+        const auto [b, b_leak] = brep_measure::volume_closure(common);
+        // The three volumes round apart: their sum is held to 64 units in the last place of the whole, and to 1e-6 where that is less,
+        // plus how far their faces leak, which stays below 2e-3.
+        const double leak = whole_leak + a_leak + b_leak;
+        const double rounding = std::max(1e-6, 64.0 * (std::nextafter(whole, std::numeric_limits<double>::infinity()) - whole)) + leak;
         int round_faces = 0;
         for (const BRepFace& face : kept.m_faces)
             round_faces += kept.m_surfaces[face.surface_index].nurbs().degree(0) > 1 || kept.m_surfaces[face.surface_index].nurbs().degree(1) > 1 ? 1 : 0;
-        if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > rounding
-            || kept.face_count() != faces || round_faces < 4 || (removed > 0.0 && std::abs(b - removed) > allowed))
+        if (!kept.is_solid() || !common.is_solid() || !kept.mesh().is_closed() || !common.mesh().is_closed() || std::abs(a + b - whole) > rounding || leak > 2e-3
+            || kept.face_count() != faces || round_faces < 4 || (removed > 0.0 && std::abs(b - removed) > allowed + b_leak))
             throw std::runtime_error("faces " + std::to_string(kept.face_count()) + ", round " + std::to_string(round_faces) + ", kept "
-                + std::to_string(a) + ", removed " + std::to_string(b) + " of " + std::to_string(removed) + ", whole " + std::to_string(whole));
+                + std::to_string(a) + ", removed " + std::to_string(b) + " of " + std::to_string(removed) + ", whole " + std::to_string(whole) + ", leak " + std::to_string(leak));
     } catch (const std::exception& error) {
         failures += "\n" + label + ": " + error.what();
     }
@@ -2624,13 +2627,14 @@ MINI_TEST("BRep Curved Cuts", "Vault Strips Pinned Across Their Joint") {
     std::string failures;
     for (const auto& [strip, label] : {std::pair<const BRep&, std::string>{first, "first"}, std::pair<const BRep&, std::string>{second, "second"}}) {
         BRep drilled = strip;
-        const double whole = strip.volume_exact();
+        const auto [whole, whole_leak] = brep_measure::volume_closure(strip);
         try {
             for (const std::array<double, 2>& station : stations)
                 drilled = drilled.boolean_difference(drill_along(Point(station[0], 510, station[1]), Point(station[0], 690, station[1]), 8));
-            const double removed = whole - drilled.volume_exact();
-            if (!drilled.is_solid() || !drilled.mesh().is_closed() || drilled.face_count() != 14
-                || std::abs(removed - 4.0 * Tolerance::PI * 64.0 * 90.0) > 1e-6)
+            const auto [left, left_leak] = brep_measure::volume_closure(drilled);
+            const double removed = whole - left;
+            if (!drilled.is_solid() || !drilled.mesh().is_closed() || drilled.face_count() != 14 || whole_leak + left_leak > 1e-3
+                || std::abs(removed - 4.0 * Tolerance::PI * 64.0 * 90.0) > 1e-6 + whole_leak + left_leak)
                 throw std::runtime_error("faces " + std::to_string(drilled.face_count()) + ", removed " + std::to_string(removed)
                     + " of " + std::to_string(4.0 * Tolerance::PI * 64.0 * 90.0) + ", solid " + std::to_string(drilled.is_solid())
                     + ", mesh closed " + std::to_string(drilled.mesh().is_closed()));
@@ -2701,6 +2705,8 @@ MINI_TEST("BRep Curved Cuts", "Vault Strip Pinned Where Wood Lays The Pin") {
                 Xform::frame_to_world(start, frame.x_axis(), frame.y_axis(), frame.z_axis())));
         }
         MINI_CHECK(drilled.is_solid() && drilled.face_count() == 14 && drilled.mesh().is_closed());
-        MINI_CHECK(std::abs(strip.volume_exact() - drilled.volume_exact() - 4.0 * Tolerance::PI * 64.0 * 80.0) < 1e-6);
+        const auto [whole, whole_leak] = brep_measure::volume_closure(strip);
+        const auto [left, left_leak] = brep_measure::volume_closure(drilled);
+        MINI_CHECK(whole_leak + left_leak < 1e-3 && std::abs(whole - left - 4.0 * Tolerance::PI * 64.0 * 80.0) < 1e-6 + whole_leak + left_leak);
     }
 }

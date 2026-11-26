@@ -1,4 +1,5 @@
 #include "brep.h"
+#include "brep_check.h"
 #include "mesh_parametric_metadata.h"
 #include "brep.pb.h"
 #include "brep_boolean.h"
@@ -3570,120 +3571,14 @@ int BRep::solid_count() const {
 
 bool BRep::is_valid() const {
 
-    if (m_faces.empty() || !std::all_of(m_surfaces.begin(), m_surfaces.end(), [](const Surface& s) { return s.is_valid(); }) ||
-        !std::all_of(m_curves_3d.begin(), m_curves_3d.end(), [](const Curve& c) { return c.is_valid(); }) ||
-        !std::all_of(m_curves_2d.begin(), m_curves_2d.end(), [](const Curve2d& c) { return c.is_valid(); }))
-        return false;
+    using brep_check::Status;
+    const brep_check::Report report = brep_check::check(*this);
 
-    if (!is_nurbs())
-        return as_nurbs().is_valid();
-
-    if (m_faces.empty())
-        return false;
-
-    for (const NurbsSurface& surface : nurbs(m_surfaces))
-        if (!surface.is_valid())
-            return false;
-
-    for (const Curve& curve : m_curves_3d)
-        if (!curve.nurbs().is_valid())
-            return false;
-
-    for (const Curve2d& curve : m_curves_2d)
-        if (!curve.nurbs().is_valid())
-            return false;
-
-    for (const BRepVertex& vertex : m_vertices) {
-        if (!std::isfinite(vertex.tolerance) || vertex.tolerance < 0.0)
-            return false;
-
-        for (int axis = 0; axis < 3; ++axis)
-            if (!std::isfinite(vertex.point[axis]))
-                return false;
-    }
-
-    for (const BRepEdge& e : m_edges) {
-        if (!std::isfinite(e.tolerance) || e.tolerance < 0.0)
-            return false;
-
-        if (!in_range(e.start_vertex, m_vertices.size()) || !in_range(e.end_vertex, m_vertices.size()))
-            return false;
-
-        if (e.degenerated && e.start_vertex != e.end_vertex)
-            return false;
-
-        if (!e.degenerated && !in_range(e.curve_3d_index, m_curves_3d.size()))
-            return false;
-
-        for (const BRepCurveOnSurface& pc : e.pcurves) {
-            if (!in_range(pc.surface_index, m_surfaces.size()) || !in_range(pc.curve_2d_index, m_curves_2d.size()))
-                return false;
-
-            if (pc.curve_2d_index_2 >= 0 && !in_range(pc.curve_2d_index_2, m_curves_2d.size()))
-                return false;
-        }
-    }
-
-    for (const BRepWire& w : m_wires) {
-        if (w.edges.empty())
-            return false;
-
-        for (const BRepRef& r : w.edges)
-            if (!in_range(r.index, m_edges.size()))
-                return false;
-
-        int start = -1;
-        int previous = -1;
-        for (const BRepRef& r : w.edges) {
-            if (r.orientation == BRepOrientation::Internal || r.orientation == BRepOrientation::External)
-                continue;
-
-            const BRepEdge& edge = m_edges[r.index];
-            const int first = r.orientation == BRepOrientation::Reversed ? edge.end_vertex : edge.start_vertex;
-            const int last = r.orientation == BRepOrientation::Reversed ? edge.start_vertex : edge.end_vertex;
-            if (previous >= 0 && previous != first)
-                return false;
-
-            if (start < 0)
-                start = first;
-            previous = last;
-        }
-
-        if (start >= 0 && previous != start)
-            return false;
-    }
-
-    for (const BRepFace& f : m_faces) {
-        if (!std::isfinite(f.tolerance) || f.tolerance < 0.0)
-            return false;
-
-        if (!in_range(f.surface_index, m_surfaces.size()) || f.wires.empty())
-            return false;
-
-        for (const BRepRef& r : f.wires)
-            if (!in_range(r.index, m_wires.size()))
-                return false;
-    }
-
-    for (const BRepShell& s : m_shells) {
-        if (s.faces.empty())
-            return false;
-
-        for (const BRepRef& r : s.faces)
-            if (!in_range(r.index, m_faces.size()))
-                return false;
-    }
-
-    for (const BRepSolid& s : m_solids) {
-        if (s.shells.empty())
-            return false;
-
-        for (const BRepRef& r : s.shells)
-            if (!in_range(r.index, m_shells.size()))
-                return false;
-    }
-
-    return true;
+    return !m_faces.empty() && std::all_of(report.issues.begin(), report.issues.end(), [](const brep_check::Issue& issue) {
+        return issue.status == Status::EdgeUses || issue.status == Status::ShellOpen || issue.status == Status::ShellNotOrientable || issue.status == Status::SolidInsideOut
+            || issue.status == Status::LoopOrientation || issue.status == Status::SameParameter || issue.status == Status::EdgeOffPCurve || issue.status == Status::VertexOffEdge
+            || issue.status == Status::EdgeWithoutPCurve;
+    });
 }
 
 bool BRep::is_closed(int shell_index) const {
@@ -3725,34 +3620,13 @@ bool BRep::is_closed(int shell_index) const {
 
 bool BRep::is_solid() const {
 
-    if (m_solids.empty() || !is_valid())
-        return false;
+    using brep_check::Status;
+    const brep_check::Report report = brep_check::check(*this);
 
-    for (const BRepSolid& s : m_solids)
-        for (const BRepRef& r : s.shells) {
-            if (!is_closed(r.index))
-                return false;
-
-            std::vector<int> balance(m_edges.size(), 0);
-            for (const BRepRef& face : m_shells[r.index].faces)
-                for (const BRepRef& wire : m_faces[face.index].wires)
-                    for (const BRepRef& edge : wire_edges(wire)) {
-                        if (m_edges[edge.index].degenerated)
-                            continue;
-
-                        const BRepOrientation orientation = brep_compose(face.orientation, edge.orientation);
-                        if (orientation == BRepOrientation::Forward)
-                            ++balance[edge.index];
-                        else if (orientation == BRepOrientation::Reversed)
-                            --balance[edge.index];
-                    }
-
-            for (int count : balance)
-                if (count != 0)
-                    return false;
-        }
-
-    return true;
+    return !m_solids.empty() && !m_faces.empty() && std::all_of(report.issues.begin(), report.issues.end(), [](const brep_check::Issue& issue) {
+        return issue.status == Status::SolidInsideOut || issue.status == Status::LoopOrientation || issue.status == Status::SameParameter || issue.status == Status::EdgeOffPCurve
+            || issue.status == Status::VertexOffEdge || issue.status == Status::EdgeWithoutPCurve;
+    });
 }
 
 BRepOrientation BRep::face_orientation(int face_index) const {
@@ -3855,8 +3729,9 @@ double BRep::update_tolerances() {
         BRepEdge& e = m_edges[i];
         BRepVertex& vs = m_vertices[e.start_vertex];
         BRepVertex& ve = m_vertices[e.end_vertex];
-        double tol = e.tolerance;
-        double reach = tol;
+        if (const double d = brep_check::deviation(*this, (int)i); d > e.tolerance + 1e-7)
+            e.tolerance = d;
+        double reach = e.tolerance;
 
         if (e.curve_3d_index >= 0) {
             const std::pair<double, double> range = edge_range((int)i);

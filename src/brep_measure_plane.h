@@ -99,9 +99,9 @@ struct Primitive {
             return;
         const size_t count = nu * nv;
         const size_t derivative_count =
-            shared ? 2 * ((nu * (p - 1) + 1) * (nv * q + 1) + (nu * p + 1) * (nv * (q - 1) + 1))
-                   : count * (4 * p * q + 2 * p + 2 * q);
-        const size_t fixed = count * 22 * p * q;
+            shared ? 3 * ((nu * (p - 1) + 1) * (nv * q + 1) + (nu * p + 1) * (nv * (q - 1) + 1))
+                   : count * (6 * p * q + 3 * p + 3 * q);
+        const size_t fixed = count * 48 * p * q;
         if (fixed > remaining || derivative_count > remaining - fixed)
             return;
         if (permit && !permit(u.front(), fixed + derivative_count))
@@ -118,15 +118,16 @@ struct Primitive {
                     point.emplace_back(p, q);
                     for (size_t k = 0; k < controls.size(); ++k)
                         point.back().values[k] = controls[k][d];
-                    if (d < 2) {
-                        du.push_back(derivative(point.back(), d, 0, Interval(u[i]) - Interval(u[i - 1]),
-                                                i - 1, j - 1, charge));
-                        dv.push_back(derivative(point.back(), d, 1, Interval(v[j]) - Interval(v[j - 1]),
-                                                i - 1, j - 1, charge));
-                    }
+                    du.push_back(derivative(point.back(), d, 0, Interval(u[i]) - Interval(u[i - 1]), i - 1, j - 1, charge));
+                    dv.push_back(derivative(point.back(), d, 1, Interval(v[j]) - Interval(v[j - 1]), i - 1, j - 1, charge));
                 }
-                const Grid cross = polynomial::cross_component(du[0], dv[1], du[1], dv[0], charge);
-                const Grid value = polynomial::product(point[2], cross, charge);
+                Grid value(3 * p - 1, 3 * q - 1);
+                for (int d = 0; d < 3; ++d) {
+                    const int a = (d + 1) % 3, b = (d + 2) % 3;
+                    const Grid term = polynomial::product(point[d], polynomial::cross_component(du[a], dv[b], du[b], dv[a], charge), charge);
+                    for (size_t k = 0; k < value.values.size(); ++k)
+                        value.values[k] = value.values[k] + term.values[k] / Interval(3);
+                }
                 cells.push_back(
                     polynomial::antiderivative(value, Interval(u[i]) - Interval(u[i - 1]), prefix, charge));
                 middles.emplace_back(cells.back());
