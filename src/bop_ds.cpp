@@ -331,26 +331,55 @@ NurbsCurve interpolated(const std::vector<Point>& points, double t0, double t1) 
     return uv;
 }
 
+/// The pcurve through preimages at equal parameter steps, the steps halved until what the points give between them lies within 1e-7 of the preimage there, 1024 steps at most: what is left of a deviation goes into the edge's tolerance. sample(t, neighbour) is the preimage at t on the turn of a neighbour's.
+template <class Sample>
+NurbsCurve fitted(std::vector<Point> points, double t0, double t1, const Surface& surface, const Sample& sample) {
+    for (;;) {
+        const int n = static_cast<int>(points.size()) - 1;
+        const NurbsCurve coarse = interpolated(points, t0, t1);
+        std::vector<Point> finer{points[0]};
+        double worst = 0.0;
+        for (int i = 0; i < n; ++i) {
+            const double t = t0 + (t1 - t0) * (i + 0.5) / n;
+            const Point exact = sample(t, points[i]), guess = coarse.point_at(t);
+            worst = std::max(worst, surface.point_at(exact[0], exact[1]).distance(surface.point_at(guess[0], guess[1])));
+            finer.insert(finer.end(), {exact, points[i + 1]});
+        }
+        points = std::move(finer);
+        if (worst <= 1e-7 || n >= 512)
+            return interpolated(points, t0, t1);
+    }
+}
+
 /// The pcurve on an analytic surface, or of an analytic curve on a freeform one
 Curve project_true(const Curve& curve, double t0, double t1, const Surface& surface) {
-    const int n = 32;
+    const int n = 16;
     const std::array<double, 2> period = surface_period(surface);
+    const auto preimage = [&](double t, bool& singular) {
+        const auto [u, v] = surface.closest_parameters(curve.point_at(t));
+        const std::vector<Vector> d = surface.evaluate(u, v, 1);
+        singular = std::min(d[1].magnitude(), d[2].magnitude()) <= 1e-9 * std::max(d[1].magnitude(), d[2].magnitude());
+        return Point(u, v, 0);
+    };
+    // At a pole or an apex the angle is the one the curve arrives at; elsewhere each sample is on the turn of its neighbour.
+    const auto beside = [&](Point p, bool singular, const Point& neighbour) {
+        for (int d = 0; d < 2; ++d)
+            if (singular && d == 0)
+                p[d] = neighbour[d];
+            else if (period[d] > 0.0)
+                p[d] -= std::round((p[d] - neighbour[d]) / period[d]) * period[d];
+        return p;
+    };
     std::vector<Point> points;
     std::vector<bool> singular;
     for (int i = 0; i <= n; ++i) {
-        const auto [u, v] = surface.closest_parameters(curve.point_at(t0 + (t1 - t0) * i / n));
-        const std::vector<Vector> d = surface.evaluate(u, v, 1);
-        points.push_back(Point(u, v, 0));
-        singular.push_back(std::min(d[1].magnitude(), d[2].magnitude()) <= 1e-9 * std::max(d[1].magnitude(), d[2].magnitude()));
+        bool flat = false;
+        points.push_back(preimage(t0 + (t1 - t0) * i / n, flat));
+        singular.push_back(flat);
     }
-    // At a pole or an apex the angle is the one the curve arrives at; elsewhere each sample is on the turn of the one before.
     const int regular = static_cast<int>(std::find(singular.begin(), singular.end(), false) - singular.begin());
     for (int i = regular + 1; i <= n; ++i)
-        for (int d = 0; d < 2; ++d)
-            if (singular[i] && d == 0)
-                points[i][d] = points[i - 1][d];
-            else if (period[d] > 0.0)
-                points[i][d] -= std::round((points[i][d] - points[i - 1][d]) / period[d]) * period[d];
+        points[i] = beside(points[i], singular[i], points[i - 1]);
     for (int i = std::min(regular, n) - 1; i >= 0; --i)
         points[i][0] = points[i + 1][0];
     double scale = 1.0, bend = 0.0;
@@ -367,15 +396,18 @@ Curve project_true(const Curve& curve, double t0, double t1, const Surface& surf
         const Vector x(curve.x().dot(surface.x()), curve.x().dot(surface.y()), 0), y(curve.y().dot(surface.x()), curve.y().dot(surface.y()), 0);
         return curve.kind() == Curve::Kind::Circle ? Curve::circle(Point(u, v, 0), x, y, curve.radius(), t0, t1) : Curve::ellipse(Point(u, v, 0), x, y, curve.radius(), curve.minor(), t0, t1);
     }
-    return interpolated(points, t0, t1);
+    return fitted(points, t0, t1, surface, [&](double t, const Point& neighbour) {
+        bool flat = false;
+        const Point p = preimage(t, flat);
+        return beside(p, flat, neighbour);
+    });
 }
 
 }
 
 /// The X direction gp_Ax2 gets from a main direction alone (DirToAx2)
 static Vector canonical(const Vector& d) {
-    const double x = std::abs(d[0]) < 1e-12 ? 0.0 : d[0], y = std::abs(d[1]) < 1e-12 ? 0.0 : d[1], z = std::abs(d[2]) < 1e-12 ? 0.0 : d[2];
-    const double ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
+    const double x = d[0], y = d[1], z = d[2], ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
     Vector r = ax == 0.0 || (ax < ay && ax < az) ? Vector(0, -z, y) : ay == 0.0 || (ay < ax && ay < az) ? Vector(-z, 0, x) : Vector(-y, x, 0);
     r.normalize_self();
     return r;
@@ -450,16 +482,18 @@ Curve project(const Curve& whole, double t0, double t1, const Surface& form) {
     const NurbsSurface& surface = form.nurbs();
     std::vector<Point> points;
     const std::array<double, 2> period = surface_period(surface);
-    const int n = 32;
-    for (int i = 0; i <= n; ++i) {
-        const auto [u, v] = surface.closest_parameters(curve.point_at(t0 + (t1 - t0) * i / n));
+    const auto preimage = [&](double t, const Point* neighbour) {
+        const auto [u, v] = surface.closest_parameters(curve.point_at(t));
         Point uv(u, v, 0);
-        for (int d = 0; d < 2 && !points.empty(); ++d)
+        for (int d = 0; d < 2 && neighbour; ++d)
             if (period[d] > 0.0)
-                uv[d] -= std::round((uv[d] - points.back()[d]) / period[d]) * period[d];
-        points.push_back(uv);
-    }
-    return interpolated(points, t0, t1);
+                uv[d] -= std::round((uv[d] - (*neighbour)[d]) / period[d]) * period[d];
+        return uv;
+    };
+    const int n = 16;
+    for (int i = 0; i <= n; ++i)
+        points.push_back(preimage(t0 + (t1 - t0) * i / n, points.empty() ? nullptr : &points.back()));
+    return fitted(points, t0, t1, form, [&](double t, const Point& neighbour) { return preimage(t, &neighbour); });
 }
 
 Span ranged(const std::shared_ptr<const Curve>& pcurve, std::pair<double, double> domain, double t0, double t1) {

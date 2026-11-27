@@ -282,3 +282,17 @@ MINI_TEST("Bop FF", "Section Across A Corner") {
     const bop_ff::Result r = bop_ff::intersect(a, 0, b, 0, 0.0, {p, q});
     MINI_CHECK(r.curves.size() == 1 && std::abs(length(r) - p.distance(q)) < 1e-7 && worst_fit(a, 0, b, 0, r) <= 1.0);
 }
+
+MINI_TEST("Bop FF", "Helicoid Against A Plane Through Its Axis") {
+    // A ramp of five turns and a patch of a plane through its axis that one turn passes: the grid cells of other turns hold the patch's points too, and the start from the nearest of them stalls.
+    const double pi = 3.14159265358979323846, angle = pi / 3;
+    std::vector<Point> points;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j <= 40; ++j)
+            points.push_back(Point((4 + 2 * i) * std::cos(0.25 * pi * j), (4 + 2 * i) * std::sin(0.25 * pi * j), 0.25 * j));
+    const BRep a = patch(NurbsSurface::create(false, false, 1, 3, 2, 41, points));
+    const auto corner = [&](double r, double z) { return Point(r * std::cos(angle), r * std::sin(angle), 13.0 / 3 + z); };
+    const BRep b = patch(NurbsSurface::create(false, false, 1, 1, 2, 2, {corner(3.5, -0.5), corner(3.5, 0.5), corner(6.5, -0.5), corner(6.5, 0.5)}));
+    const bop_ff::Result r = bop_ff::intersect(a, 0, b, 0, 0.0);
+    MINI_CHECK(r.curves.size() == 1 && std::abs(length(r) - 1.8) < 0.01 && nearest_on_curves(r, corner(4.5, 0)) < 1e-3);
+}

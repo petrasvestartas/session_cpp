@@ -3731,12 +3731,12 @@ double BRep::update_tolerances() {
         BRepVertex& ve = m_vertices[e.end_vertex];
         if (const double d = brep_check::deviation(*this, (int)i); d > e.tolerance + 1e-7)
             e.tolerance = d;
-        double reach = e.tolerance;
+        std::array<double, 2> reach{e.tolerance, e.tolerance};
 
         if (e.curve_3d_index >= 0) {
             const std::pair<double, double> range = edge_range((int)i);
             const Curve& c = m_curves_3d[e.curve_3d_index];
-            reach = std::max({reach, c.point_at(range.first).distance(vs.point), c.point_at(range.second).distance(ve.point)});
+            reach = {std::max(reach[0], c.point_at(range.first).distance(vs.point)), std::max(reach[1], c.point_at(range.second).distance(ve.point))};
         }
 
         for (const BRepCurveOnSurface& pc : e.pcurves) {
@@ -3751,13 +3751,13 @@ double BRep::update_tolerances() {
                 const std::pair<double, double> range = pcurve_range(pc, k == 1);
                 const Point a = m_curves_2d[ci].point_at(range.first);
                 const Point z = m_curves_2d[ci].point_at(range.second);
-                reach = std::max({reach, srf.point_at(a[0], a[1]).distance(vs.point), srf.point_at(z[0], z[1]).distance(ve.point)});
+                reach = {std::max(reach[0], srf.point_at(a[0], a[1]).distance(vs.point)), std::max(reach[1], srf.point_at(z[0], z[1]).distance(ve.point))};
             }
         }
 
-        vs.tolerance = std::max(vs.tolerance, reach);
-        ve.tolerance = std::max(ve.tolerance, reach);
-        worst = std::max(worst, reach);
+        vs.tolerance = std::max(vs.tolerance, reach[0]);
+        ve.tolerance = std::max(ve.tolerance, reach[1]);
+        worst = std::max({worst, reach[0], reach[1]});
     }
 
     return worst;

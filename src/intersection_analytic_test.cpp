@@ -321,6 +321,16 @@ MINI_TEST("Intersection Analytic", "Exact Sections") {
     MINI_CHECK(kinds(rulings, {Shape::Line, Shape::Line, Shape::Line, Shape::Line}) && within(rulings, 1e-12) && straight(rulings.curves[0].on_a) && straight(rulings.curves[0].on_b));
 }
 
+MINI_TEST("Intersection Analytic", "Cones Along Their Rulings") {
+    // Half cones of one semi-angle with axes 5 degrees apart (zip_ea0000006992revit against its turned copy): the section passes the boxes of both within a quarter of a degree of the swept angle, 10.9 long, on either side; too straight there to tell its plane.
+    const Vector axis(-std::sin(pi / 36), std::cos(pi / 36), 0);
+    const Surface a = Surface::cone(Point(0, -61.722, 0), Yv, Zv, 46.99, pi / 4, {-pi, 0, -5.388153673, 5.388153673});
+    const Surface b = Surface::cone(Point(-1.616042, -61.792558, 0), axis, Zv, 46.99, pi / 4, {0, pi, -5.388153673, 5.388153673});
+    const Result r = surface_surface(a, b, 1e-7);
+    MINI_CHECK(r.done && kinds(r, {Shape::Nurbs, Shape::Nurbs}) && within(r, 1e-8) && worst(a, b, r) < 1e-8);
+    MINI_CHECK(std::abs(r.curves[0].curve.domain().second - 10.886) < 1e-3 && std::abs(r.curves[1].curve.domain().second - 10.886) < 1e-3);
+}
+
 MINI_TEST("Intersection Analytic", "Curve Torus Touching") {
     const Surface torus = surface(Kind::Torus, Point(0, 0, 0), Z, 3, 1);
     for (double turn : {0.0, 0.9, 2.2}) {

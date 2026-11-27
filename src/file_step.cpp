@@ -1364,6 +1364,20 @@ public:
         return 1.0;
     }
 
+    /// Length of the first UNCERTAINTY_MEASURE_WITH_UNIT, else 0.
+    double uncertainty() const {
+
+        for (int id : sf.ids_of_type("UNCERTAINTY_MEASURE_WITH_UNIT")) {
+            const StepSubEntity* u = get(id)->find("UNCERTAINTY_MEASURE_WITH_UNIT");
+            const std::vector<double> value = u && !u->params.empty() ? nums(u->params[0].list) : std::vector<double>();
+
+            if (!value.empty())
+                return value[0];
+        }
+
+        return 0.0;
+    }
+
     /// Return the entity with this id, or null.
     const StepEntity* get(int id) const {
 
@@ -4551,6 +4565,75 @@ public:
             add_face_analytic(bound_refs, same_sense, an);
         else
             add_face_projected(bound_refs, surface_ref, same_sense);
+
+        same_parameter(bound_refs, surface_ref, same_sense, an);
+    }
+
+    /// An edge on a B-spline curve without a pcurve in the file, on a plane, cylinder, sphere or torus: OCCT projects it as a straight pcurve when every sample
+    /// lies within the file's uncertainty of the surface normal at the uv taken linearly in the parameter (ShapeConstruct_ProjectCurveOnSurface::getLine),
+    /// and ShapeFix_Edge::FixSameParameter leaves the edge the distance of that pcurve from the curve at the same parameter.
+    void same_parameter(const std::vector<int>& bound_refs, int surface_ref, bool same_sense, const AnFace& an) {
+
+        const Proj plane = r.get_projector(surface_ref);
+
+        if (an.kind == 3 || (an.kind < 2 && plane.kind != 1))
+            return;
+
+        const double limit = r.uncertainty();
+        const auto at = [&](const Point& uv) { return an.kind >= 2 ? an_eval(an, uv[0], uv[1]) : plane.a.origin + plane.a.ax * uv[0] + plane.a.ay * uv[1]; };
+        const auto uv_of = [&](const Point& p) {
+            if (an.kind < 2)
+                return Point((p - plane.a.origin).dot(plane.a.ax), (p - plane.a.origin).dot(plane.a.ay), 0.0);
+            const auto [u, v, ok] = an_st_of(an, p);
+            return Point(u, v, 0.0);
+        };
+
+        for (int bid : bound_refs)
+            if (const std::optional<Bound> b = bound_loop(r, bid))
+                for (const std::pair<int, bool>& use : bound_uses(r, *b, same_sense)) {
+                    const int geometry = edge_geom_id(r, use.first);
+                    const int basis = r.basis_curve_of(geometry);
+                    const StepEntity* e = r.get(basis);
+                    const NurbsCurve c = e && curve_params(*e) && !r.surface_curve(geometry) ? r.get_nurbs_curve(basis) : NurbsCurve();
+                    BRepEdge& edge = brep.m_edges[get_edge(use.first)];
+
+                    if (!c.is_valid() || edge.start_vertex == edge.end_vertex)
+                        continue;
+
+                    const double t0 = std::min(c.closest_parameter(brep.m_vertices[edge.start_vertex].point), c.closest_parameter(brep.m_vertices[edge.end_vertex].point));
+                    const double t1 = std::max(c.closest_parameter(brep.m_vertices[edge.start_vertex].point), c.closest_parameter(brep.m_vertices[edge.end_vertex].point));
+                    int knots = 0;
+                    int n = 23;
+
+                    for (int i = 0; i + 1 < (int)c.get_span_vector().size(); ++i)
+                        knots += c.get_span_vector()[i + 1] > t0 && c.get_span_vector()[i] < t1;
+
+                    while (n < knots * (c.degree() + 1))
+                        n += 22;
+
+                    std::vector<Point> uv(n);
+
+                    for (int i = 0; i < n; ++i) {
+                        uv[i] = uv_of(c.point_at(t0 + (t1 - t0) * i / (n - 1)));
+                        if (i > 0 && an.kind >= 2)
+                            uv[i][0] += 2.0 * PI * std::round((uv[i - 1][0] - uv[i][0]) / (2.0 * PI));
+                    }
+
+                    double gap = 0.0;
+                    bool straight = t1 > t0;
+
+                    for (int i = 0; i < n && straight; ++i) {
+                        const Point q = uv[0] + (uv[n - 1] - uv[0]) * (double(i) / (n - 1));
+                        const Point s = at(q);
+                        const Vector normal = (at(Point(q[0] + 1e-6, q[1], 0.0)) - s).cross(at(Point(q[0], q[1] + 1e-6, 0.0)) - s);
+                        const Vector d = c.point_at(t0 + (t1 - t0) * i / (n - 1)) - s;
+                        straight = normal.magnitude() > 0.0 && (d - normal * (d.dot(normal) / normal.dot(normal))).magnitude() <= limit;
+                        gap = std::max(gap, d.magnitude());
+                    }
+
+                    if (straight)
+                        edge.tolerance = std::max(edge.tolerance, gap);
+                }
     }
 
     /// BRep of faces of a CLOSED_SHELL (one solid, its faces oriented consistently) or OPEN_SHELL (one shell) with tolerances raised to the gaps between its curves and vertices; throws naming the first face that cannot be built.

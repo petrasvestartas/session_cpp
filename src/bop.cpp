@@ -225,7 +225,7 @@ struct Builder {
         return n;
     }
 
-    /// FillSameDomainFaces: pieces of faces on one surface bounded by the same edge images
+    /// FillSameDomainFaces: pieces of faces on one surface bounded by the same edge images; of any two faces, where both are planes or a point inside one lies on the other (AreFacesSameDomain)
     void same_domain() {
         for (const auto& [fa, fb] : ds.same_domain_faces)
             for (Piece& a : pieces)
@@ -237,6 +237,29 @@ struct Builder {
                             a.state = pieces[k].state = 0;
                             break;
                         }
+        std::map<std::vector<int>, std::vector<int>> by_images;
+        for (size_t k = 0; k < pieces.size(); ++k)
+            if (pieces[k].twin < 0 && !pieces[k].images.empty())
+                by_images[pieces[k].images].push_back(static_cast<int>(k));
+        for (const auto& [unused, list] : by_images)
+            for (size_t i = 0; i < list.size(); ++i)
+                for (size_t j = i + 1; j < list.size(); ++j) {
+                    Piece &a = pieces[list[i]], &b = pieces[list[j]];
+                    const Face &fa = ds.faces[a.face], &fb = ds.faces[b.face];
+                    if (a.twin >= 0 || b.twin >= 0 || fa.operand == fb.operand)
+                        continue;
+                    const Surface& sb = ds.surface_of(fb);
+                    if (ds.surface_of(fa).kind() != Surface::Kind::Plane || sb.kind() != Surface::Kind::Plane) {
+                        if (!sample(a))
+                            continue;
+                        const auto [u, v] = sb.closest_parameters(a.point);
+                        if (sb.point_at(u, v).distance(a.point) > fa.tolerance + fb.tolerance + std::max(ds.fuzzy, 1e-7) || fb.region.state(Point(u, v, 0)) < 0)
+                            continue;
+                    }
+                    a.twin = list[j];
+                    b.twin = list[i];
+                    a.state = b.state = 0;
+                }
     }
 
     /// BOPTools_AlgoTools::IsInternalFace: at an edge shared with the other operand, a piece is inside it when it leaves the edge below the nearest of that operand's faces there; per piece the count of edges that say inside and outside
@@ -537,10 +560,10 @@ void grow_tolerances(BRep& b) {
         BRepVertex& ve = b.m_vertices[e.end_vertex];
         if (const double d = brep_check::deviation(b, i); d > e.tolerance + 1e-7)
             e.tolerance = d;
-        double reach = e.tolerance;
+        std::array<double, 2> reach{e.tolerance, e.tolerance};
         if (e.curve_3d_index >= 0) {
             const Span c = edge_span(b, i);
-            reach = std::max({reach, c.at(0.0).distance(vs.point), c.at(1.0).distance(ve.point)});
+            reach = {std::max(reach[0], c.at(0.0).distance(vs.point)), std::max(reach[1], c.at(1.0).distance(ve.point))};
         }
         for (const BRepCurveOnSurface& pc : e.pcurves)
             for (bool second : {false, true}) {
@@ -550,10 +573,10 @@ void grow_tolerances(BRep& b) {
                 const Curve2d& p = b.m_curves_2d[second ? pc.curve_2d_index_2 : pc.curve_2d_index];
                 const Point a = p.point_at(t0), z = p.point_at(t1);
                 const Surface& s = b.m_surfaces[pc.surface_index];
-                reach = std::max({reach, s.point_at(a[0], a[1]).distance(vs.point), s.point_at(z[0], z[1]).distance(ve.point)});
+                reach = {std::max(reach[0], s.point_at(a[0], a[1]).distance(vs.point)), std::max(reach[1], s.point_at(z[0], z[1]).distance(ve.point))};
             }
-        vs.tolerance = std::max(vs.tolerance, reach);
-        ve.tolerance = std::max(ve.tolerance, reach);
+        vs.tolerance = std::max(vs.tolerance, reach[0]);
+        ve.tolerance = std::max(ve.tolerance, reach[1]);
     }
 }
 

@@ -603,9 +603,9 @@ std::vector<std::pair<Node, double>> seeds(const Context& c) {
                 g.centres.push_back({0.5 * (u0 + u1), 0.5 * (v0 + v1), 0, 0});
             }
     }
-    // The centre of the cell of the other grid whose box holds p, nearest to p.
-    const auto near = [&](int s, const xyz& p, X& uv) {
-        double best = infinity;
+    // The cells of the other grid whose boxes hold p, nearest centre first: a surface that passes p in several sheets (a helicoid's turns) holds it in cells apart.
+    const auto near = [&](int s, const xyz& p) {
+        std::vector<std::pair<double, int>> cells;
         for (size_t i = 0; i < grids[s].boxes.size(); ++i) {
             const std::array<double, 6>& b = grids[s].boxes[i];
             double d2 = 0.0;
@@ -615,27 +615,35 @@ std::vector<std::pair<Node, double>> seeds(const Context& c) {
                 const double m = p[k] - 0.5 * (b[2 * k] + b[2 * k + 1]);
                 d2 += m * m;
             }
-            if (inside && d2 < best)
-                best = d2, uv = grids[s].centres[i];
+            if (inside)
+                cells.push_back({d2, static_cast<int>(i)});
         }
-        return best < infinity;
+        std::sort(cells.begin(), cells.end());
+        return cells;
     };
     std::vector<std::pair<Node, double>> found;
+    // A start that fails is tried again only from a cell that is no neighbour of one tried.
     const auto attempt = [&](int s, const X& own, const Constraint& con) {
         const Side& side = s ? c.b : c.a;
-        X other{};
-        if (!near(1 - s, side.surface.point(own[0], own[1]), other))
+        const Grid& g = grids[1 - s];
+        std::vector<int> tried;
+        for (const auto& [unused, cell] : near(1 - s, side.surface.point(own[0], own[1]))) {
+            if (std::any_of(tried.begin(), tried.end(), [&](int t) { return std::abs(cell / g.n[1] - t / g.n[1]) <= 1 && std::abs(cell % g.n[1] - t % g.n[1]) <= 1; }))
+                continue;
+            tried.push_back(cell);
+            const X& other = g.centres[cell];
+            X x = s ? X{other[0], other[1], own[0], own[1]} : X{own[0], own[1], other[0], other[1]};
+            double gap = 0.0, sine = 0.0;
+            if (!correct(c, x, con, gap, true))
+                continue;
+            const xyz p = point(c, x);
+            for (const auto& [n, _] : found)
+                if ((n.p - p).length() <= 1e-9 * c.size)
+                    return;
+            tangent(c, x, sine);
+            found.push_back({{x, p}, sine});
             return;
-        X x = s ? X{other[0], other[1], own[0], own[1]} : X{own[0], own[1], other[0], other[1]};
-        double gap = 0.0, sine = 0.0;
-        if (!correct(c, x, con, gap, true))
-            return;
-        const xyz p = point(c, x);
-        for (const auto& [n, _] : found)
-            if ((n.p - p).length() <= 1e-9 * c.size)
-                return;
-        tangent(c, x, sine);
-        found.push_back({{x, p}, sine});
+        }
     };
     for (int s = 0; s < 2; ++s) {
         const Side& side = s ? c.b : c.a;

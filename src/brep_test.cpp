@@ -1194,6 +1194,7 @@ namespace session_cpp {
         MINI_CHECK(std::abs(worst_bent - 0.01) < 1e-9);
         MINI_CHECK(std::abs(bent.m_vertices[0].tolerance - 0.01) < 1e-9);
         MINI_CHECK(bent.m_vertices[6].tolerance < 1e-9);
+        MINI_CHECK(std::count_if(bent.m_vertices.begin(), bent.m_vertices.end(), [](const BRepVertex& v) { return v.tolerance > 1e-9; }) == 1);
         MINI_CHECK(worst_prims < 1e-6);
     }
 

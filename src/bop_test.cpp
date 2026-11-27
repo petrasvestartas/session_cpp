@@ -2,6 +2,7 @@
 #include "bop_builder_face.h"
 #include "mini_test.h"
 #include "xform.h"
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -195,4 +196,80 @@ MINI_TEST("BRep BOP", "Arc Through The End Of An Edge It Touches") {
     MINI_CHECK(joined.solid && joined.failure.empty() && shared.solid && shared.failure.empty());
     MINI_CHECK(both.face_count() == 27 && common.face_count() == 17);
     MINI_CHECK(std::abs(both.volume_exact() + common.volume_exact() - 2.0 * a.volume_exact()) < 1e-6);
+}
+
+MINI_TEST("BRep BOP", "Loose Vertex At One End") {
+    // BRepLib::UpdateTolerances: an edge that ends 1e-4 off a loose vertex widens that vertex, not the one at its other end.
+    BRep a = BRep::create_box(2, 2, 2);
+    const Point corner = a.m_vertices[0].point;
+    a.m_vertices[0].point = Point(corner[0] + 1e-4, corner[1], corner[2]);
+    a.m_vertices[0].tolerance = 2e-4;
+    bop::Report report;
+    const BRep sum = bop::apply(a, moved(BRep::create_box(2, 2, 2), -corner[0], -corner[1], -corner[2]), bop::Operation::Union, 0.0, &report);
+    int loose = 0;
+    for (const BRepVertex& v : sum.m_vertices)
+        loose += v.tolerance > 1e-5;
+    MINI_CHECK(report.solid && report.failure.empty() && loose == 1);
+}
+
+MINI_TEST("BRep BOP", "Conic Origin Of A Rounded Normal") {
+    // DirToAx2 takes a direction as a file gives it: (1.2e-16, -1, 0) has its X along (1, 0, 0), where (0, -1, 0) has it along (0, 0, -1).
+    Point origin;
+    MINI_CHECK(bop::conic_origin(Point(0, 0, 0), Vector(1.224646852585e-16, -1, 0), 2, Point(0, 0, 0), Vector(0, 0, 1), 1.0, Point(0, 0, 0), origin));
+    MINI_CHECK(origin.distance(Point(1, 0, 0)) < 1e-12);
+}
+
+MINI_TEST("BRep BOP", "Projected Pcurve Follows Its Curve") {
+    // A curve winding over a torus: the pcurve through 33 of its preimages lifts 7e-3 off it between them, refined it stays on the curve's foot points.
+    const Surface torus = Surface::torus(Point(0, 0, 0), Vector(0, 0, 1), Vector(1, 0, 0), 2.0, 0.5);
+    std::vector<Point> points;
+    for (int i = 0; i <= 40; ++i)
+        points.push_back(torus.point_at(0.2 + 0.05 * i, 1.0 + 0.8 * std::sin(0.4 * i)));
+    const Curve curve(NurbsCurve::create_interpolated(points));
+    const auto [t0, t1] = curve.domain();
+    const Curve pcurve = bop::project(curve, t0, t1, torus);
+    double worst = 0.0;
+    for (int i = 0; i <= 400; ++i) {
+        const double t = t0 + (t1 - t0) * i / 400;
+        const Point uv = pcurve.point_at(t);
+        worst = std::max(worst, torus.point_at(uv[0], uv[1]).distance(torus.closest_point(curve.point_at(t))));
+    }
+    MINI_CHECK(worst < 1e-6);
+}
+
+MINI_TEST("BRep BOP", "Section Ending Along A Seam") {
+    // A disc with a rounded rim, and a cylinder whose axis and seam lie in its flat top: the section with the rim comes to the seam along it and ends beside the vertex where the seam crosses the rim's circle. ProcessExistingPaveBlocks cuts the seam at that end.
+    const BRep button = bop::apply(moved(BRep::create_cylinder(2, 1), 0, 0, -0.5), BRep::create_torus(2, 0.5), bop::Operation::Union);
+    const BRep rod = BRep::create_cylinder(0.3, 2.5).transformed(Xform::frame_to_world(Point(1, 0, 0.5), Vector(0, 1, 0), Vector(0, 0, 1), Vector(1, 0, 0)));
+    bop::Report joined, shared, cut;
+    const BRep both = bop::apply(button, rod, bop::Operation::Union, 0.0, &joined), common = bop::apply(button, rod, bop::Operation::Intersection, 0.0, &shared);
+    const BRep rest = bop::apply(button, rod, bop::Operation::Difference, 0.0, &cut);
+    MINI_CHECK(joined.solid && joined.failure.empty() && shared.solid && shared.failure.empty() && cut.solid && cut.failure.empty());
+    MINI_CHECK(std::abs(both.volume_exact() + common.volume_exact() - button.volume_exact() - rod.volume_exact()) < 1e-6);
+    MINI_CHECK(std::abs(rest.volume_exact() + common.volume_exact() - button.volume_exact()) < 1e-6);
+}
+
+MINI_TEST("BRep BOP", "Section Starting In A Crease") {
+    // Two quarter cylinders tangent to one plane along their first rulings, the edge of one drawn 1e-5 askew in that plane, as a loose file carries a fillet: the edges cross 1.2e-5 from where the rulings do and the section starts. PutStickPavesOnCurve gives that end the vertex.
+    const double half = 0.5 * std::numbers::pi;
+    const auto quarter = [&](double slack) {
+        BRep a;
+        const int surface = a.add_surface(Surface::cylinder(Point(0, 0, 0), Vector(0, 1, 0), Vector(1, 0, 0), 1.0, {0, half, -2, 3}));
+        const Point low(1, -2, -slack), far(0, -2, -1), top(0, 3, -1), high(1, 3, 0);
+        const int v0 = a.add_vertex(low), v1 = a.add_vertex(far), v2 = a.add_vertex(top), v3 = a.add_vertex(high);
+        const auto edge = [&](const Curve& c, int from, int to, double u0, double w0, double u1, double w1) {
+            const int e = a.add_edge(a.add_curve_3d(c), from, to);
+            Curve2d on = Curve2d::line(u0, w0, u1, w1);
+            on.set_domain(c.domain().first, c.domain().second);
+            a.add_pcurve(e, surface, a.add_curve_2d(on));
+            return BRepRef{e, BRepOrientation::Forward};
+        };
+        const std::vector<BRepRef> wire = {edge(Curve::circle(Point(0, -2, 0), Vector(1, 0, 0), Vector(0, 0, -1), 1.0, slack, half), v0, v1, 0, -2, half, -2),
+            edge(Curve::line(far, top), v1, v2, half, -2, half, 3), edge(Curve::circle(Point(0, 3, 0), Vector(0, 0, -1), Vector(1, 0, 0), 1.0, 0, half), v2, v3, half, 3, 0, 3),
+            edge(Curve::line(high, low), v3, v0, 0, 3, slack, -2)};
+        a.add_solid({{a.add_shell({{a.add_face(surface, {{a.add_wire(wire), BRepOrientation::Forward}}), BRepOrientation::Forward}}), BRepOrientation::Forward}});
+        return a;
+    };
+    const bop::DS ds = bop::fill(quarter(1e-5), quarter(0.0).transformed(Xform::rotation_x(30, true)), 0.0);
+    MINI_CHECK(std::count_if(ds.blocks.begin(), ds.blocks.end(), [](const bop::PaveBlock& b) { return b.curve >= 0; }) == 1);
 }

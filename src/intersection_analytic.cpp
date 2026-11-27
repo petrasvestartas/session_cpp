@@ -850,8 +850,9 @@ struct Builder {
             return specks.push_back(samples[0]);
         if (!std::all_of(samples.begin(), samples.end(), [](const xyz& p) { return std::isfinite(p.x + p.y + p.z); }))
             return;
-        const xyz p0 = samples[m / 6], normal = unit((samples[m / 2] - p0).cross(samples[5 * m / 6] - p0));
-        bool planar = normal.length() > 0 && a.kind != FormKind::Plane && a.kind != FormKind::Torus && b.kind != FormKind::Plane && b.kind != FormKind::Torus;
+        // Three points give the plane only where the piece bends between them: one that runs nearly straight (a hyperbola far out) is fitted.
+        const xyz p0 = samples[m / 6], chord = samples[5 * m / 6] - p0, lift = (samples[m / 2] - p0).cross(chord), normal = unit(lift);
+        bool planar = lift.length() > 1e-2 * chord.dot(chord) && a.kind != FormKind::Plane && a.kind != FormKind::Torus && b.kind != FormKind::Plane && b.kind != FormKind::Torus;
         for (int i = 0; i <= m && planar; i += 8)
             planar = std::abs((samples[i] - p0).dot(normal)) <= tol;
         if (planar) {
@@ -1080,13 +1081,35 @@ struct Builder {
                     return false;
             return true;
         };
-        // A closed chain cut to the keys inside the boxes, each end where it passes out of them.
+        // A closed chain cut to the keys inside the boxes, each end where it passes out of them. Between two keys not both inside, the chain is halved wherever its chord passes the boxes: a section that runs along the swept lines is inside over less than a step.
         const auto chain = [&](const std::function<xyz(double)>& at, double k0, double k1) {
             const int m = 720;
-            const auto key = [&](int i) { return k0 + (k1 - k0) * i / m; };
-            std::vector<char> in(m + 1);
-            for (int i = 0; i <= m; ++i)
-                in[i] = inside(at(key(i)));
+            std::vector<double> key;
+            std::vector<char> in;
+            const std::function<void(double, const xyz&, double, const xyz&, int)> between = [&](double ka, const xyz& pa, double kb, const xyz& pb, int depth) {
+                if (depth == 0 || (inside(pa) && inside(pb)))
+                    return;
+                for (const AABB& box : boxes)
+                    if (std::min(pa.x, pb.x) > box.cx + 1.01 * box.hx + tol || std::max(pa.x, pb.x) < box.cx - 1.01 * box.hx - tol || std::min(pa.y, pb.y) > box.cy + 1.01 * box.hy + tol
+                        || std::max(pa.y, pb.y) < box.cy - 1.01 * box.hy - tol || std::min(pa.z, pb.z) > box.cz + 1.01 * box.hz + tol || std::max(pa.z, pb.z) < box.cz - 1.01 * box.hz - tol)
+                        return;
+                const double km = 0.5 * (ka + kb);
+                const xyz pm = at(km);
+                between(ka, pa, km, pm, depth - 1);
+                key.push_back(km);
+                in.push_back(inside(pm));
+                between(km, pm, kb, pb, depth - 1);
+            };
+            xyz last = at(k0);
+            for (int i = 0; i <= m; ++i) {
+                const double k = k0 + (k1 - k0) * i / m;
+                const xyz p = i ? at(k) : last;
+                if (i)
+                    between(key.back(), last, k, p, 12);
+                key.push_back(k);
+                in.push_back(inside(p));
+                last = p;
+            }
             if (std::all_of(in.begin(), in.end(), [](char v) { return v; }))
                 return fitted(at, k0, k1);
             const auto edge = [&](double within, double out) {
@@ -1094,13 +1117,13 @@ struct Builder {
                     (inside(at(0.5 * (within + out))) ? within : out) = 0.5 * (within + out);
                 return within;
             };
-            for (int i = 0; i <= m; ++i)
+            for (size_t i = 0; i < key.size(); ++i)
                 if (in[i] && (i == 0 || !in[i - 1])) {
-                    int j = i;
-                    while (j < m && in[j + 1])
+                    size_t j = i;
+                    while (j + 1 < key.size() && in[j + 1])
                         ++j;
                     if (j > i)
-                        fitted(at, i > 0 ? edge(key(i), key(i - 1)) : k0, j < m ? edge(key(j), key(j + 1)) : k1);
+                        fitted(at, i > 0 ? edge(key[i], key[i - 1]) : k0, j + 1 < key.size() ? edge(key[j], key[j + 1]) : k1);
                     i = j;
                 }
         };

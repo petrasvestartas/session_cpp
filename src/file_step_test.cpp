@@ -1220,6 +1220,17 @@ MINI_TEST("FileStep", "BRep Read Uv Gap On A Cylinder Closed By Tolerance") {
     MINI_CHECK(shapes.size() == 1 && shapes[0].edge_count() == 4);
     MINI_CHECK(std::none_of(shapes[0].m_edges.begin(), shapes[0].m_edges.end(), [](const auto& edge) { return edge.degenerated; }));
 }
+MINI_TEST("FileStep", "BRep Read Arc Without Pcurve Carries Its Straight Pcurve Distance") {
+    // a rational quarter arc on a cylinder without a pcurve in the file: OCCT projects it as the straight pcurve linear in the arc's parameter and
+    // ShapeFix_Edge::FixSameParameter leaves the edge their distance at the same parameter, 0.016 under a file's uncertainty of 0.05
+    std::string text = step_fixture("quarter_cylinder.step");
+    text.insert(text.find("ENDSEC;\nEND-ISO"), "#37=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(0.05),$,'','');\n");
+    const auto shapes = step_read_text(text, "quarter_cylinder_loose.step");
+    double arc = 0.0;
+    for (const auto& e : shapes[0].m_edges)
+        arc = std::max(arc, e.tolerance);
+    MINI_CHECK(std::abs(arc - 0.016008624439243925) < 1e-9);
+}
 
 MINI_TEST("FileStep", "BRep Read Seam Given One Line Twice And Hole At The Turn") {
     // two faces of nist_edm/chamber.stp: a tube closed in v whose seam edge has both its pcurves on the line v = 0 in the file, and a full-turn

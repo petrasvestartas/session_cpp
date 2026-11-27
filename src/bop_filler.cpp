@@ -929,6 +929,40 @@ struct Filler {
             }
     }
 
+    /// UpdateExistingPaveBlocks: a block and those sharing its image cut at a vertex lying along them; a face that held a block holds both pieces
+    void split_block(int b, int v) {
+        const int start = ds.blocks[b].first.vertex, common = ds.blocks[b].common;
+        std::vector<int> head, tail;
+        for (int k : ds.family(b)) {
+            const PaveBlock old = ds.blocks[k];
+            Edge& edge = ds.edges[old.edge];
+            const Curve& c = ds.block_curve(old);
+            const double t = parameter(c, at(v), std::min(old.first.t, old.last.t), std::max(old.first.t, old.last.t));
+            const int piece = static_cast<int>(ds.blocks.size());
+            ds.blocks[k].last = {v, t};
+            ds.blocks.push_back({old.edge, -1, {v, t}, old.last, -1, old.tolerance});
+            edge.blocks.insert(std::find(edge.blocks.begin(), edge.blocks.end(), k) + 1, piece);
+            edge.paves.push_back({v, t});
+            for (int f = 0; f < static_cast<int>(ds.faces.size()); ++f)
+                for (std::vector<int>* list : {&ds.faces[f].in_blocks, &ds.faces[f].sc_blocks})
+                    if (std::find(list->begin(), list->end(), k) != list->end()) {
+                        list->push_back(piece);
+                        for (int x : {k, piece})
+                            ds.pcurves[{x, f}] = owned(project(c, ds.blocks[x].first.t, ds.blocks[x].last.t, ds.surface_of(ds.faces[f])));
+                    }
+            head.push_back(old.first.vertex == start ? k : piece);
+            tail.push_back(old.first.vertex == start ? piece : k);
+        }
+        if (common < 0)
+            return;
+        ds.commons[common].blocks = head;
+        ds.commons.push_back({tail});
+        for (int k : head)
+            ds.blocks[k].common = common;
+        for (int k : tail)
+            ds.blocks[k].common = static_cast<int>(ds.commons.size()) - 1;
+    }
+
     std::vector<int> face_blocks(const Face& f) const {
         std::vector<int> result = f.in_blocks;
         result.insert(result.end(), f.sc_blocks.begin(), f.sc_blocks.end());
@@ -1207,6 +1241,31 @@ struct Filler {
             }
             return false;
         };
+        // PutStickPavesOnCurve: an end no vertex took, where the surfaces touch and the section vanishes in a crease, takes a vertex of both faces within 4.5e-4 that no section of the pair holds.
+        for (double t : {t0, t1}) {
+            const Point ua = c.pcurve_a->point_at(t), ub = c.pcurve_b->point_at(t);
+            Vector na = ds.surface_of(ds.faces[ia]).normal_at(ua[0], ua[1]), nb = ds.surface_of(ds.faces[ib]).normal_at(ub[0], ub[1]);
+            na.normalize_self();
+            nb.normalize_self();
+            if (near(t) || 1.0 - std::abs(na.dot(nb)) > 5e-9)
+                continue;
+            std::array<std::vector<int>, 2> held = {face_vertices(ds.faces[ia]), face_vertices(ds.faces[ib])};
+            for (int v : candidates) {
+                const double d = at(v).distance(w.point_at(t));
+                bool free = d * d <= 2e-7 && std::find(held[0].begin(), held[0].end(), v) != held[0].end() && std::find(held[1].begin(), held[1].end(), v) != held[1].end();
+                for (const Pave& p : c.paves)
+                    free = free && ds.real(p.vertex) != v;
+                for (size_t k = ds.curves.size(); free && k-- > 0 && ds.curves[k].face_a == ia && ds.curves[k].face_b == ib;)
+                    for (const Pave& p : ds.curves[k].paves)
+                        free = free && ds.real(p.vertex) != v;
+                if (!free)
+                    continue;
+                grow(v, d);
+                c.paves.push_back({v, t});
+                break;
+            }
+        }
+        const size_t made = ds.vertices.size();
         if (!near(t0) && !left(t0)) {
             const int v = ds.add_vertex(w.point_at(t0), c.tolerance);
             ds.vertices[v].joint = !section.bound[0];
@@ -1229,6 +1288,22 @@ struct Filler {
                 }
             if (!found)
                 c.paves.push_back({ds.add_vertex(w.point_at(bound), c.tolerance), bound});
+        }
+        // ProcessExistingPaveBlocks: a vertex made on the section, where it lies in both faces (PutBoundPaveOnCurve) along an edge block of either, cuts that block.
+        for (const Pave& p : std::vector<Pave>(c.paves)) {
+            const int v = p.vertex;
+            if (v < static_cast<int>(made) || ds.faces[ia].region.state(c.pcurve_a->point_at(p.t)) < 0 || ds.faces[ib].region.state(c.pcurve_b->point_at(p.t)) < 0)
+                continue;
+            for (int f : {ia, ib})
+                for (int b : face_blocks(ds.faces[f])) {
+                    const PaveBlock& old = ds.blocks[b];
+                    if (old.edge < 0 || old.first.vertex == v || old.last.vertex == v || !on_block(old, at(v), tol(v) + ds.block_tolerance(old) + ds.fuzzy))
+                        continue;
+                    if (at(v).distance(at(old.first.vertex)) <= tol(v) + tol(old.first.vertex) || at(v).distance(at(old.last.vertex)) <= tol(v) + tol(old.last.vertex))
+                        continue;
+                    split_block(b, v);
+                    ds.vertices[v].joint = false;
+                }
         }
         std::sort(c.paves.begin(), c.paves.end(), [](const Pave& x, const Pave& y) { return x.t < y.t; });
         std::vector<Pave> paves;

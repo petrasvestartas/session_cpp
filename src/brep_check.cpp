@@ -493,32 +493,23 @@ struct Checker {
 
     void proportions() {
         std::vector<double> all;
-        std::vector<double> vertex_size(b.m_vertices.size(), INFINITY);
-        for (int e = 0; e < (int)b.m_edges.size(); ++e) {
-            if (b.m_edges[e].degenerated)
-                continue;
-            all.push_back(tol(b.m_edges[e].tolerance));
-            for (int v : {b.m_edges[e].start_vertex, b.m_edges[e].end_vertex})
-                vertex_size[v] = std::min(vertex_size[v], edge_size[e]);
-        }
+        for (int e = 0; e < (int)b.m_edges.size(); ++e)
+            if (!b.m_edges[e].degenerated)
+                all.push_back(tol(b.m_edges[e].tolerance));
         for (const BRepVertex& v : b.m_vertices)
             all.push_back(tol(v.tolerance));
         if (all.empty())
             return;
         std::nth_element(all.begin(), all.begin() + all.size() / 2, all.end());
         const double median = all[all.size() / 2];
-        auto test = [&](Entity entity, int index, double tolerance, double size, const std::string& what) {
-            if (std::isfinite(size) && tolerance > o.size_fraction * size && tolerance > o.median_factor * median && tolerance > o.min_tolerance)
-                add(Status::ToleranceOutOfProportion, entity, index, tolerance, what + " " + std::to_string(index) + " tolerance " + num(tolerance) + " against size " + num(size) + " and median " + num(median));
-        };
         for (int e = 0; e < (int)b.m_edges.size(); ++e) {
             const BRepEdge& edge = b.m_edges[e];
+            const double size = edge.degenerated ? 0.0 : edge_size[e];
             if (o.reference_tolerance > 0.0 && edge.tolerance > o.reference_factor * o.reference_tolerance)
                 add(Status::ToleranceOutOfProportion, Entity::Edge, e, edge.tolerance, "edge " + std::to_string(e) + " tolerance " + num(edge.tolerance) + " above " + num(o.reference_factor) + " times the reference " + num(o.reference_tolerance));
-            test(Entity::Edge, e, edge.tolerance, edge.degenerated ? 0.0 : edge_size[e], edge.degenerated ? "degenerated edge" : "edge");
+            if (edge.tolerance > o.size_fraction * size && edge.tolerance > o.median_factor * median && edge.tolerance > o.min_tolerance)
+                add(Status::ToleranceOutOfProportion, Entity::Edge, e, edge.tolerance, std::string(edge.degenerated ? "degenerated edge " : "edge ") + std::to_string(e) + " tolerance " + num(edge.tolerance) + " against size " + num(size) + " and median " + num(median));
         }
-        for (int v = 0; v < (int)b.m_vertices.size(); ++v)
-            test(Entity::Vertex, v, b.m_vertices[v].tolerance, vertex_size[v], "vertex");
     }
 };
 

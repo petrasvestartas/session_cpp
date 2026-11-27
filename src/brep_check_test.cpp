@@ -164,6 +164,9 @@ MINI_TEST("BRep Check", "Tolerance Out Of Proportion") {
     brep_check::Options options;
     options.reference_tolerance = 1e-7;
     MINI_CHECK(!flags(box, Status::ToleranceOutOfProportion) && brep_check::check(box, options).has(Status::ToleranceOutOfProportion));
+    // BRepCheck passes a vertex whose ball covers its edges: OCCT's own results carry them.
+    box.m_vertices[0].tolerance = 1.5;
+    MINI_CHECK(!flags(box, Status::ToleranceOutOfProportion));
 }
 
 MINI_TEST("BRep Check", "Edge Uses") {

@@ -20,7 +20,7 @@ enum class Status {
     WireOpenUV, // Consecutive pcurves of a wire apart in uv even modulo the periods, or by a period on a face with a seam.
     LoopOrientation, // The outer wire clockwise in uv.
     SeamBoundary, // An edge with one pcurve on a surface used on both sides by a face of it: a boundary on its own seam that is no seam pair.
-    ToleranceOutOfProportion, // A tolerance above a fraction of the entity's size (a degenerated edge has none) and above a multiple of the median, or an edge's above a multiple of the reference.
+    ToleranceOutOfProportion, // An edge tolerance above a fraction of the edge's size (a degenerated edge has none) and above a multiple of the median, or above a multiple of the reference; a vertex may cover its edges, as BRepCheck lets it.
     EdgeUses, // A closed shell's edge used an odd number of times, or any shell's edge more than twice and not as often one way as the other.
     ShellOpen, // A shell of a solid with free edges.
     ShellNotOrientable, // A shell edge used an even number of times, not as often one way as the other.
